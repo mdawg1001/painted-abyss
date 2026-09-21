@@ -20,10 +20,10 @@ export const KNIFE_THUMB_URL='/assets/knife/thumb.png';
  * extreme lower-right; blade steeply diagonal with the tip toward screen
  * center (~65° on fov 64). Same framing language as a CS knife viewmodel.
  */
-export const KNIFE_HOLD_POS={x:.42,y:-.24,z:-.64} as const;
-export const KNIFE_HOLD_ROT={x:.9,y:.4,z:-.6} as const;
-export const KNIFE_HOLD_SCALE=1.55;
-export const KNIFE_STAB_Z=-.84;
+export const KNIFE_HOLD_POS={x:.4,y:-.28,z:-.58} as const;
+export const KNIFE_HOLD_ROT={x:.85,y:.6,z:-.55} as const;
+export const KNIFE_HOLD_SCALE=1.7;
+export const KNIFE_STAB_Z=-.78;
 
 const stubMetal=()=>new THREE.MeshStandardMaterial({
  color:0x6a7078,metalness:.55,roughness:.55,envMapIntensity:.35,
