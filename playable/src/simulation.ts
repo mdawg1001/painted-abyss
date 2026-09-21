@@ -7,13 +7,13 @@ export const CELL=4;
 export const START:Point={x:0,y:3,z:-12};
 export const RELIC:Point={x:0,y:2,z:-112};
 export const EXIT:Point={x:32,y:3,z:-12};
-export const ITEMS:Record<Item,{name:string;short:string;description:string}>={
- stone:{name:'Limestone',short:'Stone',description:'Salvage. Safe to swap for the relic.'},
- wood:{name:'Driftwood',short:'Wood',description:'Salvage. Safe to swap for the relic.'},
- flare:{name:'Signal flare',short:'Flare',description:'R · Deploy a 12-second distraction.'},
- air:{name:'Air reserve',short:'Air',description:'R · Restore up to 60 seconds of air.'},
- bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity.'},
- relic:{name:'Ammonite relic',short:'Relic',description:'Carry this to the extraction pool.'},
+export const ITEMS:Record<Item,{name:string;short:string;description:string;hint:string}>={
+ stone:{name:'Limestone',short:'Stone',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
+ wood:{name:'Driftwood',short:'Wood',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
+ flare:{name:'Signal flare',short:'Flare',description:'R · Deploy a 12-second distraction at your position.',hint:'R use · consumed'},
+ air:{name:'Air reserve',short:'Air',description:'R · Restore up to 60 seconds of air (consumed).',hint:'R use · consumed'},
+ bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
+ relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
 };
 export const cells=new Set<string>();
 const rect=(a:number,b:number,c:number,d:number)=>{for(let col=a;col<=b;col++)for(let row=c;row<=d;row++)cells.add(`${col},${row}`);};
@@ -62,35 +62,69 @@ export function edgeTurn(clientX:number,left:number,width:number){
  const t=(abs-dead)/(1-dead);
  return Math.sign(fromCenter)*t*t;
 }
+export type FeedbackKind='select'|'ok'|'blocked'|'';
 export class Mission {
  position={...START};health=100;air=240;elapsed=0;stamina=100;torch=true;
  inventory:(Item|null)[]=['stone','wood','flare','air','bandage'];selected=0;
  pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},{id:2,item:'flare',position:{x:-20,y:2,z:-56}}];nextId=3;
- pending:number|null=null;outcome:'playing'|'won'|'lost'='playing';reason='';notice='Follow the turquoise markers into the cave.';noticeUntil=7;
+ pending:number|null=null;outcome:'playing'|'won'|'lost'='playing';reason='';notice='1–5 select a slot · R uses it · usable items are consumed.';noticeUntil=8;
+ feedbackKind:FeedbackKind='select';feedbackPulse=0;
  predator={position:world(16,19),state:'patrol' as PredatorState,timer:0,lost:0,lastKnown:world(16,19),waypoint:0,bite:0,heading:0};
  decoy:{position:Point;until:number}|null=null;
  patrol=[world(16,22),world(6,22),world(6,13),world(16,13)];
  get hasRelic(){return this.inventory.includes('relic');}
- say(message:string){this.notice=message;this.noticeUntil=this.elapsed+4.5;}
+ say(message:string,kind:FeedbackKind=''){this.notice=message;this.noticeUntil=this.elapsed+4.5;this.feedbackKind=kind;this.feedbackPulse++;}
+ select(slot:number){
+  if(this.outcome!=='playing'||slot<0||slot>4)return;
+  this.selected=slot;
+  const item=this.inventory[slot];
+  if(!item){this.say(`Slot ${slot+1} empty · nothing to use · E collects nearby.`, 'blocked');return;}
+  if(item==='stone'||item==='wood'){this.say(`${ITEMS[item].name} selected · salvage only · R does nothing · G drops.`, 'select');return;}
+  if(item==='relic'){this.say(`${ITEMS[item].name} selected · carry to extraction · cannot use.`, 'select');return;}
+  this.say(`${ITEMS[item].name} selected · press R to use (consumed).`, 'select');
+ }
  nearest(){return this.pickups.filter(p=>distance(p.position,this.position)<3.2&&visible(this.position,p.position)).sort((a,b)=>distance(a.position,this.position)-distance(b.position,this.position))[0];}
  interact(){
   if(this.outcome!=='playing')return;
-  if(distance(this.position,EXIT)<4){if(this.hasRelic){this.outcome='won';this.reason='Relic secured. You made it back to the light.';}else this.say('Extraction needs the ammonite relic. Follow the turquoise markers.');return;}
+  if(distance(this.position,EXIT)<4){if(this.hasRelic){this.outcome='won';this.reason='Relic secured. You made it back to the light.';}else this.say('Extraction needs the ammonite relic. Follow the turquoise markers.','blocked');return;}
   const pickup=this.pending===null?this.nearest():this.pickups.find(p=>p.id===this.pending);
   if(!pickup||distance(pickup.position,this.position)>3.2||!visible(this.position,pickup.position)){this.pending=null;return;}
   let slot=this.inventory.indexOf(null);
-  if(slot<0&&this.pending===null){this.pending=pickup.id;this.say('All five slots are full. Choose 1–5, then E to swap.');return;}
+  if(slot<0&&this.pending===null){this.pending=pickup.id;this.say('All five slots are full. Choose 1–5, then E to swap.','blocked');return;}
   if(slot<0)slot=this.selected;
   const old=this.inventory[slot];this.inventory[slot]=pickup.item;this.selected=slot;
   this.pickups=this.pickups.filter(p=>p.id!==pickup.id);if(old)this.pickups.push({id:this.nextId++,item:old,position:{...this.position,y:Math.max(1,this.position.y-.4)}});
-  this.pending=null;this.say(pickup.item==='relic'?'Relic recovered! Follow the amber markers to extraction.':`${ITEMS[pickup.item].name} collected.`);
+  this.pending=null;this.say(pickup.item==='relic'?'Relic recovered! Follow the amber markers to extraction.':`${ITEMS[pickup.item].name} collected · press R if usable.`,'ok');
   if(pickup.item==='relic'){this.predator.state='alert';this.predator.timer=0;this.predator.lastKnown={...this.position};}
  }
- drop(){const item=this.inventory[this.selected];if(!item)return;this.pickups.push({id:this.nextId++,item,position:{...this.position,y:Math.max(1,this.position.y-.4)}});this.inventory[this.selected]=null;this.pending=null;this.say(`${ITEMS[item].name} dropped. You can pick it up again.`);}
- use(){const item=this.inventory[this.selected];if(item==='air'){if(this.air>=240){this.say('Air is already full.');return;}this.air=Math.min(240,this.air+60);this.say('Air reserve connected.');}
- else if(item==='bandage'){if(this.health>=100){this.say('Suit integrity is already full.');return;}this.health=Math.min(100,this.health+45);this.say('Suit repaired.');}
- else if(item==='flare'){this.decoy={position:{...this.position},until:this.elapsed+12};this.predator.state='search';this.predator.timer=0;this.predator.lastKnown={...this.position};this.say('Flare deployed. Move away while it investigates.');}
- else {this.say(item?ITEMS[item].description:'This slot is empty.');return;}this.inventory[this.selected]=null;this.pending=null;}
+ drop(){
+  const item=this.inventory[this.selected];
+  if(!item){this.say(`Slot ${this.selected+1} empty · nothing to drop.`,'blocked');return;}
+  this.pickups.push({id:this.nextId++,item,position:{...this.position,y:Math.max(1,this.position.y-.4)}});
+  this.inventory[this.selected]=null;this.pending=null;
+  this.say(`${ITEMS[item].name} dropped · pick it up again with E.`,'ok');
+ }
+ use(){
+  const item=this.inventory[this.selected];
+  if(!item){this.say(`Slot ${this.selected+1} empty · select 1–5, then R.`,'blocked');return;}
+  if(item==='air'){
+   if(this.air>=240){this.say('Air already full · save the reserve.','blocked');return;}
+   this.air=Math.min(240,this.air+60);this.inventory[this.selected]=null;this.pending=null;
+   this.say('Used Air reserve · +60s air · slot cleared.','ok');return;
+  }
+  if(item==='bandage'){
+   if(this.health>=100){this.say('Suit already full · save the sealant.','blocked');return;}
+   this.health=Math.min(100,this.health+45);this.inventory[this.selected]=null;this.pending=null;
+   this.say('Used Sealant · +45 suit · slot cleared.','ok');return;
+  }
+  if(item==='flare'){
+   this.decoy={position:{...this.position},until:this.elapsed+12};this.predator.state='search';this.predator.timer=0;this.predator.lastKnown={...this.position};
+   this.inventory[this.selected]=null;this.pending=null;
+   this.say('Used Flare · distraction deployed · slot cleared. Move away.','ok');return;
+  }
+  if(item==='stone'||item==='wood'){this.say(`${ITEMS[item].name} is salvage · cannot use · drop with G or swap for relic.`,'blocked');return;}
+  this.say('Relic cannot be used · carry it to the extraction pool.','blocked');
+ }
  update(dt:number,sprinting=false){
   if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;this.air=Math.max(0,this.air-dt);this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?-18:17)*dt));
   if(this.air<=0){this.outcome='lost';this.reason='Your air ran out. Use the reserve earlier or take a shorter route.';return;}

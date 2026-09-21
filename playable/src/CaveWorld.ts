@@ -79,7 +79,8 @@ export class CaveWorld extends OceanWorld {
    if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Tab'].includes(e.code))e.preventDefault();
    this.keys.add(e.code);if(e.repeat)return;
    if(e.code==='Escape'){if(this.mission.pending!==null){this.mission.pending=null;this.publish();}else this.pause();}
-   if(/^Digit[1-5]$/.test(e.code))this.mission.selected=Number(e.code.slice(-1))-1;
+   // Inventory keys bind on window (not the canvas), so select/use/drop work without canvas focus.
+   if(/^Digit[1-5]$/.test(e.code))this.mission.select(Number(e.code.slice(-1))-1);
    if(e.code==='KeyE')this.mission.interact();if(e.code==='KeyF')this.mission.torch=!this.mission.torch;
    if(e.code==='KeyR')this.mission.use();if(e.code==='KeyG')this.mission.drop();if(e.code==='KeyM')this.setSound(!this.sound);
    this.publish();

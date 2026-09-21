@@ -1,6 +1,6 @@
-# Painted Abyss — First Dive · 0.1.2
+# Painted Abyss — First Dive · 0.1.4
 
-Includes the sound update and continuous 360° horizontal camera turning. When pointer lock is unavailable, hold the pointer near either edge to keep turning; move it back towards the centre to stop.
+Includes clearer inventory select → use → consume feedback, plus sound and continuous 360° horizontal camera turning. When pointer lock is unavailable, hold the pointer near either edge to keep turning; move it back towards the centre to stop.
 
 ## Open in Cursor
 
@@ -48,7 +48,7 @@ Keep the terminal open while playing. Stop it with Ctrl+C. If port 5173 is alrea
 | F | Toggle the mounted torch |
 | E | Collect a nearby item / confirm replacement / extract |
 | 1–5 | Select one of exactly five carried slots |
-| R | Use selected air reserve, sealant, or distraction flare |
+| R | Use / consume selected air reserve, sealant, or distraction flare (salvage items refuse with a notice) |
 | G | Drop selected item into the cave |
 | Esc | Pause / release the pointer; cancels a pending swap (browser may also pause) |
 | M | Toggle audio |
@@ -59,7 +59,7 @@ Pointer lock is requested by Begin / Resume. If the browser refuses it, moving t
 
 - Follow **turquoise markers** down the entrance tunnel and around the central rock pillar. The relic rests above a plinth in the bone alcove at the far end.
 - You start with five items so that the swap mechanic can be tried immediately. Press **E**, select the slot to replace with **1–5**, then press **E** again. The displaced item remains in the world and can be recovered. There is no extra backpack.
-- Stone and driftwood are spare salvage; replacing either keeps your useful supplies. The mounted torch and worn fins sit outside the five carried slots in this prototype.
+- Stone and driftwood are spare salvage; replacing either keeps your useful supplies. Press **1–5** to select a slot (selected slot is highlighted), then **R** to use — air, sealant, and flares are consumed and clear the slot; salvage and empty slots show a clear refusal notice. The mounted torch and worn fins sit outside the five carried slots in this prototype.
 - Carry the relic east toward the **amber markers**, enter the narrow fissure, then follow it north to the extraction pool. Press **E** near the light to win. You must still be carrying the relic; dropping it removes eligibility to extract.
 - Rock blocks the guardian's sight. Its states are patrol, alert, chase, and search. Use the pillar, briefly sprint away, switch off the torch, or deploy a flare and move away. It cannot enter the narrow exit passage.
 - Air lasts four minutes. Use the reserve before it runs out; it restores up to 60 seconds. Sealant repairs 45 suit integrity. A flare distracts for 12 seconds unless you remain very close to the guardian. Dying or running out of air brings up Restart.
