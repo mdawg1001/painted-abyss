@@ -1,6 +1,6 @@
-# Painted Abyss — First Dive · 0.1.5
+# Painted Abyss — First Dive · 0.1.6
 
-Includes quieter inventory feedback (one-time first-play tip), plus sound and continuous 360° horizontal camera turning. When pointer lock is unavailable, hold the pointer near either edge to keep turning; move it back towards the centre to stop.
+Includes a short inventory select click, quieter first-play tip, sound, and continuous 360° horizontal camera turning. When pointer lock is unavailable, hold the pointer near either edge to keep turning; move it back towards the centre to stop.
 
 ## Open in Cursor
 
@@ -47,7 +47,7 @@ Keep the terminal open while playing. Stop it with Ctrl+C. If port 5173 is alrea
 | Shift | Sprint swim; spends fin energy, which replenishes |
 | F | Toggle the mounted torch |
 | E | Collect a nearby item / confirm replacement / extract |
-| 1–5 | Select one of exactly five carried slots |
+| 1–5 | Select one of exactly five carried slots (plays a short click when the selection changes; muted when sound is off) |
 | R | Use / consume selected air reserve, sealant, or distraction flare (salvage items refuse with a notice) |
 | G | Drop selected item into the cave |
 | Esc | Pause / release the pointer; cancels a pending swap (browser may also pause) |

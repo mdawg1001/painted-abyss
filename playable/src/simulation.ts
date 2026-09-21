@@ -92,9 +92,11 @@ export class Mission {
  /** Slot chrome without center text — used after the one-time first-play tip. */
  pulse(kind:FeedbackKind=''){this.feedbackKind=kind;this.feedbackPulse++;}
  select(slot:number){
-  if(this.outcome!=='playing'||slot<0||slot>4)return;
+  if(this.outcome!=='playing'||slot<0||slot>4)return false;
+  if(this.selected===slot)return false;
   this.selected=slot;
   this.pulse(this.inventory[slot]?'select':'blocked');
+  return true;
  }
  nearest(){return this.pickups.filter(p=>distance(p.position,this.position)<3.2&&visible(this.position,p.position)).sort((a,b)=>distance(a.position,this.position)-distance(b.position,this.position))[0];}
  interact(){

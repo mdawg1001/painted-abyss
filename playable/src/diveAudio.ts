@@ -44,3 +44,20 @@ export function playDiveChime(ctx: AudioContext, master: GainNode) {
     tone.onended = () => { tone.disconnect(); envelope.disconnect(); };
   }
 }
+
+/** Short UI tick when the inventory selection moves to a different slot. */
+export function playInventoryClick(ctx: AudioContext, master: GainNode) {
+  const start = ctx.currentTime;
+  const tone = ctx.createOscillator();
+  const envelope = ctx.createGain();
+  tone.type = 'triangle';
+  tone.frequency.setValueAtTime(1650, start);
+  tone.frequency.exponentialRampToValueAtTime(720, start + .035);
+  envelope.gain.setValueAtTime(0, start);
+  envelope.gain.linearRampToValueAtTime(.11, start + .003);
+  envelope.gain.exponentialRampToValueAtTime(.001, start + .045);
+  tone.connect(envelope).connect(master);
+  tone.start(start);
+  tone.stop(start + .05);
+  tone.onended = () => { tone.disconnect(); envelope.disconnect(); };
+}

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { OceanWorld } from './legacy/ocean';
-import { buildDiveAudio, playDiveChime } from './diveAudio';
+import { buildDiveAudio, playDiveChime, playInventoryClick } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
 import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, ITEMS, readInventoryTipsSeen, writeInventoryTipsSeen, type Item } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string};
@@ -80,7 +80,9 @@ export class CaveWorld extends OceanWorld {
    this.keys.add(e.code);if(e.repeat)return;
    if(e.code==='Escape'){if(this.mission.pending!==null){this.mission.pending=null;this.publish();}else this.pause();}
    // Inventory keys bind on window (not the canvas), so select/use/drop work without canvas focus.
-   if(/^Digit[1-5]$/.test(e.code))this.mission.select(Number(e.code.slice(-1))-1);
+   if(/^Digit[1-5]$/.test(e.code)){
+    if(this.mission.select(Number(e.code.slice(-1))-1))this.playSelectClick();
+   }
    if(e.code==='KeyE')this.mission.interact();if(e.code==='KeyF')this.mission.torch=!this.mission.torch;
    if(e.code==='KeyR')this.mission.use();if(e.code==='KeyG')this.mission.drop();if(e.code==='KeyM')this.setSound(!this.sound);
    this.publish();
@@ -144,6 +146,12 @@ export class CaveWorld extends OceanWorld {
    if(this.playing)this.backgroundMusic?.start().catch(()=>{if(this.alive){this.audioNotice='Background music could not load. Pause and resume to retry.';this.publish();}});
    this.publish();
   }).catch(()=>{if(this.alive){this.audioNotice='Sound is blocked. Pause and choose Test sound.';this.publish();}});
+ }
+ playSelectClick(){
+  if(!this.playing||!this.sound)return;
+  const ctx=this.audioContext,master=this.master;
+  if(!ctx||!master||ctx.state!=='running')return;
+  playInventoryClick(ctx,master);
  }
  testingAudio=false;
  testSound(){

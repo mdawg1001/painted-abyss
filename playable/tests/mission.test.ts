@@ -29,7 +29,8 @@ test('inventory select/use stay quiet after the one-time first-play tip',()=>{
  assert.match(first.notice,/1–5 select/);
  assert.equal(first.tipsSeen,false);
  const opening=first.notice;
- first.select(2);assert.equal(first.selected,2);assert.equal(first.feedbackKind,'select');assert.equal(first.notice,opening);
+ assert.equal(first.select(2),true);assert.equal(first.selected,2);assert.equal(first.feedbackKind,'select');assert.equal(first.notice,opening);
+ assert.equal(first.select(2),false);
  first.use();assert.equal(first.inventory[2],null);assert.equal(first.feedbackKind,'ok');assert.equal(first.notice,opening);
  first.select(0);first.use();assert.equal(first.inventory[0],'stone');assert.equal(first.feedbackKind,'blocked');assert.equal(first.notice,opening);
  const quiet=new Mission(true);
