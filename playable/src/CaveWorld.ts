@@ -148,6 +148,8 @@ export class CaveWorld extends OceanWorld {
  chestVisuals=new Map<number,ChestVisual>();
  /** Chart-scrap scrolls nested in each crate (visible until taken). */
  scrollVisuals=new Map<number,ScrollVisual>();
+ /** QA: when true, animate() leaves camera pose alone (Playwright framing). */
+ holdCamera=false;
  /** Decorative Poly Haven life ring on the start-chamber floor. */
  lifebuoyVisual:LifebuoyVisual|null=null;
  /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
@@ -244,8 +246,8 @@ export class CaveWorld extends OceanWorld {
    visual.root.position.set(chest.position.x,chest.position.y,chest.position.z);
    visual.root.rotation.y=chest.yaw;
    const scroll=createScrollVisual();
-   visual.root.add(scroll.root);
    this.scene.add(visual.root);
+   this.scene.add(scroll.root);
    this.chestVisuals.set(chest.id,visual);
    this.scrollVisuals.set(chest.id,scroll);
    upgradeChestVisual(visual).then(()=>{
@@ -265,7 +267,7 @@ export class CaveWorld extends OceanWorld {
    const scroll=this.scrollVisuals.get(chest.id);
    if(scroll){
     const want=chest.open&&!this.mission.hasMapFragment(chest.fragment);
-    syncScrollPresent(scroll,want,dt,chest.kind);
+    syncScrollPresent(scroll,want,dt,chest.kind,chest.position,chest.yaw);
    }
   }
  }
@@ -930,7 +932,7 @@ export class CaveWorld extends OceanWorld {
     this.velocity.set(0,0,0);this.keys.clear();
     m.update(dt,false);this.position.copy(m.position);
     this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
-   }else{
+   }else if(!this.holdCamera){
    if(!this.pointerLocked&&this.lookPointer){const bounds=this.renderer.domElement.getBoundingClientRect();this.fallbackTurn=edgeTurn(this.lookPointer.x,bounds.left,bounds.width);}
    else if(!this.pointerLocked&&!this.lookPointer)this.fallbackTurn=0;
    const horizontalLook=pressed('ArrowRight')-pressed('ArrowLeft')+(!this.pointerLocked?this.fallbackTurn*FREE_LOOK_RATE:0);
@@ -951,9 +953,15 @@ export class CaveWorld extends OceanWorld {
    stepSwimVelocity(this.velocity,this.move,m.buoyancy,sprint,dt);
    moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);
    m.update(dt,sprint);this.position.copy(m.position);
+   }else{
+    // holdCamera: keep mission clock + chests syncing, but leave look/swim alone.
+    this.velocity.set(0,0,0);
+    m.update(dt,false);this.position.copy(m.position);
+    this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
    }
    // Presentation-only hover bob when nearly still — never moves mission.position.
    // ~2.6× 0.1.18 amplitudes so the murk drift reads; torch gets extra local sway (mesh+light+beam).
+   if(!this.holdCamera){
    const speed=this.velocity.length();
    const bobBlend=1-THREE.MathUtils.smoothstep(speed,.06,.5);
    const bobY=Math.sin(this.time*1.1)*.13*bobBlend;
@@ -994,6 +1002,7 @@ export class CaveWorld extends OceanWorld {
     }
    }
    this.updateBlood(dt);
+   }
 
    if(m.outcome!=='playing')this.pause();
   }

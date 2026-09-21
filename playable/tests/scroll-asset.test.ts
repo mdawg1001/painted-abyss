@@ -31,9 +31,10 @@ test('scroll mesh builds and presents inside an open crate',()=>{
  assert.ok(mesh.children.length>=4);
  const visual=createScrollVisual();
  assert.equal(visual.root.visible,false);
- syncScrollPresent(visual,true,1,'military');
+ syncScrollPresent(visual,true,1,'military',{x:0,y:.65,z:0},0);
  assert.ok(visual.present>.5);
  assert.equal(visual.root.visible,true);
- syncScrollPresent(visual,false,1,'military');
+ assert.ok(visual.root.position.y>.9);
+ syncScrollPresent(visual,false,1,'military',{x:0,y:.65,z:0},0);
  assert.ok(visual.present<.2);
 });
