@@ -101,8 +101,6 @@ float mossCoverage(vec3 p,vec3 wn,float ao,float amount){
   float m=clumps*(.45+.4*nearFloor+.35*ledge+.25*wall)
          +crevice*.55
          +smoothstep(.4,.85,streaks)*wall*.35;
-  float cov=clamp(m*amount,0.,1.);
-  // Floor of coverage so moss always reads on rock surfaces
-  return max(cov,smoothstep(.4,1.2,amount)*.5);
+  return clamp(m*amount,0.,1.);
 }
 `;
