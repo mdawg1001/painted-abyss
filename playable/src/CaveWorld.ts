@@ -9,9 +9,12 @@ import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playG
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
 import { createKnifeVisual, upgradeKnifeVisual, poseKnife, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
+import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, applySiltToTorch, stepSilt, siltAt, createSiltPlume, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, stepSwimVelocity } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
+/** Soft underwater blood: droplets + plume (Kenney alpha maps, not square Points). */
+type BloodLayer={points:THREE.Points;vel:Float32Array;baseSize:number};
 
 const shaftVert=`varying vec2 vUv;varying vec3 wPos;void main(){vUv=uv;wPos=(modelMatrix*vec4(position,1.)).xyz;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
 const shaftFrag=`varying vec2 vUv;varying vec3 wPos;uniform float uTime;uniform vec3 uColor;uniform float uOpacity;
@@ -67,7 +70,11 @@ export class CaveWorld extends OceanWorld {
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
  knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
- shakeAmp=0;blood:THREE.Points|null=null;bloodVel:Float32Array|null=null;bloodLife=0;
+ shakeAmp=0;
+ /** Soft blood cloud group (droplets + plume); hidden until hit/kill. */
+ bloodGroup:THREE.Group|null=null;
+ bloodLayers:BloodLayer[]=[];
+ bloodLife=0;bloodPeakLife=14;
  /** Floor-kick silt storm (separate from ambient suspended dust). */
  siltStorm:THREE.Points|null=null;siltStormVel:Float32Array|null=null;siltStormLife:Float32Array|null=null;
  rockMaps:CaveRockMaps;
@@ -108,6 +115,7 @@ export class CaveWorld extends OceanWorld {
   this.decoyMesh.add(new THREE.PointLight(0xff6831,12,12));this.scene.add(this.decoyMesh);
   this.buildBlood();
   this.buildSiltStorm();
+  loadBloodMaps().then(maps=>{if(this.alive)this.applyBloodMaps(maps);});
   // Mount knife stub immediately so selecting slot 1 always shows a held prop;
   // Poly Haven glTF upgrades the mesh when ready.
   this.knifeVisual=createKnifeVisual();
@@ -122,47 +130,91 @@ export class CaveWorld extends OceanWorld {
   });
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
  }
- /** Floating blood cloud spawned on guardian death (world-space points). */
+ /** Soft blood Points (procedural maps first; Kenney textures swap in when loaded). */
  buildBlood(){
-  const n=48;
-  const pos=new Float32Array(n*3);
-  const vel=new Float32Array(n*3);
-  for(let i=0;i<n;i++){pos[i*3]=0;pos[i*3+1]=-40;pos[i*3+2]=0;vel[i*3]=0;vel[i*3+1]=0;vel[i*3+2]=0;}
-  const geo=new THREE.BufferGeometry();
-  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
-  const mat=new THREE.PointsMaterial({color:0x8a1a22,size:.18,transparent:true,opacity:.85,depthWrite:false,sizeAttenuation:true});
-  this.blood=new THREE.Points(geo,mat);this.blood.visible=false;this.bloodVel=vel;this.scene.add(this.blood);
+  const blob=makeSoftBlobTexture(48);
+  const group=new THREE.Group();group.name='bloodCloud';group.visible=false;
+  const mk=(n:number,size:number,color:number,map:THREE.Texture):BloodLayer=>{
+   const pos=new Float32Array(n*3);const vel=new Float32Array(n*3);
+   for(let i=0;i<n;i++){pos[i*3]=0;pos[i*3+1]=-40;pos[i*3+2]=0;}
+   const geo=new THREE.BufferGeometry();
+   geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+   const mat=new THREE.PointsMaterial({
+    map,color,size,transparent:true,opacity:0,depthWrite:false,depthTest:true,
+    sizeAttenuation:true,blending:THREE.NormalBlending,alphaTest:.02,
+   });
+   const points=new THREE.Points(geo,mat);points.frustumCulled=false;
+   group.add(points);
+   return {points,vel,baseSize:size};
+  };
+  // Droplets + plume + faint glow — ~118 points total, light for the prototype.
+  this.bloodLayers=[
+   mk(64,.22,0x7a1218,blob),
+   mk(36,.55,0x5c0e14,blob),
+   mk(18,.32,0x9a1e28,blob),
+  ];
+  this.bloodGroup=group;this.scene.add(group);
  }
- spawnBlood(at:THREE.Vector3| {x:number;y:number;z:number}){
-  if(!this.blood||!this.bloodVel)return;
-  const pos=this.blood.geometry.attributes.position as THREE.BufferAttribute;
-  for(let i=0;i<pos.count;i++){
-   pos.setXYZ(i,at.x+(Math.random()-.5)*.6,at.y+(Math.random()-.5)*.35,at.z+(Math.random()-.5)*.6);
-   this.bloodVel[i*3]=(Math.random()-.5)*.35;
-   this.bloodVel[i*3+1]=.05+Math.random()*.22;
-   this.bloodVel[i*3+2]=(Math.random()-.5)*.35;
+ applyBloodMaps(maps:BloodMaps){
+  if(this.bloodLayers.length<3)return;
+  const mats=this.bloodLayers.map(l=>l.points.material as THREE.PointsMaterial);
+  mats[0].map=maps.droplet;mats[1].map=maps.plume;mats[2].map=maps.glow;
+  for(const m of mats)m.needsUpdate=true;
+ }
+ /** Floating blood near the guardian — `hit` is a small puff; `kill` a lingering cloud. */
+ spawnBlood(at:THREE.Vector3|{x:number;y:number;z:number},kind:'hit'|'kill'='kill'){
+  if(!this.bloodGroup||!this.bloodLayers.length)return;
+  const spread=kind==='kill'?.85:.35;
+  const up=kind==='kill'?.28:.14;
+  const life=kind==='kill'?16:4.5;
+  const opac=kind==='kill'?.88:.7;
+  const sizeMul=kind==='kill'?1:.55;
+  const drift=kind==='kill'?.42:.22;
+  for(const layer of this.bloodLayers){
+   const pos=layer.points.geometry.attributes.position as THREE.BufferAttribute;
+   const mat=layer.points.material as THREE.PointsMaterial;
+   for(let i=0;i<pos.count;i++){
+    pos.setXYZ(
+     i,
+     at.x+(Math.random()-.5)*spread,
+     at.y+(Math.random()-.5)*spread*.55,
+     at.z+(Math.random()-.5)*spread,
+    );
+    layer.vel[i*3]=(Math.random()-.5)*drift;
+    layer.vel[i*3+1]=.03+Math.random()*up;
+    layer.vel[i*3+2]=(Math.random()-.5)*drift;
+   }
+   pos.needsUpdate=true;
+   mat.size=layer.baseSize*sizeMul*(.85+Math.random()*.25);
+   mat.opacity=opac;
   }
-  pos.needsUpdate=true;this.blood.visible=true;this.bloodLife=14;
-  (this.blood.material as THREE.PointsMaterial).opacity=.9;
+  this.bloodGroup.visible=true;this.bloodLife=life;this.bloodPeakLife=life;
  }
  updateBlood(dt:number){
-  if(!this.blood||!this.bloodVel||!this.blood.visible)return;
+  if(!this.bloodGroup||!this.bloodGroup.visible||!this.bloodLayers.length)return;
   this.bloodLife-=dt;
-  const pos=this.blood.geometry.attributes.position as THREE.BufferAttribute;
-  for(let i=0;i<pos.count;i++){
-   let x=pos.getX(i)+this.bloodVel[i*3]*dt;
-   let y=pos.getY(i)+this.bloodVel[i*3+1]*dt;
-   let z=pos.getZ(i)+this.bloodVel[i*3+2]*dt;
-   this.bloodVel[i*3]*=Math.exp(-dt*.4);
-   this.bloodVel[i*3+1]=this.bloodVel[i*3+1]*Math.exp(-dt*.35)+Math.sin(this.time*1.7+i)*.02*dt;
-   this.bloodVel[i*3+2]*=Math.exp(-dt*.4);
-   if(y<FLOOR_Y+.2){y=FLOOR_Y+.2;this.bloodVel[i*3+1]=Math.abs(this.bloodVel[i*3+1])*.3;}
-   pos.setXYZ(i,x,y,z);
+  const fade=Math.max(0,Math.min(1,this.bloodLife/Math.max(.01,this.bloodPeakLife*.45)));
+  for(const layer of this.bloodLayers){
+   const pos=layer.points.geometry.attributes.position as THREE.BufferAttribute;
+   for(let i=0;i<pos.count;i++){
+    let x=pos.getX(i)+layer.vel[i*3]*dt;
+    let y=pos.getY(i)+layer.vel[i*3+1]*dt;
+    let z=pos.getZ(i)+layer.vel[i*3+2]*dt;
+    // Drag + gentle buoyancy drift so it hangs in the water column.
+    layer.vel[i*3]*=Math.exp(-dt*.45);
+    layer.vel[i*3+1]=layer.vel[i*3+1]*Math.exp(-dt*.32)+Math.sin(this.time*1.4+i)*.025*dt;
+    layer.vel[i*3+2]*=Math.exp(-dt*.45);
+    if(y<FLOOR_Y+.15){y=FLOOR_Y+.15;layer.vel[i*3+1]=Math.abs(layer.vel[i*3+1])*.25;}
+    pos.setXYZ(i,x,y,z);
+   }
+   pos.needsUpdate=true;
+   const mat=layer.points.material as THREE.PointsMaterial;
+   mat.opacity=fade*(layer===this.bloodLayers[1]?.75:.9);
   }
-  pos.needsUpdate=true;
-  const mat=this.blood.material as THREE.PointsMaterial;
-  mat.opacity=Math.max(0,Math.min(.9,this.bloodLife/6));
-  if(this.bloodLife<=0){this.blood.visible=false;mat.opacity=0;}
+  if(this.bloodLife<=0){
+   this.bloodGroup.visible=false;
+   for(const layer of this.bloodLayers)(layer.points.material as THREE.PointsMaterial).opacity=0;
+  }
  }
  /** Dense silt motes spawned by bed shear — settle with gravity, not ambient dust. */
  buildSiltStorm(){
@@ -647,7 +699,9 @@ export class CaveWorld extends OceanWorld {
    this.shakeAmp=Math.max(this.shakeAmp,cue==='kill'?.55:.32);
    if(cue==='kill'){
     if(audible)playGuardianDeath(ctx!,master!);
-    this.spawnBlood(this.mission.predator.position);
+    this.spawnBlood(this.mission.predator.position,'kill');
+   }else{
+    this.spawnBlood(this.mission.predator.position,'hit');
    }
   }
  }
@@ -678,7 +732,10 @@ export class CaveWorld extends OceanWorld {
   this.shakeAmp=0;this.knifeFlashUntil=0;
   if(this.knifeVisual){poseKnife(this.knifeVisual);this.knifeVisual.visible=this.holdingKnife();}
   this.setTorchMeshesVisible(!this.holdingKnife());
-  if(this.blood){this.blood.visible=false;this.bloodLife=0;}
+  if(this.bloodGroup){
+   this.bloodGroup.visible=false;this.bloodLife=0;
+   for(const layer of this.bloodLayers)(layer.points.material as THREE.PointsMaterial).opacity=0;
+  }
   this.mission.silt=createSiltPlume(this.mission.position);
   if(this.siltStorm&&this.siltStormLife){
    for(let i=0;i<this.siltStormLife.length;i++)this.siltStormLife[i]=0;
