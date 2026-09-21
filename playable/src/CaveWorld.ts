@@ -11,6 +11,10 @@ import { createKnifeVisual, upgradeKnifeVisual, attachFpsArms, applyKnifeEnvMap,
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
 import { createChestVisual, upgradeChestVisual, syncChestOpen, type ChestVisual } from './chestAsset';
+import {
+ createLifebuoyVisual, upgradeLifebuoyVisual,
+ LIFEBUOY_POS, LIFEBUOY_YAW, type LifebuoyVisual,
+} from './lifebuoyAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
@@ -92,6 +96,8 @@ export class CaveWorld extends OceanWorld {
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  /** World crates / suitcase (Poly Haven) keyed by mission chest id. */
  chestVisuals=new Map<number,ChestVisual>();
+ /** Decorative Poly Haven life ring on the start-chamber floor. */
+ lifebuoyVisual:LifebuoyVisual|null=null;
  /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
  knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
  /** PMREM for Poly Haven metal/wood specular on the held knife. */
@@ -163,7 +169,17 @@ export class CaveWorld extends OceanWorld {
    this.knifeVisual.visible=this.holdingKnife();
   });
   this.mountChests();
+  this.mountLifebuoy();
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
+ }
+ /** Place the Poly Haven lifebuoy on the start-chamber floor and upgrade in the background. */
+ mountLifebuoy(){
+  const visual=createLifebuoyVisual();
+  visual.root.position.set(LIFEBUOY_POS.x,LIFEBUOY_POS.y,LIFEBUOY_POS.z);
+  visual.root.rotation.y=LIFEBUOY_YAW;
+  this.scene.add(visual.root);
+  this.lifebuoyVisual=visual;
+  upgradeLifebuoyVisual(visual);
  }
  /** Place the three Poly Haven chests and upgrade stubs to glTF in the background. */
  mountChests(){
