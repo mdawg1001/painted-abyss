@@ -7,7 +7,8 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime, playInventoryClick, SwimWaterAudio } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
-import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, readInventoryTipsSeen, writeInventoryTipsSeen } from './simulation';
+import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
+import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, stepSwimVelocity } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
 
@@ -21,6 +22,36 @@ void main(){
   float a=(edge*vertical*pulse+core*vertical)*uOpacity;
   gl_FragColor=vec4(uColor,a);
 }`;
+/** Torch volume: Beer–Lambert scatter along the spot cone (not a flat lit shell). */
+const torchBeamVert=`varying vec2 vUv;varying vec3 vLocal;varying vec3 vView;
+void main(){
+  vUv=uv;vLocal=position;
+  vec4 mv=modelViewMatrix*vec4(position,1.);
+  vView=mv.xyz;gl_Position=projectionMatrix*mv;
+}`;
+const torchBeamFrag=`varying vec2 vUv;varying vec3 vLocal;varying vec3 vView;
+uniform float uTime;uniform vec3 uColor;uniform float uOpacity;uniform float uBeta;uniform float uBeamLen;
+void main(){
+  // Cylinder UV: y=1 at tip (+Z), y=0 at far end. along 0→1 tip→far.
+  float along=1.-vUv.y;
+  float dist=along*uBeamLen;
+  // Backscatter column: bright near the lamp, dies with β^B · range (Sea-thru / Beer–Lambert).
+  float scatter=exp(-uBeta*dist);
+  float tip=smoothstep(0.,.06,along);
+  float endFade=1.-smoothstep(.5,1.,along);
+  // Soft radial core — denser on axis, soft outer edge (reads as spot penumbra, not a solid tube).
+  float axis=length(vLocal.xy);
+  float coneR=mix(.02,3.15,along);
+  float radial=1.-smoothstep(coneR*.15,coneR*.92,axis);
+  radial*=radial;
+  // Prefer looking across the shaft (cheap Mie-ish); dims when staring straight down the bore.
+  vec3 Vn=normalize(vView);
+  float across=1.-pow(abs(Vn.z),.85);
+  float pulse=.88+sin(dist*.35+uTime*.55+axis*2.2)*.1;
+  float a=scatter*tip*endFade*radial*across*pulse*uOpacity;
+  if(a<.002)discard;
+  gl_FragColor=vec4(uColor,a);
+}`;
 
 export class CaveWorld extends OceanWorld {
  audioNotice='';audioProbe:AnalyserNode|null=null;audioTestTimer=0;
@@ -30,21 +61,28 @@ export class CaveWorld extends OceanWorld {
  fallbackTurn=0;lockDenied=false;lookPointer:{x:number;y:number}|null=null;
  torchLight=new THREE.SpotLight(0xeaf6ff,210,34,.38,.55,1.05);
  beam!:THREE.Mesh;torchBody!:THREE.Group;torchLensMat!:THREE.MeshStandardMaterial;
+ /** Rest pose for the camera-parented lantern (local space). */
+ torchRestPos=V(.44,-.4,-.62);torchRestRot=new THREE.Euler(.18,-.22,.32);
  composer!:EffectComposer;bloom!:UnrealBloomPass;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
+ rockMaps:CaveRockMaps;
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
   super(host,{onReady:()=>{},onPause:()=>{},onStatus:()=>{},onToggleUI:()=>{},onGlide:()=>{},onError:()=>{}},{deferStart:true});
-  this.ui=ui;this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
+  this.ui=ui;this.rockMaps=loadCaveRockMaps();this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
   // Deep teal void — matches reference plates (cyan haze, not pure black)
   this.scene.background=new THREE.Color(0x041a22);this.scene.fog=new THREE.FogExp2(0x0a2e38,.038);
   this.camera.far=130;this.camera.fov=64;this.camera.updateProjectionMatrix();
   this.renderer.toneMappingExposure=1.12;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  // Modest torch shadows only (no other casters) — 512² map for Safari cost.
+  this.renderer.shadowMap.enabled=true;
+  this.renderer.shadowMap.type=THREE.PCFShadowMap;
   // Cool teal ambient fill so rock reads in the murk; shafts/torch still dominate
   this.scene.add(new THREE.HemisphereLight(0x5a9eae,0x081820,.42));
   this.scene.add(new THREE.AmbientLight(0x123840,.22));
   const skyFill=new THREE.DirectionalLight(0x7ec8d4,.55);skyFill.position.set(-8,30,-20);this.scene.add(skyFill);
   this.buildCave();this.buildLights();this.buildComposer();
   this.guardian=this.ichthyosaur(.9);this.scene.add(this.guardian.group);
+  this.guardian.group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
   const eyeMat=new THREE.MeshBasicMaterial({color:0xe0a772});
   for(const side of [-1,1])this.ellipsoid(this.guardian.group,eyeMat,1.8,.27,side*.5,.1,.1,.04);
   this.suspendedParticles();const positions=this.particles.geometry.attributes.position;
@@ -66,7 +104,11 @@ export class CaveWorld extends OceanWorld {
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
  }
  buildCave(){
-  const floor=this.material(0x7a8474,'sand',.88,3.4),rock=this.material(0x55666a,'rock',.86,1.6),ceiling=this.material(0x3a4c52,'rock',.9,.6);
+  const {rock:rockMaps,sand:sandMaps}=this.rockMaps;
+  // Near-white tints so Poly Haven albedo dominates; ceiling kept cooler/darker
+  const floor=this.material(0xc9c4b8,'sand',.88,3.4,sandMaps);
+  const rock=this.material(0xb4c0c4,'rock',.86,1.6,rockMaps);
+  const ceiling=this.material(0x6a7882,'rock',.9,.6,rockMaps);
   const floors:THREE.BufferGeometry[]=[],roofs:THREE.BufferGeometry[]=[],walls:THREE.BufferGeometry[]=[],details:THREE.BufferGeometry[]=[];
   for(const key of cells){const [c,r]=key.split(',').map(Number),p=world(c,r);
    const fg=new THREE.PlaneGeometry(CELL,CELL,2,2);fg.rotateX(-Math.PI/2);fg.translate(p.x,0,p.z);floors.push(fg);
@@ -76,15 +118,37 @@ export class CaveWorld extends OceanWorld {
     for(let n=0;n<3;n++){const stone=new THREE.IcosahedronGeometry(1,1);stone.scale(dc?.7:1.7,1.3+(n%2)*.5,dr?.7:1.7);stone.translate(p.x+dc*2.45,1.3+n*2.5,p.z-dr*2.45);details.push(stone);}
    }
   }
-  for(const [geos,mat] of [[floors,floor],[roofs,ceiling],[walls,rock],[details,rock]] as const){const merged=mergeGeometries(geos);if(merged)this.scene.add(new THREE.Mesh(merged,mat));geos.forEach(g=>g.dispose());}
-  const bone=this.material(0x9f9a7a,'rock',.82,1.5);for(let i=0;i<6;i++)for(const s of [-1,1])this.scene.add(this.tube([V(-3+i*.75,.25,-113),V(-3+i*.75,1.3,-113+s*1.2),V(-3+i*.75,.3,-113+s*2.2)],[.12,.09,.025],bone,12,5));
-  const plinth=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.5,1.2,7),rock);plinth.position.set(RELIC.x,.6,RELIC.z);this.scene.add(plinth);
+  for(const [geos,mat] of [[floors,floor],[roofs,ceiling],[walls,rock],[details,rock]] as const){
+   const merged=mergeGeometries(geos);if(!merged)continue;
+   const mesh=new THREE.Mesh(merged,mat);mesh.castShadow=true;mesh.receiveShadow=true;this.scene.add(mesh);
+   geos.forEach(g=>g.dispose());
+  }
+  const bone=this.material(0xc8c0a8,'rock',.82,1.5,rockMaps);for(let i=0;i<6;i++)for(const s of [-1,1]){
+   const rib=this.tube([V(-3+i*.75,.25,-113),V(-3+i*.75,1.3,-113+s*1.2),V(-3+i*.75,.3,-113+s*2.2)],[.12,.09,.025],bone,12,5);
+   rib.castShadow=true;rib.receiveShadow=true;this.scene.add(rib);
+  }
+  const plinth=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.5,1.2,7),rock);plinth.position.set(RELIC.x,.6,RELIC.z);
+  plinth.castShadow=true;plinth.receiveShadow=true;this.scene.add(plinth);
  }
  beamMaterial(color:THREE.ColorRepresentation,opacity:number){
   return new THREE.ShaderMaterial({
    uniforms:{uTime:this.uniforms.uTime,uColor:{value:new THREE.Color(color)},uOpacity:{value:opacity}},
    transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
    vertexShader:shaftVert,fragmentShader:shaftFrag,
+  });
+ }
+ /** Dive-torch volume cone — scatter fade along range; shafts keep beamMaterial(). */
+ torchBeamMaterial(color:THREE.ColorRepresentation,opacity:number){
+  return new THREE.ShaderMaterial({
+   uniforms:{
+    uTime:this.uniforms.uTime,
+    uColor:{value:new THREE.Color(color)},
+    uOpacity:{value:opacity},
+    uBeta:{value:.12},
+    uBeamLen:{value:20},
+   },
+   transparent:true,depthWrite:false,depthTest:true,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
+   vertexShader:torchBeamVert,fragmentShader:torchBeamFrag,
   });
  }
  addShaft(x:number,y:number,z:number,len:number,topR:number,botR:number,color:number,opacity:number,tiltX=0,tiltZ=0){
@@ -220,8 +284,22 @@ export class CaveWorld extends OceanWorld {
    film.position.set(Math.cos(a)*.06,Math.sin(a)*.06,z);group.add(film);
   }
 
-  group.position.set(.44,-.4,-.62);group.rotation.set(.18,-.22,.32);group.scale.setScalar(1.15);
+  group.position.copy(this.torchRestPos);group.rotation.copy(this.torchRestRot);group.scale.setScalar(1.15);
   return group;
+ }
+ /** Presentation-only hand/lantern drift in camera space (torch is a camera child — camera bob alone leaves it screen-locked). */
+ applyTorchHover(bobBlend:number){
+  const s=bobBlend;
+  this.torchBody.position.set(
+   this.torchRestPos.x+Math.sin(this.time*.7)*.028*s,
+   this.torchRestPos.y+Math.sin(this.time*1.05)*.036*s,
+   this.torchRestPos.z+Math.cos(this.time*.55)*.02*s,
+  );
+  this.torchBody.rotation.set(
+   this.torchRestRot.x+Math.sin(this.time*.9)*.055*s,
+   this.torchRestRot.y+Math.sin(this.time*.45)*.03*s,
+   this.torchRestRot.z+Math.cos(this.time*.75)*.065*s,
+  );
  }
  buildLights(){
   this.scene.add(this.camera);
@@ -229,16 +307,31 @@ export class CaveWorld extends OceanWorld {
   this.torchBody=this.buildTorchBody();
   this.camera.add(this.torchBody);
 
-  this.torchLight.color.set(0xf2f8ff);this.torchLight.intensity=170;this.torchLight.distance=34;
-  this.torchLight.angle=.28;this.torchLight.penumbra=.35;this.torchLight.decay=1.15;
+  // Soft spot wash — high penumbra so walls get light without a hard white disk.
+  // Intensity/distance/decay/color are overwritten each frame from torchModulation (shared β).
+  const torch0=torchModulation(3,0);
+  this.torchLight.color.setRGB(torch0.r,torch0.g,torch0.b);
+  this.torchLight.intensity=torch0.intensity;this.torchLight.distance=torch0.distance;
+  this.torchLight.angle=.32;this.torchLight.penumbra=.95;this.torchLight.decay=torch0.decay;
   // Lens tip in lantern local space (body aims −Z).
   this.torchLight.position.set(0,0,-.45);
   this.torchLight.target.position.set(0,0,-22);
   this.torchBody.add(this.torchLight,this.torchLight.target);
+  // Torch shadows: modest 512² map; lantern mesh itself must not cast (near-field acne).
+  this.torchLight.castShadow=true;
+  this.torchLight.shadow.mapSize.set(512,512);
+  this.torchLight.shadow.bias=-.00035;
+  this.torchLight.shadow.normalBias=.035;
+  this.torchLight.shadow.radius=1.5;
+  this.torchLight.shadow.camera.near=.35;
+  this.torchLight.shadow.camera.far=Math.max(12,torch0.distance);
+  this.torchLight.shadow.camera.updateProjectionMatrix();
+  this.torchBody.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=false;o.receiveShadow=false;}});
 
   const cone=new THREE.CylinderGeometry(.018,3.2,20,28,1,true);cone.rotateX(Math.PI/2);
-  this.beam=new THREE.Mesh(cone,this.beamMaterial(0xd4eaf8,.09));
-  // Cone length 20 along −Z; center so the near tip sits at the lens.
+  this.beam=new THREE.Mesh(cone,this.torchBeamMaterial(0xd4eaf8,.09));
+  this.beam.castShadow=false;this.beam.receiveShadow=false;this.beam.frustumCulled=false;
+  // Base length 20 along −Z; tip kept at the lens via position (updated with range each frame).
   this.beam.position.set(0,0,-10.45);
   this.torchBody.add(this.beam);
 
@@ -296,6 +389,7 @@ export class CaveWorld extends OceanWorld {
   for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);group.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
   for(const p of this.mission.pickups){let group=this.pickupMeshes.get(p.id);if(!group){group=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:p.item==='relic'?0xe2b65e:0x82c8b7,emissive:p.item==='relic'?0x6b3c07:0x153c36,emissiveIntensity:.7,metalness:.4,roughness:.45});
     if(p.item==='relic'){const points:THREE.Vector3[]=[],radii:number[]=[];for(let i=0;i<=72;i++){const t=i/72,a=t*Math.PI*4.5,r=.03+t*t*.62;points.push(V(Math.cos(a)*r,Math.sin(a)*r,0));radii.push(.01+t*.12);}group.add(this.tube(points,radii,mat,90,8));group.add(new THREE.PointLight(0xefbb68,3.5,7));}else group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.3,1),mat));
+    group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
     this.scene.add(group);this.pickupMeshes.set(p.id,group);
    }group.position.set(p.position.x,p.position.y+Math.sin(this.time*1.7+p.id)*.12,p.position.z);group.rotation.y=this.time*.45;
   }
@@ -401,7 +495,9 @@ export class CaveWorld extends OceanWorld {
  pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);this.swimWater?.update(0,false);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
  reset(){
   this.backgroundMusic?.reset();this.swimWater?.update(0,false);this.mission=new Mission(readInventoryTipsSeen());
-  this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();this.syncPickups();this.publish();
+  this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();
+  if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
+  this.syncPickups();this.publish();
  }
  animate=()=>{
   if(!this.alive)return;this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);
@@ -413,11 +509,24 @@ export class CaveWorld extends OceanWorld {
    const delta=lookDelta(this.targetYaw,this.targetPitch,horizontalLook*dt*650,(pressed('ArrowDown')-pressed('ArrowUp'))*dt*650);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;
    this.yaw=THREE.MathUtils.lerp(this.yaw,this.targetYaw,1-Math.exp(-16*dt));this.pitch=THREE.MathUtils.lerp(this.pitch,this.targetPitch,1-Math.exp(-16*dt));this.camera.rotation.set(this.pitch,this.yaw,0);
    this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
-   this.move.copy(this.forward).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));this.move.y+=pressed('Space')-pressed('KeyQ','ControlLeft','ControlRight');
-   const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.1;
-   if(this.move.lengthSq()>1)this.move.normalize();this.move.multiplyScalar(sprint?4.8:2.8);this.velocity.lerp(this.move,1-Math.exp(-4*dt));
-   moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);m.update(dt,sprint);this.position.copy(m.position);this.camera.position.copy(this.position);
-   this.swimWater?.update(this.velocity.length(),this.sound&&this.audioContext?.state==='running');
+   // Kick = look / strafe only. Space/Q drive BCD buoyancy, not equal XYZ thrust.
+   this.move.copy(this.forward).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));
+   const bcd=pressed('Space')-pressed('KeyQ','ControlLeft','ControlRight');
+   m.buoyancy=updateBuoyancy(m.buoyancy,bcd,dt);
+   const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.01;
+   stepSwimVelocity(this.velocity,this.move,m.buoyancy,sprint,dt);
+   moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);m.update(dt,sprint);this.position.copy(m.position);
+   // Presentation-only hover bob when nearly still — never moves mission.position.
+   // ~2.6× 0.1.18 amplitudes so the murk drift reads; torch gets extra local sway (mesh+light+beam).
+   const speed=this.velocity.length();
+   const bobBlend=1-THREE.MathUtils.smoothstep(speed,.06,.5);
+   const bobY=Math.sin(this.time*1.1)*.13*bobBlend;
+   const bobSide=Math.sin(this.time*.65)*.065*bobBlend;
+   const bobFwd=Math.cos(this.time*.5)*.065*bobBlend;
+   this.camera.position.copy(this.position).addScaledVector(this.upAxis,bobY).addScaledVector(this.right,bobSide).addScaledVector(this.forward,bobFwd);
+   this.applyTorchHover(bobBlend);
+   this.swimWater?.update(speed,this.sound&&this.audioContext?.state==='running');
+
    if(m.outcome!=='playing')this.pause();
   }else this.swimWater?.update(0,false);
   // Atmosphere: cyan-teal murk (reference palette), denser in deep chambers, clears at exit
@@ -434,13 +543,26 @@ export class CaveWorld extends OceanWorld {
   this.torchLensMat.emissiveIntensity=torchOn?1.25:.06;
   this.torchLensMat.emissive.set(torchOn?0xc8e4ff:0x223038);
   if(torchOn){
-   // Depth/aim modulation scaled to the lighting-hud torch baseline (mid swim, level look).
+   // Shared Beer–Lambert murk: SpotLight = direct β^D, volume cone = backscatter β^B.
    const torch=torchModulation(this.position.y,this.pitch);
-   const mid=torchModulation(3,0);
-   const iScale=torch.intensity/mid.intensity,dScale=torch.distance/mid.distance,bScale=torch.beamOpacity/mid.beamOpacity;
-   this.torchLight.intensity=170*iScale;this.torchLight.distance=34*dScale;this.torchLight.decay=1.15+(torch.decay-mid.decay);
+   this.torchLight.intensity=torch.intensity;this.torchLight.distance=torch.distance;this.torchLight.decay=torch.decay;
    this.torchLight.color.setRGB(torch.r,torch.g,torch.b);
-   const beamMat=this.beam.material as THREE.ShaderMaterial;beamMat.uniforms.uOpacity.value=.09*bScale;beamMat.uniforms.uColor.value.setRGB(torch.r,torch.g,torch.b);
+   // Keep shadow frustum matched to the attenuated range (avoids wasted Safari fill).
+   const far=Math.max(10,Math.min(48,torch.distance+2));
+   if(Math.abs(this.torchLight.shadow.camera.far-far)>.5){
+    this.torchLight.shadow.camera.far=far;this.torchLight.shadow.camera.updateProjectionMatrix();
+   }
+   const beamMat=this.beam.material as THREE.ShaderMaterial;
+   const betaB=(torch.betaBackscatter.r+torch.betaBackscatter.g+torch.betaBackscatter.b)/3;
+   // Physical length tracks attenuated spot range; tip stays on the lens.
+   const beamLen=Math.max(8,Math.min(28,torch.distance*.82));
+   const sz=beamLen/20;
+   this.beam.scale.set(1,1,sz);
+   this.beam.position.set(0,0,-(beamLen*.5+.45));
+   beamMat.uniforms.uOpacity.value=torch.beamOpacity*1.35;
+   beamMat.uniforms.uColor.value.setRGB(torch.beamR,torch.beamG,torch.beamB);
+   beamMat.uniforms.uBeta.value=betaB;
+   beamMat.uniforms.uBeamLen.value=beamLen;
    // No camera-forward particle cone — that was a second beam fighting the lantern aim.
    (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
   }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;

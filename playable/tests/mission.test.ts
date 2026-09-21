@@ -1,8 +1,46 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,distance,cells} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,updateBuoyancy,stepSwimVelocity,terminalSwimSpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL} from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{for(let i=0;i<seconds*60;i++)m.update(1/60);};
+test('hydrostatic depth and ata share one surface plane',()=>{
+ assert.equal(hydrostaticDepth(SURFACE_Y),0);
+ assert.equal(hydrostaticDepth(FLOOR_Y),SURFACE_Y-FLOOR_Y);
+ assert.equal(hydrostaticDepth(START.y),SURFACE_Y-START.y);
+ assert.equal(ata(SURFACE_Y),1);
+ assert.ok(Math.abs(ata(FLOOR_Y)-(1+(SURFACE_Y-FLOOR_Y)/10))<1e-12);
+ assert.equal(Math.round(hydrostaticDepth(START.y)),4);
+ assert.equal(Math.round(hydrostaticDepth(RELIC.y)),5);
+ // Same Y ⇒ same depth regardless of cavern −Z (no theatrical fake metres).
+ assert.equal(hydrostaticDepth(3),SURFACE_Y-3);
+});
+test('force swim reaches dive-plausible cruise/sprint and coasts under quadratic drag',()=>{
+ const cruise=terminalSwimSpeed(false),sprint=terminalSwimSpeed(true);
+ assert.ok(cruise>=2.0&&cruise<=2.4,`cruise ${cruise}`);
+ assert.ok(sprint>=3.2&&sprint<=3.8,`sprint ${sprint}`);
+ assert.ok(PREDATOR_SPEED.chase>cruise&&PREDATOR_SPEED.chase<sprint);
+ const v={x:0,y:0,z:0};
+ for(let i=0;i<180;i++)stepSwimVelocity(v,{x:0,y:0,z:-1},0,false,1/60);
+ assert.ok(Math.abs(v.z+cruise)<.05,`steady z ${v.z} vs ${-cruise}`);
+ const speed=Math.hypot(v.x,v.y,v.z);
+ let coast=0;
+ for(let i=0;i<300;i++){const before=Math.hypot(v.x,v.y,v.z);stepSwimVelocity(v,{x:0,y:0,z:0},0,false,1/60);coast+=Math.hypot(v.x,v.y,v.z)/60;if(Math.hypot(v.x,v.y,v.z)<.01)break;}
+ assert.ok(coast<2.5,`coast ${coast} from ${speed}`);
+});
+test('BCD buoyancy rises on Space input and trims toward neutral when released',()=>{
+ let b=0;
+ for(let i=0;i<120;i++)b=updateBuoyancy(b,1,1/60);
+ assert.ok(b>.85);
+ for(let i=0;i<300;i++)b=updateBuoyancy(b,0,1/60);
+ assert.ok(Math.abs(b)<.12);
+ // Buoyancy alone produces vertical accel without horizontal kick.
+ const v={x:0,y:0,z:0};
+ for(let i=0;i<90;i++)stepSwimVelocity(v,{x:0,y:0,z:0},1,false,1/60);
+ assert.ok(v.y>0.2);
+ assert.ok(Math.abs(v.x)<1e-9&&Math.abs(v.z)<1e-9);
+ assert.ok(SWIM_BUOYANCY_ACCEL>0);
+ const m=new Mission(true);assert.equal(m.buoyancy,0);
+});
 test('torch modulation dims and muddies with depth and floor aim',()=>{
  const shallowUp=torchModulation(6.5,-1.2);
  const deepDown=torchModulation(.8,1.2);
@@ -14,6 +52,30 @@ test('torch modulation dims and muddies with depth and floor aim',()=>{
  assert.ok(deepDown.b<shallowUp.b);
  assert.ok(deepDown.beamOpacity<shallowUp.beamOpacity);
  assert.ok(deepDown.particle<shallowUp.particle);
+ const column=SURFACE_Y-FLOOR_Y;
+ assert.ok((1-hydrostaticDepth(6.5)/column)>(1-hydrostaticDepth(.8)/column));
+});
+test('torch SpotLight and beam share Beer–Lambert murk (direct ≠ backscatter)',()=>{
+ const mid=torchModulation(3,0);
+ assert.ok(Math.abs(mid.intensity-TORCH_BASELINE.intensity)<1e-6);
+ assert.ok(Math.abs(mid.distance-TORCH_BASELINE.distance)<1e-6);
+ assert.ok(Math.abs(mid.decay-TORCH_BASELINE.decay)<1e-6);
+ assert.ok(Math.abs(mid.beamOpacity-TORCH_BASELINE.beamOpacity)<1e-6);
+ // Sea-thru: β^D ≠ β^B; red dies first on the direct path.
+ assert.ok(mid.betaDirect.r!==mid.betaBackscatter.r);
+ assert.ok(mid.betaDirect.r>mid.betaDirect.b);
+ const deep=torchModulation(.8,1.2);
+ const shallow=torchModulation(6.5,-1.2);
+ assert.ok(deep.betaDirect.r>shallow.betaDirect.r);
+ assert.ok(deep.betaBackscatter.b>shallow.betaBackscatter.b);
+ // Same murk drives both channels; beam tint is separate from direct tint.
+ assert.ok(deep.beamB!==deep.b||deep.beamR!==deep.r);
+ const clear=torchBetas(0).direct;
+ const murky=torchBetas(1).direct;
+ const tClear=beerLambertTransmit(clear,5);
+ const tMurky=beerLambertTransmit(murky,5);
+ assert.ok(tClear.r>tMurky.r&&tClear.b>tMurky.b);
+ assert.ok(tClear.r<tClear.b&&tMurky.r<tMurky.b); // red attenuates faster than blue
 });
 test('camera movement right produces positive world X with real Three camera',()=>{const d=lookDelta(0,0,100,0);const c=new THREE.PerspectiveCamera();c.rotation.order='YXZ';c.rotation.set(d.pitch,d.yaw,0);const forward=c.getWorldDirection(new THREE.Vector3());assert.ok(forward.x>0);assert.ok(lookDelta(0,0,-100,0).yaw>0);assert.equal(lookDelta(0,0,0,99999).pitch,-1.4);});
 test('unlocked free look supports continuous 360-degree rotation without pressing the OS edge',()=>{
@@ -29,7 +91,7 @@ test('unlocked free look supports continuous 360-degree rotation without pressin
 test('five slots: pickup asks before replacing, displaced item is recoverable',()=>{const m=new Mission();m.position={...RELIC};m.interact();assert.equal(m.pending,1);assert.equal(m.hasRelic,false);m.selected=1;m.interact();assert.equal(m.inventory.length,5);assert.equal(m.inventory[1],'relic');assert.equal(m.pickups.filter(x=>x.item==='wood').length,1);m.drop();assert.equal(m.hasRelic,false);m.position={...RELIC};m.interact();assert.equal(m.inventory.length,5);assert.equal(m.pickups.length,2);});
 test('extraction requires currently carried objective, dropping it revokes win',()=>{const m=new Mission();m.position={...EXIT};m.interact();assert.equal(m.outcome,'playing');m.position={...RELIC};m.interact();m.interact();assert.ok(m.hasRelic);m.position={...EXIT};m.interact();assert.equal(m.outcome,'won');const elapsed=m.elapsed;m.update(.05);assert.equal(m.elapsed,elapsed);});
 test('cancelled / out of range swap cannot remotely collect objective',()=>{const m=new Mission();m.position={...RELIC};m.interact();m.position={...START};m.interact();assert.equal(m.pending,null);assert.equal(m.hasRelic,false);});
-test('world collision stops walls, floor, roof, and large movement tunnelling',()=>{const p={...START};moveBody(p,400,0,0);assert.ok(p.x<14);assert.ok(fits(p));moveBody(p,0,100,0);assert.ok(p.y<=7.1);moveBody(p,0,-200,0);assert.ok(p.y>=.65);const pillar=world(8,17);moveBody(pillar,20,0,0);assert.ok(pillar.x<-10);assert.ok(fits(pillar));});
+test('world collision stops walls, floor, roof, and large movement tunnelling',()=>{const p={...START};moveBody(p,400,0,0);assert.ok(p.x<14);assert.ok(fits(p));moveBody(p,0,100,0);assert.ok(p.y<=SURFACE_Y);moveBody(p,0,-200,0);assert.ok(p.y>=FLOOR_Y);const pillar=world(8,17);moveBody(pillar,20,0,0);assert.ok(pillar.x<-10);assert.ok(fits(pillar));});
 test('solid central pillar blocks detection and navigation routes around it',()=>{const a=world(7,17),b=world(15,17);assert.equal(visible(a,b),false);const path=pathBetween(a,b);assert.ok(path.length>0);assert.ok(path.every(p=>fits(p,1.3)));assert.equal(pathBetween(a,EXIT).length,0);});
 test('all level cells connect, including objective and exit',()=>{const first=[...cells][0],visited=new Set([first]),queue=[first];for(let i=0;i<queue.length;i++){const [c,r]=queue[i].split(',').map(Number);for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]]){const k=`${c+dc},${r+dr}`;if(cells.has(k)&&!visited.has(k)){visited.add(k);queue.push(k);}}}assert.equal(visited.size,cells.size);});
 test('predator transitions patrol → alert → chase → search → patrol',()=>{const m=new Mission();m.predator.position=world(16,19);m.position=world(16,16);advance(m,.2);assert.equal(m.predator.state,'alert');advance(m,2);assert.equal(m.predator.state,'chase');m.position={...START};advance(m,3);assert.equal(m.predator.state,'search');advance(m,8);assert.equal(m.predator.state,'patrol');});

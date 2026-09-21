@@ -65,19 +65,19 @@ export class SwimWaterAudio {
     this.rumble.start();
   }
 
-  /** `speed` is world-units/sec (cruise ≈2.8, sprint ≈4.8). */
+  /** `speed` is world-units/sec (cruise ≈2.2, sprint ≈3.5 under current thrust/drag). */
   update(speed: number, active: boolean) {
     if (this.disposed) return;
     const t = this.ctx.currentTime;
     // Dead-zone so tiny post-stop drift does not hiss.
-    const intensity = active ? Math.min(1, Math.max(0, (speed - .12) / 4.2)) : 0;
+    const intensity = active ? Math.min(1, Math.max(0, (speed - .1) / 3.3)) : 0;
     // Mild curve: cruise stays clearly audible; sprint peaks harder.
     const whoosh = intensity * Math.sqrt(intensity);
     // Loud enough to cut through the .65 music bed on laptop speakers.
-    this.gain.gain.setTargetAtTime(whoosh * 1.55, t, .07);
+    this.gain.gain.setTargetAtTime(whoosh * 1.85, t, .07);
     // Still cave-muffled, but open enough to hear on small speakers.
-    this.filter.frequency.setTargetAtTime(380 + intensity * 720, t, .12);
-    this.rumbleGain.gain.setTargetAtTime(intensity * .18, t, .1);
+    this.filter.frequency.setTargetAtTime(400 + intensity * 780, t, .12);
+    this.rumbleGain.gain.setTargetAtTime(intensity * .22, t, .1);
     this.rumble.frequency.setTargetAtTime(28 + intensity * 26, t, .16);
   }
 

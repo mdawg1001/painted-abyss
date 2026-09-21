@@ -24,14 +24,14 @@ const assert=require('node:assert/strict');
    const swimCtx=new OfflineAudioContext(1,48000*1.2,48000),swimMaster=swimCtx.createGain();
    swimMaster.connect(swimCtx.destination);
    const swim=new exported.SwimWaterAudio(swimCtx,swimMaster);
-   swim.update(4.8,true);
+   swim.update(3.5,true);
    const swimBuf=(await swimCtx.startRendering()).getChannelData(0);
    swim.dispose();
 
    const idleCtx=new OfflineAudioContext(1,48000*1.2,48000),idleMaster=idleCtx.createGain();
    idleMaster.connect(idleCtx.destination);
    const idle=new exported.SwimWaterAudio(idleCtx,idleMaster);
-   idle.update(4.8,false);
+   idle.update(3.5,false);
    const idleBuf=(await idleCtx.startRendering()).getChannelData(0);
    idle.dispose();
 

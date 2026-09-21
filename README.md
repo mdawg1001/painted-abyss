@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.1.18
+# Painted Abyss — First Dive · 0.1.24
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -49,10 +49,10 @@ Keep the terminal open while playing. Stop it with Ctrl+C. If port 5173 is alrea
 | Mouse / one-finger trackpad motion | Look; right turns right, left turns left |
 | Two-finger scroll | Additional camera look; does not select items |
 | Arrow keys | Keyboard camera look |
-| W / A / S / D | Swim forward / left / back / right |
-| Space | Swim up |
-| Q or Ctrl | Swim down |
-| Shift | Sprint swim; spends fin energy, which replenishes |
+| W / A / S / D | Kick-swim forward / left / back / right (look-relative) |
+| Space | Add positive buoyancy (BCD up) |
+| Q or Ctrl | Add negative buoyancy (BCD down) |
+| Shift | Sprint kick; spends fin energy, which replenishes |
 | F | Toggle the mounted torch |
 | E | Collect a nearby item / confirm replacement / extract |
 | 1–5 | Select one of exactly five carried slots (plays a short click when the selection changes; muted when sound is off) |
