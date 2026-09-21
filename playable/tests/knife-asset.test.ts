@@ -29,10 +29,10 @@ test('knife public assets exist (glTF + square HUD thumb)',()=>{
  assert.ok(w>=64);
 });
 
-test('stub knife stays unready until upgrade (no fill lights)',()=>{
+test('stub knife viewmodel includes the glove and hold pose',()=>{
  const g=createKnifeStub();
  assert.equal(g.name,'knifeVisual');
- assert.equal(knifeMeshReady(g),false);
+ assert.equal(knifeMeshReady(g),true);
  assert.equal(g.getObjectByName('knifeFill'),undefined);
  assert.ok(g.getObjectByName('knifeHand'));
  assert.ok(g.getObjectByName('knifeGrip'));
