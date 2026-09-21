@@ -223,6 +223,16 @@ export function moveBody(p:Point,dx:number,dy:number,dz:number,r=.48){
 }
 export function visible(a:Point,b:Point){const n=Math.ceil(distance(a,b)/.4);for(let i=0;i<=n;i++){const t=n?i/n:0;if(!isOpen(a.x+(b.x-a.x)*t,a.z+(b.z-a.z)*t))return false;}return true;}
 function predatorCell(col:number,row:number){return col>=4&&col<=18&&row>=12&&row<=28&&cells.has(`${col},${row}`);}
+/** Minimum diver↔guardian spawn separation each dive (metres). */
+export const SPAWN_SEPARATION=28;
+/**
+ * Curated entrance / approach open-floor cells (outside the hunting cavern).
+ * Each dive picks one at random so the diver is not always at the classic START tile.
+ */
+export const PLAYER_SPAWN_CELLS:[number,number][]=[
+ [11,3],[9,2],[13,2],[9,4],[13,4],[11,2],[11,4],[8,3],[14,3],
+ [10,5],[12,5],[11,6],[10,8],[12,8],[11,9],
+];
 /**
  * Curated hunting-cavern corners / chambers (inside `predatorCell` bounds).
  * Each dive picks one at random so the guardian is not always at the same tile.
@@ -231,19 +241,37 @@ export const PREDATOR_SPAWN_CELLS:[number,number][]=[
  [16,19],[6,19],[16,22],[6,22],[6,13],[16,13],
  [4,16],[18,16],[4,22],[18,22],[11,24],[8,28],[14,28],
 ];
+function spawnCellOpen(col:number,row:number){return cells.has(`${col},${row}`);}
+/** Valid open-water diver starts from `PLAYER_SPAWN_CELLS` (falls back to classic START). */
+export function playerSpawnCandidates():Point[]{
+ const out:Point[]=[];
+ for(const [col,row] of PLAYER_SPAWN_CELLS){
+  if(!spawnCellOpen(col,row))continue;
+  // Keep starts out of the hunting cavern so the dive still begins in approach water.
+  if(predatorCell(col,row))continue;
+  const p=world(col,row);
+  if(fits(p,.48))out.push(p);
+ }
+ return out.length?out:[{...START}];
+}
+/** Pick a navigable diver spawn for a new dive. */
+export function randomPlayerSpawn(rand:()=>number=Math.random):Point{
+ const picks=playerSpawnCandidates();
+ return {...picks[Math.floor(rand()*picks.length)!]};
+}
 /** Valid open-water spawn points derived from `PREDATOR_SPAWN_CELLS` (falls back to classic east mid). */
-export function predatorSpawnCandidates():Point[]{
+export function predatorSpawnCandidates(awayFrom:Point=START):Point[]{
  const out:Point[]=[];
  for(const [col,row] of PREDATOR_SPAWN_CELLS){
   if(!predatorCell(col,row))continue;
   const p=world(col,row);
-  if(fits(p,1.3)&&distance(p,START)>28)out.push(p);
+  if(fits(p,1.3)&&distance(p,awayFrom)>SPAWN_SEPARATION)out.push(p);
  }
  return out.length?out:[world(16,19)];
 }
-/** Pick a navigable predator spawn for a new dive. */
-export function randomPredatorSpawn(rand:()=>number=Math.random):Point{
- const picks=predatorSpawnCandidates();
+/** Pick a navigable predator spawn for a new dive, kept clear of the diver start. */
+export function randomPredatorSpawn(rand:()=>number=Math.random,awayFrom:Point=START):Point{
+ const picks=predatorSpawnCandidates(awayFrom);
  return {...picks[Math.floor(rand()*picks.length)!]};
 }
 export function pathBetween(a:Point,b:Point){
@@ -403,7 +431,9 @@ export function writeInventoryTipsSeen(){
  patrol=[world(16,22),world(6,22),world(6,13),world(16,13)];
  constructor(tipsSeen=false){
   this.tipsSeen=tipsSeen;
-  const spawn=randomPredatorSpawn();
+  const player=randomPlayerSpawn();
+  this.position={...player};
+  const spawn=randomPredatorSpawn(Math.random,player);
   this.predator.position={...spawn};
   this.predator.lastKnown={...spawn};
   let best=0,bestD=Infinity;
