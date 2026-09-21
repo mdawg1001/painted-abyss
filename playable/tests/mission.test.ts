@@ -1,8 +1,20 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,distance,cells} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,distance,cells} from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{for(let i=0;i<seconds*60;i++)m.update(1/60);};
+test('torch modulation dims and muddies with depth and floor aim',()=>{
+ const shallowUp=torchModulation(6.5,-1.2);
+ const deepDown=torchModulation(.8,1.2);
+ const midLevel=torchModulation(3,0);
+ assert.ok(shallowUp.intensity>midLevel.intensity);
+ assert.ok(deepDown.intensity<midLevel.intensity);
+ assert.ok(deepDown.distance<shallowUp.distance);
+ assert.ok(deepDown.decay>shallowUp.decay);
+ assert.ok(deepDown.b<shallowUp.b);
+ assert.ok(deepDown.beamOpacity<shallowUp.beamOpacity);
+ assert.ok(deepDown.particle<shallowUp.particle);
+});
 test('camera movement right produces positive world X with real Three camera',()=>{const d=lookDelta(0,0,100,0);const c=new THREE.PerspectiveCamera();c.rotation.order='YXZ';c.rotation.set(d.pitch,d.yaw,0);const forward=c.getWorldDirection(new THREE.Vector3());assert.ok(forward.x>0);assert.ok(lookDelta(0,0,-100,0).yaw>0);assert.equal(lookDelta(0,0,0,99999).pitch,-1.4);});
 test('unlocked free look supports continuous 360-degree rotation without pressing the OS edge',()=>{
  assert.equal(edgeTurn(500,0,1000),0);
