@@ -70,6 +70,8 @@ export class CaveWorld extends OceanWorld {
  shakeAmp=0;blood:THREE.Points|null=null;bloodVel:Float32Array|null=null;bloodLife=0;
  /** Floor-kick silt storm (separate from ambient suspended dust). */
  siltStorm:THREE.Points|null=null;siltStormVel:Float32Array|null=null;siltStormLife:Float32Array|null=null;
+ /** Local chocolate-milk volume (plume-centered) — reads as sediment, not FogExp2 wash. */
+ siltVolume:THREE.Mesh|null=null;
  rockMaps:CaveRockMaps;
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
   super(host,{onReady:()=>{},onPause:()=>{},onStatus:()=>{},onToggleUI:()=>{},onGlide:()=>{},onError:()=>{}},{deferStart:true});
@@ -174,6 +176,16 @@ export class CaveWorld extends OceanWorld {
   this.siltStorm=new THREE.Points(geo,mat);this.siltStorm.visible=false;
   this.siltStorm.frustumCulled=false;
   this.siltStormVel=vel;this.siltStormLife=life;this.scene.add(this.siltStorm);
+  // Soft ellipsoid volume at the plume — Dayo chocolate-milk wall, local only.
+  const vol=new THREE.Mesh(
+   new THREE.SphereGeometry(1,20,14),
+   new THREE.MeshBasicMaterial({
+    color:0x8b7355,transparent:true,opacity:0,depthWrite:false,depthTest:true,
+    blending:THREE.NormalBlending,side:THREE.DoubleSide,
+   }),
+  );
+  vol.visible=false;vol.frustumCulled=false;vol.renderOrder=2;
+  this.siltVolume=vol;this.scene.add(vol);
  }
  /** Soft disc helper kept for future sprite upgrade (unused by buildSiltStorm). */
  siltDiscTexture(){
@@ -242,6 +254,23 @@ export class CaveWorld extends OceanWorld {
    THREE.MathUtils.lerp(.50,.34,dens),
   );
   this.siltStorm.visible=alive>0||optical>.04;
+  if(this.siltVolume){
+   const s=this.mission.silt;
+   const load=Math.max(optical,alive>40?.35:0);
+   const h=Math.max(.7,1.1+s.fine*2.4+s.coarse*1.6);
+   const r=Math.max(1.2,s.radius*(.55+.45*load));
+   this.siltVolume.position.set(s.cx,FLOOR_Y+h*.38,s.cz);
+   this.siltVolume.scale.set(r,h*.55,r);
+   const mat=this.siltVolume.material as THREE.MeshBasicMaterial;
+   // Opaque muddy core — never cyan. Dense whiteout stays butterscotch-brown.
+   mat.color.setRGB(
+    THREE.MathUtils.lerp(.62,.42,load),
+    THREE.MathUtils.lerp(.54,.44,load),
+    THREE.MathUtils.lerp(.42,.32,load),
+   );
+   mat.opacity=Math.min(.82,load*.78);
+   this.siltVolume.visible=load>.06;
+  }
  }
  buildCave(){
   const {rock:rockMaps,sand:sandMaps,moss:mossMaps}=this.rockMaps;
@@ -678,6 +707,9 @@ export class CaveWorld extends OceanWorld {
   if(this.siltStorm&&this.siltStormLife){
    for(let i=0;i<this.siltStormLife.length;i++)this.siltStormLife[i]=0;
    this.siltStorm.visible=false;(this.siltStorm.material as THREE.PointsMaterial).opacity=0;
+  }
+  if(this.siltVolume){
+   this.siltVolume.visible=false;(this.siltVolume.material as THREE.MeshBasicMaterial).opacity=0;
   }
   this.syncPickups();this.publish();
  }
