@@ -118,6 +118,10 @@ test('gas drain scales with ATA and sprint; bailout feeds after main',()=>{
  assert.ok(gasDrainRate(FLOOR_Y,true)>gasDrainRate(FLOOR_Y,false));
  assert.ok(gasDrainRate(FLOOR_Y,false,true)>gasDrainRate(FLOOR_Y,true));
  assert.ok(Math.abs(gasDrainRate(SURFACE_Y,false)-1)<1e-9);
+ // Shallow cave: gameplay pressure is steeper than seawater ATA so ceiling swimming pays off.
+ assert.ok(gasDrainRate(FLOOR_Y,false)/gasDrainRate(SURFACE_Y,false)>2.5);
+ assert.ok(gasDrainRate(FLOOR_Y,false)>gasDrainRate(START.y,false));
+ assert.ok(gasDrainRate(START.y,false)>gasDrainRate(SURFACE_Y-.5,false));
  const deep=new Mission(true);deep.position={...START,y:FLOOR_Y};
  const shallow=new Mission(true);shallow.position={...START,y:SURFACE_Y};
  for(let i=0;i<60;i++){deep.update(1/60,true);shallow.update(1/60,false);}

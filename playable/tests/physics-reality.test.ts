@@ -9,7 +9,7 @@ import {writeFileSync, mkdirSync} from 'node:fs';
 import {
  Mission,START,RELIC,EXIT,moveBody,distance,CELL,torchModulation,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,
  stepSwimVelocity,terminalSwimSpeed,updateBuoyancy,PREDATOR_SPEED,SWIM_THRUST_CRUISE,SWIM_THRUST_SPRINT,SWIM_DRAG_K,
- AIR_MAIN_MAX,AIR_BAILOUT_MAX,gasDrainRate,
+ AIR_MAIN_MAX,AIR_BAILOUT_MAX,gasDrainRate,gasPressure,
 } from '../src/simulation';
 
 const CRUISE=terminalSwimSpeed(false);
@@ -135,6 +135,10 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    gasDrainFloorCruise:gasDrainRate(FLOOR_Y,false),
    gasDrainFloorSprint:gasDrainRate(FLOOR_Y,true),
    gasDrainFloorPanic:gasDrainRate(FLOOR_Y,false,true),
+   gasPressureSurface:gasPressure(SURFACE_Y),
+   gasPressureStart:gasPressure(START.y),
+   gasPressureFloor:gasPressure(FLOOR_Y),
+   gasFloorOverSurfaceCruise:+(gasDrainRate(FLOOR_Y,false)/gasDrainRate(SURFACE_Y,false)).toFixed(2),
    airAfter1sDeepSprint:+airAfterSprintDeep.toFixed(2),
    airAfter1sShallowCruise:+airAfterCruiseShallow.toFixed(2),
    depthBandM:+depthBand.toFixed(2),
@@ -181,7 +185,7 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
   },
   verdicts:{
    swimSpeed:'GAMEPLAY PACE — force model cruise ~2.2 m/s / sprint ~3.5 m/s (force model retained; closer to old arcade feel).',
-   gasModel:`SAC × ATA × EFFORT — high-stakes; main ${AIR_MAIN_MAX} s + pony ${AIR_BAILOUT_MAX} s; sprint/panic raise RMV.`,
+   gasModel:`SAC × gasPressure × EFFORT — high-stakes; main ${AIR_MAIN_MAX} s + pony ${AIR_BAILOUT_MAX} s; shallow cave uses steeper-than-ATA depth curve (~3× floor vs surface).`,
    buoyancy:'BCD STATE — Space/Q fill buoyancy −1..+1 with neutral trim; kick is look/strafe only.',
    dragCoast:'QUADRATIC — −k|v|v; short coast after releasing kick.',
    depthScale:'SHALLOW CAVE — ~6.5 m playable y band; torch murk is stylistic, not optical attenuation law.',
@@ -199,6 +203,7 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  assert.ok(SPRINT<4.5,'sprint below old arcade 4.8');
  assert.ok(AIR_MAIN_MAX/60<REAL.airMinutesShallow[0]/5,'air budget is heavily time-compressed');
  assert.ok(gasDrainRate(FLOOR_Y,true)>gasDrainRate(SURFACE_Y,false));
+ assert.ok(gasPressure(FLOOR_Y)/gasPressure(SURFACE_Y)>2.5,'ceiling swimming must clearly slow the meter');
  assert.equal(report.measured.gravityOrBuoyancyForce,true);
  console.log(JSON.stringify({
   cruiseMs:+CRUISE.toFixed(3),sprintMs:+SPRINT.toFixed(3),

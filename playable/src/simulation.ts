@@ -12,14 +12,22 @@ export const RELIC:Point={x:0,y:2,z:-112};
 export const EXIT:Point={x:32,y:3,z:-12};
 /** Metres below the surface plane. Shared by HUD, gas, buoyancy, and torch. */
 export function hydrostaticDepth(y:number){return Math.max(0,SURFACE_Y-y);}
-/** Ambient pressure in atmospheres (≈ 1 + depth_m/10). */
+/** Ambient pressure in atmospheres (≈ 1 + depth_m/10). HUD / physics audit. */
 export function ata(y:number){return 1+hydrostaticDepth(y)/10;}
+
+/**
+ * Gameplay gas pressure multiplier. Real ATA only spans ~1.0–1.65 in this cave;
+ * burn uses a steeper curve so swimming near the surface clearly slows the meter.
+ * Tuned so floor ≈ 3× surface cruise (vs ~1.65× seawater).
+ */
+export const GAS_ATA_METRES=3.2;
+export function gasPressure(y:number){return 1+hydrostaticDepth(y)/GAS_ATA_METRES;}
 
 /** Surface-equivalent main tank (seconds at 1 ATA, cruise effort). High-stakes: ~90 s surface. */
 export const AIR_MAIN_MAX=90;
 /** Separate pony / bailout pool (~⅓ of main). */
 export const AIR_BAILOUT_MAX=30;
-/** Base drain: 1 surface-second of gas per real second at 1 ATA, cruise. */
+/** Base drain: 1 surface-second of gas per real second at 1× gasPressure, cruise. */
 export const AIR_BASE_DRAIN=1;
 export const AIR_EFFORT_CRUISE=1;
 /** Sprint RMV — hard kick burns gas fast so Shift is a real choice. */
@@ -33,9 +41,9 @@ export function gasEffort(sprinting=false,panic=false){
  if(sprinting)return AIR_EFFORT_SPRINT;
  return AIR_EFFORT_CRUISE;
 }
-/** Surface-equivalent gas seconds consumed per real second (DAN: RMV × ATA × effort). */
+/** Surface-equivalent gas seconds consumed per real second (RMV × gasPressure × effort). */
 export function gasDrainRate(depthY:number,sprinting=false,panic=false){
- return AIR_BASE_DRAIN*ata(depthY)*gasEffort(sprinting,panic);
+ return AIR_BASE_DRAIN*gasPressure(depthY)*gasEffort(sprinting,panic);
 }
 
 /** Kick thrust (m/s²) — terminal speed ≈ sqrt(thrust / SWIM_DRAG_K). */
