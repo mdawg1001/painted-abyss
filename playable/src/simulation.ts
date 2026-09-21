@@ -61,10 +61,10 @@ export function ata(y:number){return 1+hydrostaticDepth(y)/10;}
 export const SAC_CRUISE_LPM=18;
 /**
  * Free-gas main tank in litres.
- * 27 L ≈ 90 s of surface cruise at 18 L/min — same high-stakes fuse as the old second-tank.
+ * 100 L ≈ 5.6 min of surface cruise at 18 L/min SAC (drain still scales with ATA × effort).
  */
-export const AIR_MAIN_LITRES=27;
-/** Separate pony / bailout pool in litres (~⅓ of main). */
+export const AIR_MAIN_LITRES=100;
+/** Separate pony / bailout pool in litres. */
 export const AIR_BAILOUT_LITRES=9;
 /** @deprecated Prefer AIR_MAIN_LITRES — kept as an alias for older call sites. */
 export const AIR_MAIN_MAX=AIR_MAIN_LITRES;

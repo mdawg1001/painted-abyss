@@ -1,7 +1,8 @@
 /**
  * Diving-knife visual (Poly Haven “Fish Knife”).
  *
- * Held FPS prop when the inventory knife is selected. Authored PBR maps stay
+ * Held FPS prop when the inventory knife is selected. No viewmodel arm —
+ * the knife sits in the lower-right of the camera. Authored PBR maps stay
  * intact; a soft RoomEnvironment envMap adds steel response without local
  * point lights (those bloom white against UnrealBloomPass).
  *
@@ -13,17 +14,15 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 /** Public path — must match files under `playable/public/assets/knife/`. */
 export const KNIFE_ASSET_URL='/assets/knife/fish_knife_1k.gltf';
 export const KNIFE_THUMB_URL='/assets/knife/thumb.png';
-/** CC0 FPS viewmodel arms (right hand planted on the knife grip). */
-export const ARMS_ASSET_URL='/assets/arms/arms.glb';
 
 /**
- * Camera-local FPS viewmodel — forearm clips the lower-right, blade
- * diagonal toward screen center (CS-style right-hand grip).
+ * Camera-local pose. Grip sits in the lower-right corner; the tip angles
+ * inward toward screen center. Tuned for fov 64 so the blade stays on screen.
  */
-export const KNIFE_HOLD_POS={x:.28,y:-.16,z:-.5} as const;
+export const KNIFE_HOLD_POS={x:.28,y:-.22,z:-.6} as const;
 export const KNIFE_HOLD_ROT={x:-.2,y:.55,z:.12} as const;
-export const KNIFE_HOLD_SCALE=2;
-export const KNIFE_STAB_Z=-.72;
+export const KNIFE_HOLD_SCALE=1.5;
+export const KNIFE_STAB_Z=-.82;
 
 const stubMetal=()=>new THREE.MeshStandardMaterial({
  color:0x6a7078,metalness:.55,roughness:.55,envMapIntensity:.35,
@@ -104,7 +103,7 @@ export function alignKnifeBladeForward(scene:THREE.Object3D){
   scene.updateMatrixWorld(true);
  }
 
- // Pivot on the wooden grip so the fist wraps the handle, tip still −Z.
+ // Pivot on the wooden grip so the pose origin is the handle, tip still −Z.
  scene.updateMatrixWorld(true);
  if(handle){
   const grip=new THREE.Box3().setFromObject(handle).getCenter(new THREE.Vector3());
@@ -114,91 +113,6 @@ export function alignKnifeBladeForward(scene:THREE.Object3D){
   scene.position.x-=(box.min.x+box.max.x)*.5;
   scene.position.y-=(box.min.y+box.max.y)*.5;
   scene.position.z-=box.max.z;
- }
-}
-
-const glove=()=>new THREE.MeshStandardMaterial({color:0x1c242c,roughness:.92,metalness:.05,envMapIntensity:.2});
-const gloveDark=()=>new THREE.MeshStandardMaterial({color:0x12181e,roughness:.96,metalness:.04});
-
-/**
- * Dive-neoprene right hand. Fist at the origin; forearm runs +Z (back toward
- * the camera). `knifeGrip` is where the aligned knife (handle at origin, tip −Z) attaches.
- */
-export function buildKnifeHand():THREE.Group{
- const hand=new THREE.Group();
- hand.name='knifeHand';
- const rubber=glove();
- const dark=gloveDark();
- const alongZ=(geo:THREE.BufferGeometry)=>{geo.rotateX(Math.PI/2);return geo;};
-
- const arm=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.048,.062,.34,12)),rubber);
- arm.position.set(.02,-.015,.2);hand.add(arm);
- const cuff=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.066,.066,.04,12)),dark);
- cuff.position.set(.025,-.02,.34);hand.add(cuff);
-
- const wrist=new THREE.Mesh(new THREE.SphereGeometry(.058,12,8),rubber);
- wrist.scale.set(1.05,.82,1.15);wrist.position.set(0,-.005,.05);hand.add(wrist);
-
- const palm=new THREE.Mesh(new THREE.BoxGeometry(.1,.05,.08),rubber);
- palm.position.set(0,-.012,0);hand.add(palm);
-
- // Thumb laid across the top of the grip (reads as a closed fist).
- const thumb=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.016,.018,.07,8)),rubber);
- thumb.rotation.z=.85;thumb.rotation.y=.35;thumb.position.set(.04,.028,-.01);hand.add(thumb);
- const thumbPad=new THREE.Mesh(new THREE.SphereGeometry(.02,8,6),dark);
- thumbPad.position.set(.062,.04,-.03);hand.add(thumbPad);
-
- // Four curled fingers wrapping the handle.
- for(let i=0;i<4;i++){
-  const z=-.012-i*.012;
-  const x=-.034+i*.02;
-  const knuckle=new THREE.Mesh(new THREE.SphereGeometry(.016,7,5),i%2?dark:rubber);
-  knuckle.position.set(x,.02,z);hand.add(knuckle);
-  const finger=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.012,.014,.055,7)),rubber);
-  finger.rotation.x=1.15;finger.position.set(x,-.012,z-.01);hand.add(finger);
- }
-
- const grip=new THREE.Object3D();
- grip.name='knifeGrip';
- hand.add(grip);
- return hand;
-}
-
-/** Right-hand vertex cluster in the CC0 arm mesh, after a +90° X turn (fingers along −Z). */
-const ARM_SCALE=0.09;
-const ARM_HAND={x:5.134,y:2.942,z:-3.527};
-
-/**
- * Replace the procedural glove with the rigged FPS arms. Grip stays at the
- * viewmodel origin so the knife handle sits in the right hand.
- */
-export async function attachFpsArms(root:THREE.Group):Promise<boolean>{
- try{
-  const gltf=await new GLTFLoader().loadAsync(ARMS_ASSET_URL);
-  const arms=gltf.scene;
-  arms.name='knifeHand';
-  arms.frustumCulled=false;
-  arms.rotation.x=Math.PI/2;
-  arms.scale.setScalar(ARM_SCALE);
-  arms.position.set(-ARM_HAND.x*ARM_SCALE,-ARM_HAND.y*ARM_SCALE,-ARM_HAND.z*ARM_SCALE);
-  arms.traverse(o=>{
-   if(!(o instanceof THREE.Mesh))return;
-   o.frustumCulled=false;o.castShadow=false;o.receiveShadow=false;
-  });
-  const grip=root.getObjectByName('knifeGrip');
-  if(grip){
-   root.add(grip);
-   grip.position.set(0,0,0);
-   grip.rotation.set(0,0,0);
-   grip.scale.set(1,1,1);
-  }
-  const old=root.getObjectByName('knifeHand');
-  if(old&&old!==arms)root.remove(old);
-  root.add(arms);
-  return true;
- }catch(err){
-  console.warn('FPS arms failed to load; keeping the simple glove.',err);
-  return false;
  }
 }
 
@@ -225,16 +139,16 @@ function createKnifeMeshStub():THREE.Group{
  return g;
 }
 
-/** Hand + knife. Hidden until the Poly Haven mesh upgrades (avoids chrome flash). */
+/** Knife only, grip pivot at the origin. Hidden until the caller shows it. */
 export function createKnifeStub():THREE.Group{
  const g=new THREE.Group();
  g.name='knifeVisual';
  g.frustumCulled=false;
- g.add(buildKnifeHand());
+ const grip=new THREE.Object3D();
+ grip.name='knifeGrip';
+ g.add(grip);
  attachKnifeMesh(g,createKnifeMeshStub());
  poseKnife(g);
- // Show the glove immediately. The old pose sat below the frame, so waiting
- // on glTF left an empty hand. Poly Haven mesh swaps in when it loads.
  g.visible=false;
  g.userData.knifeReady=true;
  return g;
@@ -258,7 +172,6 @@ export async function upgradeKnifeVisual(root:THREE.Group,envMap?:THREE.Texture|
   const scene=gltf.scene;
   alignKnifeBladeForward(scene);
   prepareKnifeMaterials(scene,envMap??null);
-  if(!root.getObjectByName('knifeHand'))root.add(buildKnifeHand());
   attachKnifeMesh(root,scene);
   poseKnife(root);
   root.userData.knifeReady=true;
