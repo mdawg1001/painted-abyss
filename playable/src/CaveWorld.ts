@@ -29,7 +29,7 @@ export class CaveWorld extends OceanWorld {
  fallbackTurn=0;lockDenied=false;lookPointer:{x:number;y:number}|null=null;
  torchLight=new THREE.SpotLight(0xeaf6ff,210,34,.38,.55,1.05);
  torchFill=new THREE.PointLight(0xcfe8ff,4.5,7,1.6);
- beam!:THREE.Mesh;beamHalo!:THREE.Mesh;torchBody!:THREE.Group;torchLensMat!:THREE.MeshStandardMaterial;
+ beam!:THREE.Mesh;torchBody!:THREE.Group;torchLensMat!:THREE.MeshStandardMaterial;
  composer!:EffectComposer;bloom!:UnrealBloomPass;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
@@ -166,12 +166,10 @@ export class CaveWorld extends OceanWorld {
   this.torchFill.position.set(.38,-.34,-.75);
   this.camera.add(this.torchLight,this.torchLight.target,this.torchFill);
 
+  // One volumetric cone only — a second halo read as a duplicate / vertical ray.
   const cone=new THREE.CylinderGeometry(.02,3.4,20,32,1,true);cone.rotateX(Math.PI/2);
   this.beam=new THREE.Mesh(cone,this.beamMaterial(0xd4eaf8,.1));
   this.beam.position.set(.4,-.38,-9.5);this.camera.add(this.beam);
-  const haloGeo=new THREE.CylinderGeometry(.05,5.2,18,32,1,true);haloGeo.rotateX(Math.PI/2);
-  this.beamHalo=new THREE.Mesh(haloGeo,this.beamMaterial(0xa8cde0,.038));
-  this.beamHalo.position.set(.4,-.38,-8.6);this.camera.add(this.beamHalo);
 
   this.torchBody=this.buildTorchBody();
   this.camera.add(this.torchBody);
@@ -361,7 +359,7 @@ export class CaveWorld extends OceanWorld {
   (this.scene.background as THREE.Color).copy(fog.color);
   this.uniforms.uTime.value=this.time;
   const torchOn=this.mission.torch;
-  this.torchLight.visible=torchOn;this.torchFill.visible=torchOn;this.beam.visible=torchOn;this.beamHalo.visible=torchOn;
+  this.torchLight.visible=torchOn;this.torchFill.visible=torchOn;this.beam.visible=torchOn;
   this.torchBody.visible=true;
   this.torchLensMat.emissiveIntensity=torchOn?1.6:.08;
   this.torchLensMat.emissive.set(torchOn?0xc8e4ff:0x223038);
@@ -374,7 +372,6 @@ export class CaveWorld extends OceanWorld {
    this.torchLight.color.setRGB(torch.r,torch.g,torch.b);
    this.torchFill.intensity=3.5*iScale;this.torchFill.color.setRGB(torch.r,torch.g,torch.b);
    const beamMat=this.beam.material as THREE.ShaderMaterial;beamMat.uniforms.uOpacity.value=.1*bScale;beamMat.uniforms.uColor.value.setRGB(torch.r,torch.g,torch.b);
-   const haloMat=this.beamHalo.material as THREE.ShaderMaterial;haloMat.uniforms.uOpacity.value=.038*bScale;haloMat.uniforms.uColor.value.setRGB(torch.r*.85,torch.g*.9,torch.b);
    (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=torch.particle;
   }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
   // Soft bloom on shafts only — keep torch hotspots from blowing out
