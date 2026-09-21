@@ -1,0 +1,23 @@
+---
+description: Keep the playable build version visible and bumped for every shipped change
+alwaysApply: true
+---
+
+# Playable build version (required)
+
+Players must always be able to see which build they are running. Other agents on this repo must follow the same rule.
+
+## Source of truth
+- `playable/package.json` → `"version"` is the only version number to edit.
+- UI and tooling import it via `playable/src/version.ts` (`APP_VERSION` / `APP_VERSION_LABEL`).
+- Do **not** hardcode `0.x.y` strings in HUD, menus, or copy.
+
+## On every playable change that players can notice
+1. Bump `playable/package.json` version (patch for fixes/polish, minor for larger features).
+2. Keep the root `README.md` title line version in sync (`Painted Abyss — First Dive · x.y.z`).
+3. Keep the on-screen `BUILD v…` badge visible on the **menu and during the dive** (see `main.tsx` + `.build-version` in `style.css`). Do not remove it.
+4. Rebuild `playable/dist` so `node playable/serve.mjs` serves the new version.
+5. Mention the new version in the PR summary so playtesters know what to look for.
+
+## Playtest note for humans
+Terminal should print `Painted Abyss vX.Y.Z ready`. The game UI shows `BUILD vX.Y.Z`. If those differ from GitHub `main`, kill old servers on port 5173 and re-pull / restart.

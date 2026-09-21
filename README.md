@@ -1,4 +1,6 @@
-# Painted Abyss — First Dive · 0.1.6
+# Painted Abyss — First Dive · 0.1.7
+
+The live build version is always shown in the game UI as **BUILD v…** (menu and during the dive). It comes from `playable/package.json`. Agents must bump that version on every playable change — see `.cursor/rules/playable-version.mdc`.
 
 Includes a short inventory select click, quieter first-play tip, sound, and continuous 360° horizontal camera turning. When pointer lock is unavailable, hold the pointer near either edge to keep turning; move it back towards the centre to stop.
 
