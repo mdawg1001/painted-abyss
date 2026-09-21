@@ -15,6 +15,25 @@ export function hydrostaticDepth(y:number){return Math.max(0,SURFACE_Y-y);}
 /** Ambient pressure in atmospheres (≈ 1 + depth_m/10). */
 export function ata(y:number){return 1+hydrostaticDepth(y)/10;}
 
+/** Surface air consumption (L/min). Sprint burns harder than cruise. */
+export const SAC_CRUISE_LPM=18;
+export const SAC_SPRINT_LPM=28;
+/**
+ * Free-gas tank in litres. 72 L ≈ 4 minutes of surface cruise (18 L/min),
+ * so depth and sprint still shorten the real fuse via ATA × SAC.
+ */
+export const AIR_TANK_LITRES=72;
+/** Pony / reserve fill in surface litres (≈ 1 minute of surface cruise). */
+export const AIR_RESERVE_LITRES=18;
+/** Litres consumed per wall-clock second at the current depth and effort. */
+export function airConsumeRate(y:number,sprinting=false){
+ return ((sprinting?SAC_SPRINT_LPM:SAC_CRUISE_LPM)/60)*ata(y);
+}
+/** Remaining surface-equivalent seconds (HUD clock assumes cruise SAC at 1 ATA). */
+export function airSurfaceSeconds(litres:number){
+ return litres/(SAC_CRUISE_LPM/60);
+}
+
 /** Kick thrust (m/s²) — terminal speed ≈ sqrt(thrust / SWIM_DRAG_K). */
 export const SWIM_THRUST_CRUISE=8.7;
 export const SWIM_THRUST_SPRINT=22.05;
@@ -62,7 +81,7 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  stone:{name:'Limestone',short:'Stone',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  wood:{name:'Driftwood',short:'Wood',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  flare:{name:'Signal flare',short:'Flare',description:'R · Deploy a 12-second distraction at your position.',hint:'R use · consumed'},
- air:{name:'Air reserve',short:'Air',description:'R · Restore up to 60 seconds of air (consumed).',hint:'R use · consumed'},
+ air:{name:'Air reserve',short:'Air',description:`R · Restore up to ${AIR_RESERVE_LITRES} L of free gas (≈ ${Math.round(airSurfaceSeconds(AIR_RESERVE_LITRES))} s surface cruise).`,hint:'R use · consumed'},
  bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
 };
@@ -147,7 +166,7 @@ export function writeInventoryTipsSeen(){
  try{globalThis.localStorage?.setItem(INVENTORY_TIPS_KEY,'1');}catch{/* private mode */}
 }
 export class Mission {
- position={...START};health=100;air=240;elapsed=0;stamina=100;torch=true;
+ position={...START};health=100;air=AIR_TANK_LITRES;elapsed=0;stamina=100;torch=true;
  /** BCD trim −1 (sink) .. 0 (neutral) .. +1 (float). Driven by Space/Q, not kick speed. */
  buoyancy=0;
  inventory:(Item|null)[]=['stone','wood','flare','air','bandage'];selected=0;
@@ -200,8 +219,8 @@ export class Mission {
   const item=this.inventory[this.selected];
   if(!item){this.pulse('blocked');return;}
   if(item==='air'){
-   if(this.air>=240){this.pulse('blocked');return;}
-   this.air=Math.min(240,this.air+60);this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
+   if(this.air>=AIR_TANK_LITRES-1e-6){this.pulse('blocked');return;}
+   this.air=Math.min(AIR_TANK_LITRES,this.air+AIR_RESERVE_LITRES);this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
   }
   if(item==='bandage'){
    if(this.health>=100){this.pulse('blocked');return;}
@@ -214,7 +233,9 @@ export class Mission {
   this.pulse('blocked');
  }
  update(dt:number,sprinting=false){
-  if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;this.air=Math.max(0,this.air-dt);this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?-18:17)*dt));
+  if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;
+  this.air=Math.max(0,this.air-airConsumeRate(this.position.y,sprinting)*dt);
+  this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?-18:17)*dt));
   if(this.air<=0){this.outcome='lost';this.reason='Your air ran out. Use the reserve earlier or take a shorter route.';return;}
   if(this.pending!==null&&!this.pickups.some(p=>p.id===this.pending&&distance(p.position,this.position)<3.2))this.pending=null;
   const p=this.predator;const d=distance(p.position,this.position);const canSee=visible(p.position,this.position);

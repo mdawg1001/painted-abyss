@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-21T11:17:49.029Z",
+  "generatedAt": "2026-09-21T11:25:19.166Z",
   "unitAssumption": "1 world unit ≈ 1 metre (CELL=4 m tiles, playable y ∈ [0.65, 7.1])",
   "measured": {
     "cruiseMs": 2.198,
@@ -13,10 +13,14 @@
     "coastFromCruiseS": 10,
     "staminaSprintWindowS": 5.4,
     "staminaRegenFullS": 5.7,
-    "airBudgetS": 240,
-    "airBudgetMin": 4,
-    "airReserveS": 60,
-    "airIndependentOfDepthAndExertion": true,
+    "airTankLitres": 72,
+    "airReserveLitres": 18,
+    "airSurfaceSecondsFull": 240,
+    "sacCruiseLpm": 18,
+    "sacSprintLpm": 28,
+    "airBurnDeepSprint1s": 0.761,
+    "airBurnShallowCruise1s": 0.318,
+    "airIndependentOfDepthAndExertion": false,
     "depthBandM": 6.45,
     "startToRelicHorizontalM": 100,
     "cruiseTimeStartToRelicS": 45.5,
@@ -73,12 +77,12 @@
   },
   "verdicts": {
     "swimSpeed": "GAMEPLAY PACE — force model cruise ~2.2 m/s / sprint ~3.5 m/s (force model retained; closer to old arcade feel).",
-    "gasModel": "COMPRESSED — 4 min flat timer; no depth/exertion scaling (Boyle / SAC omitted).",
+    "gasModel": "SAC × ATA — 72 L tank (~4 min surface cruise); sprint and depth raise burn; reserve +18 L.",
     "buoyancy": "BCD STATE — Space/Q fill buoyancy −1..+1 with neutral trim; kick is look/strafe only.",
     "dragCoast": "QUADRATIC — −k|v|v; short coast after releasing kick.",
     "depthScale": "SHALLOW CAVE — ~6.5 m playable y band; torch murk is stylistic, not optical attenuation law.",
     "depthHud": "HYDROSTATIC — DEPTH = round(SURFACE_Y − y); −Z no longer fakes metres.",
     "predatorPacing": "DESIGNED CHASE — chase 2.7 m/s between cruise and sprint.",
-    "overall": "Gameplay-first survival with paced force locomotion; gas still compressed."
+    "overall": "Gameplay-first survival with paced force locomotion and depth/effort-scaled air."
   }
 }

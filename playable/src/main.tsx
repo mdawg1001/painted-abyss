@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {CaveWorld,type Snapshot} from './CaveWorld';
-import {ITEMS,EXIT,distance,hydrostaticDepth,type Item} from './simulation';
+import {ITEMS,EXIT,distance,hydrostaticDepth,AIR_TANK_LITRES,airSurfaceSeconds,type Item} from './simulation';
 import {APP_VERSION,APP_BUILD_LABEL,APP_BUILD_SHA} from './version';
 import './style.css';
 
@@ -61,7 +61,8 @@ function App(){
  const nearest=m?.nearest();const extraction=m&&distance(m.position,EXIT)<4;
  const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):nearest?`E · Collect ${ITEMS[nearest.item].name}`:'';
  const yaw=snap?.yaw??0;
- const air=m?Math.ceil(m.air):240;const time=`${String(Math.floor(air/60)).padStart(2,'0')}:${String(air%60).padStart(2,'0')}`;
+ const surfaceSec=m?Math.max(0,Math.ceil(airSurfaceSeconds(m.air))):Math.ceil(airSurfaceSeconds(AIR_TANK_LITRES));
+ const time=`${String(Math.floor(surfaceSec/60)).padStart(2,'0')}:${String(surfaceSec%60).padStart(2,'0')}`;
  const depth=m?Math.round(hydrostaticDepth(m.position.y)):0;
  const predator=m?.predator.state||'patrol';const close=m?distance(m.position,m.predator.position)<23:false;
  const threat=close?{patrol:'Movement in the dark',alert:'It heard something',chase:'It is hunting you',search:'Searching your last position'}[predator]:'';
@@ -79,7 +80,7 @@ function App(){
    <Compass yaw={yaw}/>
    <div className="depth">DEPTH {depth} m</div>
    <section className="vitals" aria-label="Vitals">
-    <div className="vital"><div className="vital-row"><span>AIR</span><strong className={air<45?'warning':''}>{time}</strong></div><div className="meter air"><i style={{width:`${m.air/240*100}%`}}/></div></div>
+    <div className="vital"><div className="vital-row"><span>AIR</span><strong className={surfaceSec<45?'warning':''}>{time}</strong></div><div className="meter air"><i style={{width:`${Math.min(100,m.air/AIR_TANK_LITRES*100)}%`}}/></div></div>
     <div className="vital"><div className="vital-row"><span>SUIT</span><strong className={m.health<40?'warning':''}>{Math.ceil(m.health)}</strong></div><div className="meter suit"><i style={{width:`${m.health}%`}}/></div></div>
     <div className="vital"><div className="vital-row"><span>FINS</span><strong>{Math.round(m.stamina)}</strong></div><div className="meter fins"><i style={{width:`${m.stamina}%`}}/></div></div>
    </section>

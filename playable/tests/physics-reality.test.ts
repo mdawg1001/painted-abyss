@@ -9,6 +9,7 @@ import {writeFileSync, mkdirSync} from 'node:fs';
 import {
  Mission,START,RELIC,EXIT,moveBody,distance,CELL,torchModulation,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,
  stepSwimVelocity,terminalSwimSpeed,updateBuoyancy,PREDATOR_SPEED,SWIM_THRUST_CRUISE,SWIM_THRUST_SPRINT,SWIM_DRAG_K,
+ AIR_TANK_LITRES,AIR_RESERVE_LITRES,airConsumeRate,airSurfaceSeconds,SAC_CRUISE_LPM,SAC_SPRINT_LPM,
 } from '../src/simulation';
 
 const CRUISE=terminalSwimSpeed(false);
@@ -71,8 +72,11 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  airMission2.position={...START,y:6.5};
  for(let i=0;i<60;i++)airMission2.update(1/60,false);
  const airAfterCruiseShallow=airMission2.air;
- assert.equal(Math.round(airAfterSprintDeep),239);
- assert.equal(Math.round(airAfterCruiseShallow),239);
+ assert.ok(airAfterSprintDeep<airAfterCruiseShallow,'deep sprint burns more litres than shallow cruise');
+ assert.ok(airAfterCruiseShallow<AIR_TANK_LITRES);
+ const burnedDeep=AIR_TANK_LITRES-airAfterSprintDeep;
+ const burnedShallow=AIR_TANK_LITRES-airAfterCruiseShallow;
+ assert.ok(burnedDeep>burnedShallow*1.3);
 
  // Equal kick thrust on Y vs Z no longer applies — buoyancy is separate.
  let b=0;for(let i=0;i<90;i++)b=updateBuoyancy(b,1,1/60);
@@ -122,10 +126,14 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    coastFromCruiseS:+coast.coastSeconds.toFixed(3),
    staminaSprintWindowS:+staminaEmpty.toFixed(2),
    staminaRegenFullS:+regen.toFixed(2),
-   airBudgetS:240,
-   airBudgetMin:4,
-   airReserveS:60,
-   airIndependentOfDepthAndExertion:true,
+   airTankLitres:AIR_TANK_LITRES,
+   airReserveLitres:AIR_RESERVE_LITRES,
+   airSurfaceSecondsFull:Math.round(airSurfaceSeconds(AIR_TANK_LITRES)),
+   sacCruiseLpm:SAC_CRUISE_LPM,
+   sacSprintLpm:SAC_SPRINT_LPM,
+   airBurnDeepSprint1s:+airConsumeRate(0.8,true).toFixed(3),
+   airBurnShallowCruise1s:+airConsumeRate(6.5,false).toFixed(3),
+   airIndependentOfDepthAndExertion:false,
    depthBandM:+depthBand.toFixed(2),
    startToRelicHorizontalM:horiz,
    cruiseTimeStartToRelicS:+routeCruise.toFixed(1),
@@ -170,13 +178,13 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
   },
   verdicts:{
    swimSpeed:'GAMEPLAY PACE — force model cruise ~2.2 m/s / sprint ~3.5 m/s (force model retained; closer to old arcade feel).',
-   gasModel:'COMPRESSED — 4 min flat timer; no depth/exertion scaling (Boyle / SAC omitted).',
+   gasModel:'SAC × ATA — 72 L tank (~4 min surface cruise); sprint and depth raise burn; reserve +18 L.',
    buoyancy:'BCD STATE — Space/Q fill buoyancy −1..+1 with neutral trim; kick is look/strafe only.',
    dragCoast:'QUADRATIC — −k|v|v; short coast after releasing kick.',
    depthScale:'SHALLOW CAVE — ~6.5 m playable y band; torch murk is stylistic, not optical attenuation law.',
    depthHud:'HYDROSTATIC — DEPTH = round(SURFACE_Y − y); −Z no longer fakes metres.',
    predatorPacing:`DESIGNED CHASE — chase ${PREDATOR_SPEED.chase} m/s between cruise and sprint.`,
-   overall:'Gameplay-first survival with paced force locomotion; gas still compressed.',
+   overall:'Gameplay-first survival with paced force locomotion and depth/effort-scaled air.',
   },
  };
 
@@ -186,12 +194,14 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
 
  assert.ok(CRUISE<REAL.hardKickMs[1]*3.2,'cruise raised for gameplay, still below old arcade 2.8');
  assert.ok(SPRINT<4.5,'sprint below old arcade 4.8');
- assert.ok(240/60<REAL.airMinutesShallow[0]/5,'air budget is heavily time-compressed');
+ assert.ok(airSurfaceSeconds(AIR_TANK_LITRES)/60<REAL.airMinutesShallow[0]/5,'surface tank still time-compressed vs real AL80');
+ assert.equal(report.measured.airIndependentOfDepthAndExertion,false);
  assert.equal(report.measured.gravityOrBuoyancyForce,true);
  console.log(JSON.stringify({
   cruiseMs:+CRUISE.toFixed(3),sprintMs:+SPRINT.toFixed(3),
   vsRecCruise:`${cruiseVsRealMax.toFixed(1)}–${cruiseVsRealMin.toFixed(1)}×`,
-  airMin:4,coastM:coast.coastMetres.toFixed(2),
+  airSurfaceMin:airSurfaceSeconds(AIR_TANK_LITRES)/60,
+  coastM:coast.coastMetres.toFixed(2),
   staminaSprintS:staminaEmpty.toFixed(1),
   verdict:report.verdicts.overall,
  },null,2));

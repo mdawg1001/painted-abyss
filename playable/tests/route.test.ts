@@ -1,10 +1,10 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {Mission,moveBody,distance,terminalSwimSpeed} from '../src/simulation';
+import {Mission,moveBody,distance,terminalSwimSpeed,AIR_TANK_LITRES} from '../src/simulation';
 test('full dive can be completed through collision and live AI with sprinting and usable supplies',()=>{
  const m=new Mission();const states=new Set<string>();
- // Force-model speeds are ~2.2 / ~3.5 m/s; air buffer kept until the SAC step.
- m.air=900;
+ // Extra free gas for the automated route bot; player tank remains AIR_TANK_LITRES.
+ m.air=AIR_TANK_LITRES*4;
  // Bite lethality is covered in mission tests; this route proves pathing + AI under slow swim.
  m.health=500;
  const cruise=terminalSwimSpeed(false),sprint=terminalSwimSpeed(true);

@@ -16,8 +16,9 @@ Measured from `playable/src/CaveWorld.ts` locomotion and `playable/src/simulatio
 | Coast after release | Quadratic drag to rest | Short coast (sub‑2 m from cruise) |
 | Vertical vs horizontal | Look/strafe kick; Space/Q = BCD | **Buoyancy state −1..+1**, not equal XYZ thrust |
 | Depth band | `fits()` clamps `y` | **~6.45 m** water column |
-| Air | `air −= dt` every frame | **240 s (4 min)** flat; reserve **+60 s** |
-| Air vs depth / effort | None | Sprint at floor == cruise at ceiling (−1 s/s) |
+| Air | Free-gas litres; `airConsumeRate(y,sprint)` | **72 L** tank (~4 min surface cruise) |
+| Air vs depth / effort | SAC × ATA | Cruise 18 L/min, sprint 28 L/min × `ata(y)` |
+| Air reserve | +18 L free gas | ≈ 60 s surface cruise |
 | Fin energy | −18/s sprint, +17/s otherwise | **~5.4 s** full sprint; **~5.7 s** full regen |
 | Guardian | Patrol 1.3 / alert 0.5 / chase **2.7** m/s | Chase between cruise and sprint |
 | Torch “depth” | `torchModulation` via `hydrostaticDepth` | Stylised murk, not Beer–Lambert optics |
@@ -43,8 +44,8 @@ Start → relic along −Z is **100 m**. At cruise that is **~36 s** of straight
 ### Swim speed — gameplay-paced force model
 Cruise **~2.2 m/s** and sprint **~3.5 m/s** come from thrust vs quadratic drag. Tuned for readable mission timing while keeping the force model (not the old target-velocity 2.8 / 4.8 lerp). Space/Q still drive BCD buoyancy with neutral trim.
 
-### Gas / air — time-compressed timer
-Air is still a wall-clock fuse, not a cylinder. Real SAC would also rise with sprinting and with depth; the game spends air at **1 s/s** everywhere. The +60 s reserve is a design pickup, not a pony bottle sized to real litres. Slower swimming means a rehearsed full route needs more than 240 s of air in automation until the SAC step retunes the tank.
+### Gas / air — SAC × ATA
+Air is free-gas **litres** (`AIR_TANK_LITRES = 72`, ≈ 4 minutes of surface cruise at 18 L/min). Each tick burns `(SAC/60) × ata(y) × dt`, with sprint SAC 28 L/min. Deeper water and sprinting shorten the fuse; the HUD clock shows surface-equivalent remaining time. The reserve adds **+18 L** (≈ 60 s surface cruise), not wall-clock seconds.
 
 ### Buoyancy — BCD state
 `Mission.buoyancy` (−1..+1) is driven by Space/Q and trims toward 0 when released. Vertical kick from look pitch remains on WASD look-forward; pure up/down is buoyancy accel (`SWIM_BUOYANCY_ACCEL`).
