@@ -4,6 +4,8 @@ export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife';
 export type Pickup={id:number;item:Item;position:Point};
 export type PredatorState='patrol'|'alert'|'chase'|'search'|'damaged'|'dead';
 export type StabResult='hit'|'miss'|'cooldown'|'blocked';
+export type ChestKind='military'|'plastic'|'suitcase';
+export type Chest={id:number;kind:ChestKind;position:Point;yaw:number;open:boolean};
 export const CELL=4;
 /** Guardian bite reach (m). Knife must stay shorter so stabbing means mutual danger. */
 export const BITE_RANGE=3.2;
@@ -26,6 +28,22 @@ export const SURFACE_Y=7.1;
 export const START:Point={x:0,y:3,z:-12};
 export const RELIC:Point={x:0,y:2,z:-112};
 export const EXIT:Point={x:32,y:3,z:-12};
+/** Floor-sitting interactables — three Poly Haven chest types (map contents later). */
+export const CHEST_LABEL:Record<ChestKind,string>={
+ military:'military crate',
+ plastic:'plastic crate',
+ suitcase:'vintage suitcase',
+};
+export function createDiveChests():Chest[]{
+ return [
+  // West shelf of the main cavern — wooden ammo crate (offset from the spare flare pickup).
+  {id:1,kind:'military',position:{x:-22,y:FLOOR_Y,z:-52},yaw:.35,open:false},
+  // East shelf opposite — plastic utility crate.
+  {id:2,kind:'plastic',position:{x:20,y:FLOOR_Y,z:-60},yaw:-.9,open:false},
+  // Near the bone alcove approach — suitcase on an open floor tile.
+  {id:3,kind:'suitcase',position:{x:12,y:FLOOR_Y,z:-104},yaw:2.4,open:false},
+ ];
+}
 /** Metres below the surface plane. Shared by HUD, gas, buoyancy, and torch. */
 export function hydrostaticDepth(y:number){return Math.max(0,SURFACE_Y-y);}
 /** Ambient pressure in atmospheres (≈ 1 + depth_m/10). */
@@ -336,6 +354,7 @@ export function writeInventoryTipsSeen(){
  gasPanicUntil=0;
  inventory:(Item|null)[]=['knife','wood','flare','air','bandage'];selected=0;
  pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},{id:2,item:'flare',position:{x:-20,y:2,z:-56}}];nextId=3;
+ chests:Chest[]=createDiveChests();
  pending:number|null=null;outcome:'playing'|'won'|'lost'='playing';reason='';
  /** First-play inventory guidance only; repeating select/use text is intentionally silent. */
  tipsSeen=false;notice='';noticeUntil=0;feedbackKind:FeedbackKind='';feedbackPulse=0;
@@ -366,10 +385,24 @@ export function writeInventoryTipsSeen(){
   return true;
  }
  nearest(){return this.pickups.filter(p=>distance(p.position,this.position)<3.2&&visible(this.position,p.position)).sort((a,b)=>distance(a.position,this.position)-distance(b.position,this.position))[0];}
+ /** Closest chest within reach with line of sight (opened or closed). */
+ nearestChest(){
+  return this.chests
+   .filter(c=>distance(c.position,this.position)<3.4&&visible(this.position,{...c.position,y:c.position.y+.4}))
+   .sort((a,b)=>distance(a.position,this.position)-distance(b.position,this.position))[0];
+ }
  interact(){
   if(this.outcome!=='playing')return;
   if(distance(this.position,EXIT)<4){if(this.hasRelic){this.outcome='won';this.reason='Relic secured. You made it back to the light.';}else this.say('Extraction needs the ammonite relic. Follow the turquoise markers.','blocked');return;}
+  const chest=this.pending===null?this.nearestChest():undefined;
   const pickup=this.pending===null?this.nearest():this.pickups.find(p=>p.id===this.pending);
+  // Prefer a closed chest when it is at least as close as the nearest pickup.
+  if(chest&&!chest.open&&(!pickup||distance(chest.position,this.position)<=distance(pickup.position,this.position)+.15)){
+   chest.open=true;
+   this.say(`Opened the ${CHEST_LABEL[chest.kind]}. Empty — for now.`,'ok');
+   return;
+  }
+  if(chest?.open&&!pickup){this.say(`The ${CHEST_LABEL[chest.kind]} is empty.`,'blocked');return;}
   if(!pickup||distance(pickup.position,this.position)>3.2||!visible(this.position,pickup.position)){this.pending=null;return;}
   let slot=this.inventory.indexOf(null);
   if(slot<0&&this.pending===null){this.pending=pickup.id;this.say('All five slots are full. Choose 1–5, then E to swap.','blocked');return;}
