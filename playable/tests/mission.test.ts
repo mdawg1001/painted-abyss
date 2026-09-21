@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,PREDATOR_HP_MAX,PREDATOR_BREAK_HP} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,PREDATOR_HP_MAX,PREDATOR_BREAK_HP,createDiveChests,CHEST_LABEL} from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{for(let i=0;i<seconds*60;i++)m.update(1/60);};
 test('hydrostatic depth and ata share one surface plane',()=>{
  assert.equal(hydrostaticDepth(SURFACE_Y),0);
@@ -241,3 +241,24 @@ test('knife wound rages then breaks off at 85% damage; death sinks FSM',()=>{
  assert.equal(m.outcome,'playing');
 });
 test('safe narrow passage prevents bites and leaves an escape route',()=>{const m=new Mission();m.position=world(19,20);m.predator.position=world(18,20);m.predator.state='chase';m.predator.lastKnown={...m.position};advance(m,3);assert.equal(m.health,100);assert.equal(m.predator.state,'search');assert.ok(m.predator.position.x<30);});
+test('three distinct Poly Haven chests sit in the cavern and open with E',()=>{
+ const chests=createDiveChests();
+ assert.equal(chests.length,3);
+ assert.deepEqual(chests.map(c=>c.kind).sort(),['military','plastic','suitcase']);
+ assert.ok(chests.every(c=>!c.open&&Number.isFinite(c.yaw)));
+ const m=new Mission(true);
+ assert.equal(m.chests.length,3);
+ const target=m.chests.find(c=>c.kind==='military')!;
+ m.position={x:target.position.x,y:3,z:target.position.z};
+ assert.equal(m.nearestChest()?.id,target.id);
+ m.interact();
+ assert.equal(target.open,true);
+ assert.match(m.notice,/military crate/i);
+ assert.match(m.notice,/Empty/i);
+ m.interact();
+ assert.match(m.notice,/empty/i);
+ // Restart restores closed chests.
+ const fresh=new Mission(true);
+ assert.ok(fresh.chests.every(c=>!c.open));
+ assert.equal(CHEST_LABEL.suitcase,'vintage suitcase');
+});

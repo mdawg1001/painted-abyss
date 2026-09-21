@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {CaveWorld,type Snapshot} from './CaveWorld';
-import {ITEMS,EXIT,distance,hydrostaticDepth,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,type Item} from './simulation';
+import {ITEMS,EXIT,distance,hydrostaticDepth,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,CHEST_LABEL,type Item} from './simulation';
 import {KNIFE_THUMB_URL} from './knifeAsset';
 import {APP_VERSION,APP_BUILD_LABEL,APP_BUILD_SHA} from './version';
 import './style.css';
@@ -62,8 +62,9 @@ function App(){
   return()=>{alive=false;window.clearInterval(id);window.removeEventListener('focus',onFocus);};
  },[]);
  const m=snap?.mission,playing=!!snap?.playing,terminal=m?.outcome!=='playing'&&!!m;
- const nearest=m?.nearest();const extraction=m&&distance(m.position,EXIT)<4;
- const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):nearest?`E · Collect ${ITEMS[nearest.item].name}`:'';
+ const nearest=m?.nearest();const nearChest=m?.nearestChest();const extraction=m&&distance(m.position,EXIT)<4;
+ const chestPrompt=nearChest?(nearChest.open?`The ${CHEST_LABEL[nearChest.kind]} is empty`:`E · Open ${CHEST_LABEL[nearChest.kind]}`):'';
+ const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):chestPrompt?chestPrompt:nearest?`E · Collect ${ITEMS[nearest.item].name}`:'';
  const yaw=snap?.yaw??0;
  const onBailout=!!(m&&m.air<=0&&m.bailout>0);
  const airPool=m?(onBailout?m.bailout:m.air):AIR_MAIN_LITRES;
