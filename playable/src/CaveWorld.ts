@@ -156,7 +156,26 @@ export class CaveWorld extends OceanWorld {
   mat.opacity=Math.max(0,Math.min(.9,this.bloodLife/6));
   if(this.bloodLife<=0){this.blood.visible=false;mat.opacity=0;}
  }
- /** Soft disc for silt grains — opaque muddy discs, not additive sparkles. */
+ /** Dense silt motes spawned by bed shear — settle with gravity, not ambient dust. */
+ buildSiltStorm(){
+  const n=900;
+  const pos=new Float32Array(n*3);
+  const vel=new Float32Array(n*3);
+  const life=new Float32Array(n);
+  for(let i=0;i<n;i++){pos[i*3]=0;pos[i*3+1]=-80;pos[i*3+2]=0;life[i]=0;}
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  // Dayo Blue Grotto silt: muddy taupe points (NormalBlending) — no additive cyan glow.
+  // Plain PointsMaterial (same path as blood) so SwiftShader / Safari keep the plume readable.
+  const mat=new THREE.PointsMaterial({
+   color:0xa89888,size:.42,transparent:true,opacity:0,depthWrite:false,sizeAttenuation:true,
+   blending:THREE.NormalBlending,
+  });
+  this.siltStorm=new THREE.Points(geo,mat);this.siltStorm.visible=false;
+  this.siltStorm.frustumCulled=false;
+  this.siltStormVel=vel;this.siltStormLife=life;this.scene.add(this.siltStorm);
+ }
+ /** Soft disc helper kept for future sprite upgrade (unused by buildSiltStorm). */
  siltDiscTexture(){
   const s=64,c=(s-1)*.5,data=new Uint8Array(s*s*4);
   for(let y=0;y<s;y++)for(let x=0;x<s;x++){
@@ -167,24 +186,6 @@ export class CaveWorld extends OceanWorld {
   }
   const tex=new THREE.DataTexture(data,s,s,THREE.RGBAFormat);
   tex.needsUpdate=true;tex.colorSpace=THREE.NoColorSpace;return tex;
- }
- /** Dense silt motes spawned by bed shear — settle with gravity, not ambient dust. */
- buildSiltStorm(){
-  const n=720;
-  const pos=new Float32Array(n*3);
-  const vel=new Float32Array(n*3);
-  const life=new Float32Array(n);
-  for(let i=0;i<n;i++){pos[i*3]=0;pos[i*3+1]=-80;pos[i*3+2]=0;life[i]=0;}
-  const geo=new THREE.BufferGeometry();
-  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
-  // Dayo Blue Grotto silt stills: muddy taupe discs (NormalBlending), never cyan additive glow.
-  const mat=new THREE.PointsMaterial({
-   map:this.siltDiscTexture(),
-   color:0xa89888,size:.34,transparent:true,opacity:0,depthWrite:false,sizeAttenuation:true,
-   blending:THREE.NormalBlending,alphaTest:.015,
-  });
-  this.siltStorm=new THREE.Points(geo,mat);this.siltStorm.visible=false;
-  this.siltStormVel=vel;this.siltStormLife=life;this.scene.add(this.siltStorm);
  }
  /** Inject a burst of silt particles at the diver's feet when the bed is kicked. */
  emitSiltBurst(intensity:number){
@@ -228,16 +229,19 @@ export class CaveWorld extends OceanWorld {
   }
   pos.needsUpdate=true;
   const mat=this.siltStorm.material as THREE.PointsMaterial;
+  // Readability from living motes even before optical load fully peaks.
+  const lifeBoost=Math.min(1,alive/160);
+  const dens=Math.max(optical,lifeBoost*.85);
   // Chocolate-milk opacity: dense enough to block, not a glowing fog wash.
-  mat.opacity=Math.min(.96,.28+optical*.82);
-  mat.size=.22+optical*.42;
+  mat.opacity=Math.min(.98,.4+dens*.75);
+  mat.size=.3+dens*.6;
   // Dense cores go slightly browner; mild optical stays dusty taupe.
   mat.color.setRGB(
-   THREE.MathUtils.lerp(.68,.44,optical),
-   THREE.MathUtils.lerp(.60,.46,optical),
-   THREE.MathUtils.lerp(.50,.36,optical),
+   THREE.MathUtils.lerp(.72,.48,dens),
+   THREE.MathUtils.lerp(.62,.46,dens),
+   THREE.MathUtils.lerp(.50,.34,dens),
   );
-  this.siltStorm.visible=alive>0||optical>.05;
+  this.siltStorm.visible=alive>0||optical>.04;
  }
  buildCave(){
   const {rock:rockMaps,sand:sandMaps,moss:mossMaps}=this.rockMaps;

@@ -255,7 +255,7 @@ export function torchModulation(depthY:number,pitch:number):TorchModulation{
 }
 
 /** Bed boundary layer (m) — fins only resuspend when this close to FLOOR_Y. */
-export const SILT_BED_HEIGHT=1.35;
+export const SILT_BED_HEIGHT=1.85;
 /** Gameplay-compressed settle rates (1/s). Coarse ≫ fine (Stokes order, not hours). */
 export const SILT_SETTLE_COARSE=.62;
 export const SILT_SETTLE_FINE=.14;
