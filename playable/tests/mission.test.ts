@@ -34,8 +34,8 @@ test('BCD buoyancy rises on Space input and trims toward neutral when released',
  let b=0;
  for(let i=0;i<180;i++)b=updateBuoyancy(b,1,1/60);
  assert.ok(b>.85,'Space fills buoyancy slowly toward +1');
- for(let i=0;i<360;i++)b=updateBuoyancy(b,0,1/60);
- assert.ok(Math.abs(b)<.12,'idle drifts toward neutral trim');
+ for(let i=0;i<180;i++)b=updateBuoyancy(b,0,1/60);
+ assert.equal(b,0,'idle snaps onto neutral so residual BCD does not linger');
  // Buoyancy alone produces vertical accel without horizontal kick.
  const v={x:0,y:0,z:0};
  for(let i=0;i<120;i++)stepSwimVelocity(v,{x:0,y:0,z:0},1,false,1/60);
@@ -46,6 +46,20 @@ test('BCD buoyancy rises on Space input and trims toward neutral when released',
  assert.ok(floatMs>1.2&&floatMs<1.7,`BCD float ${floatMs} should stay well below arcade 2.8`);
  assert.ok(floatMs<terminalSwimSpeed(false)*.8,'pure BCD slower than cruise kick');
  const m=new Mission(true);assert.equal(m.buoyancy,0);assert.equal(m.buoyancyTrim,0);
+});
+test('releasing BCD stops vertical drift after trim and coast',()=>{
+ let b=0;
+ for(let i=0;i<120;i++)b=updateBuoyancy(b,1,1/60);
+ const v={x:0,y:0,z:0};
+ for(let i=0;i<90;i++)stepSwimVelocity(v,{x:0,y:0,z:0},b,false,1/60);
+ assert.ok(v.y>.5,'holding Space builds upward speed');
+ // Release Space — buoyancy snaps to 0 and drag kills leftover vy.
+ for(let i=0;i<180;i++){
+  b=updateBuoyancy(b,0,1/60);
+  stepSwimVelocity(v,{x:0,y:0,z:0},b,false,1/60);
+ }
+ assert.equal(b,0);
+ assert.ok(Math.abs(v.y)<.05,`vertical speed should settle near rest, got ${v.y}`);
 });
 test('look-pitch finning is attenuated; vertical climb is mostly a BCD skill',()=>{
  assert.ok(SWIM_KICK_VERTICAL_SCALE>0&&SWIM_KICK_VERTICAL_SCALE<.5);

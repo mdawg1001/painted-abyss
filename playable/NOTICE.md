@@ -5,4 +5,11 @@
 - Author: Mateusz Sadek
 - License: CC0 1.0 Universal (public domain dedication)
 - Files: `public/assets/knife/` (1k glTF + textures) and mirrored under `src/assets/knife/`
-- Used as the diving-knife inventory / brief stab cue. The dive torch remains the main held FPS object.
+- Used as the diving-knife inventory icon and held FPS prop when selected. Other slots restore the dive torch as the held object.
+
+## Blood particles (Kenney Particle Pack)
+- Source: https://kenney.nl/assets/particle-pack
+- Author: Kenney Vleugels (Kenney.nl)
+- License: CC0 1.0 Universal (public domain dedication) — https://creativecommons.org/publicdomain/zero/1.0/
+- Files: `public/assets/blood/soft_circle.png` (circle_05), `soft_smoke.png` (smoke_03), `soft_glow.png` (circle_01) — resized 128² RGBA
+- Used as soft alpha maps for underwater blood Points when the guardian is stabbed or killed (tinted deep red in engine).

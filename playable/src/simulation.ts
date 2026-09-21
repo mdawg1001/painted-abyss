@@ -66,8 +66,12 @@ export const SWIM_DRAG_K=1.8;
 export const SWIM_BUOYANCY_ACCEL=4.1;
 /** How fast Space/Q fills buoyancy toward ±1 (1/s exponential approach). Slow on purpose. */
 export const BCD_FILL_RATE=.95;
-/** Hands-off return of buoyancy toward the trim target (1/s). */
-export const BCD_TRIM_RATE=.55;
+/** Hands-off return of buoyancy toward the trim target (1/s). Snappy so release actually stops you. */
+export const BCD_TRIM_RATE=2.4;
+/** Snap to trim when this close — exponential asymptote otherwise leaves eternal micro-thrust. */
+export const BCD_NEUTRAL_EPS=.04;
+/** Extra vertical linear damp (1/s) when BCD is neutral and you are not finning up/down. */
+export const BCD_SETTLE_DAMP=3.2;
 /**
  * Look-pitch finning only contributes this fraction of kick thrust on Y.
  * Horizontal kick stays full; vertical climb is mostly a BCD skill.
@@ -79,6 +83,7 @@ export type Vec3={x:number;y:number;z:number};
 /**
  * Space/Q BCD input (−1..+1). Idle drifts toward `trimTarget` (default neutral 0).
  * Never sets velocity directly — CaveWorld applies buoyancy as vertical accel.
+ * Idle snaps onto the trim target so residual BCD does not cause eternal rise/sink.
  */
 export function updateBuoyancy(buoyancy:number,bcdInput:number,dt:number,trimTarget=0){
  const b=Math.max(-1,Math.min(1,bcdInput));
@@ -87,7 +92,8 @@ export function updateBuoyancy(buoyancy:number,bcdInput:number,dt:number,trimTar
   const target=Math.sign(b);
   return buoyancy+(target-buoyancy)*(1-Math.exp(-BCD_FILL_RATE*dt));
  }
- return buoyancy+(trim-buoyancy)*(1-Math.exp(-BCD_TRIM_RATE*dt));
+ const next=buoyancy+(trim-buoyancy)*(1-Math.exp(-BCD_TRIM_RATE*dt));
+ return Math.abs(next-trim)<BCD_NEUTRAL_EPS?trim:next;
 }
 /**
  * Force-based swim step: look/strafe kick + BCD buoyancy − k|v|v.
@@ -96,7 +102,9 @@ export function updateBuoyancy(buoyancy:number,bcdInput:number,dt:number,trimTar
 export function stepSwimVelocity(velocity:Vec3,kick:Vec3,buoyancy:number,sprint:boolean,dt:number){
  const thrust=sprint?SWIM_THRUST_SPRINT:SWIM_THRUST_CRUISE;
  const kLen=Math.hypot(kick.x,kick.y,kick.z);
- let ax=0,ay=buoyancy*SWIM_BUOYANCY_ACCEL,az=0;
+ // Ignore deadzone residual so LEVEL trim truly stops vertical BCD thrust.
+ const buoy=Math.abs(buoyancy)<BCD_NEUTRAL_EPS?0:buoyancy;
+ let ax=0,ay=buoy*SWIM_BUOYANCY_ACCEL,az=0;
  if(kLen>1e-6){
   const s=thrust/kLen;
   ax=kick.x*s;
@@ -104,6 +112,8 @@ export function stepSwimVelocity(velocity:Vec3,kick:Vec3,buoyancy:number,sprint:
   ay+=kick.y*s*SWIM_KICK_VERTICAL_SCALE;
   az=kick.z*s;
  }
+ // Neutral BCD + no vertical fin: bleed leftover rise/sink so release actually stops you.
+ if(buoy===0&&Math.abs(kick.y)<1e-3)ay+=-velocity.y*BCD_SETTLE_DAMP;
  const speed=Math.hypot(velocity.x,velocity.y,velocity.z);
  const drag=-SWIM_DRAG_K*speed;
  ax+=velocity.x*drag;ay+=velocity.y*drag;az+=velocity.z*drag;
