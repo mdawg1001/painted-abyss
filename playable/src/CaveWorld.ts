@@ -257,19 +257,20 @@ export class CaveWorld extends OceanWorld {
   if(this.siltVolume){
    const s=this.mission.silt;
    const load=Math.max(optical,alive>40?.35:0);
-   const h=Math.max(.7,1.1+s.fine*2.4+s.coarse*1.6);
-   const r=Math.max(1.2,s.radius*(.55+.45*load));
-   this.siltVolume.position.set(s.cx,FLOOR_Y+h*.38,s.cz);
-   this.siltVolume.scale.set(r,h*.55,r);
+   const h=Math.max(1.4,2.2+s.fine*3.2+s.coarse*2.2);
+   const r=Math.max(2.2,s.radius*(.75+.55*load));
+   // Lift the muddy core into the swim column so the diver swims through it.
+   this.siltVolume.position.set(s.cx,FLOOR_Y+h*.55,s.cz);
+   this.siltVolume.scale.set(r,h*.7,r);
    const mat=this.siltVolume.material as THREE.MeshBasicMaterial;
    // Opaque muddy core — never cyan. Dense whiteout stays butterscotch-brown.
    mat.color.setRGB(
-    THREE.MathUtils.lerp(.62,.42,load),
-    THREE.MathUtils.lerp(.54,.44,load),
-    THREE.MathUtils.lerp(.42,.32,load),
+    THREE.MathUtils.lerp(.72,.48,load),
+    THREE.MathUtils.lerp(.62,.48,load),
+    THREE.MathUtils.lerp(.48,.34,load),
    );
-   mat.opacity=Math.min(.82,load*.78);
-   this.siltVolume.visible=load>.06;
+   mat.opacity=Math.min(.88,.22+load*.75);
+   this.siltVolume.visible=load>.05;
   }
  }
  buildCave(){
