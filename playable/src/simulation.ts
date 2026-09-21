@@ -4,9 +4,60 @@ export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic';
 export type Pickup={id:number;item:Item;position:Point};
 export type PredatorState='patrol'|'alert'|'chase'|'search';
 export const CELL=4;
+/** Playable water column: floor → surface (ceiling of `fits`). World Y is metres. */
+export const FLOOR_Y=.65;
+export const SURFACE_Y=7.1;
 export const START:Point={x:0,y:3,z:-12};
 export const RELIC:Point={x:0,y:2,z:-112};
 export const EXIT:Point={x:32,y:3,z:-12};
+/** Metres below the surface plane. Shared by HUD, gas, buoyancy, and torch. */
+export function hydrostaticDepth(y:number){return Math.max(0,SURFACE_Y-y);}
+/** Ambient pressure in atmospheres (≈ 1 + depth_m/10). */
+export function ata(y:number){return 1+hydrostaticDepth(y)/10;}
+
+/** Kick thrust (m/s²) — terminal speed ≈ sqrt(thrust / SWIM_DRAG_K). */
+export const SWIM_THRUST_CRUISE=1.0;
+export const SWIM_THRUST_SPRINT=2.2;
+/** Quadratic drag coefficient; cruise ≈0.75 m/s, sprint ≈1.11 m/s with thrusts above. */
+export const SWIM_DRAG_K=1.8;
+/** Vertical accel at full BCD (|buoyancy| = 1). */
+export const SWIM_BUOYANCY_ACCEL=1.5;
+/** How fast Space/Q fills buoyancy toward ±1 (1/s exponential approach). */
+export const BCD_FILL_RATE=1.35;
+/** Hands-off return of buoyancy toward neutral (1/s). */
+export const BCD_TRIM_RATE=.55;
+/** Predator band sits between player cruise and sprint. */
+export const PREDATOR_SPEED={chase:.92,patrol:.48,alert:.2} as const;
+
+export type Vec3={x:number;y:number;z:number};
+/** Space/Q BCD input (−1..+1). Idle trims toward neutral. */
+export function updateBuoyancy(buoyancy:number,bcdInput:number,dt:number){
+ const b=Math.max(-1,Math.min(1,bcdInput));
+ if(Math.abs(b)>.01){
+  const target=Math.sign(b);
+  return buoyancy+(target-buoyancy)*(1-Math.exp(-BCD_FILL_RATE*dt));
+ }
+ return buoyancy*Math.exp(-BCD_TRIM_RATE*dt);
+}
+/**
+ * Force-based swim step: look/strafe kick thrust + buoyancy − k|v|v.
+ * `kick` is WASD (and look-forward Y from pitch); Space/Q must not be baked into kick.
+ */
+export function stepSwimVelocity(velocity:Vec3,kick:Vec3,buoyancy:number,sprint:boolean,dt:number){
+ const thrust=sprint?SWIM_THRUST_SPRINT:SWIM_THRUST_CRUISE;
+ const kLen=Math.hypot(kick.x,kick.y,kick.z);
+ let ax=0,ay=buoyancy*SWIM_BUOYANCY_ACCEL,az=0;
+ if(kLen>1e-6){const s=thrust/kLen;ax=kick.x*s;ay+=kick.y*s;az=kick.z*s;}
+ const speed=Math.hypot(velocity.x,velocity.y,velocity.z);
+ const drag=-SWIM_DRAG_K*speed;
+ ax+=velocity.x*drag;ay+=velocity.y*drag;az+=velocity.z*drag;
+ velocity.x+=ax*dt;velocity.y+=ay*dt;velocity.z+=az*dt;
+}
+/** Steady horizontal speed under constant thrust with zero buoyancy (analytic). */
+export function terminalSwimSpeed(sprint=false){
+ return Math.sqrt((sprint?SWIM_THRUST_SPRINT:SWIM_THRUST_CRUISE)/SWIM_DRAG_K);
+}
+
 export const ITEMS:Record<Item,{name:string;short:string;description:string;hint:string}>={
  stone:{name:'Limestone',short:'Stone',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  wood:{name:'Driftwood',short:'Wood',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
@@ -26,7 +77,7 @@ export const tile=(p:Point)=>({col:Math.round(p.x/CELL)+11,row:Math.round(-p.z/C
 export const distance=(a:Point,b:Point)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
 export function isOpen(x:number,z:number){return cells.has(`${Math.round(x/CELL)+11},${Math.round(-z/CELL)}`);}
 export function fits(p:Point,r=.48){
- if(p.y<.65||p.y>7.1)return false;
+ if(p.y<FLOOR_Y||p.y>SURFACE_Y)return false;
  for(let a=0;a<8;a++)if(!isOpen(p.x+Math.cos(a*Math.PI/4)*r,p.z+Math.sin(a*Math.PI/4)*r))return false;
  return isOpen(p.x,p.z);
 }
@@ -53,9 +104,11 @@ export type TorchModulation={intensity:number;distance:number;decay:number;beamO
 /**
  * Underwater torch response from swim height and look pitch (Three.js YXZ: +pitch looks down).
  * Deeper / floor-aimed → dimmer, shorter, muddier. Shallower / ceiling-aimed → brighter, cooler.
+ * Clarity uses hydrostatic depth so torch, HUD, and future gas share one depth model.
  */
 export function torchModulation(depthY:number,pitch:number):TorchModulation{
- const clarity=Math.max(0,Math.min(1,(depthY-.65)/(7.1-.65)));
+ const column=SURFACE_Y-FLOOR_Y;
+ const clarity=Math.max(0,Math.min(1,1-hydrostaticDepth(depthY)/column));
  const aimUp=Math.max(-1,Math.min(1,-pitch/1.4));
  const murk=1-clarity;
  const floorBias=Math.max(0,-aimUp);
@@ -95,6 +148,8 @@ export function writeInventoryTipsSeen(){
 }
 export class Mission {
  position={...START};health=100;air=240;elapsed=0;stamina=100;torch=true;
+ /** BCD trim −1 (sink) .. 0 (neutral) .. +1 (float). Driven by Space/Q, not kick speed. */
+ buoyancy=0;
  inventory:(Item|null)[]=['stone','wood','flare','air','bandage'];selected=0;
  pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},{id:2,item:'flare',position:{x:-20,y:2,z:-56}}];nextId=3;
  pending:number|null=null;outcome:'playing'|'won'|'lost'='playing';reason='';
@@ -181,7 +236,7 @@ export class Mission {
   const goal=p.state==='patrol'?this.patrol[p.waypoint]:p.lastKnown;
   if(p.state==='patrol'&&distance(p.position,goal)<1.1)p.waypoint=(p.waypoint+1)%this.patrol.length;
   const path=pathBetween(p.position,goal);const target=path[0]||(visible(p.position,goal)&&predatorCell(tile(goal).col,tile(goal).row)?goal:p.position);
-  const dx=target.x-p.position.x,dz=target.z-p.position.z,len=Math.hypot(dx,dz),speed=p.state==='chase'?3.4:p.state==='alert'?.7:1.8;
+  const dx=target.x-p.position.x,dz=target.z-p.position.z,len=Math.hypot(dx,dz),speed=p.state==='chase'?PREDATOR_SPEED.chase:p.state==='alert'?PREDATOR_SPEED.alert:PREDATOR_SPEED.patrol;
   if(len>.05){p.heading=Math.atan2(-dz,dx);moveBody(p.position,dx/len*Math.min(len,speed*dt),0,dz/len*Math.min(len,speed*dt),1.3);}
   p.position.y+=((p.state==='chase'?Math.max(1.2,Math.min(6.2,this.position.y)):3)-p.position.y)*Math.min(1,dt*2);
   if(p.state==='chase'&&!safe&&canSee&&distance(p.position,this.position)<3.2&&p.bite<=0){this.health=Math.max(0,this.health-25);p.bite=1.7;this.say('Suit breached! Sprint to cover or deploy a flare.');if(this.health<=0){this.outcome='lost';this.reason='The guardian caught you. Break sight around the central pillar; the narrow exit passage is safe.';}}

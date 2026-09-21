@@ -6,66 +6,65 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {writeFileSync, mkdirSync} from 'node:fs';
-import {Mission,START,RELIC,EXIT,moveBody,distance,CELL,torchModulation} from '../src/simulation';
+import {
+ Mission,START,RELIC,EXIT,moveBody,distance,CELL,torchModulation,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,
+ stepSwimVelocity,terminalSwimSpeed,updateBuoyancy,PREDATOR_SPEED,SWIM_THRUST_CRUISE,SWIM_THRUST_SPRINT,SWIM_DRAG_K,
+} from '../src/simulation';
 
-/** Cruise / sprint match CaveWorld animate (not exported constants). */
-const CRUISE=2.8;
-const SPRINT=4.8;
-const VEL_K=4; // velocity.lerp(move, 1-exp(-4*dt))
-/** HUD depth in main.tsx — theatrical, not hydrostatic. */
-const hudDepth=(z:number,y:number)=>Math.max(1,Math.round(10+(-z)*.22+(5-y)*2.4));
+const CRUISE=terminalSwimSpeed(false);
+const SPRINT=terminalSwimSpeed(true);
+/** HUD depth matches main.tsx — hydrostatic metres below SURFACE_Y. */
+const hudDepth=(y:number)=>Math.round(hydrostaticDepth(y));
 
 /** Recreational scuba / finswim reference ranges (open literature, shallow water). */
 const REAL={
- cruiseMs:[0.25,0.5] as const,          // PADI-style relaxed finning ~0.5 kn → ~0.25 m/s; typical 0.3–0.5
- hardKickMs:[0.8,1.2] as const,         // strong recreational kick with fins
- competitiveMs:[2.0,3.0] as const,      // elite monofin / finswim burst (surface)
- airMinutesShallow:[40,60] as const,    // AL80 @ ~1–1.5 ATA, moderate SAC
- airDepthFactorPer10m:2,                // ambient pressure ≈ +1 ATA / 10 m
+ cruiseMs:[0.25,0.5] as const,
+ hardKickMs:[0.8,1.2] as const,
+ competitiveMs:[2.0,3.0] as const,
+ airMinutesShallow:[40,60] as const,
+ airDepthFactorPer10m:2,
  verticalControlledMs:[0.2,0.5] as const,
- coastMetresFrom1ms:[0.3,1.5] as const, // order-of-magnitude water coast after stop kicking
+ coastMetresFrom1ms:[0.3,1.5] as const,
 };
 
-function integrateDistance(speed:number,seconds:number,dt=1/60){
- let pos=0,v=0;
+function integrateKick(sprint:boolean,seconds:number,dt=1/60){
+ const v={x:0,y:0,z:0};let pos=0;
  const frames=Math.round(seconds/dt);
  for(let i=0;i<frames;i++){
-  const a=1-Math.exp(-VEL_K*dt);
-  v+=(speed-v)*a;
-  pos+=v*dt;
+  stepSwimVelocity(v,{x:0,y:0,z:-1},0,sprint,dt);
+  pos+=Math.hypot(v.x,v.y,v.z)*dt;
  }
- return{distance:pos,finalSpeed:v};
+ return{distance:pos,finalSpeed:Math.hypot(v.x,v.y,v.z)};
 }
 
 function coastFrom(speed:number,dt=1/60){
- let v=speed,dist=0,t=0;
- while(v>0.01&&t<10){const a=1-Math.exp(-VEL_K*dt);v+=(0-v)*a;dist+=v*dt;t+=dt;}
+ const v={x:0,y:0,z:-speed};let dist=0,t=0;
+ while(Math.hypot(v.x,v.y,v.z)>0.01&&t<10){
+  stepSwimVelocity(v,{x:0,y:0,z:0},0,false,dt);
+  dist+=Math.hypot(v.x,v.y,v.z)*dt;t+=dt;
+ }
  return{coastMetres:dist,coastSeconds:t};
 }
 
 test('measure locomotion, gas, stamina, and depth against real diving ranges',()=>{
- const cruiseSteady=integrateDistance(CRUISE,5);
- const sprintSteady=integrateDistance(SPRINT,5);
- // After 2 s should be near terminal speed
+ const cruiseSteady=integrateKick(false,5);
+ const sprintSteady=integrateKick(true,5);
  assert.ok(cruiseSteady.finalSpeed>CRUISE*.95);
  assert.ok(sprintSteady.finalSpeed>SPRINT*.95);
+ assert.ok(CRUISE>=.5&&CRUISE<=.85);
+ assert.ok(SPRINT>=1.0&&SPRINT<=1.3);
 
  const coast=coastFrom(CRUISE);
- const tau=1/VEL_K;
- const timeTo95=-Math.log(0.05)/VEL_K;
 
- // Stamina: drain 18/s while sprinting, regen 17/s otherwise
  const m=new Mission(true);
  let sprintSeconds=0;
  while(m.stamina>3&&sprintSeconds<30){m.update(1/60,true);sprintSeconds+=1/60;}
  const staminaEmpty=sprintSeconds;
- m.update(0); // keep playing
  let regen=0;
  while(m.stamina<99.5&&regen<30){m.update(1/60,false);regen+=1/60;}
 
- // Air: flat 1:1 with wall clock, independent of depth / exertion
  const airMission=new Mission(true);
- airMission.position={...START,y:0.8}; // deep end of band
+ airMission.position={...START,y:0.8};
  for(let i=0;i<60;i++)airMission.update(1/60,true);
  const airAfterSprintDeep=airMission.air;
  const airMission2=new Mission(true);
@@ -75,49 +74,50 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  assert.equal(Math.round(airAfterSprintDeep),239);
  assert.equal(Math.round(airAfterCruiseShallow),239);
 
- // No buoyancy / gravity: held keys produce equal |vy| and |vz|
+ // Equal kick thrust on Y vs Z no longer applies — buoyancy is separate.
+ let b=0;for(let i=0;i<90;i++)b=updateBuoyancy(b,1,1/60);
+ assert.ok(b>.7);
  const body={...START};
- moveBody(body,0,2.8/60,0);
+ moveBody(body,0,CRUISE/60,0);
  const upStep=body.y-START.y;
  const body2={...START};
- moveBody(body2,0,0,-2.8/60);
+ moveBody(body2,0,0,-CRUISE/60);
  const fwdStep=START.z-body2.z;
- assert.ok(Math.abs(upStep-fwdStep)<1e-9,'vertical and horizontal step size identical — no buoyancy bias');
+ assert.ok(Math.abs(upStep-fwdStep)<1e-9,'moveBody still axis-symmetric; buoyancy is outside it');
 
- // Depth band
- const depthBand=7.1-0.65;
+ const depthBand=SURFACE_Y-FLOOR_Y;
  const horiz=Math.abs(RELIC.z-START.z);
  const routeCruise=horiz/CRUISE;
  const routeSprint=horiz/SPRINT;
 
- // Omnidirectional speed vs recreational cruise
  const cruiseVsRealMin=CRUISE/REAL.cruiseMs[0];
  const cruiseVsRealMax=CRUISE/REAL.cruiseMs[1];
  const sprintVsHard=SPRINT/REAL.hardKickMs[1];
 
- // Torch clarity vs y (aesthetic, not Beer–Lambert)
  const torchFloor=torchModulation(0.8,1.2);
  const torchCeil=torchModulation(6.5,-1.2);
 
- // Depth HUD mixes −Z progress and y; playable column is only ~6.5 m
- const hudAtStart=hudDepth(START.z,START.y);
- const hudAtRelic=hudDepth(RELIC.z,RELIC.y);
- const hudFloor=hudDepth(START.z,0.65);
- const hudCeil=hudDepth(START.z,7.1);
- assert.equal(hudAtStart,17);
- assert.ok(hudAtRelic>hudAtStart,'HUD depth rises mainly from cavern −Z, not hydrostatics');
- assert.ok(hudFloor-hudCeil>depthBand,'HUD vertical span exaggerates the real y band');
+ const hudAtStart=hudDepth(START.y);
+ const hudAtRelic=hudDepth(RELIC.y);
+ const hudFloor=hudDepth(FLOOR_Y);
+ const hudCeil=hudDepth(SURFACE_Y);
+ assert.equal(hudAtStart,4);
+ assert.equal(hudAtRelic,5);
+ assert.equal(hudCeil,0);
+ assert.equal(hudFloor,Math.round(depthBand));
+ assert.ok(ata(FLOOR_Y)>ata(SURFACE_Y));
 
  const report={
   generatedAt:new Date().toISOString(),
   unitAssumption:'1 world unit ≈ 1 metre (CELL=4 m tiles, playable y ∈ [0.65, 7.1])',
   measured:{
-   cruiseMs:CRUISE,
-   sprintMs:SPRINT,
+   cruiseMs:+CRUISE.toFixed(3),
+   sprintMs:+SPRINT.toFixed(3),
    cruiseKmh:+(CRUISE*3.6).toFixed(2),
    sprintKmh:+(SPRINT*3.6).toFixed(2),
-   velocityTimeConstantS:tau,
-   timeTo95pctTargetS:+timeTo95.toFixed(3),
+   thrustCruise:SWIM_THRUST_CRUISE,
+   thrustSprint:SWIM_THRUST_SPRINT,
+   dragK:SWIM_DRAG_K,
    coastFromCruiseM:+coast.coastMetres.toFixed(3),
    coastFromCruiseS:+coast.coastSeconds.toFixed(3),
    staminaSprintWindowS:+staminaEmpty.toFixed(2),
@@ -130,12 +130,13 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    startToRelicHorizontalM:horiz,
    cruiseTimeStartToRelicS:+routeCruise.toFixed(1),
    sprintTimeStartToRelicS:+routeSprint.toFixed(1),
-   equalVerticalHorizontalThrust:true,
-   gravityOrBuoyancyForce:false,
-   predatorChaseMs:3.4,
-   predatorPatrolMs:1.8,
-   playerCanOutSprintChase:SPRINT>3.4,
-   playerCruiseSlowerThanChase:CRUISE<3.4,
+   equalVerticalHorizontalThrust:false,
+   gravityOrBuoyancyForce:true,
+   buoyancyModel:'BCD state −1..+1 via Space/Q; quadratic drag on velocity',
+   predatorChaseMs:PREDATOR_SPEED.chase,
+   predatorPatrolMs:PREDATOR_SPEED.patrol,
+   playerCanOutSprintChase:SPRINT>PREDATOR_SPEED.chase,
+   playerCruiseSlowerThanChase:CRUISE<PREDATOR_SPEED.chase,
    torchIntensityFloorAim:torchFloor.intensity,
    torchIntensityCeilingAim:torchCeil.intensity,
    cellSizeM:CELL,
@@ -144,8 +145,10 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    hudDepthAtRelicM:hudAtRelic,
    hudDepthFloorEntranceM:hudFloor,
    hudDepthCeilingEntranceM:hudCeil,
-   hudDepthFormula:'max(1, round(10 + (-z)*0.22 + (5-y)*2.4))',
-   hudDepthIsHydrostatic:false,
+   hudDepthFormula:'round(max(0, SURFACE_Y - y))',
+   hudDepthIsHydrostatic:true,
+   ataAtStart:+ata(START.y).toFixed(3),
+   ataAtFloor:+ata(FLOOR_Y).toFixed(3),
   },
   reality:{
    recreationalCruiseMs:REAL.cruiseMs,
@@ -166,14 +169,14 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    gameAirMinutesOverRealShallowMax:+(4/REAL.airMinutesShallow[0]).toFixed(2),
   },
   verdicts:{
-   swimSpeed:'ARCADE — cruise ~6–11× recreational finning; sprint exceeds elite finswim.',
+   swimSpeed:'DIVE-PLAUSIBLE — force model cruise ~0.75 m/s / sprint ~1.1 m/s (still slightly fast vs relaxed scuba).',
    gasModel:'COMPRESSED — 4 min flat timer; no depth/exertion scaling (Boyle / SAC omitted).',
-   buoyancy:'OMITTED — free 6DOF flight with identical vertical/horizontal thrust; no weight/BCD.',
-   dragCoast:'PLAUSIBLE ORDER — ~0.7 m coast from cruise with τ=0.25 s (arcade-responsive).',
+   buoyancy:'BCD STATE — Space/Q fill buoyancy −1..+1 with neutral trim; kick is look/strafe only.',
+   dragCoast:'QUADRATIC — −k|v|v; short coast after releasing kick.',
    depthScale:'SHALLOW CAVE — ~6.5 m playable y band; torch murk is stylistic, not optical attenuation law.',
-   depthHud:'THEATRICAL — reads ~17 m at start and ~42 m at the relic while collision y spans only ~6.5 m; −Z progress inflates the gauge.',
-   predatorPacing:'DESIGNED CHASE — chase 3.4 m/s beats cruise 2.8, loses to sprint 4.8 (~5.4 s stamina).',
-   overall:'Gameplay-first survival pacing, not a scuba physics simulator.',
+   depthHud:'HYDROSTATIC — DEPTH = round(SURFACE_Y − y); −Z no longer fakes metres.',
+   predatorPacing:`DESIGNED CHASE — chase ${PREDATOR_SPEED.chase} m/s between cruise and sprint.`,
+   overall:'Gameplay-first survival with dive-plausible locomotion; gas still compressed.',
   },
  };
 
@@ -181,13 +184,12 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  writeFileSync('/opt/cursor/artifacts/physics_reality_measurements.json',JSON.stringify(report,null,2));
  writeFileSync(new URL('../../docs/verification/physics-reality.json',import.meta.url),JSON.stringify(report,null,2));
 
- // Soft structural asserts — document gaps without requiring realism
- assert.ok(CRUISE>REAL.cruiseMs[1]*3,'cruise is several× recreational (expected arcade)');
+ assert.ok(CRUISE<REAL.cruiseMs[1]*2.5,'cruise near recreational band');
  assert.ok(240/60<REAL.airMinutesShallow[0]/5,'air budget is heavily time-compressed');
- assert.equal(report.measured.gravityOrBuoyancyForce,false);
+ assert.equal(report.measured.gravityOrBuoyancyForce,true);
  console.log(JSON.stringify({
-  cruiseMs:CRUISE,sprintMs:SPRINT,
-  vsRecCruise:`${cruiseVsRealMax.toFixed(0)}–${cruiseVsRealMin.toFixed(0)}×`,
+  cruiseMs:+CRUISE.toFixed(3),sprintMs:+SPRINT.toFixed(3),
+  vsRecCruise:`${cruiseVsRealMax.toFixed(1)}–${cruiseVsRealMin.toFixed(1)}×`,
   airMin:4,coastM:coast.coastMetres.toFixed(2),
   staminaSprintS:staminaEmpty.toFixed(1),
   verdict:report.verdicts.overall,

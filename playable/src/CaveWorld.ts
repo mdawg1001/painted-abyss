@@ -8,7 +8,7 @@ import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime, playInventoryClick } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
-import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, readInventoryTipsSeen, writeInventoryTipsSeen } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, stepSwimVelocity } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
 
@@ -29,7 +29,6 @@ export class CaveWorld extends OceanWorld {
  mission=new Mission(readInventoryTipsSeen());ui:(snapshot:Snapshot)=>void;error='';pointerLocked=false;everLocked=false;lastSent=0;
  fallbackTurn=0;lockDenied=false;lookPointer:{x:number;y:number}|null=null;
  torchLight=new THREE.SpotLight(0xeaf6ff,210,34,.38,.55,1.05);
- torchFill=new THREE.PointLight(0xcfe8ff,4.5,7,1.6);
  beam!:THREE.Mesh;torchBody!:THREE.Group;torchLensMat!:THREE.MeshStandardMaterial;
  composer!:EffectComposer;bloom!:UnrealBloomPass;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
@@ -231,22 +230,23 @@ export class CaveWorld extends OceanWorld {
  }
  buildLights(){
   this.scene.add(this.camera);
-  // Spot from the Behemoth lens tip — tighter dive beam
-  this.torchLight.color.set(0xf2f8ff);this.torchLight.intensity=170;this.torchLight.distance=34;
-  this.torchLight.angle=.28;this.torchLight.penumbra=.35;this.torchLight.decay=1.15;
-  this.torchLight.position.set(.4,-.36,-.95);
-  this.torchLight.target.position.set(.22,-.42,-18);
-  this.torchFill.color.set(0xd8e8f4);this.torchFill.intensity=3.5;this.torchFill.distance=6.5;
-  this.torchFill.position.set(.38,-.34,-.75);
-  this.camera.add(this.torchLight,this.torchLight.target,this.torchFill);
-
-  // One volumetric cone only — a second halo read as a duplicate / vertical ray.
-  const cone=new THREE.CylinderGeometry(.02,3.4,20,32,1,true);cone.rotateX(Math.PI/2);
-  this.beam=new THREE.Mesh(cone,this.beamMaterial(0xd4eaf8,.1));
-  this.beam.position.set(.4,-.38,-9.5);this.camera.add(this.beam);
-
+  // Lantern first — spot + volume share its aim so there is only one beam.
   this.torchBody=this.buildTorchBody();
   this.camera.add(this.torchBody);
+
+  // Soft spot wash — high penumbra so walls get light without a hard white disk.
+  this.torchLight.color.set(0xf2f8ff);this.torchLight.intensity=85;this.torchLight.distance=34;
+  this.torchLight.angle=.32;this.torchLight.penumbra=.95;this.torchLight.decay=1.15;
+  // Lens tip in lantern local space (body aims −Z).
+  this.torchLight.position.set(0,0,-.45);
+  this.torchLight.target.position.set(0,0,-22);
+  this.torchBody.add(this.torchLight,this.torchLight.target);
+
+  const cone=new THREE.CylinderGeometry(.018,3.2,20,28,1,true);cone.rotateX(Math.PI/2);
+  this.beam=new THREE.Mesh(cone,this.beamMaterial(0xd4eaf8,.09));
+  // Cone length 20 along −Z; center so the near tip sits at the lens.
+  this.beam.position.set(0,0,-10.45);
+  this.torchBody.add(this.beam);
 
   // Soft path markers (dimmer so shafts remain the hero)
   const lamp=(x:number,z:number,color:number)=>{
@@ -418,9 +418,12 @@ export class CaveWorld extends OceanWorld {
    const delta=lookDelta(this.targetYaw,this.targetPitch,horizontalLook*dt*650,(pressed('ArrowDown')-pressed('ArrowUp'))*dt*650);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;
    this.yaw=THREE.MathUtils.lerp(this.yaw,this.targetYaw,1-Math.exp(-16*dt));this.pitch=THREE.MathUtils.lerp(this.pitch,this.targetPitch,1-Math.exp(-16*dt));this.camera.rotation.set(this.pitch,this.yaw,0);
    this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
-   this.move.copy(this.forward).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));this.move.y+=pressed('Space')-pressed('KeyQ','ControlLeft','ControlRight');
-   const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.1;
-   if(this.move.lengthSq()>1)this.move.normalize();this.move.multiplyScalar(sprint?4.8:2.8);this.velocity.lerp(this.move,1-Math.exp(-4*dt));
+   // Kick = look / strafe only. Space/Q drive BCD buoyancy, not equal XYZ thrust.
+   this.move.copy(this.forward).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));
+   const bcd=pressed('Space')-pressed('KeyQ','ControlLeft','ControlRight');
+   m.buoyancy=updateBuoyancy(m.buoyancy,bcd,dt);
+   const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.01;
+   stepSwimVelocity(this.velocity,this.move,m.buoyancy,sprint,dt);
    moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);m.update(dt,sprint);this.position.copy(m.position);this.camera.position.copy(this.position);
    if(m.outcome!=='playing')this.pause();
   }
@@ -433,20 +436,20 @@ export class CaveWorld extends OceanWorld {
   (this.scene.background as THREE.Color).copy(fog.color);
   this.uniforms.uTime.value=this.time;
   const torchOn=this.mission.torch;
-  this.torchLight.visible=torchOn;this.torchFill.visible=torchOn;this.beam.visible=torchOn;
+  this.torchLight.visible=torchOn;this.beam.visible=torchOn;
   this.torchBody.visible=true;
-  this.torchLensMat.emissiveIntensity=torchOn?1.6:.08;
+  this.torchLensMat.emissiveIntensity=torchOn?1.25:.06;
   this.torchLensMat.emissive.set(torchOn?0xc8e4ff:0x223038);
   if(torchOn){
    // Depth/aim modulation scaled to the lighting-hud torch baseline (mid swim, level look).
    const torch=torchModulation(this.position.y,this.pitch);
    const mid=torchModulation(3,0);
    const iScale=torch.intensity/mid.intensity,dScale=torch.distance/mid.distance,bScale=torch.beamOpacity/mid.beamOpacity;
-   this.torchLight.intensity=170*iScale;this.torchLight.distance=34*dScale;this.torchLight.decay=1.15+(torch.decay-mid.decay);
+   this.torchLight.intensity=85*iScale;this.torchLight.distance=34*dScale;this.torchLight.decay=1.15+(torch.decay-mid.decay);
    this.torchLight.color.setRGB(torch.r,torch.g,torch.b);
-   this.torchFill.intensity=3.5*iScale;this.torchFill.color.setRGB(torch.r,torch.g,torch.b);
-   const beamMat=this.beam.material as THREE.ShaderMaterial;beamMat.uniforms.uOpacity.value=.1*bScale;beamMat.uniforms.uColor.value.setRGB(torch.r,torch.g,torch.b);
-   (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=torch.particle;
+   const beamMat=this.beam.material as THREE.ShaderMaterial;beamMat.uniforms.uOpacity.value=.09*bScale;beamMat.uniforms.uColor.value.setRGB(torch.r,torch.g,torch.b);
+   // No camera-forward particle cone — that was a second beam fighting the lantern aim.
+   (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
   }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
   // Soft bloom on shafts only — keep torch hotspots from blowing out
   this.bloom.strength=torchOn?.2:.14;
