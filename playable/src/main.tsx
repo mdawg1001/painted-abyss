@@ -6,12 +6,12 @@ import './style.css';
 
 function Icon({item}:{item:Item|null}){
  const paths:Record<Item,React.ReactNode>={
-  stone:<path fill="currentColor" opacity=".92" d="M10 30c2-10 8-16 14-18 7-2 14 2 16 10 2 9-3 18-12 20-8 2-16-2-18-12z"/>,
-  wood:<><path fill="currentColor" opacity=".85" d="M8 34 30 8l8 7L16 40z"/><path fill="none" stroke="currentColor" strokeWidth="1.6" d="m14 32 16-14M20 34l6 4"/></>,
-  flare:<><path fill="#ff3b2f" d="M19 38 24 14l7 2.5L26 40z"/><path fill="#ff8a4a" d="M24 14c1-4 3-8 4-9 2 3 5 6 6 8-3 1-7 1-10 1z"/><path fill="#ffe08a" opacity=".9" d="M26 8c0-3 1.5-6 2-7 .8 2 2 4 3 5.5-1.5.4-3.5.6-5 1.5z"/></>,
-  air:<><rect x="16" y="11" width="16" height="28" rx="6" fill="currentColor" opacity=".9"/><rect x="20" y="5" width="8" height="7" rx="2" fill="currentColor"/><path fill="none" stroke="#0a1620" strokeWidth="1.4" d="M16 22h16M24 16v14"/></>,
-  bandage:<><rect x="9" y="15" width="30" height="22" rx="3" fill="currentColor" opacity=".88"/><path fill="#0a1620" opacity=".35" d="M20 15V9h8v6m-4 8v10m-6-5h12"/></>,
-  relic:<><path fill="#c4923a" d="M24 8c8 0 14 5 14 12 0 9-8 16-16 16S6 28 6 20 12 8 24 8z"/><path fill="none" stroke="#5c3510" strokeWidth="2" d="M30 28c-8 8-18 2-16-6s12-10 14-2-6 8-6 2"/><path fill="#e8c078" d="M28 18c2 1 3 4 2 6-2 1-4 0-5-2 0-2 1-4 3-4z"/></>,
+  stone:<ellipse cx="24" cy="26" rx="14" ry="11" fill="#6a7270"/>,
+  wood:<><rect x="18" y="10" width="12" height="28" rx="3" fill="#3a4248" transform="rotate(-28 24 24)"/><rect x="20" y="12" width="8" height="6" rx="1" fill="#5a646c" transform="rotate(-28 24 24)"/></>,
+  flare:<><path fill="#e8e8e8" d="M21 40V18h6v22z"/><path fill="#ff2a1f" d="M20 18c1-6 3-12 4-14 2 3 5 8 6 12H20z"/><path fill="#ffb040" d="M23 8c0-3 1-6 1.5-7 .5 2 1.5 4 2.5 6-.5.2-2 .4-4 1z"/></>,
+  air:<><rect x="17" y="12" width="14" height="26" rx="5" fill="#c5ced4"/><rect x="20" y="6" width="8" height="8" rx="2" fill="#aeb8c0"/><path stroke="#2a3338" strokeWidth="1.2" d="M17 22h14M24 16v12" fill="none"/></>,
+  bandage:<><rect x="10" y="16" width="28" height="20" rx="3" fill="#9aa4aa"/><path fill="#5a646a" d="M22 16V10h4v6m-2 8v8m-5-4h10"/></>,
+  relic:<><path fill="#b8893a" d="M24 7c9 0 16 6 16 14 0 10-8 18-16 18S8 31 8 21 12 7 24 7z"/><path fill="none" stroke="#4a2a0a" strokeWidth="2.2" d="M31 29c-9 9-20 1-17-8s14-11 15-1-8 9-7 2"/><circle cx="28" cy="18" r="3.5" fill="#e8c878"/></>,
  };
  return <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">{item?paths[item]:null}</svg>;
 }
@@ -19,16 +19,16 @@ function Icon({item}:{item:Item|null}){
 function Compass({yaw}:{yaw:number}){
  const heading=(((-yaw*180)/Math.PI)%360+360)%360;
  const marks: {deg:number;x:number;label:string;major:boolean}[]=[];
- for(let deg=0;deg<360;deg+=15){
+ for(let deg=0;deg<360;deg+=5){
   let offset=((deg-heading+540)%360)-180;
-  if(Math.abs(offset)>58)continue;
+  if(Math.abs(offset)>52)continue;
   const label=deg===0?'N':deg===90?'E':deg===180?'S':deg===270?'W':'';
   marks.push({deg,x:offset,label,major:deg%90===0});
  }
  return <div className="compass" aria-hidden="true">
   <div className="compass-needle"/>
   <div className="compass-track">
-   {marks.map(m=><div key={m.deg} className={`compass-mark ${m.major?'major':''}`} style={{transform:`translateX(${m.x*4.2}px)`}}>
+   {marks.map(m=><div key={m.deg} className={`compass-mark ${m.major?'major':m.deg%15===0?'mid':''}`} style={{transform:`translateX(${m.x*2.55}px)`}}>
     <i/>{m.label&&<span>{m.label}</span>}
    </div>)}
   </div>

@@ -29,19 +29,20 @@ export class CaveWorld extends OceanWorld {
  fallbackTurn=0;lockDenied=false;lookPointer:{x:number;y:number}|null=null;
  torchLight=new THREE.SpotLight(0xeaf6ff,210,34,.38,.55,1.05);
  torchFill=new THREE.PointLight(0xcfe8ff,4.5,7,1.6);
- beam!:THREE.Mesh;torchBody!:THREE.Group;
+ beam!:THREE.Mesh;beamHalo!:THREE.Mesh;torchBody!:THREE.Group;
  composer!:EffectComposer;bloom!:UnrealBloomPass;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
   super(host,{onReady:()=>{},onPause:()=>{},onStatus:()=>{},onToggleUI:()=>{},onGlide:()=>{},onError:()=>{}},{deferStart:true});
   this.ui=ui;this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
-  // Deep teal void — matches reference plates
-  this.scene.background=new THREE.Color(0x020c12);this.scene.fog=new THREE.FogExp2(0x041820,.048);
+  // Deep teal void — matches reference plates (cyan haze, not pure black)
+  this.scene.background=new THREE.Color(0x041a22);this.scene.fog=new THREE.FogExp2(0x0a2e38,.038);
   this.camera.far=130;this.camera.fov=64;this.camera.updateProjectionMatrix();
-  this.renderer.toneMappingExposure=1.05;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
-  // Low ambient so torch and shafts dominate (reference low-key look)
-  this.scene.add(new THREE.HemisphereLight(0x3a6a78,0x061018,.18));
-  this.scene.add(new THREE.AmbientLight(0x0a1c24,.12));
+  this.renderer.toneMappingExposure=1.12;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  // Cool teal ambient fill so rock reads in the murk; shafts/torch still dominate
+  this.scene.add(new THREE.HemisphereLight(0x5a9eae,0x081820,.42));
+  this.scene.add(new THREE.AmbientLight(0x123840,.22));
+  const skyFill=new THREE.DirectionalLight(0x7ec8d4,.55);skyFill.position.set(-8,30,-20);this.scene.add(skyFill);
   this.buildCave();this.buildLights();this.buildComposer();
   this.guardian=this.ichthyosaur(.9);this.scene.add(this.guardian.group);
   const eyeMat=new THREE.MeshBasicMaterial({color:0xe0a772});
@@ -65,7 +66,7 @@ export class CaveWorld extends OceanWorld {
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
  }
  buildCave(){
-  const floor=this.material(0x6a7568,'sand',.88,4.2),rock=this.material(0x4a5c58,'rock',.86,2.8),ceiling=this.material(0x354448,'rock',.9,1.4);
+  const floor=this.material(0x7a8474,'sand',.88,3.4),rock=this.material(0x55666a,'rock',.86,1.6),ceiling=this.material(0x3a4c52,'rock',.9,.6);
   const floors:THREE.BufferGeometry[]=[],roofs:THREE.BufferGeometry[]=[],walls:THREE.BufferGeometry[]=[],details:THREE.BufferGeometry[]=[];
   for(const key of cells){const [c,r]=key.split(',').map(Number),p=world(c,r);
    const fg=new THREE.PlaneGeometry(CELL,CELL,2,2);fg.rotateX(-Math.PI/2);fg.translate(p.x,0,p.z);floors.push(fg);
@@ -93,15 +94,21 @@ export class CaveWorld extends OceanWorld {
  buildLights(){
   this.scene.add(this.camera);
   // Cool-white tactical torch — reference key light
+  this.torchLight.color.set(0xf0f7ff);this.torchLight.intensity=260;this.torchLight.distance=36;
+  this.torchLight.angle=.34;this.torchLight.penumbra=.42;this.torchLight.decay=1.1;
   this.torchLight.position.set(.32,-.22,-.15);
-  this.torchLight.target.position.set(.15,-.35,-14);
+  this.torchLight.target.position.set(.12,-.28,-16);
+  this.torchFill.color.set(0xd8e8f4);this.torchFill.intensity=7;this.torchFill.distance=8;
   this.torchFill.position.set(.2,-.15,-.4);
   this.camera.add(this.torchLight,this.torchLight.target,this.torchFill);
 
-  // Volumetric torch cone
-  const cone=new THREE.CylinderGeometry(.04,5.4,18,32,1,true);cone.rotateX(Math.PI/2);
-  this.beam=new THREE.Mesh(cone,this.beamMaterial(0xb8dcf0,.055));
-  this.beam.position.set(.28,-.28,-9);this.camera.add(this.beam);
+  // Volumetric torch cones (core + soft halo)
+  const cone=new THREE.CylinderGeometry(.03,4.2,19,32,1,true);cone.rotateX(Math.PI/2);
+  this.beam=new THREE.Mesh(cone,this.beamMaterial(0xd0e8f5,.11));
+  this.beam.position.set(.28,-.26,-9.2);this.camera.add(this.beam);
+  const haloGeo=new THREE.CylinderGeometry(.08,6.2,17,32,1,true);haloGeo.rotateX(Math.PI/2);
+  this.beamHalo=new THREE.Mesh(haloGeo,this.beamMaterial(0xa8cde0,.045));
+  this.beamHalo.position.set(.28,-.26,-8.4);this.camera.add(this.beamHalo);
 
   // Visible flashlight body (bottom-right, first-person)
   this.torchBody=new THREE.Group();
@@ -126,32 +133,32 @@ export class CaveWorld extends OceanWorld {
   const exit=new THREE.Group();exit.position.set(EXIT.x,.65,EXIT.z);
   const ring=new THREE.Mesh(new THREE.TorusGeometry(1.6,.05,8,48),new THREE.MeshBasicMaterial({color:0xb9ffdc}));
   ring.rotation.x=Math.PI/2;exit.add(ring);this.scene.add(exit);
-  const sunlight=new THREE.SpotLight(0xc8f4f0,280,22,.7,.85,1);
+  const sunlight=new THREE.SpotLight(0xd2f8f4,420,24,.72,.8,1);
   sunlight.position.set(32,12,-12);sunlight.target.position.set(32,0,-12);this.scene.add(sunlight,sunlight.target);
-  const poolFill=new THREE.PointLight(0x9be8e0,18,14,1.2);poolFill.position.set(32,5,-12);this.scene.add(poolFill);
-  this.addShaft(32,5.2,-12,9,.7,2.8,0xc4f2ec,.09);
-  this.addShaft(31.2,5.5,-11.2,8.5,.4,1.8,0xa8e8e0,.06,.08,-.05);
-  this.addShaft(33,5,-12.8,8.2,.35,1.6,0xb0eee6,.05,-.06,.07);
+  const poolFill=new THREE.PointLight(0xa8f0e8,28,16,1.1);poolFill.position.set(32,5,-12);this.scene.add(poolFill);
+  this.addShaft(32,5.2,-12,9,.7,2.8,0xd8faf4,.22);
+  this.addShaft(31.2,5.5,-11.2,8.5,.4,1.8,0xc0f2ea,.14,.08,-.05);
+  this.addShaft(33,5,-12.8,8.2,.35,1.6,0xc8f4ee,.12,-.06,.07);
 
   // Main cavern ceiling shafts — reference chamber god rays
   const cavern:[number,number,number,number,number,number,number][]=[
-   [2,6.2,-52,9,.5,2.4,.07],[ -3,6.4,-58,8.5,.4,2.1,.055],[6,6,-64,9.5,.55,2.6,.065],
-   [-8,6.3,-72,8,.35,1.9,.05],[4,6.5,-78,9,.45,2.3,.06],[-2,6.1,-86,8.5,.4,2.0,.05],
-   [0,6.4,-96,8,.35,1.8,.045],[10,6.2,-70,7.5,.3,1.6,.04],
+   [2,6.2,-52,9,.5,2.4,.16],[ -3,6.4,-58,8.5,.4,2.1,.13],[6,6,-64,9.5,.55,2.6,.15],
+   [-8,6.3,-72,8,.35,1.9,.11],[4,6.5,-78,9,.45,2.3,.14],[-2,6.1,-86,8.5,.4,2.0,.12],
+   [0,6.4,-96,8,.35,1.8,.1],[10,6.2,-70,7.5,.3,1.6,.09],
   ];
   for(const [x,y,z,len,top,bot,op] of cavern){
-   this.addShaft(x,y,z,len,top,bot,0x9edfd6,op,(Math.random()-.5)*.12,(Math.random()-.5)*.1);
-   const spot=new THREE.SpotLight(0xa8e4dc,35+op*400,14,.55,.9,1.2);
+   this.addShaft(x,y,z,len,top,bot,0xb8ebe4,op,(Math.random()-.5)*.12,(Math.random()-.5)*.1);
+   const spot=new THREE.SpotLight(0xb0ece4,55+op*500,15,.5,.85,1.15);
    spot.position.set(x,8.2,z);spot.target.position.set(x,0,z);this.scene.add(spot,spot.target);
   }
 
   // Entrance corridor soft shaft
-  this.addShaft(0,6.3,-22,8,.45,2.2,0x8fd0c8,.045);
-  const entrance=new THREE.SpotLight(0x9ad8d0,42,12,.5,.85,1.1);
+  this.addShaft(0,6.3,-22,8,.45,2.2,0xa8e0d8,.1);
+  const entrance=new THREE.SpotLight(0xa8e4dc,70,13,.48,.8,1.1);
   entrance.position.set(0,8.5,-22);entrance.target.position.set(0,0,-22);this.scene.add(entrance,entrance.target);
 
   // Relic alcove pale shaft
-  this.addShaft(0,5.8,-110,7.5,.3,1.5,0xb8c9a0,.04);
+  this.addShaft(0,5.8,-110,7.5,.3,1.5,0xc4d4b0,.08);
  }
  buildComposer(){
   const w=this.host.clientWidth,h=this.host.clientHeight;
@@ -278,16 +285,16 @@ export class CaveWorld extends OceanWorld {
    moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);m.update(dt,sprint);this.position.copy(m.position);this.camera.position.copy(this.position);
    if(m.outcome!=='playing')this.pause();
   }
-  // Atmosphere: teal murk that deepens toward the relic, clears near the lit exit
+  // Atmosphere: cyan-teal murk (reference palette), denser in deep chambers, clears at exit
   const deep=THREE.MathUtils.smoothstep(-this.position.z,35,100);
   const nearExit=1-THREE.MathUtils.smoothstep(distance(this.position,EXIT),4,22);
   const fog=this.scene.fog as THREE.FogExp2;
-  fog.color.set(0x03151c).lerp(new THREE.Color(0x020a14),deep).lerp(new THREE.Color(0x0a3a42),nearExit*.55);
-  fog.density=.042+.028*deep-.018*nearExit;
+  fog.color.set(0x0c3540).lerp(new THREE.Color(0x062430),deep).lerp(new THREE.Color(0x1a5a62),nearExit*.65);
+  fog.density=.032+.022*deep-.014*nearExit;
   (this.scene.background as THREE.Color).copy(fog.color);
   this.uniforms.uTime.value=this.time;
   const torchOn=this.mission.torch;
-  this.torchLight.visible=torchOn;this.torchFill.visible=torchOn;this.beam.visible=torchOn;
+  this.torchLight.visible=torchOn;this.torchFill.visible=torchOn;this.beam.visible=torchOn;this.beamHalo.visible=torchOn;
   this.torchBody.visible=true;
   (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=torchOn?1:0;
   // Bloom lifts shaft cores and torch hotspot without washing the HUD
