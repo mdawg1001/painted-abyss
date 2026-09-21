@@ -40,8 +40,8 @@ export function createDiveChests():Chest[]{
   {id:1,kind:'military',position:{x:-22,y:FLOOR_Y,z:-52},yaw:.35,open:false},
   // East shelf opposite — plastic utility crate.
   {id:2,kind:'plastic',position:{x:20,y:FLOOR_Y,z:-60},yaw:-.9,open:false},
-  // Near the bone alcove approach — suitcase half-buried in silt/rock.
-  {id:3,kind:'suitcase',position:{x:12,y:FLOOR_Y,z:-100},yaw:2.4,open:false},
+  // Near the bone alcove approach — suitcase on an open floor tile.
+  {id:3,kind:'suitcase',position:{x:12,y:FLOOR_Y,z:-104},yaw:2.4,open:false},
  ];
 }
 /** Metres below the surface plane. Shared by HUD, gas, buoyancy, and torch. */

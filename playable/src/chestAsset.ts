@@ -53,9 +53,9 @@ export function litChestMaterials(root:THREE.Object3D){
   for(const m of mats){
    if(!m||!('roughness' in m))continue;
    const sm=m as THREE.MeshStandardMaterial;
-   sm.envMapIntensity=.25;
-   sm.emissive=new THREE.Color(0x1a2228);
-   sm.emissiveIntensity=.22;
+   sm.envMapIntensity=.35;
+   sm.emissive=new THREE.Color(0x2a3840);
+   sm.emissiveIntensity=.38;
    sm.needsUpdate=true;
   }
  });
