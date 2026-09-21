@@ -157,6 +157,11 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   content:'';position:absolute;left:50%;top:0;bottom:0;width:1px;
   background:rgba(242,247,248,.45);transform:translateX(-50%);
 }
+.meter.trim em.trim-bias{
+  position:absolute;top:-2px;bottom:-2px;width:2px;margin-left:-1px;
+  background:rgba(226,200,136,.95);box-shadow:0 0 4px rgba(226,200,136,.55);
+  pointer-events:none;
+}
 .meter.trim i{
   position:absolute;top:0;bottom:0;left:50%;width:0;
   background:#8fd4c4;box-shadow:0 0 5px rgba(143,212,196,.45);

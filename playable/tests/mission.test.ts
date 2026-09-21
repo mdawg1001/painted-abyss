@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,applySiltToTorch,stepSilt,siltAt,createSiltPlume,siltLoad,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,updateBuoyancy,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,PREDATOR_HP_MAX,PREDATOR_BREAK_HP} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,applySiltToTorch,stepSilt,siltAt,createSiltPlume,siltLoad,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,PREDATOR_HP_MAX,PREDATOR_BREAK_HP} from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{for(let i=0;i<seconds*60;i++)m.update(1/60);};
 test('hydrostatic depth and ata share one surface plane',()=>{
  assert.equal(hydrostaticDepth(SURFACE_Y),0);
@@ -148,17 +148,17 @@ test('predator transitions patrol → alert → chase → search → patrol',()=
 test('predator cannot see or bite through rock',()=>{const m=new Mission();m.predator.position=world(8,17);m.position=world(13,17);advance(m,.2);assert.equal(m.predator.state,'patrol');assert.equal(m.health,100);});
 test('four bites lose the mission; fresh mission resets every system',()=>{const m=new Mission();m.position=world(16,19);m.predator.position={...m.position};m.predator.state='chase';advance(m,6);assert.equal(m.outcome,'lost');assert.equal(m.health,0);const fresh=new Mission();assert.equal(fresh.health,100);assert.equal(fresh.air,AIR_MAIN_MAX);assert.equal(fresh.bailout,0);assert.equal(fresh.outcome,'playing');assert.equal(fresh.pending,null);assert.equal(fresh.pickups[0].item,'relic');assert.deepEqual(fresh.position,START);});
 test('air loss, pony bailout, sealant and distraction have tangible effects',()=>{
- const m=new Mission();m.air=100;m.selected=3;m.use();
- assert.equal(m.air,100);assert.equal(m.bailout,AIR_BAILOUT_MAX);assert.equal(m.inventory[3],null);assert.equal(m.feedbackKind,'ok');
+ const m=new Mission();m.air=20;m.selected=3;m.use();
+ assert.equal(m.air,20);assert.equal(m.bailout,AIR_BAILOUT_LITRES);assert.equal(m.inventory[3],null);assert.equal(m.feedbackKind,'ok');
  m.use();assert.equal(m.feedbackKind,'blocked'); // slot empty
- m.inventory[3]='air';m.use();assert.equal(m.bailout,AIR_BAILOUT_MAX);assert.equal(m.feedbackKind,'blocked'); // pony already full
+ m.inventory[3]='air';m.use();assert.equal(m.bailout,AIR_BAILOUT_LITRES);assert.equal(m.feedbackKind,'blocked'); // pony already full
  m.health=30;m.selected=4;m.use();assert.equal(m.health,75);
  m.selected=2;m.use();assert.ok(m.decoy);assert.equal(m.predator.state,'search');advance(m,13);assert.equal(m.decoy,null);
  m.air=.01;m.bailout=0;m.update(.05);assert.equal(m.outcome,'lost');
 });
 test('high-stakes tank empties in well under four minutes at depth',()=>{
  const m=new Mission(true);m.position={...START,y:FLOOR_Y};
- // Floor cruise: ~1.65 ATA × 1 → ~55 s of a 90 s surface tank.
+ // Floor cruise: ~1.65 ATA × 0.3 L/s → ~55 s of a 27 L surface tank.
  for(let i=0;i<Math.ceil(70*60);i++)m.update(1/60,false);
  assert.equal(m.outcome,'lost');
  assert.ok(m.elapsed<80,'main tank should die well before the old 4-minute fuse');
@@ -167,15 +167,29 @@ test('gas drain scales with ATA and sprint; bailout feeds after main',()=>{
  assert.ok(gasDrainRate(FLOOR_Y,false)>gasDrainRate(SURFACE_Y,false));
  assert.ok(gasDrainRate(FLOOR_Y,true)>gasDrainRate(FLOOR_Y,false));
  assert.ok(gasDrainRate(FLOOR_Y,false,true)>gasDrainRate(FLOOR_Y,true));
- assert.ok(Math.abs(gasDrainRate(SURFACE_Y,false)-1)<1e-9);
+ assert.ok(Math.abs(gasDrainRate(SURFACE_Y,false)-(SAC_CRUISE_LPM/60))<1e-9);
+ assert.equal(AIR_MAIN_LITRES,27);
+ assert.equal(AIR_BAILOUT_LITRES,9);
  const deep=new Mission(true);deep.position={...START,y:FLOOR_Y};
  const shallow=new Mission(true);shallow.position={...START,y:SURFACE_Y};
  for(let i=0;i<60;i++){deep.update(1/60,true);shallow.update(1/60,false);}
  assert.ok(deep.air<shallow.air);
- const m=new Mission(true);m.air=.2;m.bailout=AIR_BAILOUT_MAX;
+ const m=new Mission(true);m.air=.2;m.bailout=AIR_BAILOUT_LITRES;
  for(let i=0;i<20;i++)m.update(.05,false);
- assert.equal(m.air,0);assert.ok(m.bailout<AIR_BAILOUT_MAX);assert.equal(m.outcome,'playing');
+ assert.equal(m.air,0);assert.ok(m.bailout<AIR_BAILOUT_LITRES);assert.equal(m.outcome,'playing');
  m.bailout=.01;m.update(.2,false);assert.equal(m.outcome,'lost');
+});
+test('player can lock a non-zero trim bias that idle buoyancy settles onto',()=>{
+ let trim=0;
+ for(let i=0;i<180;i++)trim=updateBuoyancyTrim(trim,1,1/60);
+ assert.ok(trim>BCD_TRIM_BIAS_MAX*.85);
+ assert.ok(trim<=BCD_TRIM_BIAS_MAX+1e-9);
+ let b=0;
+ for(let i=0;i<180;i++)b=updateBuoyancy(b,0,1/60,trim);
+ assert.ok(Math.abs(b-trim)<.08,'idle settles onto locked bias');
+ trim=0;b=.4;
+ for(let i=0;i<180;i++)b=updateBuoyancy(b,0,1/60,trim);
+ assert.equal(b,0);
 });
 test('guardian bite raises panic gas effort briefly',()=>{
  const m=new Mission(true);m.position=world(16,19);m.position.y=FLOOR_Y;
