@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { type PbrMaps, triplanarGlsl } from '../rockMaps';
 
 type Hooks = { onReady:()=>void; onPause:()=>void; onStatus:(d:number,z:string)=>void; onToggleUI:()=>void; onGlide:(v:boolean)=>void; onError:(s:string)=>void };
 type Creature = { group:THREE.Group; fins:THREE.Group[]; tail:THREE.Group; center:THREE.Vector3; radius:number; speed:number; phase:number; kind:string; scale:number };
@@ -47,28 +48,78 @@ export class OceanWorld {
     this.animate();requestAnimationFrame(()=>hooks.onReady());
   }
 
-  material(color:THREE.ColorRepresentation,detail:'rock'|'skin'|'sand'|'plain'='plain',roughness=.82,causticGain=1){
+  material(color:THREE.ColorRepresentation,detail:'rock'|'skin'|'sand'|'plain'='plain',roughness=.82,causticGain=1,maps?:PbrMaps){
     const m=new THREE.MeshStandardMaterial({color,roughness,metalness:detail==='skin'?.05:0});
     const gain=Math.max(0,causticGain);
+    const usePbr=!!maps&&(detail==='rock'||detail==='sand');
     m.onBeforeCompile=shader=>{
       shader.uniforms.uTime=this.uniforms.uTime;
-      shader.vertexShader='varying vec3 vOceanWorld; varying vec3 vOceanLocal;\n'+shader.vertexShader;
+      shader.vertexShader='varying vec3 vOceanWorld; varying vec3 vOceanLocal; varying vec3 vOceanWNormal;\n'+shader.vertexShader;
       shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvOceanLocal=position;');
+      shader.vertexShader=shader.vertexShader.replace('#include <defaultnormal_vertex>',`#include <defaultnormal_vertex>
+        vOceanWNormal=normalize(mat3(modelMatrix)*objectNormal);`);
       shader.vertexShader=shader.vertexShader.replace('#include <worldpos_vertex>',`#include <worldpos_vertex>
         vec4 oceanPos=vec4(transformed,1.0);
         #ifdef USE_INSTANCING
           oceanPos=instanceMatrix*oceanPos;
         #endif
         vOceanWorld=(modelMatrix*oceanPos).xyz;`);
-      shader.fragmentShader='uniform float uTime; varying vec3 vOceanWorld; varying vec3 vOceanLocal;\n'+shaderNoise+shader.fragmentShader;
+      let fragHead='uniform float uTime; varying vec3 vOceanWorld; varying vec3 vOceanLocal; varying vec3 vOceanWNormal;\n'+shaderNoise;
+      if(usePbr&&maps){
+        shader.uniforms.uPbrDiff={value:maps.diff};
+        shader.uniforms.uPbrNor={value:maps.nor};
+        shader.uniforms.uPbrArm={value:maps.arm};
+        shader.uniforms.uPbrScale={value:maps.scale};
+        fragHead+='uniform sampler2D uPbrDiff;uniform sampler2D uPbrNor;uniform sampler2D uPbrArm;uniform float uPbrScale;\n'+triplanarGlsl;
+      }
+      shader.fragmentShader=fragHead+shader.fragmentShader;
       let detailCode='';
-      if(detail==='sand')detailCode=`float grain=valueNoise(vOceanWorld.xz*15.);float ripple=sin(vOceanWorld.x*.7+vOceanWorld.z*3.+valueNoise(vOceanWorld.xz*.11)*5.);diffuseColor.rgb*=.82+grain*.22+ripple*.07;`;
-      if(detail==='rock')detailCode=`float n=valueNoise(vOceanWorld.xz*1.7+vOceanWorld.y*.8);float layer=sin(vOceanWorld.y*5.+valueNoise(vOceanWorld.xz)*3.);diffuseColor.rgb*=.67+n*.5+layer*.075;diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.12,.22,.16),smoothstep(.57,.84,n)*.6);`;
+      if(usePbr){
+        // Albedo + AO only here; roughness/metalness applied after their map chunks.
+        detailCode=`{
+          vec3 wn=normalize(vOceanWNormal);
+          vec3 b=triBlend(wn);
+          vec3 albedo=triAlbedo(uPbrDiff,vOceanWorld,b,uPbrScale);
+          vec3 arm=triArm(uPbrArm,vOceanWorld,b,uPbrScale);
+          float wet=${detail==='sand'?'0.5':'0.62'};
+          albedo*=mix(1.,.62,wet);
+          diffuseColor.rgb*=albedo*mix(.62,1.,arm.r);
+        }`;
+      }else{
+        if(detail==='sand')detailCode=`float grain=valueNoise(vOceanWorld.xz*15.);float ripple=sin(vOceanWorld.x*.7+vOceanWorld.z*3.+valueNoise(vOceanWorld.xz*.11)*5.);diffuseColor.rgb*=.82+grain*.22+ripple*.07;`;
+        if(detail==='rock')detailCode=`float n=valueNoise(vOceanWorld.xz*1.7+vOceanWorld.y*.8);float layer=sin(vOceanWorld.y*5.+valueNoise(vOceanWorld.xz)*3.);diffuseColor.rgb*=.67+n*.5+layer*.075;diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.12,.22,.16),smoothstep(.57,.84,n)*.6);`;
+      }
       if(detail==='skin')detailCode=`float blot=valueNoise(vOceanLocal.xz*5.+vOceanLocal.y*2.);float fine=valueNoise(vOceanLocal.xy*48.);float bands=sin(vOceanLocal.x*5.5+vOceanLocal.z*3.+blot*4.);diffuseColor.rgb*=.6+blot*.5+fine*.15;diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*.42,smoothstep(.5,.9,bands)*.45);diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.54,.62,.49),(1.-smoothstep(-.75,.0,vOceanLocal.y))*.65);`;
       shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>\n${detailCode}`);
-      shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.055*gain).toFixed(4)};\n#include <opaque_fragment>`);
-    };
-    m.customProgramCacheKey=()=>`${detail}:${gain.toFixed(2)}`;
+      if(usePbr){
+        const wet=detail==='sand'?'0.5':'0.62';
+        shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
+          {
+            vec3 wn=normalize(vOceanWNormal);vec3 b=triBlend(wn);
+            vec3 arm=triArm(uPbrArm,vOceanWorld,b,uPbrScale);
+            float wet=${wet};
+            roughnessFactor=clamp(mix(arm.g*roughnessFactor,arm.g*roughnessFactor*.35,wet),.06,.95);
+          }`);
+        shader.fragmentShader=shader.fragmentShader.replace('#include <metalnessmap_fragment>',`#include <metalnessmap_fragment>
+          {
+            vec3 wn=normalize(vOceanWNormal);vec3 b=triBlend(wn);
+            vec3 arm=triArm(uPbrArm,vOceanWorld,b,uPbrScale);
+            metalnessFactor=clamp(arm.b,.0,.35);
+          }`);
+        shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
+          {
+            vec3 wn=normalize(vOceanWNormal);
+            vec3 b=triBlend(wn);
+            normal=triNormalView(uPbrNor,vOceanWorld,wn,b,uPbrScale,viewMatrix);
+          }`);
+      }
+      if(usePbr){
+        // Soft caustics only — strong procedural caustics fight photographic albedo
+        shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.012*gain).toFixed(4)};\n#include <opaque_fragment>`);
+      }else{
+        shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.055*gain).toFixed(4)};\n#include <opaque_fragment>`);
+      }    };
+    m.customProgramCacheKey=()=>`${detail}:${gain.toFixed(2)}:pbr${usePbr?maps!.key:'0'}`;
     return m;
   }
 
