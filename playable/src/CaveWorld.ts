@@ -76,19 +76,27 @@ void main(){
 /** Soft additive floor caustic pool — 4×4 atlas frames under a shaft. */
 const causticPoolVert=`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
 const causticPoolFrag=`varying vec2 vUv;uniform sampler2D uMap;uniform float uTime;uniform vec3 uColor;uniform float uOpacity;
+float caustic(vec2 p,float t){
+  p+=vec2(sin(p.y*.6+t*.37),cos(p.x*.7+t*.29))*.8;
+  float a=sin(p.x*1.9+p.y*.6+t*.52)+sin(p.y*2.1-p.x*.3-t*.41);
+  float b=sin(p.x*2.6-p.y*.8-t*.32)+sin(p.y*2.5+p.x*.6+t*.38);
+  return pow(1.-abs(sin(a+b)),12.);
+}
 void main(){
-  float mask=smoothstep(1.,.18,length(vUv-.5)*2.);
+  float mask=smoothstep(1.,.15,length(vUv-.5)*2.);
   if(mask<.01)discard;
+  // Procedural network (always visible) + atlas modulation when loaded.
+  float proc=caustic(vUv*6.5,uTime*.9);
   float frame=mod(floor(uTime*11.),16.);
   float col=mod(frame,4.);
   float row=3.-floor(frame/4.);
   vec2 atlasUv=(vUv+vec2(col,row))*.25;
   vec4 tex=texture2D(uMap,atlasUv);
-  float lum=max(tex.a,max(tex.r,max(tex.g,tex.b)));
-  // Boost midtones so the atlas pattern survives additive wash from SpotLights.
-  float a=pow(lum,0.75)*mask*uOpacity;
-  if(a<.008)discard;
-  gl_FragColor=vec4(uColor*mix(vec3(.75),tex.rgb,max(tex.a,.5)),a);
+  float atlas=max(tex.a,max(tex.r,max(tex.g,tex.b)));
+  float lum=max(proc*.95,atlas*.85);
+  float a=pow(lum,.7)*mask*uOpacity;
+  if(a<.01)discard;
+  gl_FragColor=vec4(uColor*(.55+.45*lum),a);
 }`;
 /** Torch volume: Beer–Lambert scatter along the spot cone (not a flat lit shell). */
 const torchBeamVert=`varying vec2 vUv;varying vec3 vLocal;varying vec3 vView;
@@ -689,10 +697,10 @@ export class CaveWorld extends OceanWorld {
   const exit=new THREE.Group();exit.position.set(EXIT.x,.65,EXIT.z);
   const ring=new THREE.Mesh(new THREE.TorusGeometry(1.6,.05,8,48),new THREE.MeshBasicMaterial({color:0xb9ffdc}));
   ring.rotation.x=Math.PI/2;exit.add(ring);this.scene.add(exit);
-  const sunlight=new THREE.SpotLight(0xd2f8f4,220,26,.72,.85,1);
+  const sunlight=new THREE.SpotLight(0xd2f8f4,140,26,.72,.9,1);
   sunlight.position.set(32,12,-12);sunlight.target.position.set(32,0,-12);this.scene.add(sunlight,sunlight.target);
-  const poolFill=new THREE.PointLight(0xa8f0e8,22,16,1.1);poolFill.position.set(32,5,-12);this.scene.add(poolFill);
-  this.addShaft(32,5.2,-12,9,.75,2.9,0xe0fdf8,.38,0,0,{caustic:true,causticR:5.5});
+  const poolFill=new THREE.PointLight(0xa8f0e8,16,14,1.15);poolFill.position.set(32,4.5,-12);this.scene.add(poolFill);
+  this.addShaft(32,5.2,-12,9,.75,2.9,0xe0fdf8,.4,0,0,{caustic:true,causticR:5.8});
 
   // Main cavern ceiling shaft
   const cavern:[number,number,number,number,number,number,number][]=[
@@ -891,13 +899,12 @@ export class CaveWorld extends OceanWorld {
  }
  /** Teleport helpers for lighting screenshots (`?shaftShot=1` / `?torchShot=1`). */
  applyQaShot(){
-  if(this.qaShotApplied||typeof location==='undefined')return;
+  if(typeof location==='undefined')return;
   const q=new URLSearchParams(location.search);
   const shaft=q.has('shaftShot');
   const torch=q.has('torchShot');
   if(!shaft&&!torch)return;
-  this.qaShotApplied=true;
-  window.setTimeout(()=>{
+  const place=()=>{
    if(!this.alive||!this.playing)return;
    this.mission.selected=1;
    this.mission.torch=true;
@@ -912,9 +919,15 @@ export class CaveWorld extends OceanWorld {
    }
    this.mission.position.x=this.position.x;this.mission.position.y=this.position.y;this.mission.position.z=this.position.z;
    this.camera.position.copy(this.position);
+   this.velocity.set(0,0,0);
    this.syncHeldTorch();
    this.publish();
-  },250);
+  };
+  // Re-assert a few times — first frames can overwrite from spawn / collision settle.
+  if(!this.qaShotApplied){
+   this.qaShotApplied=true;
+   [250,600,1200].forEach(ms=>window.setTimeout(place,ms));
+  }
  }
  pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
  reset(){
