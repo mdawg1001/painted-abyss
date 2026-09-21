@@ -415,7 +415,15 @@ export class CaveWorld extends OceanWorld {
    this.move.copy(this.forward).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));this.move.y+=pressed('Space')-pressed('KeyQ','ControlLeft','ControlRight');
    const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.1;
    if(this.move.lengthSq()>1)this.move.normalize();this.move.multiplyScalar(sprint?4.8:2.8);this.velocity.lerp(this.move,1-Math.exp(-4*dt));
-   moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);m.update(dt,sprint);this.position.copy(m.position);this.camera.position.copy(this.position);
+   moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);m.update(dt,sprint);this.position.copy(m.position);
+   // Presentation-only hover bob when nearly still — never moves mission.position
+   const speed=this.velocity.length();
+   const bobBlend=1-THREE.MathUtils.smoothstep(speed,.2,1.4);
+   const bobY=Math.sin(this.time*1.1)*.05*bobBlend;
+   const bobSide=Math.sin(this.time*.65)*.025*bobBlend;
+   const bobFwd=Math.cos(this.time*.5)*.025*bobBlend;
+   this.camera.position.copy(this.position).addScaledVector(this.upAxis,bobY).addScaledVector(this.right,bobSide).addScaledVector(this.forward,bobFwd);
+
    if(m.outcome!=='playing')this.pause();
   }
   // Atmosphere: cyan-teal murk (reference palette), denser in deep chambers, clears at exit
