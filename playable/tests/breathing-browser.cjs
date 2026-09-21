@@ -19,11 +19,15 @@ const assert=require('node:assert/strict');
    const chimeCtx=new OfflineAudioContext(1,48000,48000),chimeMaster=chimeCtx.createGain();
    chimeMaster.connect(chimeCtx.destination);exported.playDiveChime(chimeCtx,chimeMaster);
    const chime=(await chimeCtx.startRendering()).getChannelData(0);
-   return {inhale:rms(.5,1),exhale:rms(2.3,2.8),betweenBreaths:rms(1.65,1.85),betweenCycles:rms(4,4.4),chimePeak:Math.max(...chime)};
+   const clickCtx=new OfflineAudioContext(1,Math.round(48000*.2),48000),clickMaster=clickCtx.createGain();
+   clickMaster.connect(clickCtx.destination);exported.playInventoryClick(clickCtx,clickMaster);
+   const click=(await clickCtx.startRendering()).getChannelData(0);
+   return {inhale:rms(.5,1),exhale:rms(2.3,2.8),betweenBreaths:rms(1.65,1.85),betweenCycles:rms(4,4.4),chimePeak:Math.max(...chime),clickPeak:Math.max(...click)};
   },compiled);
   assert.ok(result.inhale>.01,JSON.stringify(result));assert.ok(result.exhale>.01,JSON.stringify(result));
   assert.ok(result.betweenBreaths<.00001);assert.ok(result.betweenCycles<.00001);
   assert.ok(result.chimePeak>.1);
-  console.log(JSON.stringify({checks:['Inhale and exhale remain audible','No generated ambience between breaths','No generated ambience between breathing cycles','Chime still produces audio'],...result}));
+  assert.ok(result.clickPeak>.25,JSON.stringify(result));
+  console.log(JSON.stringify({checks:['Inhale and exhale remain audible','No generated ambience between breaths','No generated ambience between breathing cycles','Chime still produces audio','Inventory click peak is clearly above soft UI levels'],...result}));
  }finally{await browser.close();}
 })().catch(error=>{console.error(error);process.exit(1);});

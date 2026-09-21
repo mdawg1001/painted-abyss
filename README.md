@@ -1,8 +1,14 @@
-# Painted Abyss — First Dive · 0.1.7
+# Painted Abyss — First Dive · 0.1.10
 
-The live build version is always shown in the game UI as **BUILD v…** (menu and during the dive). It comes from `playable/package.json`. Agents must bump that version on every playable change — see `.cursor/rules/playable-version.mdc`.
+The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
-Includes a short inventory select click, quieter first-play tip, sound, and continuous 360° horizontal camera turning. When pointer lock is unavailable, hold the pointer near either edge to keep turning; move it back towards the centre to stop.
+```sh
+node playable/refresh.mjs
+```
+
+That pulls `main`, stops the old server on port 5173, rebuilds, and serves. Agents must bump `playable/package.json` and commit `playable/dist` on every playable change — see `.cursor/rules/playable-version.mdc`.
+
+Includes a clearly audible inventory select click/snap, quieter first-play tip, sound, and continuous 360° horizontal camera turning. When pointer lock is unavailable, hold the pointer near either edge to keep turning; move it back towards the centre to stop.
 
 ## Open in Cursor
 
@@ -20,7 +26,7 @@ Open the local address printed in the terminal. Pull the latest commits before c
 
 A small playable underwater survival mission built from the supplied Ancient Seas React / Three.js foundation. Recover an ammonite relic, survive one guardian, and extract through a narrow passage into a lit pool. Intended first-play duration: about 2–4 minutes. A rehearsed scripted route completes in about 89 seconds.
 
-The supplied **Underwater Ambience** track loops during the dive, fades in gently, and shares the existing M mute and Esc pause controls. Resuming continues the music; restarting a dive starts it again. The original MP3 is included unchanged at `playable/src/assets/underwater-ambience.mp3`. The generated water ambience has been removed: the remaining generated sounds are regulator breathing (with quiet gaps between breaths) and the two-tone chime.
+The supplied **Underwater Ambience** track loops during the dive, fades in gently, and shares the existing M mute and Esc pause controls. Resuming continues the music; restarting a dive starts it again. The original MP3 is included unchanged at `playable/src/assets/underwater-ambience.mp3`. The generated water ambience has been removed: the remaining generated sounds are regulator breathing (with quiet gaps between breaths), the two-tone chime, and a short mechanical inventory select click/snap on 1–5.
 
 ## Play the included build — no dependency installation
 

@@ -1,6 +1,6 @@
 {
   "name": "painted-abyss-first-dive",
-  "version": "0.1.7",
+  "version": "0.1.10",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --import tsx --test tests/*.test.ts",
-    "start": "node serve.mjs"
+    "start": "node serve.mjs",
+    "refresh": "node refresh.mjs"
   },
   "dependencies": {
     "react": "19.1.1",
