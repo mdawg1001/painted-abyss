@@ -1,5 +1,5 @@
 # Fish Knife (Poly Haven)
 Source: https://polyhaven.com/a/fish_knife
-Author: Mateusz Sadek
-License: CC0 1.0 Universal — https://creativecommons.org/publicdomain/zero/1.0/
+License: CC0 1.0 · Mateusz Sadek
 Runtime copy served from `/assets/knife/`.
+HUD `thumb.png` is a square crop of Poly Haven’s orthographic render.
