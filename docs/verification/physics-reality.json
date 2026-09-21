@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-21T11:06:39.434Z",
+  "generatedAt": "2026-09-21T11:07:20.325Z",
   "unitAssumption": "1 world unit ≈ 1 metre (CELL=4 m tiles, playable y ∈ [0.65, 7.1])",
   "measured": {
     "cruiseMs": 1.5,
@@ -79,6 +79,6 @@
     "depthScale": "SHALLOW CAVE — ~6.5 m playable y band; torch murk is stylistic, not optical attenuation law.",
     "depthHud": "HYDROSTATIC — DEPTH = round(SURFACE_Y − y); −Z no longer fakes metres.",
     "predatorPacing": "DESIGNED CHASE — chase 1.75 m/s between cruise and sprint.",
-    "overall": "Gameplay-first survival with dive-plausible locomotion; gas still compressed."
+    "overall": "Gameplay-first survival with paced force locomotion; gas still compressed."
   }
 }
