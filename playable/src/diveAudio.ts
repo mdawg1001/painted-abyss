@@ -45,19 +45,32 @@ export function playDiveChime(ctx: AudioContext, master: GainNode) {
   }
 }
 
-/** Short UI tick when the inventory selection moves to a different slot. */
+/** Clear UI tick when the inventory selection moves to a different slot. */
 export function playInventoryClick(ctx: AudioContext, master: GainNode) {
   const start = ctx.currentTime;
-  const tone = ctx.createOscillator();
-  const envelope = ctx.createGain();
-  tone.type = 'triangle';
-  tone.frequency.setValueAtTime(1650, start);
-  tone.frequency.exponentialRampToValueAtTime(720, start + .035);
-  envelope.gain.setValueAtTime(0, start);
-  envelope.gain.linearRampToValueAtTime(.11, start + .003);
-  envelope.gain.exponentialRampToValueAtTime(.001, start + .045);
-  tone.connect(envelope).connect(master);
-  tone.start(start);
-  tone.stop(start + .05);
-  tone.onended = () => { tone.disconnect(); envelope.disconnect(); };
+  // Bright tip so the select reads over dive music and regulator breathing.
+  const tip = ctx.createOscillator();
+  const tipEnv = ctx.createGain();
+  tip.type = 'sine';
+  tip.frequency.value = 2200;
+  tipEnv.gain.setValueAtTime(0, start);
+  tipEnv.gain.linearRampToValueAtTime(.3, start + .002);
+  tipEnv.gain.exponentialRampToValueAtTime(.001, start + .045);
+  tip.connect(tipEnv).connect(master);
+  tip.start(start);
+  tip.stop(start + .05);
+  tip.onended = () => { tip.disconnect(); tipEnv.disconnect(); };
+
+  const body = ctx.createOscillator();
+  const bodyEnv = ctx.createGain();
+  body.type = 'triangle';
+  body.frequency.setValueAtTime(1400, start);
+  body.frequency.exponentialRampToValueAtTime(720, start + .07);
+  bodyEnv.gain.setValueAtTime(0, start);
+  bodyEnv.gain.linearRampToValueAtTime(.38, start + .004);
+  bodyEnv.gain.exponentialRampToValueAtTime(.001, start + .1);
+  body.connect(bodyEnv).connect(master);
+  body.start(start);
+  body.stop(start + .11);
+  body.onended = () => { body.disconnect(); bodyEnv.disconnect(); };
 }
