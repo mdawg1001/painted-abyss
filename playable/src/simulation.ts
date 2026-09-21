@@ -4,9 +4,16 @@ export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic';
 export type Pickup={id:number;item:Item;position:Point};
 export type PredatorState='patrol'|'alert'|'chase'|'search';
 export const CELL=4;
+/** Playable water column: floor → surface (ceiling of `fits`). World Y is metres. */
+export const FLOOR_Y=.65;
+export const SURFACE_Y=7.1;
 export const START:Point={x:0,y:3,z:-12};
 export const RELIC:Point={x:0,y:2,z:-112};
 export const EXIT:Point={x:32,y:3,z:-12};
+/** Metres below the surface plane. Shared by HUD, gas, buoyancy, and torch. */
+export function hydrostaticDepth(y:number){return Math.max(0,SURFACE_Y-y);}
+/** Ambient pressure in atmospheres (≈ 1 + depth_m/10). */
+export function ata(y:number){return 1+hydrostaticDepth(y)/10;}
 export const ITEMS:Record<Item,{name:string;short:string;description:string;hint:string}>={
  stone:{name:'Limestone',short:'Stone',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  wood:{name:'Driftwood',short:'Wood',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
@@ -26,7 +33,7 @@ export const tile=(p:Point)=>({col:Math.round(p.x/CELL)+11,row:Math.round(-p.z/C
 export const distance=(a:Point,b:Point)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
 export function isOpen(x:number,z:number){return cells.has(`${Math.round(x/CELL)+11},${Math.round(-z/CELL)}`);}
 export function fits(p:Point,r=.48){
- if(p.y<.65||p.y>7.1)return false;
+ if(p.y<FLOOR_Y||p.y>SURFACE_Y)return false;
  for(let a=0;a<8;a++)if(!isOpen(p.x+Math.cos(a*Math.PI/4)*r,p.z+Math.sin(a*Math.PI/4)*r))return false;
  return isOpen(p.x,p.z);
 }
@@ -53,9 +60,11 @@ export type TorchModulation={intensity:number;distance:number;decay:number;beamO
 /**
  * Underwater torch response from swim height and look pitch (Three.js YXZ: +pitch looks down).
  * Deeper / floor-aimed → dimmer, shorter, muddier. Shallower / ceiling-aimed → brighter, cooler.
+ * Clarity uses hydrostatic depth so torch, HUD, and future gas share one depth model.
  */
 export function torchModulation(depthY:number,pitch:number):TorchModulation{
- const clarity=Math.max(0,Math.min(1,(depthY-.65)/(7.1-.65)));
+ const column=SURFACE_Y-FLOOR_Y;
+ const clarity=Math.max(0,Math.min(1,1-hydrostaticDepth(depthY)/column));
  const aimUp=Math.max(-1,Math.min(1,-pitch/1.4));
  const murk=1-clarity;
  const floorBias=Math.max(0,-aimUp);
