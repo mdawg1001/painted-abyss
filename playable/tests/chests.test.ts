@@ -34,3 +34,11 @@ test('NOTICE documents the three chest attributions',async()=>{
  assert.match(notice,/Fabi_G/);
  assert.match(notice,/Maximilian Schuster/);
 });
+
+test('plastic crate glTF is opaque double-sided (not BLEND ghost walls)',async()=>{
+ const meta=CHEST_META.plastic;
+ const gltfPath=join(root,meta.folder,meta.gltf);
+ const gltf=JSON.parse(await readFile(gltfPath,'utf8'));
+ assert.equal(gltf.materials[0].alphaMode,'OPAQUE');
+ assert.equal(gltf.materials[0].doubleSided,true);
+});
