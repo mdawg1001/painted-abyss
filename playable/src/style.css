@@ -127,6 +127,101 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   text-shadow:0 1px 8px rgba(0,0,0,.75),0 0 1px rgba(0,0,0,.9);
 }
 
+.map-chip{
+  position:absolute;left:28px;top:108px;pointer-events:none;
+  display:flex;align-items:baseline;gap:10px;
+  font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:500;
+  letter-spacing:.14em;color:var(--hud-dim);
+  text-shadow:0 1px 8px rgba(0,0,0,.75);
+  padding:6px 12px;border:1px solid rgba(180,210,200,.22);
+  background:rgba(2,12,16,.42);
+}
+.map-chip strong{font-size:16px;letter-spacing:.08em;color:var(--hud);font-weight:600}
+.map-chip em{font-style:normal;font-size:11px;letter-spacing:.18em;opacity:.7}
+.map-chip.complete{border-color:rgba(199,177,123,.45);color:#e8d7a8}
+.map-chip.complete strong{color:#f1e2b4}
+
+.dive-map{
+  position:absolute;inset:0;z-index:40;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(1,8,12,.82);
+  pointer-events:auto;
+}
+.dive-map-sheet{
+  width:min(520px,92vw);max-height:min(90vh,640px);
+  display:flex;flex-direction:column;
+  background:
+    linear-gradient(165deg,rgba(42,48,38,.98),rgba(28,34,26,.99) 55%,rgba(22,28,22,1)),
+    radial-gradient(ellipse at 30% 20%,rgba(90,78,48,.25),transparent 60%);
+  border:1px solid rgba(170,150,100,.4);
+  box-shadow:0 24px 60px rgba(0,0,0,.55),inset 0 1px 0 rgba(220,200,150,.08);
+  color:#d8cba8;
+  position:relative;z-index:1;
+}
+.dive-map-head{
+  display:flex;justify-content:space-between;align-items:flex-start;gap:16px;
+  padding:18px 22px 12px;border-bottom:1px solid rgba(140,120,70,.28);
+}
+.dive-map-head .eyebrow{color:#c4b07a;font-size:10px;letter-spacing:2.2px;font-weight:600}
+.dive-map-head h2{
+  margin:6px 0 0;font-family:Georgia,'Times New Roman',serif;
+  font-size:22px;font-weight:normal;letter-spacing:-.3px;color:#efe6c8;
+}
+.dive-map-close{
+  background:none;border:1px solid rgba(180,160,110,.35);color:#d8cba8;
+  padding:8px 12px;font-family:'Barlow Condensed',sans-serif;
+  font-size:13px;letter-spacing:.08em;display:flex;align-items:center;gap:8px;
+}
+.dive-map-close:hover{background:rgba(200,180,120,.1);border-color:rgba(200,180,120,.55)}
+.dive-map-close kbd{font-size:11px;color:#e8d7a8}
+.dive-map-body{padding:14px 22px 20px;overflow:auto;display:flex;flex-direction:column;gap:12px}
+.dive-map-svg{
+  width:100%;height:auto;aspect-ratio:340/420;
+  background:linear-gradient(180deg,#2a3126,#1e241c);
+  border:1px solid rgba(120,105,70,.35);
+}
+.dive-map-paper{fill:#2e3529}
+.dive-map-ghost{fill:none;stroke:rgba(160,150,120,.18);stroke-width:1.2}
+.dive-map-piece.have .dive-map-fill{fill:rgba(72,92,78,.85);stroke:rgba(180,200,170,.45);stroke-width:1.4}
+.dive-map-piece.missing .dive-map-fill{fill:rgba(40,46,38,.15);stroke:none}
+.dive-map-tear{fill:none;stroke:rgba(140,120,80,.35);stroke-width:1;stroke-dasharray:4 5}
+.dive-map-mark circle{fill:#c9b06a;stroke:#1a1810;stroke-width:1}
+.dive-map-mark text{
+  fill:#e8d9a8;font-family:'Barlow Condensed',sans-serif;
+  font-size:11px;letter-spacing:.06em;font-weight:600;
+}
+.dive-map-mark.exit circle{fill:#e2a84a}
+.dive-map-mark.exit text{fill:#f0c878}
+.dive-map-you circle{fill:#7ed0c4;stroke:#0a1a18;stroke-width:1}
+.dive-map-you .ring{fill:none;stroke:rgba(126,208,196,.55);stroke-width:1.2}
+.dive-map-n{
+  fill:rgba(200,190,150,.55);font-family:'Barlow Condensed',sans-serif;
+  font-size:10px;letter-spacing:.2em;text-anchor:middle;font-weight:600;
+}
+.dive-map-legend{
+  list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px 16px;
+  font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:.06em;
+  color:rgba(200,190,160,.55);
+}
+.dive-map-legend li{display:flex;align-items:center;gap:8px}
+.dive-map-legend .pip{
+  width:8px;height:8px;border-radius:1px;
+  background:rgba(120,110,80,.35);border:1px solid rgba(160,140,90,.4);
+}
+.dive-map-legend li.have{color:#e4d7b0}
+.dive-map-legend li.have .pip{background:#8fad8a;border-color:#b5ccaa}
+.dive-map-hint{
+  margin:0;font-size:12px;line-height:1.55;color:#a89a78;
+  border-left:2px solid rgba(180,150,90,.45);padding-left:12px;
+}
+
+@media(max-width:900px){
+  .map-chip{left:16px;top:100px;font-size:12px;padding:5px 10px}
+  .dive-map-sheet{width:min(480px,96vw)}
+  .dive-map-head{padding:14px 16px 10px}
+  .dive-map-body{padding:10px 16px 16px}
+}
+
 .vitals{
   position:absolute;left:28px;bottom:28px;width:158px;pointer-events:none;
   display:flex;flex-direction:column;gap:9px;

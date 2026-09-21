@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.1.52
+# Painted Abyss — First Dive · 0.1.53
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -56,7 +56,8 @@ Keep the terminal open while playing. Stop it with Ctrl+C. If port 5173 is alrea
 | X | Clear trim bias back to neutral |
 | Shift | Sprint kick; spends fin energy, which replenishes |
 | F | Toggle the mounted torch |
-| E | Collect a nearby item / confirm replacement / extract |
+| E | Collect a nearby item / open a crate / confirm replacement / extract |
+| Tab | Toggle the field chart (map scraps from crates; exits marked only when all three fit) |
 | 1–5 | Select one of exactly five carried slots (plays a short click when the selection changes; muted when sound is off) |
 | Click (knife selected) | Stab — short forward melee; range shorter than the guardian's bite |
 | R | Use / consume selected air reserve, sealant, or distraction flare (knife and salvage refuse) |
@@ -69,6 +70,7 @@ Pointer lock is requested by Begin / Resume. If the browser refuses it, moving t
 ## Your first dive
 
 - Follow **turquoise markers** down the entrance tunnel and around the central rock pillar. The relic rests above a plinth in the bone alcove at the far end.
+- Three floor **crates** hide torn **map scraps** (west cavern, east shelf, bone alcove). Press **E** to open a crate; **Tab** reviews the field chart. Exit marks appear only after all three scraps fit.
 - You start with a **diving knife** in slot 1, plus driftwood, flare, pony bottle, and sealant — five slots so the swap mechanic can be tried immediately. Press **E**, select the slot to replace with **1–5**, then press **E** again. The displaced item remains in the world and can be recovered. There is no extra backpack.
 - Driftwood is spare salvage; replacing it keeps your useful supplies. Press **1** then **click** to stab the guardian at close range — wounds make it rage harder; at ~85% damage taken it breaks off slow and limping; killing it sinks the corpse with soft floating blood sprites in the water (optional — extract still only needs the relic). Press **1–5** to select a slot, then **R** to use consumables — air, sealant, and flares are consumed. A one-time tip appears on the first dive only; later dives rely on the selected-slot chrome. Selecting the knife puts the Poly Haven fish knife in hand; other slots return the mounted torch as the held FPS object.
 - Carry the relic east toward the **amber markers**, enter the narrow fissure, then follow it north to the extraction pool. Press **E** near the light to win. You must still be carrying the relic; dropping it removes eligibility to extract.
@@ -106,7 +108,7 @@ New mission rules live in `playable/src/simulation.ts`; cave rendering and input
 ## Third-party assets
 
 - **Fish Knife** ([Poly Haven](https://polyhaven.com/a/fish_knife)) by Mateusz Sadek — CC0 1.0. Used as the diving-knife inventory icon and held FPS prop when the knife slot is selected (`playable/public/assets/knife/`). Other slots restore the dive torch as the held object.
-- **Dive chests** (CC0 1.0): [Wooden Military Crate](https://polyhaven.com/a/wooden_military_crate) (Prabhjinder Singh), [Plastic Crate 02](https://polyhaven.com/a/plastic_crate_02) (Fabi_G), [Vintage Suitcase](https://polyhaven.com/a/vintage_suitcase) (Maximilian Schuster). Floor props under `playable/public/assets/chests/`; press **E** to open.
+- **Dive chests** (CC0 1.0): [Wooden Military Crate](https://polyhaven.com/a/wooden_military_crate) (Prabhjinder Singh), [Plastic Crate 02](https://polyhaven.com/a/plastic_crate_02) (Fabi_G), [Vintage Suitcase](https://polyhaven.com/a/vintage_suitcase) (Maximilian Schuster). Floor props under `playable/public/assets/chests/`; press **E** to open for map fragments.
 
 ## Validation and limits
 

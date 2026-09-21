@@ -745,11 +745,22 @@ export class CaveWorld extends OceanWorld {
    if(!this.playing)return;
    if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Tab'].includes(e.code))e.preventDefault();
    this.keys.add(e.code);if(e.repeat)return;
-   if(e.code==='Escape'){if(this.mission.pending!==null){this.mission.pending=null;this.publish();}else this.pause();}
+   if(e.code==='Escape'){
+    if(this.mission.mapOpen){this.mission.mapOpen=false;this.requestLookLock(false);this.publish();return;}
+    if(this.mission.pending!==null){this.mission.pending=null;this.publish();}else this.pause();
+   }
    // Inventory keys bind on window (not the canvas), so select/use/drop work without canvas focus.
    if(/^Digit[1-5]$/.test(e.code)){
     if(this.mission.select(Number(e.code.slice(-1))-1))this.playSelectClick();
    }
+   if(e.code==='Tab'){
+    const opening=!this.mission.mapOpen;
+    this.mission.toggleMap();
+    if(opening&&document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();
+    else if(!opening)this.requestLookLock(false);
+    this.publish();return;
+   }
+   if(this.mission.mapOpen){this.publish();return;}
    if(e.code==='KeyE')this.mission.interact();if(e.code==='KeyF')this.mission.torch=!this.mission.torch;
    if(e.code==='KeyR')this.mission.use();if(e.code==='KeyG')this.mission.drop();if(e.code==='KeyM')this.setSound(!this.sound);
    this.publish();
@@ -758,7 +769,7 @@ export class CaveWorld extends OceanWorld {
   on(window,'blur',(()=>this.pause()) as EventListener);on(document,'visibilitychange',(()=>{if(document.hidden)this.pause();}) as EventListener);
   const canvas=this.renderer.domElement;
   on(canvas,'pointerdown',((e:PointerEvent)=>{
-   if(!this.playing)return;
+   if(!this.playing||this.mission.mapOpen)return;
    try{canvas.setPointerCapture(e.pointerId);}catch{/* unsupported */}
    if(document.pointerLockElement!==canvas)this.requestLookLock(false);
    // Primary click while knife selected → stab (knife is the held FPS prop).
@@ -776,7 +787,7 @@ export class CaveWorld extends OceanWorld {
   }) as EventListener);
   on(window,'mouseout',((e:MouseEvent)=>{if(!e.relatedTarget){this.lookPointer=null;this.fallbackTurn=0;}}) as EventListener);
   on(canvas,'wheel',((e:WheelEvent)=>{if(!this.playing)return;e.preventDefault();const scale=e.deltaMode===1?16:e.deltaMode===2?200:1;const delta=lookDelta(this.targetYaw,this.targetPitch,e.deltaX*scale,e.deltaY*scale);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;}) as EventListener,{passive:false});
-  on(document,'pointerlockchange',(()=>{const was=this.pointerLocked;this.pointerLocked=document.pointerLockElement===canvas;if(this.pointerLocked){this.everLocked=true;this.lockDenied=false;this.lookPointer=null;this.fallbackTurn=0;}if(was&&!this.pointerLocked)this.pause();this.publish();}) as EventListener);
+  on(document,'pointerlockchange',(()=>{const was=this.pointerLocked;this.pointerLocked=document.pointerLockElement===canvas;if(this.pointerLocked){this.everLocked=true;this.lockDenied=false;this.lookPointer=null;this.fallbackTurn=0;}if(was&&!this.pointerLocked&&!this.mission.mapOpen)this.pause();this.publish();}) as EventListener);
   on(document,'pointerlockerror',(()=>{this.lockDenied=true;this.mission.say('360° free look active. Steer left or right of center to keep turning — pointer stays in the dive.');this.publish();}) as EventListener);
   on(canvas,'webglcontextlost',((e:Event)=>{e.preventDefault();this.error='The graphics connection was lost. Reload the page to restart the dive.';this.pause();this.publish();}) as EventListener);
  }
@@ -903,6 +914,12 @@ export class CaveWorld extends OceanWorld {
   if(!this.alive)return;this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);
   if(this.playing){this.time+=dt;const m=this.mission;
    const pressed=(...keys:string[])=>keys.some(k=>this.keys.has(k))?1:0;
+   if(m.mapOpen){
+    // Chart reading: hold still, but the dive clock / gas / predator keep running.
+    this.velocity.set(0,0,0);this.keys.clear();
+    m.update(dt,false);this.position.copy(m.position);
+    this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
+   }else{
    if(!this.pointerLocked&&this.lookPointer){const bounds=this.renderer.domElement.getBoundingClientRect();this.fallbackTurn=edgeTurn(this.lookPointer.x,bounds.left,bounds.width);}
    else if(!this.pointerLocked&&!this.lookPointer)this.fallbackTurn=0;
    const horizontalLook=pressed('ArrowRight')-pressed('ArrowLeft')+(!this.pointerLocked?this.fallbackTurn*FREE_LOOK_RATE:0);
@@ -923,6 +940,7 @@ export class CaveWorld extends OceanWorld {
    stepSwimVelocity(this.velocity,this.move,m.buoyancy,sprint,dt);
    moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);
    m.update(dt,sprint);this.position.copy(m.position);
+   }
    // Presentation-only hover bob when nearly still — never moves mission.position.
    // ~2.6× 0.1.18 amplitudes so the murk drift reads; torch gets extra local sway (mesh+light+beam).
    const speed=this.velocity.length();

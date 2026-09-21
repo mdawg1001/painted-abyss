@@ -1,7 +1,8 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {CaveWorld,type Snapshot} from './CaveWorld';
-import {ITEMS,EXIT,distance,hydrostaticDepth,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,CHEST_LABEL,type Item} from './simulation';
+import {ITEMS,EXIT,distance,hydrostaticDepth,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,CHEST_LABEL,MAP_FRAGMENT_ORDER,type Item} from './simulation';
+import {DiveMap} from './DiveMap';
 import {KNIFE_THUMB_URL} from './knifeAsset';
 import {APP_VERSION,APP_BUILD_LABEL,APP_BUILD_SHA} from './version';
 import './style.css';
@@ -63,8 +64,14 @@ function App(){
  },[]);
  const m=snap?.mission,playing=!!snap?.playing,terminal=m?.outcome!=='playing'&&!!m;
  const nearest=m?.nearest();const nearChest=m?.nearestChest();const extraction=m&&distance(m.position,EXIT)<4;
- const chestPrompt=nearChest?(nearChest.open?`The ${CHEST_LABEL[nearChest.kind]} is empty`:`E · Open ${CHEST_LABEL[nearChest.kind]}`):'';
+ const chestPrompt=nearChest
+  ?(nearChest.open
+   ?(m?.hasMapFragment(nearChest.fragment)?`The ${CHEST_LABEL[nearChest.kind]} is empty`:`E · Take map scrap`)
+   :`E · Open ${CHEST_LABEL[nearChest.kind]}`)
+  :'';
  const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):chestPrompt?chestPrompt:nearest?`E · Collect ${ITEMS[nearest.item].name}`:'';
+ const mapCount=m?.mapFragmentCount??0;
+ const mapComplete=!!m?.mapComplete;
  const yaw=snap?.yaw??0;
  const onBailout=!!(m&&m.air<=0&&m.bailout>0);
  const airPool=m?(onBailout?m.bailout:m.air):AIR_MAIN_LITRES;
@@ -98,8 +105,12 @@ function App(){
   {playing&&m&&<>
    <section className="objectives" aria-label="Objectives">
     <div className={`obj ${m.hasRelic?'done':''}`}><span className="obj-icon" aria-hidden="true">◆</span>{m.hasRelic?'Carry the ammonite relic':'Recover the ammonite relic'}</div>
+    <div className={`obj ${mapComplete?'done':''}`}><span className="obj-icon" aria-hidden="true">▣</span>{mapComplete?'Cave chart fitted':'Find map scraps in crates'}{mapCount>0&&!mapComplete?` (${mapCount}/3)`:''}</div>
     <div className="obj"><span className="obj-icon" aria-hidden="true">○</span>Reach the extraction pool</div>
    </section>
+   <div className={`map-chip ${mapComplete?'complete':''}`} aria-label={`Map fragments ${mapCount} of ${MAP_FRAGMENT_ORDER.length}`}>
+    <span>MAP</span><strong>{mapCount}/{MAP_FRAGMENT_ORDER.length}</strong><em>Tab</em>
+   </div>
    <Compass yaw={yaw}/>
    <div className="depth">DEPTH {depth} m</div>
    <section className="vitals" aria-label="Vitals">
@@ -120,10 +131,24 @@ function App(){
     <div><kbd>Click</kbd><span>Stab</span></div>
     <div><kbd>F</kbd><span>Torch</span></div>
     <div><kbd>E</kbd><span>Interact</span></div>
+    <div><kbd>Tab</kbd><span>Map</span></div>
     <div><kbd>R</kbd><span>Use</span></div>
     <div><kbd>G</kbd><span>Drop</span></div>
    </aside>
-   {!snap?.pointerLocked&&<div className="free-look">360° free look · move to look · hold left or right of center to keep turning</div>}
+   <DiveMap
+    open={!!m.mapOpen}
+    fragments={m.mapFragments}
+    complete={mapComplete}
+    player={m.position}
+    onClose={()=>{
+     if(engine.current?.mission){
+      engine.current.mission.mapOpen=false;
+      engine.current.requestLookLock?.(false);
+      engine.current.publish();
+     }
+    }}
+   />
+   {!snap?.pointerLocked&&!m.mapOpen&&<div className="free-look">360° free look · move to look · hold left or right of center to keep turning</div>}
   </>}
   {!playing&&<div className="menu-backdrop"><section className="menu">
    <div className="eyebrow">{terminal?m?.outcome==='won'?'EXPEDITION COMPLETE':'DIVE LOST':snap?.started?'DIVE PAUSED':'A SHORT UNDERWATER SURVIVAL PROTOTYPE'}</div>
@@ -134,7 +159,7 @@ function App(){
    <div className="menu-actions"><button onClick={()=>{const w=engine.current;if(w){w.setSound(!w.sound);w.publish();}}}>{engine.current?.sound===false?'Sound off':'Sound on'}</button><button onClick={()=>engine.current?.testSound()}>Test sound</button>{snap?.started&&!terminal&&<button onClick={()=>{engine.current?.reset();engine.current?.start();}}>Restart dive</button>}</div>
    <p className="sound-help" role="status">{snap?.audioNotice||'Test sound plays two clear tones. During the dive, hear your music.'}</p>
    <div className="dive-note">2–4 MINUTES <span>·</span> DESKTOP / HEADPHONES <span>·</span> PROTOTYPE {APP_VERSION}</div>
-   </section><aside className="briefing"><div className="eyebrow">BEFORE YOU DESCEND</div><ol><li><b>Follow the turquoise lights.</b><span>Find the relic in the bone alcove, beyond the central pillar.</span></li><li><b>Make room for your discovery.</b><span>Five slots, no backpack. Press E, choose 1–5, then E to swap. The old item drops. Slot 1 starts with a diving knife.</span></li><li><b>Escape through the east fissure.</b><span>Follow amber lights north to the extraction pool. The guardian cannot enter the narrow passage.</span></li></ol><div className="control-grid"><span><kbd>W A S D</kbd> Swim</span><span><kbd>Space / Q</kbd> Buoyancy</span><span><kbd>[ ]</kbd> Set trim bias</span><span><kbd>X</kbd> Clear trim</span><span><kbd>Shift</kbd> Sprint</span><span><kbd>F</kbd> Torch</span><span><kbd>E</kbd> Collect / extract</span><span><kbd>1–5</kbd> Select slot</span><span><kbd>Click</kbd> Stab (knife)</span><span><kbd>R</kbd> Use / consume</span><span><kbd>G</kbd> Drop selected</span></div><p className="look-note">Move the mouse or trackpad to look — right looks right. No button held. If the browser limits the pointer, hold left or right of center to keep turning through 360° without leaving the dive window. Arrow keys also look. <kbd>Esc</kbd> pauses; <kbd>M</kbd> mutes.</p><p className="tip">Inventory: <kbd>1</kbd> selects the diving knife, then <kbd>click</kbd> stabs at close range — wound it and it rages; cut deep and it breaks off slow, or sinks bloody when killed. <kbd>R</kbd> uses consumables (air, sealant, flares). A one-time tip appears on the first dive only. Rock blocks its sight; a flare distracts it while you move away. Killing is optional — extraction still only needs the relic.</p></aside></div>}
+   </section><aside className="briefing"><div className="eyebrow">BEFORE YOU DESCEND</div><ol><li><b>Follow the turquoise lights.</b><span>Find the relic in the bone alcove, beyond the central pillar.</span></li><li><b>Open crates for chart scraps.</b><span>Three floor crates hide torn map pieces. Press E to open; Tab reviews the field chart. Exits stay unmarked until all three fit.</span></li><li><b>Make room for your discovery.</b><span>Five slots, no backpack. Press E, choose 1–5, then E to swap. The old item drops. Slot 1 starts with a diving knife.</span></li><li><b>Escape through the east fissure.</b><span>Follow amber lights north to the extraction pool. The guardian cannot enter the narrow passage.</span></li></ol><div className="control-grid"><span><kbd>W A S D</kbd> Swim</span><span><kbd>Space / Q</kbd> Buoyancy</span><span><kbd>[ ]</kbd> Set trim bias</span><span><kbd>X</kbd> Clear trim</span><span><kbd>Shift</kbd> Sprint</span><span><kbd>F</kbd> Torch</span><span><kbd>E</kbd> Collect / open crate</span><span><kbd>Tab</kbd> Cave chart</span><span><kbd>1–5</kbd> Select slot</span><span><kbd>Click</kbd> Stab (knife)</span><span><kbd>R</kbd> Use / consume</span><span><kbd>G</kbd> Drop selected</span></div><p className="look-note">Move the mouse or trackpad to look — right looks right. No button held. If the browser limits the pointer, hold left or right of center to keep turning through 360° without leaving the dive window. Arrow keys also look. <kbd>Esc</kbd> pauses; <kbd>M</kbd> mutes.</p><p className="tip">Inventory: <kbd>1</kbd> selects the diving knife, then <kbd>click</kbd> stabs at close range — wound it and it rages; cut deep and it breaks off slow, or sinks bloody when killed. <kbd>R</kbd> uses consumables (air, sealant, flares). Crates yield chart scraps — <kbd>Tab</kbd> opens the field chart; exits stay unmarked until all three fit. A one-time tip appears on the first dive only. Rock blocks its sight; a flare distracts it while you move away. Killing is optional — extraction still only needs the relic.</p></aside></div>}
  </main>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);
