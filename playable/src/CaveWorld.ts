@@ -180,8 +180,8 @@ export class CaveWorld extends OceanWorld {
   // Dayo Blue Grotto silt stills: muddy taupe discs (NormalBlending), never cyan additive glow.
   const mat=new THREE.PointsMaterial({
    map:this.siltDiscTexture(),
-   color:0xa89888,size:.22,transparent:true,opacity:0,depthWrite:false,sizeAttenuation:true,
-   blending:THREE.NormalBlending,alphaTest:.02,
+   color:0xa89888,size:.34,transparent:true,opacity:0,depthWrite:false,sizeAttenuation:true,
+   blending:THREE.NormalBlending,alphaTest:.015,
   });
   this.siltStorm=new THREE.Points(geo,mat);this.siltStorm.visible=false;
   this.siltStormVel=vel;this.siltStormLife=life;this.scene.add(this.siltStorm);
@@ -191,18 +191,18 @@ export class CaveWorld extends OceanWorld {
   if(!this.siltStorm||!this.siltStormVel||!this.siltStormLife||intensity<.04)return;
   const pos=this.siltStorm.geometry.attributes.position as THREE.BufferAttribute;
   const n=pos.count;
-  const count=Math.min(48,Math.max(2,Math.floor(4+intensity*52)));
+  const count=Math.min(72,Math.max(4,Math.floor(8+intensity*70)));
   const p=this.mission.position;
   let spawned=0;
   for(let i=0;i<n&&spawned<count;i++){
-   if(this.siltStormLife[i]>.15)continue;
+   if(this.siltStormLife[i]>.12)continue;
    const ang=Math.random()*Math.PI*2;
-   const rad=Math.random()*1.35;
-   pos.setXYZ(i,p.x+Math.cos(ang)*rad,FLOOR_Y+.06+Math.random()*.42,p.z+Math.sin(ang)*rad);
-   this.siltStormVel[i*3]=(Math.random()-.5)*(.35+intensity*.75);
-   this.siltStormVel[i*3+1]=.22+Math.random()*(.7+intensity*1.1);
-   this.siltStormVel[i*3+2]=(Math.random()-.5)*(.35+intensity*.75);
-   this.siltStormLife[i]=2.2+Math.random()*3.8+intensity*2.8;
+   const rad=Math.random()*1.55;
+   pos.setXYZ(i,p.x+Math.cos(ang)*rad,FLOOR_Y+.05+Math.random()*.55,p.z+Math.sin(ang)*rad);
+   this.siltStormVel[i*3]=(Math.random()-.5)*(.4+intensity*.85);
+   this.siltStormVel[i*3+1]=.18+Math.random()*(.85+intensity*1.25);
+   this.siltStormVel[i*3+2]=(Math.random()-.5)*(.4+intensity*.85);
+   this.siltStormLife[i]=2.8+Math.random()*4.2+intensity*3.2;
    spawned++;
   }
   pos.needsUpdate=true;
@@ -229,13 +229,13 @@ export class CaveWorld extends OceanWorld {
   pos.needsUpdate=true;
   const mat=this.siltStorm.material as THREE.PointsMaterial;
   // Chocolate-milk opacity: dense enough to block, not a glowing fog wash.
-  mat.opacity=Math.min(.92,.18+optical*.78);
-  mat.size=.14+optical*.28;
+  mat.opacity=Math.min(.96,.28+optical*.82);
+  mat.size=.22+optical*.42;
   // Dense cores go slightly browner; mild optical stays dusty taupe.
   mat.color.setRGB(
-   THREE.MathUtils.lerp(.66,.42,optical),
-   THREE.MathUtils.lerp(.60,.48,optical),
-   THREE.MathUtils.lerp(.53,.40,optical),
+   THREE.MathUtils.lerp(.68,.44,optical),
+   THREE.MathUtils.lerp(.60,.46,optical),
+   THREE.MathUtils.lerp(.50,.36,optical),
   );
   this.siltStorm.visible=alive>0||optical>.05;
  }
@@ -696,7 +696,7 @@ export class CaveWorld extends OceanWorld {
    moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);
    stepSilt(m.silt,m.position,{x:this.velocity.x,y:this.velocity.y,z:this.velocity.z},sprint,dt);
    const siltOptical=siltAt(m.silt,m.position);
-   if(m.silt.bed>.05)this.emitSiltBurst(Math.min(1,m.silt.bed*dt*24));
+   if(m.silt.bed>.03)this.emitSiltBurst(Math.min(1,m.silt.bed*dt*36));
    m.update(dt,sprint,siltOptical);this.position.copy(m.position);
    // Presentation-only hover bob when nearly still — never moves mission.position.
    // ~2.6× 0.1.18 amplitudes so the murk drift reads; torch gets extra local sway (mesh+light+beam).
