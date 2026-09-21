@@ -63,25 +63,38 @@ export function edgeTurn(clientX:number,left:number,width:number){
  return Math.sign(fromCenter)*t*t;
 }
 export type FeedbackKind='select'|'ok'|'blocked'|'';
+export const INVENTORY_TIPS_KEY='painted-abyss.inventoryTipsSeen';
+export function readInventoryTipsSeen(){
+ try{return globalThis.localStorage?.getItem(INVENTORY_TIPS_KEY)==='1';}catch{return false;}
+}
+export function writeInventoryTipsSeen(){
+ try{globalThis.localStorage?.setItem(INVENTORY_TIPS_KEY,'1');}catch{/* private mode */}
+}
 export class Mission {
  position={...START};health=100;air=240;elapsed=0;stamina=100;torch=true;
  inventory:(Item|null)[]=['stone','wood','flare','air','bandage'];selected=0;
  pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},{id:2,item:'flare',position:{x:-20,y:2,z:-56}}];nextId=3;
- pending:number|null=null;outcome:'playing'|'won'|'lost'='playing';reason='';notice='1–5 select a slot · R uses it · usable items are consumed.';noticeUntil=8;
- feedbackKind:FeedbackKind='select';feedbackPulse=0;
+ pending:number|null=null;outcome:'playing'|'won'|'lost'='playing';reason='';
+ /** First-play inventory guidance only; repeating select/use text is intentionally silent. */
+ tipsSeen=false;notice='';noticeUntil=0;feedbackKind:FeedbackKind='';feedbackPulse=0;
  predator={position:world(16,19),state:'patrol' as PredatorState,timer:0,lost:0,lastKnown:world(16,19),waypoint:0,bite:0,heading:0};
  decoy:{position:Point;until:number}|null=null;
  patrol=[world(16,22),world(6,22),world(6,13),world(16,13)];
+ constructor(tipsSeen=false){
+  this.tipsSeen=tipsSeen;
+  if(!tipsSeen){
+   this.notice='1–5 select a slot · R uses it · usable items are consumed.';
+   this.noticeUntil=8;this.feedbackKind='select';
+  }
+ }
  get hasRelic(){return this.inventory.includes('relic');}
  say(message:string,kind:FeedbackKind=''){this.notice=message;this.noticeUntil=this.elapsed+4.5;this.feedbackKind=kind;this.feedbackPulse++;}
+ /** Slot chrome without center text — used after the one-time first-play tip. */
+ pulse(kind:FeedbackKind=''){this.feedbackKind=kind;this.feedbackPulse++;}
  select(slot:number){
   if(this.outcome!=='playing'||slot<0||slot>4)return;
   this.selected=slot;
-  const item=this.inventory[slot];
-  if(!item){this.say(`Slot ${slot+1} empty · nothing to use · E collects nearby.`, 'blocked');return;}
-  if(item==='stone'||item==='wood'){this.say(`${ITEMS[item].name} selected · salvage only · R does nothing · G drops.`, 'select');return;}
-  if(item==='relic'){this.say(`${ITEMS[item].name} selected · carry to extraction · cannot use.`, 'select');return;}
-  this.say(`${ITEMS[item].name} selected · press R to use (consumed).`, 'select');
+  this.pulse(this.inventory[slot]?'select':'blocked');
  }
  nearest(){return this.pickups.filter(p=>distance(p.position,this.position)<3.2&&visible(this.position,p.position)).sort((a,b)=>distance(a.position,this.position)-distance(b.position,this.position))[0];}
  interact(){
@@ -94,36 +107,31 @@ export class Mission {
   if(slot<0)slot=this.selected;
   const old=this.inventory[slot];this.inventory[slot]=pickup.item;this.selected=slot;
   this.pickups=this.pickups.filter(p=>p.id!==pickup.id);if(old)this.pickups.push({id:this.nextId++,item:old,position:{...this.position,y:Math.max(1,this.position.y-.4)}});
-  this.pending=null;this.say(pickup.item==='relic'?'Relic recovered! Follow the amber markers to extraction.':`${ITEMS[pickup.item].name} collected · press R if usable.`,'ok');
+  this.pending=null;this.say(pickup.item==='relic'?'Relic recovered! Follow the amber markers to extraction.':`${ITEMS[pickup.item].name} collected.`,'ok');
   if(pickup.item==='relic'){this.predator.state='alert';this.predator.timer=0;this.predator.lastKnown={...this.position};}
  }
  drop(){
   const item=this.inventory[this.selected];
-  if(!item){this.say(`Slot ${this.selected+1} empty · nothing to drop.`,'blocked');return;}
+  if(!item){this.pulse('blocked');return;}
   this.pickups.push({id:this.nextId++,item,position:{...this.position,y:Math.max(1,this.position.y-.4)}});
-  this.inventory[this.selected]=null;this.pending=null;
-  this.say(`${ITEMS[item].name} dropped · pick it up again with E.`,'ok');
+  this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');
  }
  use(){
   const item=this.inventory[this.selected];
-  if(!item){this.say(`Slot ${this.selected+1} empty · select 1–5, then R.`,'blocked');return;}
+  if(!item){this.pulse('blocked');return;}
   if(item==='air'){
-   if(this.air>=240){this.say('Air already full · save the reserve.','blocked');return;}
-   this.air=Math.min(240,this.air+60);this.inventory[this.selected]=null;this.pending=null;
-   this.say('Used Air reserve · +60s air · slot cleared.','ok');return;
+   if(this.air>=240){this.pulse('blocked');return;}
+   this.air=Math.min(240,this.air+60);this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
   }
   if(item==='bandage'){
-   if(this.health>=100){this.say('Suit already full · save the sealant.','blocked');return;}
-   this.health=Math.min(100,this.health+45);this.inventory[this.selected]=null;this.pending=null;
-   this.say('Used Sealant · +45 suit · slot cleared.','ok');return;
+   if(this.health>=100){this.pulse('blocked');return;}
+   this.health=Math.min(100,this.health+45);this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
   }
   if(item==='flare'){
    this.decoy={position:{...this.position},until:this.elapsed+12};this.predator.state='search';this.predator.timer=0;this.predator.lastKnown={...this.position};
-   this.inventory[this.selected]=null;this.pending=null;
-   this.say('Used Flare · distraction deployed · slot cleared. Move away.','ok');return;
+   this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
   }
-  if(item==='stone'||item==='wood'){this.say(`${ITEMS[item].name} is salvage · cannot use · drop with G or swap for relic.`,'blocked');return;}
-  this.say('Relic cannot be used · carry it to the extraction pool.','blocked');
+  this.pulse('blocked');
  }
  update(dt:number,sprinting=false){
   if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;this.air=Math.max(0,this.air-dt);this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?-18:17)*dt));
