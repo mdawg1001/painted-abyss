@@ -264,8 +264,10 @@ export function torchModulation(depthY:number,pitch:number):TorchModulation{
  return{intensity,distance,decay,beamOpacity,particle,r,g,b,beamR,beamG,beamB,betaDirect,betaBackscatter};
 }
 
-/** Bed boundary layer (m) — fins only resuspend when this close to FLOOR_Y. */
-export const SILT_BED_HEIGHT=1.35;
+/** Bed shear layer (m) — resuspend when low in the column (floor + low swim). */
+export const SILT_BED_HEIGHT=4.2;
+/** Optical cloud height scale (m) — chocolate-milk density falls off toward the surface. */
+export const SILT_CLOUD_HEIGHT=2.2;
 /** Gameplay-compressed settle rates (1/s). Coarse ≫ fine (Stokes order, not hours). */
 export const SILT_SETTLE_COARSE=.62;
 export const SILT_SETTLE_FINE=.14;
@@ -303,7 +305,7 @@ export function siltAt(s:SiltPlume,p:Point){
  const r2=Math.max(.36,s.radius*s.radius);
  const horiz=Math.exp(-(dx*dx+dz*dz)/(2*r2));
  const above=Math.max(0,p.y-FLOOR_Y);
- const scaleY=SILT_BED_HEIGHT*(1.6+s.coarse*1.4+s.fine*2.8);
+ const scaleY=SILT_CLOUD_HEIGHT*(1.6+s.coarse*1.4+s.fine*2.8);
  const vert=Math.exp(-above/Math.max(.4,scaleY));
  return Math.min(1,load*horiz*vert*1.4);
 }
@@ -341,8 +343,8 @@ export function stepSilt(s:SiltPlume,pos:Point,vel:Vec3,sprint:boolean,dt:number
 }
 
 /**
- * Fold local silt into the shared torch response: boost β^B (fog wall), crush range,
- * whiten the volume cone. Ambient torchMurk still applies underneath.
+ * Fold local silt into the shared torch response: boost β^B (muddy wall), crush range.
+ * Beam goes butterscotch/taupe (Dayo Blue Grotto silt stills) — never cyan/white fog.
  */
 export function applySiltToTorch(mod:TorchModulation,silt:number):TorchModulation{
  if(silt<.01)return mod;
@@ -357,12 +359,13 @@ export function applySiltToTorch(mod:TorchModulation,silt:number):TorchModulatio
  const decay=mod.decay+t2*.55;
  const beamOpacity=Math.min(.62,mod.beamOpacity*(1+t2*3.6));
  const particle=Math.min(1,mod.particle+.5*t);
- const beamR=lerp(mod.beamR,.94,t2*.75);
- const beamG=lerp(mod.beamG,.96,t2*.7);
- const beamB=lerp(mod.beamB,.98,t2*.65);
- const r=lerp(mod.r,.78,t2*.35);
- const g=lerp(mod.g,.82,t2*.3);
- const b=lerp(mod.b,.72,t2*.25);
+ // Muddy cream cone (#C6C4A3 lit / #6B5E52 dense) — warm, desaturated, not additive white.
+ const beamR=lerp(mod.beamR,.82,t2*.88);
+ const beamG=lerp(mod.beamG,.74,t2*.8);
+ const beamB=lerp(mod.beamB,.48,t2*.92);
+ const r=lerp(mod.r,.72,t2*.48);
+ const g=lerp(mod.g,.63,t2*.44);
+ const b=lerp(mod.b,.45,t2*.55);
  return{intensity,distance,decay,beamOpacity,particle,r,g,b,beamR,beamG,beamB,betaDirect,betaBackscatter};
 }
 /**
