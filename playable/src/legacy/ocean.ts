@@ -53,7 +53,7 @@ export class OceanWorld {
     const gain=Math.max(0,causticGain);
     const usePbr=!!maps&&(detail==='rock'||detail==='sand');
     const useMoss=usePbr&&!!mossMaps;
-    const mossAmount=detail==='rock'?'0.22':detail==='sand'?'0.12':'0.';
+    const mossAmount=detail==='rock'?'0.7':detail==='sand'?'0.4':'0.';
     m.onBeforeCompile=shader=>{
       shader.uniforms.uTime=this.uniforms.uTime;
       shader.vertexShader='varying vec3 vOceanWorld; varying vec3 vOceanLocal; varying vec3 vOceanWNormal;\n'+shader.vertexShader;
@@ -95,8 +95,8 @@ export class OceanWorld {
           ${useMoss?`
           vec3 mossAlb=triAlbedo(uMossDiff,vOceanWorld,b,uMossScale);
           vec3 mossArm=triArm(uMossArm,vOceanWorld,b,uMossScale);
-          // Sparse accent only — never more than 10% over base stone
-          float moss=min(mossCoverage(vOceanWorld,wn,arm.r,${mossAmount}),.10);
+          // Sparse accent — up to 35% over base stone
+          float moss=min(mossCoverage(vOceanWorld,wn,arm.r,${mossAmount}),.35);
           mossAlb*=mix(1.,.9,wet*.35);
           albedo=mix(albedo,mossAlb,moss);
           arm=mix(arm,mossArm,moss);
@@ -118,7 +118,7 @@ export class OceanWorld {
             float wet=${wet};
             ${useMoss?`
             vec3 mossArm=triArm(uMossArm,vOceanWorld,b,uMossScale);
-            float moss=min(mossCoverage(vOceanWorld,wn,arm.r,${mossAmount}),.10);
+            float moss=min(mossCoverage(vOceanWorld,wn,arm.r,${mossAmount}),.35);
             arm.g=mix(arm.g,mossArm.g,moss);
             roughnessFactor=clamp(mix(arm.g*roughnessFactor,mix(arm.g*roughnessFactor*.35,arm.g*roughnessFactor*.78,moss),wet),.06,.98);
             `:`
@@ -131,7 +131,7 @@ export class OceanWorld {
             vec3 arm=triArm(uPbrArm,vOceanWorld,b,uPbrScale);
             ${useMoss?`
             vec3 mossArm=triArm(uMossArm,vOceanWorld,b,uMossScale);
-            float moss=min(mossCoverage(vOceanWorld,wn,arm.r,${mossAmount}),.10);
+            float moss=min(mossCoverage(vOceanWorld,wn,arm.r,${mossAmount}),.35);
             arm.b=mix(arm.b,mossArm.b,moss);
             `:''}
             metalnessFactor=clamp(arm.b,.0,.35);
@@ -143,7 +143,7 @@ export class OceanWorld {
             vec3 nRock=triNormalView(uPbrNor,vOceanWorld,wn,b,uPbrScale,viewMatrix);
             ${useMoss?`
             vec3 arm=triArm(uPbrArm,vOceanWorld,b,uPbrScale);
-            float moss=min(mossCoverage(vOceanWorld,wn,arm.r,${mossAmount}),.10);
+            float moss=min(mossCoverage(vOceanWorld,wn,arm.r,${mossAmount}),.35);
             vec3 nMoss=triNormalView(uMossNor,vOceanWorld,wn,b,uMossScale,viewMatrix);
             normal=normalize(mix(nRock,nMoss,moss));
             `:`
@@ -151,14 +151,16 @@ export class OceanWorld {
             `}
           }`);
       }
-      if(usePbr){
-        // Soft caustics only — strong procedural caustics fight photographic albedo
-        shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.012*gain).toFixed(4)};\n#include <opaque_fragment>`);
-      }else{
-        shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.055*gain).toFixed(4)};\n#include <opaque_fragment>`);
+      if(gain>0){
+        if(usePbr){
+          // Soft caustics only — strong procedural caustics fight photographic albedo
+          shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.012*gain).toFixed(4)};\n#include <opaque_fragment>`);
+        }else{
+          shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.055*gain).toFixed(4)};\n#include <opaque_fragment>`);
+        }
       }
     };
-    m.customProgramCacheKey=()=>`${detail}:${gain.toFixed(2)}:pbr${usePbr?maps!.key:'0'}:moss${useMoss?mossMaps!.key+':10pct':'0'}`;
+    m.customProgramCacheKey=()=>`${detail}:${gain.toFixed(2)}:pbr${usePbr?maps!.key:'0'}:moss${useMoss?mossMaps!.key+':35pct':'0'}`;
     return m;
   }
 

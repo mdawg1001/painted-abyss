@@ -199,6 +199,14 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 @keyframes slot-blocked{0%,100%{transform:translateY(-2px)}35%{transform:translateY(-2px) translateX(-2px)}70%{transform:translateY(-2px) translateX(2px)}}
 .slot.relic{color:#e2b963}
 .slot.flare{color:#ff6b4a}
+.slot.knife{color:#c8d0d4}
+.slot-thumb{
+  width:36px;height:36px;object-fit:contain;display:block;margin:0 auto;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));
+  pointer-events:none;
+}
+.threat.damaged{color:#c9a06a}
+.threat.dead{color:#9eb0b4}
 
 .keybinds{
   position:absolute;right:28px;bottom:28px;pointer-events:none;
