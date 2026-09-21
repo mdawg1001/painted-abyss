@@ -222,7 +222,7 @@ export class CaveWorld extends OceanWorld {
  buildCave(){
   const {rock:rockMaps,sand:sandMaps,moss:mossMaps}=this.rockMaps;
   // Near-white tints so Poly Haven albedo dominates; ceiling kept cooler/darker
-  const floor=this.material(0xc9c4b8,'sand',.88,3.4,sandMaps,mossMaps);
+  const floor=this.material(0xc9c4b8,'sand',.88,0,sandMaps,mossMaps);
   const rock=this.material(0xb4c0c4,'rock',.86,1.6,rockMaps,mossMaps);
   const ceiling=this.material(0x6a7882,'rock',.9,.6,rockMaps,mossMaps);
   const floors:THREE.BufferGeometry[]=[],roofs:THREE.BufferGeometry[]=[],walls:THREE.BufferGeometry[]=[],details:THREE.BufferGeometry[]=[];
