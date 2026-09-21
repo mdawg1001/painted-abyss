@@ -11,6 +11,7 @@ import { createKnifeVisual, upgradeKnifeVisual, attachFpsArms, applyKnifeEnvMap,
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
 import { createChestVisual, upgradeChestVisual, syncChestOpen, type ChestVisual } from './chestAsset';
+import { mountLpgTank } from './lpgTankAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
@@ -92,6 +93,8 @@ export class CaveWorld extends OceanWorld {
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  /** World crates / suitcase (Poly Haven) keyed by mission chest id. */
  chestVisuals=new Map<number,ChestVisual>();
+ /** Floor scenery — Poly Haven small LPG tank. */
+ lpgTank:THREE.Group|null=null;
  /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
  knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
  /** PMREM for Poly Haven metal/wood specular on the held knife. */
@@ -163,6 +166,7 @@ export class CaveWorld extends OceanWorld {
    this.knifeVisual.visible=this.holdingKnife();
   });
   this.mountChests();
+  this.lpgTank=mountLpgTank(this.scene);
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
  }
  /** Place the three Poly Haven chests and upgrade stubs to glTF in the background. */
