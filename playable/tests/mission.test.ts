@@ -1,10 +1,19 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,distance,cells} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,distance,cells} from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{for(let i=0;i<seconds*60;i++)m.update(1/60);};
 test('camera movement right produces positive world X with real Three camera',()=>{const d=lookDelta(0,0,100,0);const c=new THREE.PerspectiveCamera();c.rotation.order='YXZ';c.rotation.set(d.pitch,d.yaw,0);const forward=c.getWorldDirection(new THREE.Vector3());assert.ok(forward.x>0);assert.ok(lookDelta(0,0,-100,0).yaw>0);assert.equal(lookDelta(0,0,0,99999).pitch,-1.4);});
-test('unlocked edge turning supports continuous 360-degree rotation in either direction',()=>{assert.equal(edgeTurn(500,0,1000),0);assert.equal(edgeTurn(0,0,1000),-1);assert.equal(edgeTurn(1000,0,1000),1);let yaw=0;for(let i=0;i<240;i++)yaw=lookDelta(yaw,0,edgeTurn(999,0,1000)*2.1/60*650,0).yaw;assert.ok(yaw<-Math.PI*2);for(let i=0;i<480;i++)yaw=lookDelta(yaw,0,edgeTurn(1,0,1000)*2.1/60*650,0).yaw;assert.ok(yaw>Math.PI*2);});
+test('unlocked free look supports continuous 360-degree rotation without pressing the OS edge',()=>{
+ assert.equal(edgeTurn(500,0,1000),0);
+ assert.ok(edgeTurn(550,0,1000)===0&&edgeTurn(450,0,1000)===0);
+ assert.ok(edgeTurn(200,0,1000)<0);assert.ok(edgeTurn(800,0,1000)>0);
+ assert.equal(edgeTurn(0,0,1000),-1);assert.equal(edgeTurn(1000,0,1000),1);
+ // Continuous yaw engages well inside the canvas (hold left/right of center), not only at the rim.
+ assert.ok(Math.abs(edgeTurn(200,0,1000))>0.2);
+ let yaw=0;for(let i=0;i<360;i++)yaw=lookDelta(yaw,0,edgeTurn(900,0,1000)*FREE_LOOK_RATE/60*650,0).yaw;assert.ok(yaw<-Math.PI*2);
+ for(let i=0;i<720;i++)yaw=lookDelta(yaw,0,edgeTurn(100,0,1000)*FREE_LOOK_RATE/60*650,0).yaw;assert.ok(yaw>Math.PI*2);
+});
 test('five slots: pickup asks before replacing, displaced item is recoverable',()=>{const m=new Mission();m.position={...RELIC};m.interact();assert.equal(m.pending,1);assert.equal(m.hasRelic,false);m.selected=1;m.interact();assert.equal(m.inventory.length,5);assert.equal(m.inventory[1],'relic');assert.equal(m.pickups.filter(x=>x.item==='wood').length,1);m.drop();assert.equal(m.hasRelic,false);m.position={...RELIC};m.interact();assert.equal(m.inventory.length,5);assert.equal(m.pickups.length,2);});
 test('extraction requires currently carried objective, dropping it revokes win',()=>{const m=new Mission();m.position={...EXIT};m.interact();assert.equal(m.outcome,'playing');m.position={...RELIC};m.interact();m.interact();assert.ok(m.hasRelic);m.position={...EXIT};m.interact();assert.equal(m.outcome,'won');const elapsed=m.elapsed;m.update(.05);assert.equal(m.elapsed,elapsed);});
 test('cancelled / out of range swap cannot remotely collect objective',()=>{const m=new Mission();m.position={...RELIC};m.interact();m.position={...START};m.interact();assert.equal(m.pending,null);assert.equal(m.hasRelic,false);});

@@ -45,18 +45,22 @@ export function pathBetween(a:Point,b:Point){
  while(key&&key!==start){const [c,r]=key.split(',').map(Number);path.unshift(world(c,r));key=parents.get(key)!;}return path;
 }
 export const lookDelta=(yaw:number,pitch:number,dx:number,dy:number)=>({yaw:yaw-dx*.0021,pitch:Math.max(-1.4,Math.min(1.4,pitch-dy*.0021))});
+/** Frame-rate-independent multiplier for unlocked continuous yaw (paired with lookDelta). */
+export const FREE_LOOK_RATE=1.45;
 /**
- * Browsers that deny pointer lock cannot move the pointer beyond the window.
- * Holding the pointer in either outer edge therefore supplies continuous yaw,
- * allowing unlimited horizontal rotation without requiring click-drag.
+ * Soft look-stick yaw when pointer lock is unavailable.
+ * A center dead zone keeps fine aiming calm; offset past that ramps continuous
+ * 360° turn while the pointer stays inside the canvas (no need to press the OS edge).
  */
 export function edgeTurn(clientX:number,left:number,width:number){
  if(width<=0)return 0;
  const x=Math.max(0,Math.min(1,(clientX-left)/width));
- const edge=.14;
- if(x<edge)return -(edge-x)/edge;
- if(x>1-edge)return (x-(1-edge))/edge;
- return 0;
+ const fromCenter=(x-.5)*2;
+ const dead=.2;
+ const abs=Math.abs(fromCenter);
+ if(abs<=dead)return 0;
+ const t=(abs-dead)/(1-dead);
+ return Math.sign(fromCenter)*t*t;
 }
 export class Mission {
  position={...START};health=100;air=240;elapsed=0;stamina=100;torch=true;
