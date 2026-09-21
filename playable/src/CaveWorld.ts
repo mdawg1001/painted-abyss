@@ -166,7 +166,7 @@ export class CaveWorld extends OceanWorld {
    data[i]=255;data[i+1]=255;data[i+2]=255;data[i+3]=Math.floor(a*255);
   }
   const tex=new THREE.DataTexture(data,s,s,THREE.RGBAFormat);
-  tex.needsUpdate=true;tex.colorSpace=THREE.SRGBColorSpace;return tex;
+  tex.needsUpdate=true;tex.colorSpace=THREE.NoColorSpace;return tex;
  }
  /** Dense silt motes spawned by bed shear — settle with gravity, not ambient dust. */
  buildSiltStorm(){
