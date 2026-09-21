@@ -1,31 +1,31 @@
-/** Audible midrange water and regulator breaths, including on laptop speakers. */
+/** Regulator breathing only. All background ambience comes from the supplied music. */
 export function buildDiveAudio(ctx: AudioContext, master: GainNode) {
-  const buffer = ctx.createBuffer(1, ctx.sampleRate * 4, ctx.sampleRate);
+  const cycleSeconds = 1 / .22;
+  const buffer = ctx.createBuffer(1, Math.round(ctx.sampleRate * cycleSeconds), ctx.sampleRate);
   const samples = buffer.getChannelData(0);
-  for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
-  const water = ctx.createBufferSource();
-  water.buffer = buffer;
-  water.loop = true;
+  for (let i = 0; i < samples.length; i++) {
+    const seconds = i / ctx.sampleRate;
+    // Separate inhale and exhale with quiet gaps; no continuous water-noise bed.
+    const inhale = seconds < 1.4 ? Math.sin(Math.PI * seconds / 1.4) ** 2 * .41 : 0;
+    const exhale = seconds >= 1.9 && seconds < 3.8
+      ? Math.sin(Math.PI * (seconds - 1.9) / 1.9) ** 2 * .30 : 0;
+    samples[i] = (Math.random() * 2 - 1) * (inhale + exhale);
+  }
+  const breathing = ctx.createBufferSource();
+  breathing.buffer = buffer;
+  breathing.loop = true;
   const filter = ctx.createBiquadFilter();
   filter.type = 'lowpass';
   filter.frequency.value = 1800;
   const lowCut = ctx.createBiquadFilter();
   lowCut.type = 'highpass';
   lowCut.frequency.value = 180;
-  const breath = ctx.createGain();
-  breath.gain.value = .24;
-  const cycle = ctx.createOscillator();
-  cycle.frequency.value = .22;
-  const depth = ctx.createGain();
-  depth.gain.value = .17;
-  cycle.connect(depth).connect(breath.gain);
-  water.connect(filter).connect(lowCut).connect(breath).connect(master);
+  breathing.connect(filter).connect(lowCut).connect(master);
   // This probe is after the master gain, so mute can be verified as silence.
   const probe = ctx.createAnalyser();
   probe.fftSize = 2048;
   master.connect(probe).connect(ctx.destination);
-  water.start();
-  cycle.start();
+  breathing.start();
   return probe;
 }
 
