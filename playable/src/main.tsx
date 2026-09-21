@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {CaveWorld,type Snapshot} from './CaveWorld';
-import {ITEMS,EXIT,distance,type Item} from './simulation';
+import {ITEMS,EXIT,distance,hydrostaticDepth,type Item} from './simulation';
 import {APP_VERSION,APP_BUILD_LABEL,APP_BUILD_SHA} from './version';
 import './style.css';
 
@@ -62,7 +62,7 @@ function App(){
  const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):nearest?`E · Collect ${ITEMS[nearest.item].name}`:'';
  const yaw=snap?.yaw??0;
  const air=m?Math.ceil(m.air):240;const time=`${String(Math.floor(air/60)).padStart(2,'0')}:${String(air%60).padStart(2,'0')}`;
- const depth=m?Math.max(1,Math.round(10+(-m.position.z)*.22+(5-m.position.y)*2.4)):0;
+ const depth=m?Math.round(hydrostaticDepth(m.position.y)):0;
  const predator=m?.predator.state||'patrol';const close=m?distance(m.position,m.predator.position)<23:false;
  const threat=close?{patrol:'Movement in the dark',alert:'It heard something',chase:'It is hunting you',search:'Searching your last position'}[predator]:'';
  return <main className={playing?'app playing':'app'}>
