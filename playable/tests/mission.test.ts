@@ -76,6 +76,9 @@ test('floor sprint kicks a two-phase silt plume; mid-water settling clears coars
  assert.ok(stormed.distance<clear.distance*.5);
  assert.ok(stormed.beamOpacity>clear.beamOpacity*2);
  assert.ok(stormed.betaBackscatter.r>clear.betaBackscatter.r*2);
+ // Muddy taupe cone (Dayo silt stills) — warm beam, not cyan/white fog wall.
+ assert.ok(stormed.beamR>stormed.beamB+.12,'silt beam stays warmer than cool murk');
+ assert.ok(stormed.beamB<.72,'silt beam must not wash toward white/cyan');
 });
 test('torch modulation dims and muddies with depth and floor aim',()=>{
  const shallowUp=torchModulation(6.5,-1.2);

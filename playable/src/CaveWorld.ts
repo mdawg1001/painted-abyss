@@ -156,18 +156,32 @@ export class CaveWorld extends OceanWorld {
   mat.opacity=Math.max(0,Math.min(.9,this.bloodLife/6));
   if(this.bloodLife<=0){this.blood.visible=false;mat.opacity=0;}
  }
+ /** Soft disc for silt grains — opaque muddy discs, not additive sparkles. */
+ siltDiscTexture(){
+  const s=64,c=(s-1)*.5,data=new Uint8Array(s*s*4);
+  for(let y=0;y<s;y++)for(let x=0;x<s;x++){
+   const d=Math.hypot(x-c,y-c)/c;
+   const a=d>=1?0:Math.pow(1-d,1.55);
+   const i=(y*s+x)*4;
+   data[i]=255;data[i+1]=255;data[i+2]=255;data[i+3]=Math.floor(a*255);
+  }
+  const tex=new THREE.DataTexture(data,s,s,THREE.RGBAFormat);
+  tex.needsUpdate=true;tex.colorSpace=THREE.SRGBColorSpace;return tex;
+ }
  /** Dense silt motes spawned by bed shear — settle with gravity, not ambient dust. */
  buildSiltStorm(){
-  const n=420;
+  const n=720;
   const pos=new Float32Array(n*3);
   const vel=new Float32Array(n*3);
   const life=new Float32Array(n);
   for(let i=0;i<n;i++){pos[i*3]=0;pos[i*3+1]=-80;pos[i*3+2]=0;life[i]=0;}
   const geo=new THREE.BufferGeometry();
   geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  // Dayo Blue Grotto silt stills: muddy taupe discs (NormalBlending), never cyan additive glow.
   const mat=new THREE.PointsMaterial({
-   color:0xc8d8e0,size:.11,transparent:true,opacity:0,depthWrite:false,sizeAttenuation:true,
-   blending:THREE.AdditiveBlending,
+   map:this.siltDiscTexture(),
+   color:0xa89888,size:.22,transparent:true,opacity:0,depthWrite:false,sizeAttenuation:true,
+   blending:THREE.NormalBlending,alphaTest:.02,
   });
   this.siltStorm=new THREE.Points(geo,mat);this.siltStorm.visible=false;
   this.siltStormVel=vel;this.siltStormLife=life;this.scene.add(this.siltStorm);
@@ -177,18 +191,18 @@ export class CaveWorld extends OceanWorld {
   if(!this.siltStorm||!this.siltStormVel||!this.siltStormLife||intensity<.04)return;
   const pos=this.siltStorm.geometry.attributes.position as THREE.BufferAttribute;
   const n=pos.count;
-  const count=Math.min(28,Math.max(1,Math.floor(2+intensity*36)));
+  const count=Math.min(48,Math.max(2,Math.floor(4+intensity*52)));
   const p=this.mission.position;
   let spawned=0;
   for(let i=0;i<n&&spawned<count;i++){
    if(this.siltStormLife[i]>.15)continue;
    const ang=Math.random()*Math.PI*2;
-   const rad=Math.random()*1.1;
-   pos.setXYZ(i,p.x+Math.cos(ang)*rad,FLOOR_Y+.08+Math.random()*.35,p.z+Math.sin(ang)*rad);
-   this.siltStormVel[i*3]=(Math.random()-.5)*(.4+intensity*.9);
-   this.siltStormVel[i*3+1]=.35+Math.random()*(.9+intensity*1.4);
-   this.siltStormVel[i*3+2]=(Math.random()-.5)*(.4+intensity*.9);
-   this.siltStormLife[i]=1.8+Math.random()*3.2+intensity*2.5;
+   const rad=Math.random()*1.35;
+   pos.setXYZ(i,p.x+Math.cos(ang)*rad,FLOOR_Y+.06+Math.random()*.42,p.z+Math.sin(ang)*rad);
+   this.siltStormVel[i*3]=(Math.random()-.5)*(.35+intensity*.75);
+   this.siltStormVel[i*3+1]=.22+Math.random()*(.7+intensity*1.1);
+   this.siltStormVel[i*3+2]=(Math.random()-.5)*(.35+intensity*.75);
+   this.siltStormLife[i]=2.2+Math.random()*3.8+intensity*2.8;
    spawned++;
   }
   pos.needsUpdate=true;
@@ -214,8 +228,15 @@ export class CaveWorld extends OceanWorld {
   }
   pos.needsUpdate=true;
   const mat=this.siltStorm.material as THREE.PointsMaterial;
-  mat.opacity=Math.min(.95,.12+optical*.85);
-  mat.size=.07+optical*.16;
+  // Chocolate-milk opacity: dense enough to block, not a glowing fog wash.
+  mat.opacity=Math.min(.92,.18+optical*.78);
+  mat.size=.14+optical*.28;
+  // Dense cores go slightly browner; mild optical stays dusty taupe.
+  mat.color.setRGB(
+   THREE.MathUtils.lerp(.66,.42,optical),
+   THREE.MathUtils.lerp(.60,.48,optical),
+   THREE.MathUtils.lerp(.53,.40,optical),
+  );
   this.siltStorm.visible=alive>0||optical>.05;
  }
  buildCave(){
@@ -709,14 +730,14 @@ export class CaveWorld extends OceanWorld {
 
    if(m.outcome!=='playing')this.pause();
   }
-  // Atmosphere: cyan-teal murk (reference palette), denser in deep chambers, clears at exit
+  // Atmosphere: cyan-teal cave murk. Silt is local particles — do NOT wash the world gray/cyan.
   const deep=THREE.MathUtils.smoothstep(-this.position.z,35,100);
   const nearExit=1-THREE.MathUtils.smoothstep(distance(this.position,EXIT),4,22);
   const siltFog=this.playing?siltAt(this.mission.silt,this.mission.position):0;
   const fog=this.scene.fog as THREE.FogExp2;
-  fog.color.set(0x0c3540).lerp(new THREE.Color(0x062430),deep).lerp(new THREE.Color(0x1a5a62),nearExit*.65)
-   .lerp(new THREE.Color(0xb8c8d0),siltFog*.55);
-  fog.density=.032+.022*deep-.014*nearExit+siltFog*.085;
+  fog.color.set(0x0c3540).lerp(new THREE.Color(0x062430),deep).lerp(new THREE.Color(0x1a5a62),nearExit*.65);
+  // Tiny residual density only; the storm Points carry the chocolate-milk look.
+  fog.density=.032+.022*deep-.014*nearExit+siltFog*.012;
   (this.scene.background as THREE.Color).copy(fog.color);
   this.uniforms.uTime.value=this.time;
   const torchOn=this.mission.torch;
@@ -748,8 +769,8 @@ export class CaveWorld extends OceanWorld {
    // No camera-forward particle cone — that was a second beam fighting the lantern aim.
    (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
   }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
-  // Soft bloom on shafts only — keep torch hotspots from blowing out; silt whiteout blooms harder
-  this.bloom.strength=(torchOn?.2:.14)+siltFog*.35;
+  // Soft bloom on shafts only — silt is muddy particles, not a bloom whiteout.
+  this.bloom.strength=(torchOn?.2:.14)+siltFog*.08;
   const p=this.mission.predator;this.guardian.group.position.copy(p.position);
   if(p.state==='dead'){
    // Corpse settles; limp fins, no chase heading lerp.

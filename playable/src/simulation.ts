@@ -331,8 +331,8 @@ export function stepSilt(s:SiltPlume,pos:Point,vel:Vec3,sprint:boolean,dt:number
 }
 
 /**
- * Fold local silt into the shared torch response: boost β^B (fog wall), crush range,
- * whiten the volume cone. Ambient torchMurk still applies underneath.
+ * Fold local silt into the shared torch response: boost β^B (muddy wall), crush range.
+ * Beam goes butterscotch/taupe (Dayo Blue Grotto silt stills) — never cyan/white fog.
  */
 export function applySiltToTorch(mod:TorchModulation,silt:number):TorchModulation{
  if(silt<.01)return mod;
@@ -347,12 +347,13 @@ export function applySiltToTorch(mod:TorchModulation,silt:number):TorchModulatio
  const decay=mod.decay+t2*.55;
  const beamOpacity=Math.min(.62,mod.beamOpacity*(1+t2*3.6));
  const particle=Math.min(1,mod.particle+.5*t);
- const beamR=lerp(mod.beamR,.94,t2*.75);
- const beamG=lerp(mod.beamG,.96,t2*.7);
- const beamB=lerp(mod.beamB,.98,t2*.65);
- const r=lerp(mod.r,.78,t2*.35);
- const g=lerp(mod.g,.82,t2*.3);
- const b=lerp(mod.b,.72,t2*.25);
+ // Muddy cream cone (#C6C4A3 lit / #6B5E52 dense) — warm, desaturated, not additive white.
+ const beamR=lerp(mod.beamR,.82,t2*.88);
+ const beamG=lerp(mod.beamG,.74,t2*.8);
+ const beamB=lerp(mod.beamB,.48,t2*.92);
+ const r=lerp(mod.r,.72,t2*.48);
+ const g=lerp(mod.g,.63,t2*.44);
+ const b=lerp(mod.b,.45,t2*.55);
  return{intensity,distance,decay,beamOpacity,particle,r,g,b,beamR,beamG,beamB,betaDirect,betaBackscatter};
 }
 /**
