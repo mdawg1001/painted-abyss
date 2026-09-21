@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,updateBuoyancy,stepSwimVelocity,terminalSwimSpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL} from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{for(let i=0;i<seconds*60;i++)m.update(1/60);};
 test('hydrostatic depth and ata share one surface plane',()=>{
  assert.equal(hydrostaticDepth(SURFACE_Y),0);
@@ -13,6 +13,33 @@ test('hydrostatic depth and ata share one surface plane',()=>{
  assert.equal(Math.round(hydrostaticDepth(RELIC.y)),5);
  // Same Y ⇒ same depth regardless of cavern −Z (no theatrical fake metres).
  assert.equal(hydrostaticDepth(3),SURFACE_Y-3);
+});
+test('force swim reaches dive-plausible cruise/sprint and coasts under quadratic drag',()=>{
+ const cruise=terminalSwimSpeed(false),sprint=terminalSwimSpeed(true);
+ assert.ok(cruise>=.5&&cruise<=.85,`cruise ${cruise}`);
+ assert.ok(sprint>=1.0&&sprint<=1.3,`sprint ${sprint}`);
+ assert.ok(PREDATOR_SPEED.chase>cruise&&PREDATOR_SPEED.chase<sprint);
+ const v={x:0,y:0,z:0};
+ for(let i=0;i<180;i++)stepSwimVelocity(v,{x:0,y:0,z:-1},0,false,1/60);
+ assert.ok(Math.abs(v.z+cruise)<.05,`steady z ${v.z} vs ${-cruise}`);
+ const speed=Math.hypot(v.x,v.y,v.z);
+ let coast=0;
+ for(let i=0;i<300;i++){const before=Math.hypot(v.x,v.y,v.z);stepSwimVelocity(v,{x:0,y:0,z:0},0,false,1/60);coast+=Math.hypot(v.x,v.y,v.z)/60;if(Math.hypot(v.x,v.y,v.z)<.01)break;}
+ assert.ok(coast<2.5,`coast ${coast} from ${speed}`);
+});
+test('BCD buoyancy rises on Space input and trims toward neutral when released',()=>{
+ let b=0;
+ for(let i=0;i<120;i++)b=updateBuoyancy(b,1,1/60);
+ assert.ok(b>.85);
+ for(let i=0;i<300;i++)b=updateBuoyancy(b,0,1/60);
+ assert.ok(Math.abs(b)<.12);
+ // Buoyancy alone produces vertical accel without horizontal kick.
+ const v={x:0,y:0,z:0};
+ for(let i=0;i<90;i++)stepSwimVelocity(v,{x:0,y:0,z:0},1,false,1/60);
+ assert.ok(v.y>0.2);
+ assert.ok(Math.abs(v.x)<1e-9&&Math.abs(v.z)<1e-9);
+ assert.ok(SWIM_BUOYANCY_ACCEL>0);
+ const m=new Mission(true);assert.equal(m.buoyancy,0);
 });
 test('torch modulation dims and muddies with depth and floor aim',()=>{
  const shallowUp=torchModulation(6.5,-1.2);

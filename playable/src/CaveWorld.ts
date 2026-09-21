@@ -7,7 +7,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime, playInventoryClick } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
-import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, readInventoryTipsSeen, writeInventoryTipsSeen } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, stepSwimVelocity } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
 
@@ -412,13 +412,17 @@ export class CaveWorld extends OceanWorld {
    const delta=lookDelta(this.targetYaw,this.targetPitch,horizontalLook*dt*650,(pressed('ArrowDown')-pressed('ArrowUp'))*dt*650);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;
    this.yaw=THREE.MathUtils.lerp(this.yaw,this.targetYaw,1-Math.exp(-16*dt));this.pitch=THREE.MathUtils.lerp(this.pitch,this.targetPitch,1-Math.exp(-16*dt));this.camera.rotation.set(this.pitch,this.yaw,0);
    this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
-   this.move.copy(this.forward).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));this.move.y+=pressed('Space')-pressed('KeyQ','ControlLeft','ControlRight');
-   const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.1;
-   if(this.move.lengthSq()>1)this.move.normalize();this.move.multiplyScalar(sprint?4.8:2.8);this.velocity.lerp(this.move,1-Math.exp(-4*dt));
+   // Kick = look / strafe only. Space/Q drive BCD buoyancy, not equal XYZ thrust.
+   this.move.copy(this.forward).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));
+   const bcd=pressed('Space')-pressed('KeyQ','ControlLeft','ControlRight');
+   m.buoyancy=updateBuoyancy(m.buoyancy,bcd,dt);
+   const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.01;
+   stepSwimVelocity(this.velocity,this.move,m.buoyancy,sprint,dt);
    moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);m.update(dt,sprint);this.position.copy(m.position);
    // Presentation-only hover bob when nearly still — never moves mission.position
+   // Blend band matches thrust/drag cruise (~0.75 m/s), not the old target-speed scale.
    const speed=this.velocity.length();
-   const bobBlend=1-THREE.MathUtils.smoothstep(speed,.2,1.4);
+   const bobBlend=1-THREE.MathUtils.smoothstep(speed,.08,.55);
    const bobY=Math.sin(this.time*1.1)*.05*bobBlend;
    const bobSide=Math.sin(this.time*.65)*.025*bobBlend;
    const bobFwd=Math.cos(this.time*.5)*.025*bobBlend;
