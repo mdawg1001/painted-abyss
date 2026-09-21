@@ -2,11 +2,15 @@ import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {CaveWorld,type Snapshot} from './CaveWorld';
 import {ITEMS,EXIT,distance,hydrostaticDepth,AIR_MAIN_MAX,AIR_BAILOUT_MAX,type Item} from './simulation';
+import {KNIFE_THUMB_URL} from './knifeAsset';
 import {APP_VERSION,APP_BUILD_LABEL,APP_BUILD_SHA} from './version';
 import './style.css';
 
 function Icon({item}:{item:Item|null}){
- const paths:Record<Item,React.ReactNode>={
+ if(item==='knife'){
+  return <img className="slot-thumb" src={KNIFE_THUMB_URL} alt="" width={36} height={36} draggable={false}/>;
+ }
+ const paths:Record<Exclude<Item,'knife'>,React.ReactNode>={
   stone:<path fill="#7a8480" d="M12 28c1-9 7-15 13-16 8-2 15 3 16 11 2 9-4 17-13 18-8 1-15-4-16-13z"/>,
   wood:<g transform="rotate(-35 24 24)"><rect x="20" y="8" width="8" height="32" rx="2.5" fill="#2c343a"/><rect x="19" y="8" width="10" height="7" rx="1.5" fill="#4a545c"/><rect x="21" y="18" width="6" height="2" fill="#1a2024"/></g>,
   flare:<><rect x="22" y="16" width="5" height="24" rx="1.5" fill="#e8e8e8"/><path fill="#ff1e14" d="M21 16c1-5 2.5-10 3.5-13 1.5 3 3.5 7 4.5 11H21z"/><path fill="#ffc14a" d="M24 5c0-2 .6-4 1-5 .4 1.5 1.2 3 2 4.5-.7.2-1.8.4-3 .5z"/></>,
@@ -68,7 +72,15 @@ function App(){
  const ponyReady=!!(m&&m.bailout>0&&m.air>0);
  const depth=m?Math.round(hydrostaticDepth(m.position.y)):0;
  const predator=m?.predator.state||'patrol';const close=m?distance(m.position,m.predator.position)<23:false;
- const threat=close?{patrol:'Movement in the dark',alert:'It heard something',chase:'It is hunting you',search:'Searching your last position'}[predator]:'';
+ const raging=!!(m?.predator.raged&&predator==='chase');
+ const threat=close?({
+  patrol:'Movement in the dark',
+  alert:'It heard something',
+  chase:raging?'Wounded — raging at you':'It is hunting you',
+  search:'Searching your last position',
+  damaged:'Wounded — moving slow',
+  dead:'Guardian down',
+ } as Record<string,string>)[predator]:'';
  return <main className={playing?'app playing':'app'}>
   <div className="viewport" ref={host} aria-label="Three-dimensional underwater cave"/>
   <div className="vignette"/>
@@ -92,10 +104,11 @@ function App(){
    {m.health<40&&<div className="injury"/>}
    <div className="interaction" role="status">{prompt&&<div className="prompt">{prompt}</div>}{m.elapsed<m.noticeUntil&&<p key={m.feedbackPulse} className={`notice ${m.feedbackKind}`}>{m.notice}</p>}</div>
    <div className="inventory" aria-label="Inventory">
-    <div className="slots">{m.inventory.map((item,i)=>{const selected=i===m.selected;const pulse=selected&&m.feedbackKind?m.feedbackKind:'';return <div className={`slot ${selected?'selected':''} ${item==='relic'?'relic':''} ${item==='flare'?'flare':''} ${pulse?`pulse-${pulse}`:''}`} key={selected?`${i}-p${m.feedbackPulse}`:i}><kbd>{i+1}</kbd><Icon item={item}/>{selected&&<em className="slot-mark" aria-hidden="true">●</em>}</div>;})}</div>
+    <div className="slots">{m.inventory.map((item,i)=>{const selected=i===m.selected;const pulse=selected&&m.feedbackKind?m.feedbackKind:'';return <div className={`slot ${selected?'selected':''} ${item==='relic'?'relic':''} ${item==='flare'?'flare':''} ${item==='knife'?'knife':''} ${pulse?`pulse-${pulse}`:''}`} key={selected?`${i}-p${m.feedbackPulse}`:i}><kbd>{i+1}</kbd><Icon item={item}/>{selected&&<em className="slot-mark" aria-hidden="true">●</em>}</div>;})}</div>
    </div>
    <aside className="keybinds" aria-hidden="true">
     <div><kbd>1–5</kbd><span>Select</span></div>
+    <div><kbd>Click</kbd><span>Stab</span></div>
     <div><kbd>F</kbd><span>Torch</span></div>
     <div><kbd>E</kbd><span>Interact</span></div>
     <div><kbd>R</kbd><span>Use</span></div>
@@ -112,7 +125,7 @@ function App(){
    <div className="menu-actions"><button onClick={()=>{const w=engine.current;if(w){w.setSound(!w.sound);w.publish();}}}>{engine.current?.sound===false?'Sound off':'Sound on'}</button><button onClick={()=>engine.current?.testSound()}>Test sound</button>{snap?.started&&!terminal&&<button onClick={()=>{engine.current?.reset();engine.current?.start();}}>Restart dive</button>}</div>
    <p className="sound-help" role="status">{snap?.audioNotice||'Test sound plays two clear tones. During the dive, hear your music.'}</p>
    <div className="dive-note">2–4 MINUTES <span>·</span> DESKTOP / HEADPHONES <span>·</span> PROTOTYPE {APP_VERSION}</div>
-   </section><aside className="briefing"><div className="eyebrow">BEFORE YOU DESCEND</div><ol><li><b>Follow the turquoise lights.</b><span>Find the relic in the bone alcove, beyond the central pillar.</span></li><li><b>Make room for your discovery.</b><span>Five slots, no backpack. Press E, choose 1–5, then E to swap. The old item drops.</span></li><li><b>Escape through the east fissure.</b><span>Follow amber lights north to the extraction pool. The guardian cannot enter the narrow passage.</span></li></ol><div className="control-grid"><span><kbd>W A S D</kbd> Swim</span><span><kbd>Space / Q</kbd> Buoyancy</span><span><kbd>Shift</kbd> Sprint</span><span><kbd>F</kbd> Torch</span><span><kbd>E</kbd> Collect / extract</span><span><kbd>1–5</kbd> Select slot</span><span><kbd>R</kbd> Use / consume</span><span><kbd>G</kbd> Drop selected</span></div><p className="look-note">Move the mouse or trackpad to look — right looks right. No button held. If the browser limits the pointer, hold left or right of center to keep turning through 360° without leaving the dive window. Arrow keys also look. <kbd>Esc</kbd> pauses; <kbd>M</kbd> mutes.</p><p className="tip">Inventory: <kbd>1–5</kbd> selects (click sound when the slot changes), then <kbd>R</kbd> uses — air, sealant, and flares are consumed. A one-time tip appears on the first dive only. Rock blocks its sight; a flare distracts it while you move away.</p></aside></div>}
+   </section><aside className="briefing"><div className="eyebrow">BEFORE YOU DESCEND</div><ol><li><b>Follow the turquoise lights.</b><span>Find the relic in the bone alcove, beyond the central pillar.</span></li><li><b>Make room for your discovery.</b><span>Five slots, no backpack. Press E, choose 1–5, then E to swap. The old item drops. Slot 1 starts with a diving knife.</span></li><li><b>Escape through the east fissure.</b><span>Follow amber lights north to the extraction pool. The guardian cannot enter the narrow passage.</span></li></ol><div className="control-grid"><span><kbd>W A S D</kbd> Swim</span><span><kbd>Space / Q</kbd> Buoyancy</span><span><kbd>Shift</kbd> Sprint</span><span><kbd>F</kbd> Torch</span><span><kbd>E</kbd> Collect / extract</span><span><kbd>1–5</kbd> Select slot</span><span><kbd>Click</kbd> Stab (knife)</span><span><kbd>R</kbd> Use / consume</span><span><kbd>G</kbd> Drop selected</span></div><p className="look-note">Move the mouse or trackpad to look — right looks right. No button held. If the browser limits the pointer, hold left or right of center to keep turning through 360° without leaving the dive window. Arrow keys also look. <kbd>Esc</kbd> pauses; <kbd>M</kbd> mutes.</p><p className="tip">Inventory: <kbd>1</kbd> selects the diving knife, then <kbd>click</kbd> stabs at close range — wound it and it rages; cut deep and it breaks off slow, or sinks bloody when killed. <kbd>R</kbd> uses consumables (air, sealant, flares). A one-time tip appears on the first dive only. Rock blocks its sight; a flare distracts it while you move away. Killing is optional — extraction still only needs the relic.</p></aside></div>}
  </main>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);

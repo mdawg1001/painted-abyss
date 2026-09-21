@@ -24,6 +24,76 @@ export function playDiveChime(ctx: AudioContext, master: GainNode) {
   }
 }
 
+/** Underwater stab whoosh + steel nick (hit) or dry swing (miss). */
+export function playStabSound(ctx: AudioContext, master: GainNode, hit: boolean) {
+  const start = ctx.currentTime;
+  // Short noise burst — reads as a knife cut through water.
+  const duration = hit ? .07 : .05;
+  const noiseBuf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * duration)), ctx.sampleRate);
+  const samples = noiseBuf.getChannelData(0);
+  for (let i = 0; i < samples.length; i++) samples[i] = (Math.random() * 2 - 1) * (1 - i / samples.length);
+  const noise = ctx.createBufferSource();
+  noise.buffer = noiseBuf;
+  const band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.frequency.value = hit ? 1400 : 900;
+  band.Q.value = hit ? .8 : 1.4;
+  const noiseEnv = ctx.createGain();
+  noiseEnv.gain.setValueAtTime(hit ? .55 : .28, start);
+  noiseEnv.gain.exponentialRampToValueAtTime(.001, start + duration);
+  noise.connect(band).connect(noiseEnv).connect(master);
+  noise.start(start);
+  noise.stop(start + duration);
+  noise.onended = () => { noise.disconnect(); band.disconnect(); noiseEnv.disconnect(); };
+
+  if (hit) {
+    const ring = ctx.createOscillator();
+    const ringEnv = ctx.createGain();
+    ring.type = 'triangle';
+    ring.frequency.setValueAtTime(420, start);
+    ring.frequency.exponentialRampToValueAtTime(180, start + .12);
+    ringEnv.gain.setValueAtTime(0, start);
+    ringEnv.gain.linearRampToValueAtTime(.22, start + .008);
+    ringEnv.gain.exponentialRampToValueAtTime(.001, start + .16);
+    ring.connect(ringEnv).connect(master);
+    ring.start(start);
+    ring.stop(start + .18);
+    ring.onended = () => { ring.disconnect(); ringEnv.disconnect(); };
+  } else {
+    const air = ctx.createOscillator();
+    const airEnv = ctx.createGain();
+    air.type = 'sine';
+    air.frequency.value = 220;
+    airEnv.gain.setValueAtTime(0, start);
+    airEnv.gain.linearRampToValueAtTime(.08, start + .01);
+    airEnv.gain.exponentialRampToValueAtTime(.001, start + .08);
+    air.connect(airEnv).connect(master);
+    air.start(start);
+    air.stop(start + .1);
+    air.onended = () => { air.disconnect(); airEnv.disconnect(); };
+  }
+}
+
+/** Low death thrash — short down-sweep + rumble. */
+export function playGuardianDeath(ctx: AudioContext, master: GainNode) {
+  const start = ctx.currentTime;
+  const tone = ctx.createOscillator();
+  const env = ctx.createGain();
+  tone.type = 'sawtooth';
+  tone.frequency.setValueAtTime(110, start);
+  tone.frequency.exponentialRampToValueAtTime(38, start + .45);
+  env.gain.setValueAtTime(0, start);
+  env.gain.linearRampToValueAtTime(.2, start + .02);
+  env.gain.exponentialRampToValueAtTime(.001, start + .5);
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 320;
+  tone.connect(filter).connect(env).connect(master);
+  tone.start(start);
+  tone.stop(start + .55);
+  tone.onended = () => { tone.disconnect(); filter.disconnect(); env.disconnect(); };
+}
+
 /** Short mechanical click/snap when the inventory selection moves to a different slot. */
 export function playInventoryClick(ctx: AudioContext, master: GainNode) {
   const start = ctx.currentTime;

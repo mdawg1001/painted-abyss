@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,updateBuoyancy,stepSwimVelocity,terminalSwimSpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,applySiltToTorch,stepSilt,siltAt,createSiltPlume,siltLoad,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,updateBuoyancy,stepSwimVelocity,terminalSwimSpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,PREDATOR_HP_MAX,PREDATOR_BREAK_HP} from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{for(let i=0;i<seconds*60;i++)m.update(1/60);};
 test('hydrostatic depth and ata share one surface plane',()=>{
  assert.equal(hydrostaticDepth(SURFACE_Y),0);
@@ -19,6 +19,9 @@ test('force swim reaches dive-plausible cruise/sprint and coasts under quadratic
  assert.ok(cruise>=2.0&&cruise<=2.4,`cruise ${cruise}`);
  assert.ok(sprint>=3.2&&sprint<=3.8,`sprint ${sprint}`);
  assert.ok(PREDATOR_SPEED.chase>cruise&&PREDATOR_SPEED.chase<sprint);
+ assert.ok(PREDATOR_SPEED.rage>PREDATOR_SPEED.chase);
+ assert.ok(PREDATOR_SPEED.damaged<PREDATOR_SPEED.patrol);
+ assert.ok(KNIFE_RANGE<BITE_RANGE);
  const v={x:0,y:0,z:0};
  for(let i=0;i<180;i++)stepSwimVelocity(v,{x:0,y:0,z:-1},0,false,1/60);
  assert.ok(Math.abs(v.z+cruise)<.05,`steady z ${v.z} vs ${-cruise}`);
@@ -40,6 +43,22 @@ test('BCD buoyancy rises on Space input and trims toward neutral when released',
  assert.ok(Math.abs(v.x)<1e-9&&Math.abs(v.z)<1e-9);
  assert.ok(SWIM_BUOYANCY_ACCEL>0);
  const m=new Mission(true);assert.equal(m.buoyancy,0);
+});
+test('floor sprint kicks a two-phase silt plume; mid-water settling clears coarse first',()=>{
+ const plume=createSiltPlume({...START,y:FLOOR_Y+.2});
+ for(let i=0;i<90;i++)stepSilt(plume,{x:0,y:FLOOR_Y+.15,z:-12},{x:0,y:-.4,z:-3.2},true,1/60);
+ assert.ok(siltLoad(plume)>.55,'bed shear must raise suspended load');
+ assert.ok(plume.coarse>plume.fine*.4);
+ assert.ok(siltAt(plume,{x:0,y:FLOOR_Y+.2,z:-12})>siltAt(plume,{x:0,y:SURFACE_Y-0.2,z:-12}),'density falls with height');
+ const beforeFine=plume.fine,beforeCoarse=plume.coarse;
+ for(let i=0;i<180;i++)stepSilt(plume,{x:0,y:4,z:-12},{x:0,y:.6,z:0},false,1/60);
+ assert.ok(plume.coarse<beforeCoarse*.35,'coarse settles faster once you leave the bed');
+ assert.ok(plume.fine>beforeFine*.25,'fine clay hangs longer');
+ const clear=torchModulation(3,0);
+ const stormed=applySiltToTorch(clear,.9);
+ assert.ok(stormed.distance<clear.distance*.5);
+ assert.ok(stormed.beamOpacity>clear.beamOpacity*2);
+ assert.ok(stormed.betaBackscatter.r>clear.betaBackscatter.r*2);
 });
 test('torch modulation dims and muddies with depth and floor aim',()=>{
  const shallowUp=torchModulation(6.5,-1.2);
@@ -139,18 +158,57 @@ test('guardian bite raises panic gas effort briefly',()=>{
 });
 test('inventory select/use stay quiet after the one-time first-play tip',()=>{
  const first=new Mission(false);
- assert.match(first.notice,/1–5 select/);
+ assert.match(first.notice,/knife|1–5 select/i);
  assert.equal(first.tipsSeen,false);
  const opening=first.notice;
  assert.equal(first.select(2),true);assert.equal(first.selected,2);assert.equal(first.feedbackKind,'select');assert.equal(first.notice,opening);
  assert.equal(first.select(2),false);
  first.use();assert.equal(first.inventory[2],null);assert.equal(first.feedbackKind,'ok');assert.equal(first.notice,opening);
- first.select(0);first.use();assert.equal(first.inventory[0],'stone');assert.equal(first.feedbackKind,'blocked');assert.equal(first.notice,opening);
+ first.select(0);first.use();assert.equal(first.inventory[0],'knife');assert.equal(first.feedbackKind,'blocked');assert.equal(first.notice,opening);
  const quiet=new Mission(true);
  assert.equal(quiet.notice,'');assert.equal(quiet.noticeUntil,0);
  quiet.select(3);assert.equal(quiet.feedbackKind,'select');assert.equal(quiet.notice,'');
  quiet.air=100;quiet.use();assert.equal(quiet.inventory[3],null);assert.equal(quiet.feedbackKind,'ok');assert.equal(quiet.notice,'');
  quiet.inventory[1]=null;quiet.select(1);quiet.use();assert.equal(quiet.feedbackKind,'blocked');
  quiet.drop();assert.equal(quiet.feedbackKind,'blocked');
+});
+test('diving knife starts in slot 1 and stabs apply damage with cooldown',()=>{
+ const m=new Mission(true);
+ assert.equal(m.inventory[0],'knife');
+ assert.equal(m.predator.hp,PREDATOR_HP_MAX);
+ m.selected=0;
+ m.predator.position={...m.position,z:m.position.z-1.5};
+ const look={x:0,y:0,z:-1};
+ assert.equal(m.stab(look),'hit');
+ assert.equal(m.predator.hp,PREDATOR_HP_MAX-KNIFE_DAMAGE);
+ assert.ok(m.predator.raged);
+ assert.equal(m.predator.state,'chase');
+ assert.equal(m.stab(look),'cooldown');
+ m.predator.stabCool=0;
+ assert.equal(m.stab({x:0,y:0,z:1}),'miss'); // facing away
+});
+test('knife wound rages then breaks off at 85% damage; death sinks FSM',()=>{
+ const m=new Mission(true);
+ m.position=world(16,16);m.predator.position={...m.position,z:m.position.z-1.2};
+ m.selected=0;const look={x:0,y:0,z:-1};
+ assert.equal(m.stab(look),'hit');assert.ok(m.predator.raged);assert.equal(m.predator.state,'chase');
+ m.predator.stabCool=0;m.predator.flinch=0;
+ assert.equal(m.stab(look),'hit');assert.ok(m.predator.raged);
+ m.predator.stabCool=0;m.predator.flinch=0;
+ assert.equal(m.stab(look),'hit');
+ assert.ok(m.predator.hp<=PREDATOR_BREAK_HP&&m.predator.hp>0);
+ assert.equal(m.predator.state,'damaged');assert.equal(m.predator.raged,false);
+ assert.match(m.notice,/breaks off|wounded/i);
+ m.predator.stabCool=0;m.predator.flinch=0;
+ assert.equal(m.stab(look),'hit');
+ assert.equal(m.predator.hp,0);assert.equal(m.predator.state,'dead');
+ assert.match(m.notice,/Guardian down/i);
+ const y0=m.predator.position.y;
+ advance(m,4);
+ assert.ok(m.predator.position.y<y0);
+ assert.ok(m.predator.position.y<=FLOOR_Y+1);
+ // Dead guardian no longer bites.
+ const health=m.health;m.position={...m.predator.position};advance(m,3);assert.equal(m.health,health);
+ assert.equal(m.outcome,'playing');
 });
 test('safe narrow passage prevents bites and leaves an escape route',()=>{const m=new Mission();m.position=world(19,20);m.predator.position=world(18,20);m.predator.state='chase';m.predator.lastKnown={...m.position};advance(m,3);assert.equal(m.health,100);assert.equal(m.predator.state,'search');assert.ok(m.predator.position.x<30);});
