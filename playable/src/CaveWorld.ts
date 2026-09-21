@@ -228,8 +228,9 @@ export class CaveWorld extends OceanWorld {
   this.torchBody=this.buildTorchBody();
   this.camera.add(this.torchBody);
 
-  this.torchLight.color.set(0xf2f8ff);this.torchLight.intensity=170;this.torchLight.distance=34;
-  this.torchLight.angle=.28;this.torchLight.penumbra=.35;this.torchLight.decay=1.15;
+  // Soft spot wash — high penumbra so walls get light without a hard white disk.
+  this.torchLight.color.set(0xf2f8ff);this.torchLight.intensity=85;this.torchLight.distance=34;
+  this.torchLight.angle=.32;this.torchLight.penumbra=.95;this.torchLight.decay=1.15;
   // Lens tip in lantern local space (body aims −Z).
   this.torchLight.position.set(0,0,-.45);
   this.torchLight.target.position.set(0,0,-22);
@@ -435,7 +436,7 @@ export class CaveWorld extends OceanWorld {
    const torch=torchModulation(this.position.y,this.pitch);
    const mid=torchModulation(3,0);
    const iScale=torch.intensity/mid.intensity,dScale=torch.distance/mid.distance,bScale=torch.beamOpacity/mid.beamOpacity;
-   this.torchLight.intensity=170*iScale;this.torchLight.distance=34*dScale;this.torchLight.decay=1.15+(torch.decay-mid.decay);
+   this.torchLight.intensity=85*iScale;this.torchLight.distance=34*dScale;this.torchLight.decay=1.15+(torch.decay-mid.decay);
    this.torchLight.color.setRGB(torch.r,torch.g,torch.b);
    const beamMat=this.beam.material as THREE.ShaderMaterial;beamMat.uniforms.uOpacity.value=.09*bScale;beamMat.uniforms.uColor.value.setRGB(torch.r,torch.g,torch.b);
    // No camera-forward particle cone — that was a second beam fighting the lantern aim.
