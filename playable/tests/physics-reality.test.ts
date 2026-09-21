@@ -9,7 +9,7 @@ import {writeFileSync, mkdirSync} from 'node:fs';
 import {
  Mission,START,RELIC,EXIT,moveBody,distance,CELL,torchModulation,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,
  stepSwimVelocity,terminalSwimSpeed,updateBuoyancy,PREDATOR_SPEED,SWIM_THRUST_CRUISE,SWIM_THRUST_SPRINT,SWIM_DRAG_K,
- AIR_TANK_LITRES,AIR_RESERVE_LITRES,airConsumeRate,airSurfaceSeconds,SAC_CRUISE_LPM,SAC_SPRINT_LPM,
+ AIR_MAIN_MAX,AIR_BAILOUT_MAX,gasDrainRate,
 } from '../src/simulation';
 
 const CRUISE=terminalSwimSpeed(false);
@@ -72,11 +72,9 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  airMission2.position={...START,y:6.5};
  for(let i=0;i<60;i++)airMission2.update(1/60,false);
  const airAfterCruiseShallow=airMission2.air;
- assert.ok(airAfterSprintDeep<airAfterCruiseShallow,'deep sprint burns more litres than shallow cruise');
- assert.ok(airAfterCruiseShallow<AIR_TANK_LITRES);
- const burnedDeep=AIR_TANK_LITRES-airAfterSprintDeep;
- const burnedShallow=AIR_TANK_LITRES-airAfterCruiseShallow;
- assert.ok(burnedDeep>burnedShallow*1.3);
+ assert.ok(airAfterSprintDeep<airAfterCruiseShallow,'deep sprint burns more surface-equivalent gas');
+ assert.ok(airAfterCruiseShallow<AIR_MAIN_MAX);
+ assert.ok(airAfterSprintDeep>AIR_MAIN_MAX-15,'1 s deep sprint leaves most of the short tank');
 
  // Equal kick thrust on Y vs Z no longer applies — buoyancy is separate.
  let b=0;for(let i=0;i<90;i++)b=updateBuoyancy(b,1,1/60);
@@ -98,8 +96,11 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  const cruiseVsRealMax=CRUISE/REAL.cruiseMs[1];
  const sprintVsHard=SPRINT/REAL.hardKickMs[1];
 
+ // Torch: shared Beer–Lambert murk (SpotLight direct β^D + volume backscatter β^B)
  const torchFloor=torchModulation(0.8,1.2);
  const torchCeil=torchModulation(6.5,-1.2);
+ assert.ok(torchFloor.intensity<torchCeil.intensity);
+ assert.ok(torchFloor.betaDirect.r>torchCeil.betaDirect.r);
 
  const hudAtStart=hudDepth(START.y);
  const hudAtRelic=hudDepth(RELIC.y);
@@ -126,14 +127,16 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    coastFromCruiseS:+coast.coastSeconds.toFixed(3),
    staminaSprintWindowS:+staminaEmpty.toFixed(2),
    staminaRegenFullS:+regen.toFixed(2),
-   airTankLitres:AIR_TANK_LITRES,
-   airReserveLitres:AIR_RESERVE_LITRES,
-   airSurfaceSecondsFull:Math.round(airSurfaceSeconds(AIR_TANK_LITRES)),
-   sacCruiseLpm:SAC_CRUISE_LPM,
-   sacSprintLpm:SAC_SPRINT_LPM,
-   airBurnDeepSprint1s:+airConsumeRate(0.8,true).toFixed(3),
-   airBurnShallowCruise1s:+airConsumeRate(6.5,false).toFixed(3),
+   airBudgetS:AIR_MAIN_MAX,
+   airBudgetMin:AIR_MAIN_MAX/60,
+   airReserveS:AIR_BAILOUT_MAX,
    airIndependentOfDepthAndExertion:false,
+   gasDrainSurfaceCruise:gasDrainRate(SURFACE_Y,false),
+   gasDrainFloorCruise:gasDrainRate(FLOOR_Y,false),
+   gasDrainFloorSprint:gasDrainRate(FLOOR_Y,true),
+   gasDrainFloorPanic:gasDrainRate(FLOOR_Y,false,true),
+   airAfter1sDeepSprint:+airAfterSprintDeep.toFixed(2),
+   airAfter1sShallowCruise:+airAfterCruiseShallow.toFixed(2),
    depthBandM:+depthBand.toFixed(2),
    startToRelicHorizontalM:horiz,
    cruiseTimeStartToRelicS:+routeCruise.toFixed(1),
@@ -173,20 +176,20 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    gameCruiseOverRealCruiseMin:+cruiseVsRealMin.toFixed(1),
    gameCruiseOverRealCruiseMax:+cruiseVsRealMax.toFixed(1),
    gameSprintOverHardKickMax:+sprintVsHard.toFixed(1),
-   gameAirMinutesOverRealShallowMin:+(4/REAL.airMinutesShallow[1]).toFixed(2),
-   gameAirMinutesOverRealShallowMax:+(4/REAL.airMinutesShallow[0]).toFixed(2),
+   gameAirMinutesOverRealShallowMin:+((AIR_MAIN_MAX/60)/REAL.airMinutesShallow[1]).toFixed(2),
+   gameAirMinutesOverRealShallowMax:+((AIR_MAIN_MAX/60)/REAL.airMinutesShallow[0]).toFixed(2),
   },
   verdicts:{
    swimSpeed:'GAMEPLAY PACE — force model cruise ~2.2 m/s / sprint ~3.5 m/s (force model retained; closer to old arcade feel).',
-   gasModel:'SAC × ATA — 72 L tank (~4 min surface cruise); sprint and depth raise burn; reserve +18 L.',
+   gasModel:`SAC × ATA × EFFORT — high-stakes; main ${AIR_MAIN_MAX} s + pony ${AIR_BAILOUT_MAX} s; sprint/panic raise RMV.`,
    buoyancy:'BCD STATE — Space/Q fill buoyancy −1..+1 with neutral trim; kick is look/strafe only.',
    dragCoast:'QUADRATIC — −k|v|v; short coast after releasing kick.',
    depthScale:'SHALLOW CAVE — ~6.5 m playable y band; torch murk is stylistic, not optical attenuation law.',
    depthHud:'HYDROSTATIC — DEPTH = round(SURFACE_Y − y); −Z no longer fakes metres.',
    predatorPacing:`DESIGNED CHASE — chase ${PREDATOR_SPEED.chase} m/s between cruise and sprint.`,
-   overall:'Gameplay-first survival with paced force locomotion and depth/effort-scaled air.',
+   overall:'Gameplay-first survival with paced force locomotion; gas scales with depth and effort.',
   },
- };
+};
 
  mkdirSync('/opt/cursor/artifacts',{recursive:true});
  writeFileSync('/opt/cursor/artifacts/physics_reality_measurements.json',JSON.stringify(report,null,2));
@@ -194,15 +197,15 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
 
  assert.ok(CRUISE<REAL.hardKickMs[1]*3.2,'cruise raised for gameplay, still below old arcade 2.8');
  assert.ok(SPRINT<4.5,'sprint below old arcade 4.8');
- assert.ok(airSurfaceSeconds(AIR_TANK_LITRES)/60<REAL.airMinutesShallow[0]/5,'surface tank still time-compressed vs real AL80');
- assert.equal(report.measured.airIndependentOfDepthAndExertion,false);
+ assert.ok(AIR_MAIN_MAX/60<REAL.airMinutesShallow[0]/5,'air budget is heavily time-compressed');
+ assert.ok(gasDrainRate(FLOOR_Y,true)>gasDrainRate(SURFACE_Y,false));
  assert.equal(report.measured.gravityOrBuoyancyForce,true);
  console.log(JSON.stringify({
   cruiseMs:+CRUISE.toFixed(3),sprintMs:+SPRINT.toFixed(3),
   vsRecCruise:`${cruiseVsRealMax.toFixed(1)}–${cruiseVsRealMin.toFixed(1)}×`,
-  airSurfaceMin:airSurfaceSeconds(AIR_TANK_LITRES)/60,
-  coastM:coast.coastMetres.toFixed(2),
+  airMin:AIR_MAIN_MAX/60,coastM:coast.coastMetres.toFixed(2),
   staminaSprintS:staminaEmpty.toFixed(1),
+  gasFloorSprint:gasDrainRate(FLOOR_Y,true).toFixed(2),
   verdict:report.verdicts.overall,
  },null,2));
 });

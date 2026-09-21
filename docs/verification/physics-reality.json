@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-21T11:26:31.070Z",
+  "generatedAt": "2026-09-21T11:58:43.149Z",
   "unitAssumption": "1 world unit ≈ 1 metre (CELL=4 m tiles, playable y ∈ [0.65, 7.1])",
   "measured": {
     "cruiseMs": 2.198,
@@ -13,14 +13,16 @@
     "coastFromCruiseS": 10,
     "staminaSprintWindowS": 5.4,
     "staminaRegenFullS": 5.7,
-    "airTankLitres": 72,
-    "airReserveLitres": 18,
-    "airSurfaceSecondsFull": 240,
-    "sacCruiseLpm": 18,
-    "sacSprintLpm": 28,
-    "airBurnDeepSprint1s": 0.761,
-    "airBurnShallowCruise1s": 0.318,
+    "airBudgetS": 90,
+    "airBudgetMin": 1.5,
+    "airReserveS": 30,
     "airIndependentOfDepthAndExertion": false,
+    "gasDrainSurfaceCruise": 1,
+    "gasDrainFloorCruise": 1.645,
+    "gasDrainFloorSprint": 3.619,
+    "gasDrainFloorPanic": 4.7705,
+    "airAfter1sDeepSprint": 86.41,
+    "airAfter1sShallowCruise": 88.94,
     "depthBandM": 6.45,
     "startToRelicHorizontalM": 100,
     "cruiseTimeStartToRelicS": 45.5,
@@ -32,8 +34,8 @@
     "predatorPatrolMs": 1.3,
     "playerCanOutSprintChase": true,
     "playerCruiseSlowerThanChase": true,
-    "torchIntensityFloorAim": 41.81368770764119,
-    "torchIntensityCeilingAim": 120.31415282392028,
+    "torchIntensityFloorAim": 62.3422328197301,
+    "torchIntensityCeilingAim": 126.96986367084992,
     "cellSizeM": 4,
     "exitDistanceFromStartM": 32,
     "hudDepthAtStartM": 4,
@@ -72,17 +74,17 @@
     "gameCruiseOverRealCruiseMin": 8.8,
     "gameCruiseOverRealCruiseMax": 4.4,
     "gameSprintOverHardKickMax": 2.9,
-    "gameAirMinutesOverRealShallowMin": 0.07,
-    "gameAirMinutesOverRealShallowMax": 0.1
+    "gameAirMinutesOverRealShallowMin": 0.03,
+    "gameAirMinutesOverRealShallowMax": 0.04
   },
   "verdicts": {
     "swimSpeed": "GAMEPLAY PACE — force model cruise ~2.2 m/s / sprint ~3.5 m/s (force model retained; closer to old arcade feel).",
-    "gasModel": "SAC × ATA — 72 L tank (~4 min surface cruise); sprint and depth raise burn; reserve +18 L.",
+    "gasModel": "SAC × ATA × EFFORT — high-stakes; main 90 s + pony 30 s; sprint/panic raise RMV.",
     "buoyancy": "BCD STATE — Space/Q fill buoyancy −1..+1 with neutral trim; kick is look/strafe only.",
     "dragCoast": "QUADRATIC — −k|v|v; short coast after releasing kick.",
     "depthScale": "SHALLOW CAVE — ~6.5 m playable y band; torch murk is stylistic, not optical attenuation law.",
     "depthHud": "HYDROSTATIC — DEPTH = round(SURFACE_Y − y); −Z no longer fakes metres.",
     "predatorPacing": "DESIGNED CHASE — chase 2.7 m/s between cruise and sprint.",
-    "overall": "Gameplay-first survival with paced force locomotion and depth/effort-scaled air."
+    "overall": "Gameplay-first survival with paced force locomotion; gas scales with depth and effort."
   }
 }
