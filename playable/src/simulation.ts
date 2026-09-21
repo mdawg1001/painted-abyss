@@ -160,6 +160,22 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
 };
+/**
+ * Inventory items that occupy the FPS hand instead of the dive torch.
+ * The torch is not a slot item — it is the default held prop whenever the
+ * selected slot is not one of these (knife today; other hand-props later).
+ */
+export function occupiesFpsHand(item:Item|null):boolean{
+ return item==='knife';
+}
+/** True when the selected slot should show the dive torch (and may shine). */
+export function holdingTorchItem(item:Item|null):boolean{
+ return !occupiesFpsHand(item);
+}
+/** SpotLight, volume beam, and lens emissive only while holding the torch and F is on. */
+export function torchShouldShine(torchFlag:boolean, selectedItem:Item|null):boolean{
+ return !!torchFlag&&holdingTorchItem(selectedItem);
+}
 export const cells=new Set<string>();
 const rect=(a:number,b:number,c:number,d:number)=>{for(let col=a;col<=b;col++)for(let row=c;row<=d;row++)cells.add(`${col},${row}`);};
 rect(8,14,1,5);rect(10,12,5,11);rect(4,18,11,24);rect(10,12,24,26);rect(8,14,26,30);

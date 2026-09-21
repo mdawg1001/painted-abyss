@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath } from './diveAudio';
@@ -11,7 +10,7 @@ import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
 import { createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, knifeMeshReady, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
-import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
 /** Soft underwater blood: droplets + plume (Kenney alpha maps, not square Points). */
@@ -88,7 +87,7 @@ export class CaveWorld extends OceanWorld {
  beam!:THREE.Mesh;torchBody!:THREE.Group;torchLensMat!:THREE.MeshStandardMaterial;
  /** Rest pose for the camera-parented lantern (local space). */
  torchRestPos=V(.44,-.4,-.62);torchRestRot=new THREE.Euler(.18,-.22,.32);
- composer!:EffectComposer;bloom!:UnrealBloomPass;
+ composer!:EffectComposer;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
  knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
@@ -107,6 +106,7 @@ export class CaveWorld extends OceanWorld {
   this.scene.background=new THREE.Color(0x041a22);this.scene.fog=new THREE.FogExp2(0x0a2e38,.038);
   this.camera.far=130;this.camera.fov=64;this.camera.updateProjectionMatrix();
   this.renderer.toneMappingExposure=1.12;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  this.setPixelRatio();
   // Modest torch shadows only (no other casters) — 512² map for Safari cost.
   this.renderer.shadowMap.enabled=true;
   this.renderer.shadowMap.type=THREE.PCFShadowMap;
@@ -146,13 +146,13 @@ export class CaveWorld extends OceanWorld {
   this.camera.add(this.knifeVisual);
   // Stay hidden until glTF upgrades — stub + bright envMap flashed white.
   this.knifeVisual.visible=false;
-  if(this.holdingKnife())this.setTorchMeshesVisible(false);
+  this.syncHeldTorch();
   upgradeKnifeVisual(this.knifeVisual,this.knifeEnvMap).then(()=>{
    if(!this.alive||!this.knifeVisual)return;
    applyKnifeEnvMap(this.knifeVisual,this.knifeEnvMap!);
    poseKnife(this.knifeVisual);
    this.knifeVisual.visible=this.holdingKnife();
-   if(this.holdingKnife())this.setTorchMeshesVisible(false);
+   this.syncHeldTorch();
   });
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
  }
@@ -447,9 +447,21 @@ export class CaveWorld extends OceanWorld {
   );
  }
  holdingKnife(){return this.mission.inventory[this.mission.selected]==='knife';}
- /** Hide lantern meshes while knife is held; SpotLight stays parented and can stay on. */
+ holdingTorch(){return holdingTorchItem(this.mission.inventory[this.mission.selected]);}
+ /** Hide lantern meshes while a non-torch prop occupies the hand. SpotLight is gated separately. */
  setTorchMeshesVisible(show:boolean){
   this.torchBody.traverse(o=>{if(o instanceof THREE.Mesh)o.visible=show;});
+ }
+ /** Beam, SpotLight, and lens glow only while the dive torch is the held prop and F is on. */
+ syncHeldTorch(){
+  const selected=this.mission.inventory[this.mission.selected];
+  const torchHeld=this.holdingTorch();
+  const shine=torchShouldShine(this.mission.torch,selected);
+  this.setTorchMeshesVisible(torchHeld);
+  this.torchLight.visible=shine;
+  this.beam.visible=shine;
+  this.torchLensMat.emissiveIntensity=shine?1.25:.06;
+  this.torchLensMat.emissive.set(shine?0xc8e4ff:0x223038);
  }
  /** Knife hand sway — same spirit as torch hover, only while the knife is the held prop. */
  applyKnifeHover(bobBlend:number){
@@ -537,18 +549,23 @@ export class CaveWorld extends OceanWorld {
   this.addShaft(0,5.8,-110,7.5,.3,1.5,0xc4d4b0,.08);
  }
  buildComposer(){
-  const w=this.host.clientWidth,h=this.host.clientHeight;
   this.composer=new EffectComposer(this.renderer);
   this.composer.addPass(new RenderPass(this.scene,this.camera));
-  this.bloom=new UnrealBloomPass(new THREE.Vector2(w,h),.18,.65,.92);
-  this.composer.addPass(this.bloom);
+  // UnrealBloomPass skipped: bright-pass + 5 mip blurs on Retina made swim frames hitch.
   this.composer.addPass(new OutputPass());
+  this.setPixelRatio();
+ }
+ setPixelRatio(){
+  const dpr=Math.min(window.devicePixelRatio||1,1.5);
+  this.renderer.setPixelRatio(dpr);
+  this.composer?.setPixelRatio(dpr);
  }
  resize(){
   if(!this.alive)return;
   const w=this.host.clientWidth,h=this.host.clientHeight;
   this.camera.aspect=w/h;this.camera.updateProjectionMatrix();
-  this.renderer.setSize(w,h);this.composer?.setSize(w,h);this.bloom?.resolution.set(w,h);
+  this.setPixelRatio();
+  this.renderer.setSize(w,h);this.composer?.setSize(w,h);
  }
  syncPickups(){
   for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);group.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
@@ -713,7 +730,7 @@ export class CaveWorld extends OceanWorld {
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
   this.shakeAmp=0;this.knifeFlashUntil=0;
   if(this.knifeVisual){poseKnife(this.knifeVisual);this.knifeVisual.visible=this.holdingKnife()&&knifeMeshReady(this.knifeVisual);}
-  this.setTorchMeshesVisible(!this.holdingKnife());
+  this.syncHeldTorch();
   if(this.bloodGroup){
    this.bloodGroup.visible=false;this.bloodLife=0;
    for(const layer of this.bloodLayers)layer.uniforms.uOpacity.value=0;
@@ -751,7 +768,14 @@ export class CaveWorld extends OceanWorld {
    const bobY=Math.sin(this.time*1.1)*.13*bobBlend;
    const bobSide=Math.sin(this.time*.65)*.065*bobBlend;
    const bobFwd=Math.cos(this.time*.5)*.065*bobBlend;
-   this.camera.position.copy(this.position).addScaledVector(this.upAxis,bobY).addScaledVector(this.right,bobSide).addScaledVector(this.forward,bobFwd);
+   const eyeX=this.position.x+this.upAxis.x*bobY+this.right.x*bobSide+this.forward.x*bobFwd;
+   const eyeY=this.position.y+this.upAxis.y*bobY+this.right.y*bobSide+this.forward.y*bobFwd;
+   const eyeZ=this.position.z+this.upAxis.z*bobY+this.right.z*bobSide+this.forward.z*bobFwd;
+   // Translation only — look-stick (yaw/pitch) stays as-is. Cap follow-dt so a hitch frame cannot teleport the eye.
+   const follow=1-Math.exp(-80*Math.min(dt,.018));
+   this.camera.position.x=THREE.MathUtils.lerp(this.camera.position.x,eyeX,follow);
+   this.camera.position.y=THREE.MathUtils.lerp(this.camera.position.y,eyeY,follow);
+   this.camera.position.z=THREE.MathUtils.lerp(this.camera.position.z,eyeZ,follow);
    // Light combat shake (decays); applied after bob so it does not fight hover.
    if(this.shakeAmp>0.001){
     const s=this.shakeAmp;
@@ -790,18 +814,15 @@ export class CaveWorld extends OceanWorld {
   fog.density=.032+.022*deep-.014*nearExit;
   (this.scene.background as THREE.Color).copy(fog.color);
   this.uniforms.uTime.value=this.time;
-  const torchOn=this.mission.torch;
+  const selected=this.mission.inventory[this.mission.selected];
   const knifeHeld=this.holdingKnife();
-  // Knife selected → hide lantern mesh + beam; SpotLight stays on if F torch is on.
-  this.setTorchMeshesVisible(!knifeHeld);
+  const torchOn=torchShouldShine(this.mission.torch,selected);
+  this.syncHeldTorch();
   if(this.knifeVisual&&!this.playing){
    this.knifeVisual.visible=knifeHeld&&knifeMeshReady(this.knifeVisual);
    if(knifeHeld)poseKnife(this.knifeVisual);
   }
-  this.torchLight.visible=torchOn;this.beam.visible=torchOn&&!knifeHeld;
   this.torchBody.visible=true;
-  this.torchLensMat.emissiveIntensity=torchOn?1.25:.06;
-  this.torchLensMat.emissive.set(torchOn?0xc8e4ff:0x223038);
   if(torchOn){
    const torch=torchModulation(this.position.y,this.pitch);
    this.torchLight.intensity=torch.intensity;this.torchLight.distance=torch.distance;this.torchLight.decay=torch.decay;
@@ -825,8 +846,6 @@ export class CaveWorld extends OceanWorld {
    // No camera-forward particle cone — that was a second beam fighting the lantern aim.
    (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
   }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
-  // Soft bloom on shafts only — keep torch hotspots from blowing out
-  this.bloom.strength=torchOn?.2:.14;
   const p=this.mission.predator;this.guardian.group.position.copy(p.position);
   if(p.state==='dead'){
    // Corpse settles; limp fins, no chase heading lerp.

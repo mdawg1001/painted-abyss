@@ -35,7 +35,7 @@ export class OceanWorld {
     this.camera=new THREE.PerspectiveCamera(67,host.clientWidth/host.clientHeight,.12,600);
     this.camera.position.copy(this.position);this.camera.rotation.order='YXZ';this.camera.rotation.set(this.pitch,this.yaw,0);
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.7));this.renderer.setSize(host.clientWidth,host.clientHeight);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));this.renderer.setSize(host.clientWidth,host.clientHeight);
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.18;
     this.renderer.setClearColor(0x0a5365);host.appendChild(this.renderer.domElement);
     this.scene.background=new THREE.Color(0x0b5363);this.scene.fog=new THREE.FogExp2(0x0b5363,.014);
@@ -419,7 +419,7 @@ export class OceanWorld {
       const bass=ctx.createOscillator(),bassGain=ctx.createGain();bass.type='sine';bass.frequency.value=47;bassGain.gain.value=.055;bass.connect(bassGain);bassGain.connect(this.master);bass.start();
     }catch{/* Ocean remains fully playable when audio is unavailable. */}
   }
-  resize(){if(!this.alive)return;const w=this.host.clientWidth,h=this.host.clientHeight;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setSize(w,h);}
+  resize(){if(!this.alive)return;const w=this.host.clientWidth,h=this.host.clientHeight;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));this.renderer.setSize(w,h);}
 
   animate=()=>{
     if(!this.alive)return;this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);
