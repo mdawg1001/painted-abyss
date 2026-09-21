@@ -1,31 +1,10 @@
-/** Regulator breathing only. All background ambience comes from the supplied music. */
+/** Dive audio probe wiring. Background ambience comes from the supplied music. */
 export function buildDiveAudio(ctx: AudioContext, master: GainNode) {
-  const cycleSeconds = 1 / .22;
-  const buffer = ctx.createBuffer(1, Math.round(ctx.sampleRate * cycleSeconds), ctx.sampleRate);
-  const samples = buffer.getChannelData(0);
-  for (let i = 0; i < samples.length; i++) {
-    const seconds = i / ctx.sampleRate;
-    // Separate inhale and exhale with quiet gaps; no continuous water-noise bed.
-    const inhale = seconds < 1.4 ? Math.sin(Math.PI * seconds / 1.4) ** 2 * .41 : 0;
-    const exhale = seconds >= 1.9 && seconds < 3.8
-      ? Math.sin(Math.PI * (seconds - 1.9) / 1.9) ** 2 * .30 : 0;
-    samples[i] = (Math.random() * 2 - 1) * (inhale + exhale);
-  }
-  const breathing = ctx.createBufferSource();
-  breathing.buffer = buffer;
-  breathing.loop = true;
-  const filter = ctx.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.frequency.value = 1800;
-  const lowCut = ctx.createBiquadFilter();
-  lowCut.type = 'highpass';
-  lowCut.frequency.value = 180;
-  breathing.connect(filter).connect(lowCut).connect(master);
-  // This probe is after the master gain, so mute can be verified as silence.
+  // Probe after the master gain so mute can be verified as silence.
+  // Breathing/regulator loop removed — dive bed is music only.
   const probe = ctx.createAnalyser();
   probe.fftSize = 2048;
   master.connect(probe).connect(ctx.destination);
-  breathing.start();
   return probe;
 }
 
