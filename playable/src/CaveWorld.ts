@@ -11,7 +11,7 @@ import { createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, kni
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
 import { createChestVisual, upgradeChestVisual, syncChestOpen, type ChestVisual } from './chestAsset';
-import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
 /** Soft underwater blood: droplets + plume (Kenney alpha maps, not square Points). */
@@ -149,13 +149,13 @@ export class CaveWorld extends OceanWorld {
   this.camera.add(this.knifeVisual);
   // Stay hidden until glTF upgrades — stub + bright envMap flashed white.
   this.knifeVisual.visible=false;
-  if(this.holdingKnife())this.setTorchMeshesVisible(false);
+  this.syncHeldTorch();
   upgradeKnifeVisual(this.knifeVisual,this.knifeEnvMap).then(()=>{
    if(!this.alive||!this.knifeVisual)return;
    applyKnifeEnvMap(this.knifeVisual,this.knifeEnvMap!);
    poseKnife(this.knifeVisual);
    this.knifeVisual.visible=this.holdingKnife();
-   if(this.holdingKnife())this.setTorchMeshesVisible(false);
+   this.syncHeldTorch();
   });
   this.mountChests();
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
@@ -475,9 +475,21 @@ export class CaveWorld extends OceanWorld {
   );
  }
  holdingKnife(){return this.mission.inventory[this.mission.selected]==='knife';}
- /** Hide lantern meshes while knife is held; SpotLight stays parented and can stay on. */
+ holdingTorch(){return holdingTorchItem(this.mission.inventory[this.mission.selected]);}
+ /** Hide lantern meshes while a non-torch prop occupies the hand. SpotLight is gated separately. */
  setTorchMeshesVisible(show:boolean){
   this.torchBody.traverse(o=>{if(o instanceof THREE.Mesh)o.visible=show;});
+ }
+ /** Beam, SpotLight, and lens glow only while the dive torch is the held prop and F is on. */
+ syncHeldTorch(){
+  const selected=this.mission.inventory[this.mission.selected];
+  const torchHeld=this.holdingTorch();
+  const shine=torchShouldShine(this.mission.torch,selected);
+  this.setTorchMeshesVisible(torchHeld);
+  this.torchLight.visible=shine;
+  this.beam.visible=shine;
+  this.torchLensMat.emissiveIntensity=shine?1.25:.06;
+  this.torchLensMat.emissive.set(shine?0xc8e4ff:0x223038);
  }
  /** Knife hand sway — same spirit as torch hover, only while the knife is the held prop. */
  applyKnifeHover(bobBlend:number){
@@ -746,7 +758,7 @@ export class CaveWorld extends OceanWorld {
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
   this.shakeAmp=0;this.knifeFlashUntil=0;
   if(this.knifeVisual){poseKnife(this.knifeVisual);this.knifeVisual.visible=this.holdingKnife()&&knifeMeshReady(this.knifeVisual);}
-  this.setTorchMeshesVisible(!this.holdingKnife());
+  this.syncHeldTorch();
   if(this.bloodGroup){
    this.bloodGroup.visible=false;this.bloodLife=0;
    for(const layer of this.bloodLayers)layer.uniforms.uOpacity.value=0;
@@ -830,18 +842,15 @@ export class CaveWorld extends OceanWorld {
   fog.density=.032+.022*deep-.014*nearExit;
   (this.scene.background as THREE.Color).copy(fog.color);
   this.uniforms.uTime.value=this.time;
-  const torchOn=this.mission.torch;
+  const selected=this.mission.inventory[this.mission.selected];
   const knifeHeld=this.holdingKnife();
-  // Knife selected → hide lantern mesh + beam; SpotLight stays on if F torch is on.
-  this.setTorchMeshesVisible(!knifeHeld);
+  const torchOn=torchShouldShine(this.mission.torch,selected);
+  this.syncHeldTorch();
   if(this.knifeVisual&&!this.playing){
    this.knifeVisual.visible=knifeHeld&&knifeMeshReady(this.knifeVisual);
    if(knifeHeld)poseKnife(this.knifeVisual);
   }
-  this.torchLight.visible=torchOn;this.beam.visible=torchOn&&!knifeHeld;
   this.torchBody.visible=true;
-  this.torchLensMat.emissiveIntensity=torchOn?1.25:.06;
-  this.torchLensMat.emissive.set(torchOn?0xc8e4ff:0x223038);
   if(torchOn){
    const torch=torchModulation(this.position.y,this.pitch);
    this.torchLight.intensity=torch.intensity;this.torchLight.distance=torch.distance;this.torchLight.decay=torch.decay;

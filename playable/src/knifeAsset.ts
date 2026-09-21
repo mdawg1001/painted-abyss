@@ -15,13 +15,12 @@ export const KNIFE_ASSET_URL='/assets/knife/fish_knife_1k.gltf';
 export const KNIFE_THUMB_URL='/assets/knife/thumb.png';
 
 /**
- * Camera-local FPS hold — lower-right, blade along look (−Z).
- * Roll keeps the carved fish face readable toward the camera.
+ * Camera-local FPS hold — grip planted lower-right, tip toward look (−Z).
  */
-export const KNIFE_HOLD_POS={x:.28,y:-.22,z:-.48} as const;
-export const KNIFE_HOLD_ROT={x:.32,y:.95,z:.42} as const;
-export const KNIFE_HOLD_SCALE=3.5;
-export const KNIFE_STAB_Z=-.86;
+export const KNIFE_HOLD_POS={x:.42,y:-.36,z:-.52} as const;
+export const KNIFE_HOLD_ROT={x:.2,y:-.35,z:.55} as const;
+export const KNIFE_HOLD_SCALE=2.9;
+export const KNIFE_STAB_Z=-.85;
 
 const stubMetal=()=>new THREE.MeshStandardMaterial({
  color:0x6a7078,metalness:.55,roughness:.55,envMapIntensity:.35,
@@ -45,7 +44,6 @@ export function prepareKnifeMaterials(root:THREE.Object3D,envMap?:THREE.Texture|
    sm.emissiveIntensity=0;
    if(envMap){
     sm.envMap=envMap;
-    // Weathered steel — low enough that bloom does not turn the blade into a flare.
     sm.envMapIntensity=.45;
    }
    sm.needsUpdate=true;
@@ -54,16 +52,13 @@ export function prepareKnifeMaterials(root:THREE.Object3D,envMap?:THREE.Texture|
 }
 
 /**
- * Orient glTF: longest axis → −Z (tip forward), blade on −Z side,
- * then roll so the flat fish-carved face is camera-readable.
+ * Aim blade tip along −Z (look) and put the butt at the origin so the hand
+ * holds the grip — tip extends into the scene, not back at the camera.
  */
 export function alignKnifeBladeForward(scene:THREE.Object3D){
  scene.rotation.set(0,0,0);
+ scene.quaternion.identity();
  scene.position.set(0,0,0);
- scene.updateMatrixWorld(true);
- const size=new THREE.Box3().setFromObject(scene).getSize(new THREE.Vector3());
- if(size.x>=size.y&&size.x>=size.z)scene.rotation.y=-Math.PI/2;
- else if(size.y>=size.x&&size.y>=size.z)scene.rotation.x=Math.PI/2;
  scene.updateMatrixWorld(true);
 
  let blade:THREE.Object3D|undefined;
@@ -72,20 +67,46 @@ export function alignKnifeBladeForward(scene:THREE.Object3D){
   if(o.name==='fish_knife_blade')blade=o;
   if(o.name==='fish_knife_handle')handle=o;
  });
- if(blade){
-  const tip=new THREE.Box3().setFromObject(blade).getCenter(new THREE.Vector3());
-  if(tip.z>0)scene.rotation.y+=Math.PI;
+
+ if(blade&&handle){
+  const bladeC=new THREE.Box3().setFromObject(blade).getCenter(new THREE.Vector3());
+  const handleC=new THREE.Box3().setFromObject(handle).getCenter(new THREE.Vector3());
+  const tipDir=bladeC.clone().sub(handleC);
+  if(tipDir.lengthSq()<1e-8)tipDir.set(0,0,-1);
+  tipDir.normalize();
+  // Rotate so handle→blade aims at look (−Z).
+  scene.quaternion.setFromUnitVectors(tipDir,new THREE.Vector3(0,0,-1));
   scene.updateMatrixWorld(true);
- }
- // Prefer the thinner handle axis facing the camera (±Y) so scales/eye read.
- if(handle){
+
+  // Roll flat face toward camera-up so fish scales read.
   const hs=new THREE.Box3().setFromObject(handle).getSize(new THREE.Vector3());
-  if(hs.x<hs.y)scene.rotation.z+=Math.PI/2;
+  if(hs.x<hs.y){
+   scene.rotateZ(Math.PI/2);
+   scene.updateMatrixWorld(true);
+   // Re-aim tip after roll (roll can tilt the tip off −Z).
+   const blade2=new THREE.Box3().setFromObject(blade).getCenter(new THREE.Vector3());
+   const handle2=new THREE.Box3().setFromObject(handle).getCenter(new THREE.Vector3());
+   const tip2=blade2.clone().sub(handle2);
+   if(tip2.lengthSq()>1e-8){
+    tip2.normalize();
+    const fix=new THREE.Quaternion().setFromUnitVectors(tip2,new THREE.Vector3(0,0,-1));
+    scene.quaternion.premultiply(fix);
+    scene.updateMatrixWorld(true);
+   }
+  }
+ }else{
+  const size=new THREE.Box3().setFromObject(scene).getSize(new THREE.Vector3());
+  if(size.x>=size.y&&size.x>=size.z)scene.rotation.y=-Math.PI/2;
+  else if(size.y>=size.x&&size.y>=size.z)scene.rotation.x=Math.PI/2;
   scene.updateMatrixWorld(true);
  }
 
- const center=new THREE.Box3().setFromObject(scene).getCenter(new THREE.Vector3());
- scene.position.sub(center);
+ // Pivot on the butt: after tip→−Z, max.z is the pommel / hand end.
+ scene.updateMatrixWorld(true);
+ const box=new THREE.Box3().setFromObject(scene);
+ scene.position.x-=(box.min.x+box.max.x)*.5;
+ scene.position.y-=(box.min.y+box.max.y)*.5;
+ scene.position.z-=box.max.z; // butt at z=0; tip further along −Z
 }
 
 /** Minimal stand-in — hidden until glTF upgrades (avoids chrome flash). */
@@ -132,7 +153,7 @@ export async function upgradeKnifeVisual(root:THREE.Group,envMap?:THREE.Texture|
   return true;
  }catch(err){
   console.warn('Knife asset failed to load; keeping stub.',err);
-  root.userData.knifeReady=true; // allow stub as last resort
+  root.userData.knifeReady=true;
   return false;
  }
 }
