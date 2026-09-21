@@ -5,4 +5,4 @@ Runtime files live in `playable/public/assets/knife/` (copied into `dist/assets/
 - Source: https://polyhaven.com/a/fish_knife
 - License: CC0 1.0
 - Author: Mateusz Sadek
-- Loaded via `src/knifeAsset.ts` as the camera-held FPS prop when the diving knife is selected (torch lantern meshes hide; SpotLight can stay on).
+- Loaded via `src/knifeAsset.ts` as the camera-held FPS prop when the diving knife is selected. A procedural dive glove grips the handle; torch lantern meshes hide while the knife is out.
