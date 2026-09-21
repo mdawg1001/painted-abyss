@@ -7,6 +7,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime, playInventoryClick } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
+import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
 import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, readInventoryTipsSeen, writeInventoryTipsSeen } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
@@ -32,9 +33,10 @@ export class CaveWorld extends OceanWorld {
  beam!:THREE.Mesh;torchBody!:THREE.Group;torchLensMat!:THREE.MeshStandardMaterial;
  composer!:EffectComposer;bloom!:UnrealBloomPass;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
+ rockMaps:CaveRockMaps;
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
   super(host,{onReady:()=>{},onPause:()=>{},onStatus:()=>{},onToggleUI:()=>{},onGlide:()=>{},onError:()=>{}},{deferStart:true});
-  this.ui=ui;this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
+  this.ui=ui;this.rockMaps=loadCaveRockMaps();this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
   // Deep teal void — matches reference plates (cyan haze, not pure black)
   this.scene.background=new THREE.Color(0x041a22);this.scene.fog=new THREE.FogExp2(0x0a2e38,.038);
   this.camera.far=130;this.camera.fov=64;this.camera.updateProjectionMatrix();
@@ -66,7 +68,11 @@ export class CaveWorld extends OceanWorld {
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
  }
  buildCave(){
-  const floor=this.material(0x7a8474,'sand',.88,3.4),rock=this.material(0x55666a,'rock',.86,1.6),ceiling=this.material(0x3a4c52,'rock',.9,.6);
+  const {rock:rockMaps,sand:sandMaps}=this.rockMaps;
+  // Near-white tints so Poly Haven albedo dominates; ceiling kept cooler/darker
+  const floor=this.material(0xc9c4b8,'sand',.88,3.4,sandMaps);
+  const rock=this.material(0xb4c0c4,'rock',.86,1.6,rockMaps);
+  const ceiling=this.material(0x6a7882,'rock',.9,.6,rockMaps);
   const floors:THREE.BufferGeometry[]=[],roofs:THREE.BufferGeometry[]=[],walls:THREE.BufferGeometry[]=[],details:THREE.BufferGeometry[]=[];
   for(const key of cells){const [c,r]=key.split(',').map(Number),p=world(c,r);
    const fg=new THREE.PlaneGeometry(CELL,CELL,2,2);fg.rotateX(-Math.PI/2);fg.translate(p.x,0,p.z);floors.push(fg);
@@ -77,7 +83,7 @@ export class CaveWorld extends OceanWorld {
    }
   }
   for(const [geos,mat] of [[floors,floor],[roofs,ceiling],[walls,rock],[details,rock]] as const){const merged=mergeGeometries(geos);if(merged)this.scene.add(new THREE.Mesh(merged,mat));geos.forEach(g=>g.dispose());}
-  const bone=this.material(0x9f9a7a,'rock',.82,1.5);for(let i=0;i<6;i++)for(const s of [-1,1])this.scene.add(this.tube([V(-3+i*.75,.25,-113),V(-3+i*.75,1.3,-113+s*1.2),V(-3+i*.75,.3,-113+s*2.2)],[.12,.09,.025],bone,12,5));
+  const bone=this.material(0xc8c0a8,'rock',.82,1.5,rockMaps);for(let i=0;i<6;i++)for(const s of [-1,1])this.scene.add(this.tube([V(-3+i*.75,.25,-113),V(-3+i*.75,1.3,-113+s*1.2),V(-3+i*.75,.3,-113+s*2.2)],[.12,.09,.025],bone,12,5));
   const plinth=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.5,1.2,7),rock);plinth.position.set(RELIC.x,.6,RELIC.z);this.scene.add(plinth);
  }
  beamMaterial(color:THREE.ColorRepresentation,opacity:number){
