@@ -18,10 +18,10 @@ export const KNIFE_THUMB_URL='/assets/knife/thumb.png';
  * Camera-local FPS hold — lower-right, blade along look (−Z).
  * Roll keeps the carved fish face readable toward the camera.
  */
-export const KNIFE_HOLD_POS={x:.34,y:-.28,z:-.52} as const;
-export const KNIFE_HOLD_ROT={x:.18,y:.4,z:.95} as const;
-export const KNIFE_HOLD_SCALE=3.35;
-export const KNIFE_STAB_Z=-.9;
+export const KNIFE_HOLD_POS={x:.28,y:-.22,z:-.48} as const;
+export const KNIFE_HOLD_ROT={x:.32,y:.95,z:.42} as const;
+export const KNIFE_HOLD_SCALE=3.5;
+export const KNIFE_STAB_Z=-.86;
 
 const stubMetal=()=>new THREE.MeshStandardMaterial({
  color:0x6a7078,metalness:.55,roughness:.55,envMapIntensity:.35,
