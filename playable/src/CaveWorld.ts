@@ -30,6 +30,8 @@ export class CaveWorld extends OceanWorld {
  fallbackTurn=0;lockDenied=false;lookPointer:{x:number;y:number}|null=null;
  torchLight=new THREE.SpotLight(0xeaf6ff,210,34,.38,.55,1.05);
  beam!:THREE.Mesh;torchBody!:THREE.Group;torchLensMat!:THREE.MeshStandardMaterial;
+ /** Rest pose for the camera-parented lantern (local space). */
+ torchRestPos=V(.44,-.4,-.62);torchRestRot=new THREE.Euler(.18,-.22,.32);
  composer!:EffectComposer;bloom!:UnrealBloomPass;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  rockMaps:CaveRockMaps;
@@ -225,8 +227,22 @@ export class CaveWorld extends OceanWorld {
    film.position.set(Math.cos(a)*.06,Math.sin(a)*.06,z);group.add(film);
   }
 
-  group.position.set(.44,-.4,-.62);group.rotation.set(.18,-.22,.32);group.scale.setScalar(1.15);
+  group.position.copy(this.torchRestPos);group.rotation.copy(this.torchRestRot);group.scale.setScalar(1.15);
   return group;
+ }
+ /** Presentation-only hand/lantern drift in camera space (torch is a camera child — camera bob alone leaves it screen-locked). */
+ applyTorchHover(bobBlend:number){
+  const s=bobBlend;
+  this.torchBody.position.set(
+   this.torchRestPos.x+Math.sin(this.time*.7)*.028*s,
+   this.torchRestPos.y+Math.sin(this.time*1.05)*.036*s,
+   this.torchRestPos.z+Math.cos(this.time*.55)*.02*s,
+  );
+  this.torchBody.rotation.set(
+   this.torchRestRot.x+Math.sin(this.time*.9)*.055*s,
+   this.torchRestRot.y+Math.sin(this.time*.45)*.03*s,
+   this.torchRestRot.z+Math.cos(this.time*.75)*.065*s,
+  );
  }
  buildLights(){
   this.scene.add(this.camera);
@@ -406,7 +422,9 @@ export class CaveWorld extends OceanWorld {
  pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
  reset(){
   this.backgroundMusic?.reset();this.mission=new Mission(readInventoryTipsSeen());
-  this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();this.syncPickups();this.publish();
+  this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();
+  if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
+  this.syncPickups();this.publish();
  }
  animate=()=>{
   if(!this.alive)return;this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);
@@ -425,14 +443,15 @@ export class CaveWorld extends OceanWorld {
    const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.01;
    stepSwimVelocity(this.velocity,this.move,m.buoyancy,sprint,dt);
    moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);m.update(dt,sprint);this.position.copy(m.position);
-   // Presentation-only hover bob when nearly still — never moves mission.position
-   // Blend band matches thrust/drag cruise (~0.75 m/s), not the old target-speed scale.
+   // Presentation-only hover bob when nearly still — never moves mission.position.
+   // ~2.6× 0.1.18 amplitudes so the murk drift reads; torch gets extra local sway (mesh+light+beam).
    const speed=this.velocity.length();
-   const bobBlend=1-THREE.MathUtils.smoothstep(speed,.08,.55);
-   const bobY=Math.sin(this.time*1.1)*.05*bobBlend;
-   const bobSide=Math.sin(this.time*.65)*.025*bobBlend;
-   const bobFwd=Math.cos(this.time*.5)*.025*bobBlend;
+   const bobBlend=1-THREE.MathUtils.smoothstep(speed,.06,.5);
+   const bobY=Math.sin(this.time*1.1)*.13*bobBlend;
+   const bobSide=Math.sin(this.time*.65)*.065*bobBlend;
+   const bobFwd=Math.cos(this.time*.5)*.065*bobBlend;
    this.camera.position.copy(this.position).addScaledVector(this.upAxis,bobY).addScaledVector(this.right,bobSide).addScaledVector(this.forward,bobFwd);
+   this.applyTorchHover(bobBlend);
 
    if(m.outcome!=='playing')this.pause();
   }
