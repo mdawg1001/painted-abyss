@@ -40,12 +40,16 @@ export class CaveWorld extends OceanWorld {
   this.scene.background=new THREE.Color(0x041a22);this.scene.fog=new THREE.FogExp2(0x0a2e38,.038);
   this.camera.far=130;this.camera.fov=64;this.camera.updateProjectionMatrix();
   this.renderer.toneMappingExposure=1.12;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  // Modest torch shadows only (no other casters) — 512² map for Safari cost.
+  this.renderer.shadowMap.enabled=true;
+  this.renderer.shadowMap.type=THREE.PCFShadowMap;
   // Cool teal ambient fill so rock reads in the murk; shafts/torch still dominate
   this.scene.add(new THREE.HemisphereLight(0x5a9eae,0x081820,.42));
   this.scene.add(new THREE.AmbientLight(0x123840,.22));
   const skyFill=new THREE.DirectionalLight(0x7ec8d4,.55);skyFill.position.set(-8,30,-20);this.scene.add(skyFill);
   this.buildCave();this.buildLights();this.buildComposer();
   this.guardian=this.ichthyosaur(.9);this.scene.add(this.guardian.group);
+  this.guardian.group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
   const eyeMat=new THREE.MeshBasicMaterial({color:0xe0a772});
   for(const side of [-1,1])this.ellipsoid(this.guardian.group,eyeMat,1.8,.27,side*.5,.1,.1,.04);
   this.suspendedParticles();const positions=this.particles.geometry.attributes.position;
@@ -81,9 +85,17 @@ export class CaveWorld extends OceanWorld {
     for(let n=0;n<3;n++){const stone=new THREE.IcosahedronGeometry(1,1);stone.scale(dc?.7:1.7,1.3+(n%2)*.5,dr?.7:1.7);stone.translate(p.x+dc*2.45,1.3+n*2.5,p.z-dr*2.45);details.push(stone);}
    }
   }
-  for(const [geos,mat] of [[floors,floor],[roofs,ceiling],[walls,rock],[details,rock]] as const){const merged=mergeGeometries(geos);if(merged)this.scene.add(new THREE.Mesh(merged,mat));geos.forEach(g=>g.dispose());}
-  const bone=this.material(0xc8c0a8,'rock',.82,1.5,rockMaps);for(let i=0;i<6;i++)for(const s of [-1,1])this.scene.add(this.tube([V(-3+i*.75,.25,-113),V(-3+i*.75,1.3,-113+s*1.2),V(-3+i*.75,.3,-113+s*2.2)],[.12,.09,.025],bone,12,5));
-  const plinth=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.5,1.2,7),rock);plinth.position.set(RELIC.x,.6,RELIC.z);this.scene.add(plinth);
+  for(const [geos,mat] of [[floors,floor],[roofs,ceiling],[walls,rock],[details,rock]] as const){
+   const merged=mergeGeometries(geos);if(!merged)continue;
+   const mesh=new THREE.Mesh(merged,mat);mesh.castShadow=true;mesh.receiveShadow=true;this.scene.add(mesh);
+   geos.forEach(g=>g.dispose());
+  }
+  const bone=this.material(0xc8c0a8,'rock',.82,1.5,rockMaps);for(let i=0;i<6;i++)for(const s of [-1,1]){
+   const rib=this.tube([V(-3+i*.75,.25,-113),V(-3+i*.75,1.3,-113+s*1.2),V(-3+i*.75,.3,-113+s*2.2)],[.12,.09,.025],bone,12,5);
+   rib.castShadow=true;rib.receiveShadow=true;this.scene.add(rib);
+  }
+  const plinth=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.5,1.2,7),rock);plinth.position.set(RELIC.x,.6,RELIC.z);
+  plinth.castShadow=true;plinth.receiveShadow=true;this.scene.add(plinth);
  }
  beamMaterial(color:THREE.ColorRepresentation,opacity:number){
   return new THREE.ShaderMaterial({
@@ -244,9 +256,20 @@ export class CaveWorld extends OceanWorld {
   this.torchLight.position.set(0,0,-.45);
   this.torchLight.target.position.set(0,0,-22);
   this.torchBody.add(this.torchLight,this.torchLight.target);
+  // Torch shadows: modest 512² map; lantern mesh itself must not cast (near-field acne).
+  this.torchLight.castShadow=true;
+  this.torchLight.shadow.mapSize.set(512,512);
+  this.torchLight.shadow.bias=-.00035;
+  this.torchLight.shadow.normalBias=.035;
+  this.torchLight.shadow.radius=1.5;
+  this.torchLight.shadow.camera.near=.35;
+  this.torchLight.shadow.camera.far=Math.max(12,torch0.distance);
+  this.torchLight.shadow.camera.updateProjectionMatrix();
+  this.torchBody.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=false;o.receiveShadow=false;}});
 
   const cone=new THREE.CylinderGeometry(.018,3.2,20,28,1,true);cone.rotateX(Math.PI/2);
   this.beam=new THREE.Mesh(cone,this.beamMaterial(0xd4eaf8,.09));
+  this.beam.castShadow=false;this.beam.receiveShadow=false;
   // Cone length 20 along −Z; center so the near tip sits at the lens.
   this.beam.position.set(0,0,-10.45);
   this.torchBody.add(this.beam);
@@ -305,6 +328,7 @@ export class CaveWorld extends OceanWorld {
   for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);group.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
   for(const p of this.mission.pickups){let group=this.pickupMeshes.get(p.id);if(!group){group=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:p.item==='relic'?0xe2b65e:0x82c8b7,emissive:p.item==='relic'?0x6b3c07:0x153c36,emissiveIntensity:.7,metalness:.4,roughness:.45});
     if(p.item==='relic'){const points:THREE.Vector3[]=[],radii:number[]=[];for(let i=0;i<=72;i++){const t=i/72,a=t*Math.PI*4.5,r=.03+t*t*.62;points.push(V(Math.cos(a)*r,Math.sin(a)*r,0));radii.push(.01+t*.12);}group.add(this.tube(points,radii,mat,90,8));group.add(new THREE.PointLight(0xefbb68,3.5,7));}else group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.3,1),mat));
+    group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
     this.scene.add(group);this.pickupMeshes.set(p.id,group);
    }group.position.set(p.position.x,p.position.y+Math.sin(this.time*1.7+p.id)*.12,p.position.z);group.rotation.y=this.time*.45;
   }
@@ -457,6 +481,11 @@ export class CaveWorld extends OceanWorld {
    const torch=torchModulation(this.position.y,this.pitch);
    this.torchLight.intensity=torch.intensity;this.torchLight.distance=torch.distance;this.torchLight.decay=torch.decay;
    this.torchLight.color.setRGB(torch.r,torch.g,torch.b);
+   // Keep shadow frustum matched to the attenuated range (avoids wasted Safari fill).
+   const far=Math.max(10,Math.min(48,torch.distance+2));
+   if(Math.abs(this.torchLight.shadow.camera.far-far)>.5){
+    this.torchLight.shadow.camera.far=far;this.torchLight.shadow.camera.updateProjectionMatrix();
+   }
    const beamMat=this.beam.material as THREE.ShaderMaterial;
    beamMat.uniforms.uOpacity.value=torch.beamOpacity;
    beamMat.uniforms.uColor.value.setRGB(torch.beamR,torch.beamG,torch.beamB);
