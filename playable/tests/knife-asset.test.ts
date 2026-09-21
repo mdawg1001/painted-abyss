@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {
  KNIFE_HOLD_SCALE,KNIFE_HOLD_POS,KNIFE_STAB_Z,KNIFE_THUMB_URL,KNIFE_ASSET_URL,
- createKnifeStub,poseKnife,alignKnifeBladeForward,prepareKnifeMaterials,
+ createKnifeStub,poseKnife,alignKnifeBladeForward,prepareKnifeMaterials,knifeMeshReady,
 } from '../src/knifeAsset.ts';
 import {readFileSync,statSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
@@ -22,7 +22,6 @@ test('knife public assets exist (glTF + square HUD thumb)',()=>{
  for(const f of ['fish_knife_1k.gltf','fish_knife.bin','thumb.png','textures/fish_knife_diff_1k.jpg','textures/fish_knife_arm_1k.jpg','textures/fish_knife_nor_gl_1k.jpg']){
   assert.ok(statSync(path.join(knifeDir,f)).isFile(),f);
  }
- // HUD thumb must be square (old Poly Haven strip was 36×253).
  const png=readFileSync(path.join(knifeDir,'thumb.png'));
  assert.equal(png[0],0x89);
  const w=png.readUInt32BE(16),h=png.readUInt32BE(20);
@@ -30,11 +29,11 @@ test('knife public assets exist (glTF + square HUD thumb)',()=>{
  assert.ok(w>=64);
 });
 
-test('stub knife mounts with fill lights and hold pose',()=>{
+test('stub knife stays unready until upgrade (no fill lights)',()=>{
  const g=createKnifeStub();
  assert.equal(g.name,'knifeVisual');
- assert.ok(g.getObjectByName('knifeFill'));
- assert.ok(g.getObjectByName('knifeRim'));
+ assert.equal(knifeMeshReady(g),false);
+ assert.equal(g.getObjectByName('knifeFill'),undefined);
  poseKnife(g);
  assert.equal(g.scale.x,KNIFE_HOLD_SCALE);
  assert.equal(g.position.x,KNIFE_HOLD_POS.x);
@@ -42,7 +41,6 @@ test('stub knife mounts with fill lights and hold pose',()=>{
 
 test('alignKnifeBladeForward puts longest axis on Z and recenters',()=>{
  const scene=new THREE.Group();
- // Long thin box along +X (mimics unrotated handle extent).
  const mesh=new THREE.Mesh(new THREE.BoxGeometry(.22,.03,.02));
  scene.add(mesh);
  alignKnifeBladeForward(scene);
@@ -53,14 +51,14 @@ test('alignKnifeBladeForward puts longest axis on Z and recenters',()=>{
  assert.ok(Math.abs(center.x)<1e-5&&Math.abs(center.y)<1e-5&&Math.abs(center.z)<1e-5);
 });
 
-test('prepareKnifeMaterials attaches envMap without washing PBR',()=>{
+test('prepareKnifeMaterials attaches soft envMap without washing PBR',()=>{
  const mesh=new THREE.Mesh(new THREE.BoxGeometry(),new THREE.MeshStandardMaterial({metalness:.9,roughness:.25,color:0xffffff}));
  const g=new THREE.Group();g.add(mesh);
  const env=new THREE.Texture();
  prepareKnifeMaterials(g,env);
  const m=mesh.material as THREE.MeshStandardMaterial;
  assert.equal(m.envMap,env);
- assert.ok((m.envMapIntensity??0)>=1);
+ assert.ok((m.envMapIntensity??0)>0&&(m.envMapIntensity??0)<1);
  assert.equal(m.metalness,.9);
  assert.equal(m.roughness,.25);
  assert.equal(m.emissive.getHex(),0);

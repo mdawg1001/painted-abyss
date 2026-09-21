@@ -8,7 +8,7 @@ import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
-import { createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
+import { createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, knifeMeshReady, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, applySiltToTorch, stepSilt, siltAt, createSiltPlume, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, stepSwimVelocity } from './simulation';
@@ -147,12 +147,13 @@ export class CaveWorld extends OceanWorld {
   pmrem.dispose();
   this.knifeVisual=createKnifeVisual();
   this.camera.add(this.knifeVisual);
-  applyKnifeEnvMap(this.knifeVisual,this.knifeEnvMap);
-  this.knifeVisual.visible=this.holdingKnife();
+  // Stay hidden until glTF upgrades — stub + bright envMap flashed white.
+  this.knifeVisual.visible=false;
   if(this.holdingKnife())this.setTorchMeshesVisible(false);
-  upgradeKnifeVisual(this.knifeVisual,this.knifeEnvMap).then(ok=>{
+  upgradeKnifeVisual(this.knifeVisual,this.knifeEnvMap).then(()=>{
    if(!this.alive||!this.knifeVisual)return;
-   if(ok)poseKnife(this.knifeVisual);
+   applyKnifeEnvMap(this.knifeVisual,this.knifeEnvMap!);
+   poseKnife(this.knifeVisual);
    this.knifeVisual.visible=this.holdingKnife();
    if(this.holdingKnife())this.setTorchMeshesVisible(false);
   });
@@ -714,7 +715,7 @@ export class CaveWorld extends OceanWorld {
   this.publish();
  }
  flashKnife(){
-  if(!this.knifeVisual)return;
+  if(!this.knifeVisual||!knifeMeshReady(this.knifeVisual))return;
   this.knifeVisual.visible=true;
   this.knifeFlashUntil=this.time+.28;
   // Quick thrust along look axis in local space.
@@ -776,7 +777,7 @@ export class CaveWorld extends OceanWorld {
   this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
   this.shakeAmp=0;this.knifeFlashUntil=0;
-  if(this.knifeVisual){poseKnife(this.knifeVisual);this.knifeVisual.visible=this.holdingKnife();}
+  if(this.knifeVisual){poseKnife(this.knifeVisual);this.knifeVisual.visible=this.holdingKnife()&&knifeMeshReady(this.knifeVisual);}
   this.setTorchMeshesVisible(!this.holdingKnife());
   if(this.bloodGroup){
    this.bloodGroup.visible=false;this.bloodLife=0;
@@ -828,7 +829,7 @@ export class CaveWorld extends OceanWorld {
    const knifeHeld=this.holdingKnife();
    this.applyTorchHover(bobBlend);
    if(this.knifeVisual){
-    if(knifeHeld){
+    if(knifeHeld&&knifeMeshReady(this.knifeVisual)){
      this.knifeVisual.visible=true;
      if(this.time>=this.knifeFlashUntil){
       this.applyKnifeHover(bobBlend);
@@ -864,7 +865,7 @@ export class CaveWorld extends OceanWorld {
   // Knife selected → hide lantern mesh + beam; SpotLight stays on if F torch is on.
   this.setTorchMeshesVisible(!knifeHeld);
   if(this.knifeVisual&&!this.playing){
-   this.knifeVisual.visible=knifeHeld;
+   this.knifeVisual.visible=knifeHeld&&knifeMeshReady(this.knifeVisual);
    if(knifeHeld)poseKnife(this.knifeVisual);
   }
   this.torchLight.visible=torchOn;this.beam.visible=torchOn&&!knifeHeld;
