@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath } from './diveAudio';
@@ -87,7 +86,7 @@ export class CaveWorld extends OceanWorld {
  beam!:THREE.Mesh;torchBody!:THREE.Group;torchLensMat!:THREE.MeshStandardMaterial;
  /** Rest pose for the camera-parented lantern (local space). */
  torchRestPos=V(.44,-.4,-.62);torchRestRot=new THREE.Euler(.18,-.22,.32);
- composer!:EffectComposer;bloom!:UnrealBloomPass;
+ composer!:EffectComposer;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
  knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
@@ -108,6 +107,7 @@ export class CaveWorld extends OceanWorld {
   this.scene.background=new THREE.Color(0x041a22);this.scene.fog=new THREE.FogExp2(0x0a2e38,.038);
   this.camera.far=130;this.camera.fov=64;this.camera.updateProjectionMatrix();
   this.renderer.toneMappingExposure=1.12;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  this.setPixelRatio();
   // Modest torch shadows only (no other casters) — 512² map for Safari cost.
   this.renderer.shadowMap.enabled=true;
   this.renderer.shadowMap.type=THREE.PCFShadowMap;
@@ -649,18 +649,23 @@ export class CaveWorld extends OceanWorld {
   this.addShaft(0,5.8,-110,7.5,.3,1.5,0xc4d4b0,.08);
  }
  buildComposer(){
-  const w=this.host.clientWidth,h=this.host.clientHeight;
   this.composer=new EffectComposer(this.renderer);
   this.composer.addPass(new RenderPass(this.scene,this.camera));
-  this.bloom=new UnrealBloomPass(new THREE.Vector2(w,h),.18,.65,.92);
-  this.composer.addPass(this.bloom);
+  // UnrealBloomPass skipped: bright-pass + 5 mip blurs on Retina made swim frames hitch.
   this.composer.addPass(new OutputPass());
+  this.setPixelRatio();
+ }
+ setPixelRatio(){
+  const dpr=Math.min(window.devicePixelRatio||1,1.5);
+  this.renderer.setPixelRatio(dpr);
+  this.composer?.setPixelRatio(dpr);
  }
  resize(){
   if(!this.alive)return;
   const w=this.host.clientWidth,h=this.host.clientHeight;
   this.camera.aspect=w/h;this.camera.updateProjectionMatrix();
-  this.renderer.setSize(w,h);this.composer?.setSize(w,h);this.bloom?.resolution.set(w,h);
+  this.setPixelRatio();
+  this.renderer.setSize(w,h);this.composer?.setSize(w,h);
  }
  syncPickups(){
   for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);group.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
@@ -869,7 +874,14 @@ export class CaveWorld extends OceanWorld {
    const bobY=Math.sin(this.time*1.1)*.13*bobBlend;
    const bobSide=Math.sin(this.time*.65)*.065*bobBlend;
    const bobFwd=Math.cos(this.time*.5)*.065*bobBlend;
-   this.camera.position.copy(this.position).addScaledVector(this.upAxis,bobY).addScaledVector(this.right,bobSide).addScaledVector(this.forward,bobFwd);
+   const eyeX=this.position.x+this.upAxis.x*bobY+this.right.x*bobSide+this.forward.x*bobFwd;
+   const eyeY=this.position.y+this.upAxis.y*bobY+this.right.y*bobSide+this.forward.y*bobFwd;
+   const eyeZ=this.position.z+this.upAxis.z*bobY+this.right.z*bobSide+this.forward.z*bobFwd;
+   // Translation only — look-stick (yaw/pitch) stays as-is. Cap follow-dt so a hitch frame cannot teleport the eye.
+   const follow=1-Math.exp(-80*Math.min(dt,.018));
+   this.camera.position.x=THREE.MathUtils.lerp(this.camera.position.x,eyeX,follow);
+   this.camera.position.y=THREE.MathUtils.lerp(this.camera.position.y,eyeY,follow);
+   this.camera.position.z=THREE.MathUtils.lerp(this.camera.position.z,eyeZ,follow);
    // Light combat shake (decays); applied after bob so it does not fight hover.
    if(this.shakeAmp>0.001){
     const s=this.shakeAmp;
@@ -950,8 +962,6 @@ export class CaveWorld extends OceanWorld {
    // No camera-forward particle cone — that was a second beam fighting the lantern aim.
    (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
   }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
-  // Soft bloom on shafts only — silt is muddy particles, not a bloom whiteout.
-  this.bloom.strength=(torchOn?.2:.14)+siltFog*.08;
   const p=this.mission.predator;this.guardian.group.position.copy(p.position);
   if(p.state==='dead'){
    // Corpse settles; limp fins, no chase heading lerp.
