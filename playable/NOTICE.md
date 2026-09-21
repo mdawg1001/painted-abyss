@@ -21,6 +21,13 @@
 - Files: `public/assets/chests/<kind>/` (1k glTF + textures) with notes under `src/assets/chests/`
 - Floor props in the cavern; press E to open (map fragments / loot come later).
 
+## Lifebuoy (Poly Haven)
+- Source: https://polyhaven.com/a/lifebuoy
+- Author: Hank Kaamura
+- License: CC0 1.0 Universal (public domain dedication)
+- Files: `public/assets/lifebuoy/` (1k glTF + textures) with notes under `src/assets/lifebuoy/`
+- Decorative life ring on the start-chamber floor (not interactable).
+
 ## Blood particles (Kenney Particle Pack)
 - Source: https://kenney.nl/assets/particle-pack
 - Author: Kenney Vleugels (Kenney.nl)
