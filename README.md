@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.1.24
+# Painted Abyss — First Dive · 0.1.27
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -70,7 +70,7 @@ Pointer lock is requested by Begin / Resume. If the browser refuses it, moving t
 - Stone and driftwood are spare salvage; replacing either keeps your useful supplies. Press **1–5** to select a slot (selected slot is highlighted), then **R** to use — air, sealant, and flares are consumed and clear the slot. A one-time tip appears on the first dive only; later dives rely on the selected-slot chrome. The mounted torch and worn fins sit outside the five carried slots in this prototype.
 - Carry the relic east toward the **amber markers**, enter the narrow fissure, then follow it north to the extraction pool. Press **E** near the light to win. You must still be carrying the relic; dropping it removes eligibility to extract.
 - Rock blocks the guardian's sight. Its states are patrol, alert, chase, and search. Use the pillar, briefly sprint away, switch off the torch, or deploy a flare and move away. It cannot enter the narrow exit passage.
-- Air lasts four minutes. Use the reserve before it runs out; it restores up to 60 seconds. Sealant repairs 45 suit integrity. A flare distracts for 12 seconds unless you remain very close to the guardian. Dying or running out of air brings up Restart.
+- Air is a **90 s** surface-equivalent main tank plus a **30 s** pony bailout (R arms the pony). Burn scales with depth (ATA) and sprint/panic effort. Space/Q fill a **BCD trim** (−1..+1); look-pitch finning only adds a little vertical thrust. Sealant repairs 45 suit integrity. A flare distracts for 12 seconds unless you remain very close to the guardian. Dying or running out of air brings up Restart.
 
 ## Edit and rebuild
 

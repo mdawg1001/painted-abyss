@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,updateBuoyancy,stepSwimVelocity,terminalSwimSpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,updateBuoyancy,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE} from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{for(let i=0;i<seconds*60;i++)m.update(1/60);};
 test('hydrostatic depth and ata share one surface plane',()=>{
  assert.equal(hydrostaticDepth(SURFACE_Y),0);
@@ -29,17 +29,34 @@ test('force swim reaches dive-plausible cruise/sprint and coasts under quadratic
 });
 test('BCD buoyancy rises on Space input and trims toward neutral when released',()=>{
  let b=0;
- for(let i=0;i<120;i++)b=updateBuoyancy(b,1,1/60);
- assert.ok(b>.85);
- for(let i=0;i<300;i++)b=updateBuoyancy(b,0,1/60);
- assert.ok(Math.abs(b)<.12);
+ for(let i=0;i<180;i++)b=updateBuoyancy(b,1,1/60);
+ assert.ok(b>.85,'Space fills buoyancy slowly toward +1');
+ for(let i=0;i<360;i++)b=updateBuoyancy(b,0,1/60);
+ assert.ok(Math.abs(b)<.12,'idle drifts toward neutral trim');
  // Buoyancy alone produces vertical accel without horizontal kick.
  const v={x:0,y:0,z:0};
- for(let i=0;i<90;i++)stepSwimVelocity(v,{x:0,y:0,z:0},1,false,1/60);
+ for(let i=0;i<120;i++)stepSwimVelocity(v,{x:0,y:0,z:0},1,false,1/60);
  assert.ok(v.y>0.2);
  assert.ok(Math.abs(v.x)<1e-9&&Math.abs(v.z)<1e-9);
  assert.ok(SWIM_BUOYANCY_ACCEL>0);
- const m=new Mission(true);assert.equal(m.buoyancy,0);
+ const floatMs=terminalBuoyancySpeed();
+ assert.ok(floatMs>1.2&&floatMs<1.7,`BCD float ${floatMs} should stay well below arcade 2.8`);
+ assert.ok(floatMs<terminalSwimSpeed(false)*.8,'pure BCD slower than cruise kick');
+ const m=new Mission(true);assert.equal(m.buoyancy,0);assert.equal(m.buoyancyTrim,0);
+});
+test('look-pitch finning is attenuated; vertical climb is mostly a BCD skill',()=>{
+ assert.ok(SWIM_KICK_VERTICAL_SCALE>0&&SWIM_KICK_VERTICAL_SCALE<.5);
+ const lookUp={x:0,y:0,z:0};
+ for(let i=0;i<180;i++)stepSwimVelocity(lookUp,{x:0,y:1,z:0},0,false,1/60);
+ const bcdUp={x:0,y:0,z:0};
+ for(let i=0;i<180;i++)stepSwimVelocity(bcdUp,{x:0,y:0,z:0},1,false,1/60);
+ assert.ok(lookUp.y>0.05,'finning still adds a bit of vertical thrust');
+ assert.ok(bcdUp.y>lookUp.y*1.2,'full BCD outclimbs attenuated look-kick');
+ assert.ok(lookUp.y<terminalSwimSpeed(false)*.6,'look-up kick is not equal XYZ flight');
+ // Idle can drift toward a non-zero trim target.
+ let b=.8;
+ for(let i=0;i<240;i++)b=updateBuoyancy(b,0,1/60,.35);
+ assert.ok(Math.abs(b-.35)<.08,`trim target drift ${b}`);
 });
 test('torch modulation dims and muddies with depth and floor aim',()=>{
  const shallowUp=torchModulation(6.5,-1.2);

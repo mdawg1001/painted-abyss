@@ -67,6 +67,10 @@ function App(){
  const time=`${String(Math.floor(airPool/60)).padStart(2,'0')}:${String(airPool%60).padStart(2,'0')}`;
  const ponyReady=!!(m&&m.bailout>0&&m.air>0);
  const depth=m?Math.round(hydrostaticDepth(m.position.y)):0;
+ const buoyancy=m?.buoyancy??0;
+ const trimLabel=buoyancy>.2?'FLOAT':buoyancy<-.2?'SINK':'LEVEL';
+ const trimLeft=buoyancy>=0?50:50+buoyancy*50;
+ const trimWidth=Math.abs(buoyancy)*50;
  const predator=m?.predator.state||'patrol';const close=m?distance(m.position,m.predator.position)<23:false;
  const threat=close?{patrol:'Movement in the dark',alert:'It heard something',chase:'It is hunting you',search:'Searching your last position'}[predator]:'';
  return <main className={playing?'app playing':'app'}>
@@ -84,6 +88,7 @@ function App(){
    <div className="depth">DEPTH {depth} m</div>
    <section className="vitals" aria-label="Vitals">
     <div className="vital"><div className="vital-row"><span>{onBailout?'PONY':'AIR'}{ponyReady?` · +${Math.ceil(m.bailout)}s`:''}</span><strong className={airPool<45||onBailout?'warning':''}>{time}</strong></div><div className={`meter air ${onBailout?'bailout':''}`}><i style={{width:`${airPool/airMax*100}%`}}/></div></div>
+    <div className="vital"><div className="vital-row"><span>TRIM</span><strong className={Math.abs(buoyancy)>.55?'warning':''}>{trimLabel}</strong></div><div className="meter trim" aria-valuemin={-1} aria-valuemax={1} aria-valuenow={+buoyancy.toFixed(2)}><i style={{left:`${trimLeft}%`,width:`${trimWidth}%`}}/></div></div>
     <div className="vital"><div className="vital-row"><span>SUIT</span><strong className={m.health<40?'warning':''}>{Math.ceil(m.health)}</strong></div><div className="meter suit"><i style={{width:`${m.health}%`}}/></div></div>
     <div className="vital"><div className="vital-row"><span>FINS</span><strong>{Math.round(m.stamina)}</strong></div><div className="meter fins"><i style={{width:`${m.stamina}%`}}/></div></div>
    </section>
