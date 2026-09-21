@@ -10,7 +10,7 @@ import {
  Mission,START,RELIC,EXIT,moveBody,distance,CELL,torchModulation,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,
  stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,updateBuoyancy,PREDATOR_SPEED,SWIM_THRUST_CRUISE,SWIM_THRUST_SPRINT,SWIM_DRAG_K,
  SWIM_KICK_VERTICAL_SCALE,SWIM_BUOYANCY_ACCEL,
- AIR_MAIN_MAX,AIR_BAILOUT_MAX,gasDrainRate,
+ AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,gasDrainRate,
 } from '../src/simulation';
 
 const CRUISE=terminalSwimSpeed(false);
@@ -74,8 +74,8 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  for(let i=0;i<60;i++)airMission2.update(1/60,false);
  const airAfterCruiseShallow=airMission2.air;
  assert.ok(airAfterSprintDeep<airAfterCruiseShallow,'deep sprint burns more surface-equivalent gas');
- assert.ok(airAfterCruiseShallow<AIR_MAIN_MAX);
- assert.ok(airAfterSprintDeep>AIR_MAIN_MAX-15,'1 s deep sprint leaves most of the short tank');
+ assert.ok(airAfterCruiseShallow<AIR_MAIN_LITRES);
+ assert.ok(airAfterSprintDeep>AIR_MAIN_LITRES-5,'1 s deep sprint leaves most of the short tank');
 
  // Equal kick thrust on Y vs Z no longer applies — buoyancy is separate.
  let b=0;for(let i=0;i<90;i++)b=updateBuoyancy(b,1,1/60);
@@ -128,9 +128,10 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    coastFromCruiseS:+coast.coastSeconds.toFixed(3),
    staminaSprintWindowS:+staminaEmpty.toFixed(2),
    staminaRegenFullS:+regen.toFixed(2),
-   airBudgetS:AIR_MAIN_MAX,
-   airBudgetMin:AIR_MAIN_MAX/60,
-   airReserveS:AIR_BAILOUT_MAX,
+   airBudgetL:AIR_MAIN_LITRES,
+   airBudgetMin:AIR_MAIN_LITRES/(SAC_CRUISE_LPM),
+   airReserveL:AIR_BAILOUT_LITRES,
+   sacCruiseLpm:SAC_CRUISE_LPM,
    airIndependentOfDepthAndExertion:false,
    gasDrainSurfaceCruise:gasDrainRate(SURFACE_Y,false),
    gasDrainFloorCruise:gasDrainRate(FLOOR_Y,false),
@@ -144,7 +145,7 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    sprintTimeStartToRelicS:+routeSprint.toFixed(1),
    equalVerticalHorizontalThrust:false,
    gravityOrBuoyancyForce:true,
-   buoyancyModel:'BCD state −1..+1 via Space/Q; look-kick Y attenuated; quadratic drag',
+   buoyancyModel:'BCD state −1..+1 via Space/Q; player-set trim bias with [ ] / X; look-kick Y attenuated',
    kickVerticalScale:SWIM_KICK_VERTICAL_SCALE,
    buoyancyAccel:SWIM_BUOYANCY_ACCEL,
    terminalBuoyancyMs:+terminalBuoyancySpeed().toFixed(3),
@@ -180,17 +181,18 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    gameCruiseOverRealCruiseMin:+cruiseVsRealMin.toFixed(1),
    gameCruiseOverRealCruiseMax:+cruiseVsRealMax.toFixed(1),
    gameSprintOverHardKickMax:+sprintVsHard.toFixed(1),
-   gameAirMinutesOverRealShallowMin:+((AIR_MAIN_MAX/60)/REAL.airMinutesShallow[1]).toFixed(2),
-   gameAirMinutesOverRealShallowMax:+((AIR_MAIN_MAX/60)/REAL.airMinutesShallow[0]).toFixed(2),
+   gameAirMinutesOverRealShallowMin:+((AIR_MAIN_LITRES/SAC_CRUISE_LPM)/REAL.airMinutesShallow[1]).toFixed(2),
+   gameAirMinutesOverRealShallowMax:+((AIR_MAIN_LITRES/SAC_CRUISE_LPM)/REAL.airMinutesShallow[0]).toFixed(2),
   },
   verdicts:{
    swimSpeed:'GAMEPLAY PACE — force model cruise ~2.2 m/s / sprint ~3.5 m/s (force model retained; closer to old arcade feel).',
-   gasModel:`SAC × ATA × EFFORT — high-stakes; main ${AIR_MAIN_MAX} s + pony ${AIR_BAILOUT_MAX} s; sprint/panic raise RMV.`,
-   buoyancy:`BCD SKILL — Space/Q fill −1..+1 (trim target idle); look-kick Y × ${SWIM_KICK_VERTICAL_SCALE}; float ~${terminalBuoyancySpeed().toFixed(1)} m/s.`,
+   gasModel:`SAC × ATA × EFFORT — high-stakes; main ${AIR_MAIN_LITRES} L + pony ${AIR_BAILOUT_LITRES} L at ${SAC_CRUISE_LPM} L/min cruise SAC; HUD shows litres.`,
+   buoyancy:'BCD SKILL — Space/Q momentary; [ ] lock idle bias (±0.45); X clears; look-kick Y attenuated.',
    dragCoast:'QUADRATIC — −k|v|v; short coast after releasing kick.',
    depthScale:'SHALLOW CAVE — ~6.5 m playable y band; torch murk is stylistic, not optical attenuation law.',
    depthHud:'HYDROSTATIC — DEPTH = round(SURFACE_Y − y); −Z no longer fakes metres.',
    predatorPacing:`DESIGNED CHASE — chase ${PREDATOR_SPEED.chase} m/s between cruise and sprint.`,
+   outOfScope:'Currents / surge, weight belt, and real deco are out of scope for this short First Dive mission.',
    overall:'Gameplay-first survival with paced force locomotion; gas scales with depth and effort.',
   },
 };
@@ -201,13 +203,13 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
 
  assert.ok(CRUISE<REAL.hardKickMs[1]*3.2,'cruise raised for gameplay, still below old arcade 2.8');
  assert.ok(SPRINT<4.5,'sprint below old arcade 4.8');
- assert.ok(AIR_MAIN_MAX/60<REAL.airMinutesShallow[0]/5,'air budget is heavily time-compressed');
+ assert.ok((AIR_MAIN_LITRES/SAC_CRUISE_LPM)<REAL.airMinutesShallow[0]/5,'air budget is heavily time-compressed');
  assert.ok(gasDrainRate(FLOOR_Y,true)>gasDrainRate(SURFACE_Y,false));
  assert.equal(report.measured.gravityOrBuoyancyForce,true);
  console.log(JSON.stringify({
   cruiseMs:+CRUISE.toFixed(3),sprintMs:+SPRINT.toFixed(3),
   vsRecCruise:`${cruiseVsRealMax.toFixed(1)}–${cruiseVsRealMin.toFixed(1)}×`,
-  airMin:AIR_MAIN_MAX/60,coastM:coast.coastMetres.toFixed(2),
+  airMin:AIR_MAIN_LITRES/SAC_CRUISE_LPM,coastM:coast.coastMetres.toFixed(2),
   staminaSprintS:staminaEmpty.toFixed(1),
   gasFloorSprint:gasDrainRate(FLOOR_Y,true).toFixed(2),
   verdict:report.verdicts.overall,

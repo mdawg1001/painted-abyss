@@ -31,12 +31,19 @@ export function hydrostaticDepth(y:number){return Math.max(0,SURFACE_Y-y);}
 /** Ambient pressure in atmospheres (≈ 1 + depth_m/10). */
 export function ata(y:number){return 1+hydrostaticDepth(y)/10;}
 
-/** Surface-equivalent main tank (seconds at 1 ATA, cruise effort). High-stakes: ~90 s surface. */
-export const AIR_MAIN_MAX=90;
-/** Separate pony / bailout pool (~⅓ of main). */
-export const AIR_BAILOUT_MAX=30;
-/** Base drain: 1 surface-second of gas per real second at 1 ATA, cruise. */
-export const AIR_BASE_DRAIN=1;
+/** Surface air consumption at cruise (L/min). Sprint/panic multiply via effort. */
+export const SAC_CRUISE_LPM=18;
+/**
+ * Free-gas main tank in litres.
+ * 27 L ≈ 90 s of surface cruise at 18 L/min — same high-stakes fuse as the old second-tank.
+ */
+export const AIR_MAIN_LITRES=27;
+/** Separate pony / bailout pool in litres (~⅓ of main). */
+export const AIR_BAILOUT_LITRES=9;
+/** @deprecated Prefer AIR_MAIN_LITRES — kept as an alias for older call sites. */
+export const AIR_MAIN_MAX=AIR_MAIN_LITRES;
+/** @deprecated Prefer AIR_BAILOUT_LITRES. */
+export const AIR_BAILOUT_MAX=AIR_BAILOUT_LITRES;
 export const AIR_EFFORT_CRUISE=1;
 /** Sprint RMV — hard kick burns gas fast so Shift is a real choice. */
 export const AIR_EFFORT_SPRINT=2.2;
@@ -49,9 +56,9 @@ export function gasEffort(sprinting=false,panic=false){
  if(sprinting)return AIR_EFFORT_SPRINT;
  return AIR_EFFORT_CRUISE;
 }
-/** Surface-equivalent gas seconds consumed per real second (DAN: RMV × ATA × effort). */
+/** Litres consumed per wall-clock second (SAC/60 × ATA × effort). */
 export function gasDrainRate(depthY:number,sprinting=false,panic=false){
- return AIR_BASE_DRAIN*ata(depthY)*gasEffort(sprinting,panic);
+ return (SAC_CRUISE_LPM/60)*ata(depthY)*gasEffort(sprinting,panic);
 }
 
 /** Kick thrust (m/s²) — terminal speed ≈ sqrt(thrust / SWIM_DRAG_K). */
@@ -72,6 +79,10 @@ export const BCD_TRIM_RATE=2.4;
 export const BCD_NEUTRAL_EPS=.04;
 /** Extra vertical linear damp (1/s) when BCD is neutral and you are not finning up/down. */
 export const BCD_SETTLE_DAMP=3.2;
+/** Max player-set idle bias (|buoyancyTrim|). Full ±1 remains momentary Space/Q only. */
+export const BCD_TRIM_BIAS_MAX=.45;
+/** How fast [ ] nudge the locked trim bias (1/s). */
+export const BCD_TRIM_ADJUST_RATE=.9;
 /**
  * Look-pitch finning only contributes this fraction of kick thrust on Y.
  * Horizontal kick stays full; vertical climb is mostly a BCD skill.
@@ -96,6 +107,17 @@ export function updateBuoyancy(buoyancy:number,bcdInput:number,dt:number,trimTar
  return Math.abs(next-trim)<BCD_NEUTRAL_EPS?trim:next;
 }
 /**
+ * Player-set idle bias: hold ] / [ toward ±BCD_TRIM_BIAS_MAX.
+ * Release Space/Q and buoyancy settles onto this bias (non-zero = slow rise/sink).
+ */
+export function updateBuoyancyTrim(trim:number,adjustInput:number,dt:number){
+ const a=Math.max(-1,Math.min(1,adjustInput));
+ if(Math.abs(a)<.01)return Math.max(-BCD_TRIM_BIAS_MAX,Math.min(BCD_TRIM_BIAS_MAX,trim));
+ const target=Math.sign(a)*BCD_TRIM_BIAS_MAX;
+ const next=trim+(target-trim)*(1-Math.exp(-BCD_TRIM_ADJUST_RATE*dt));
+ return Math.max(-BCD_TRIM_BIAS_MAX,Math.min(BCD_TRIM_BIAS_MAX,next));
+}
+/**
  * Force-based swim step: look/strafe kick + BCD buoyancy − k|v|v.
  * `kick` is WASD (look-forward may include a small Y); Space/Q must not be baked into kick.
  */
@@ -112,8 +134,9 @@ export function stepSwimVelocity(velocity:Vec3,kick:Vec3,buoyancy:number,sprint:
   ay+=kick.y*s*SWIM_KICK_VERTICAL_SCALE;
   az=kick.z*s;
  }
- // Neutral BCD + no vertical fin: bleed leftover rise/sink so release actually stops you.
- if(buoy===0&&Math.abs(kick.y)<1e-3)ay+=-velocity.y*BCD_SETTLE_DAMP;
+ // Neutral trim + no vertical fin: bleed leftover rise/sink so release actually stops you.
+ // Non-zero player bias keeps a gentle float/sink — that is intentional.
+ if(Math.abs(buoyancy)<BCD_NEUTRAL_EPS&&Math.abs(kick.y)<1e-3)ay+=-velocity.y*BCD_SETTLE_DAMP;
  const speed=Math.hypot(velocity.x,velocity.y,velocity.z);
  const drag=-SWIM_DRAG_K*speed;
  ax+=velocity.x*drag;ay+=velocity.y*drag;az+=velocity.z*drag;
@@ -133,7 +156,7 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  stone:{name:'Limestone',short:'Stone',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  wood:{name:'Driftwood',short:'Wood',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  flare:{name:'Signal flare',short:'Flare',description:'R · Deploy a 12-second distraction at your position.',hint:'R use · consumed'},
- air:{name:'Pony bottle',short:'Pony',description:'R · Arm a separate bailout cylinder (~30 s at surface). Drains after the main tank.',hint:'R arm bailout · consumed'},
+ air:{name:'Pony bottle',short:'Pony',description:`R · Arm a separate bailout cylinder (~${AIR_BAILOUT_LITRES} L). Drains after the main tank.`,hint:'R arm bailout · consumed'},
  bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
 };
@@ -291,7 +314,7 @@ export function writeInventoryTipsSeen(){
  position={...START};health=100;air=AIR_MAIN_MAX;bailout=0;elapsed=0;stamina=100;torch=true;
  /** BCD trim −1 (sink) .. 0 (neutral) .. +1 (float). Driven by Space/Q, not kick speed. */
  buoyancy=0;
- /** Idle drift target for buoyancy (−1..+1). Defaults to neutral; skill play can bias trim later. */
+ /** Idle drift target for buoyancy (−1..+1). Player sets with [ ] / X; Space/Q are momentary. */
  buoyancyTrim=0;
  /** Elevated gas effort until this mission elapsed time (bite / panic). */
  gasPanicUntil=0;
