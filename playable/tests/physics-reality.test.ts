@@ -8,7 +8,8 @@ import assert from 'node:assert/strict';
 import {writeFileSync, mkdirSync} from 'node:fs';
 import {
  Mission,START,RELIC,EXIT,moveBody,distance,CELL,torchModulation,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,
- stepSwimVelocity,terminalSwimSpeed,updateBuoyancy,PREDATOR_SPEED,SWIM_THRUST_CRUISE,SWIM_THRUST_SPRINT,SWIM_DRAG_K,
+ stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,updateBuoyancy,PREDATOR_SPEED,SWIM_THRUST_CRUISE,SWIM_THRUST_SPRINT,SWIM_DRAG_K,
+ SWIM_KICK_VERTICAL_SCALE,SWIM_BUOYANCY_ACCEL,
  AIR_MAIN_MAX,AIR_BAILOUT_MAX,gasDrainRate,
 } from '../src/simulation';
 
@@ -143,7 +144,10 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    sprintTimeStartToRelicS:+routeSprint.toFixed(1),
    equalVerticalHorizontalThrust:false,
    gravityOrBuoyancyForce:true,
-   buoyancyModel:'BCD state −1..+1 via Space/Q; quadratic drag on velocity',
+   buoyancyModel:'BCD state −1..+1 via Space/Q; look-kick Y attenuated; quadratic drag',
+   kickVerticalScale:SWIM_KICK_VERTICAL_SCALE,
+   buoyancyAccel:SWIM_BUOYANCY_ACCEL,
+   terminalBuoyancyMs:+terminalBuoyancySpeed().toFixed(3),
    predatorChaseMs:PREDATOR_SPEED.chase,
    predatorPatrolMs:PREDATOR_SPEED.patrol,
    playerCanOutSprintChase:SPRINT>PREDATOR_SPEED.chase,
@@ -182,7 +186,7 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
   verdicts:{
    swimSpeed:'GAMEPLAY PACE — force model cruise ~2.2 m/s / sprint ~3.5 m/s (force model retained; closer to old arcade feel).',
    gasModel:`SAC × ATA × EFFORT — high-stakes; main ${AIR_MAIN_MAX} s + pony ${AIR_BAILOUT_MAX} s; sprint/panic raise RMV.`,
-   buoyancy:'BCD STATE — Space/Q fill buoyancy −1..+1 with neutral trim; kick is look/strafe only.',
+   buoyancy:`BCD SKILL — Space/Q fill −1..+1 (trim target idle); look-kick Y × ${SWIM_KICK_VERTICAL_SCALE}; float ~${terminalBuoyancySpeed().toFixed(1)} m/s.`,
    dragCoast:'QUADRATIC — −k|v|v; short coast after releasing kick.',
    depthScale:'SHALLOW CAVE — ~6.5 m playable y band; torch murk is stylistic, not optical attenuation law.',
    depthHud:'HYDROSTATIC — DEPTH = round(SURFACE_Y − y); −Z no longer fakes metres.',

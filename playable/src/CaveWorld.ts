@@ -230,7 +230,7 @@ export class CaveWorld extends OceanWorld {
  buildCave(){
   const {rock:rockMaps,sand:sandMaps,moss:mossMaps}=this.rockMaps;
   // Near-white tints so Poly Haven albedo dominates; ceiling kept cooler/darker
-  const floor=this.material(0xc9c4b8,'sand',.88,3.4,sandMaps,mossMaps);
+  const floor=this.material(0xc9c4b8,'sand',.88,0,sandMaps,mossMaps);
   const rock=this.material(0xb4c0c4,'rock',.86,1.6,rockMaps,mossMaps);
   const ceiling=this.material(0x6a7882,'rock',.9,.6,rockMaps,mossMaps);
   const floors:THREE.BufferGeometry[]=[],roofs:THREE.BufferGeometry[]=[],walls:THREE.BufferGeometry[]=[],details:THREE.BufferGeometry[]=[];
@@ -701,7 +701,7 @@ export class CaveWorld extends OceanWorld {
    // Kick = look / strafe only. Space/Q drive BCD buoyancy, not equal XYZ thrust.
    this.move.copy(this.forward).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));
    const bcd=pressed('Space')-pressed('KeyQ','ControlLeft','ControlRight');
-   m.buoyancy=updateBuoyancy(m.buoyancy,bcd,dt);
+   m.buoyancy=updateBuoyancy(m.buoyancy,bcd,dt,m.buoyancyTrim);
    const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.01;
    stepSwimVelocity(this.velocity,this.move,m.buoyancy,sprint,dt);
    moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);
