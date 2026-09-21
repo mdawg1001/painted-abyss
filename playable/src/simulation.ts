@@ -15,15 +15,17 @@ export function hydrostaticDepth(y:number){return Math.max(0,SURFACE_Y-y);}
 /** Ambient pressure in atmospheres (≈ 1 + depth_m/10). */
 export function ata(y:number){return 1+hydrostaticDepth(y)/10;}
 
-/** Surface-equivalent main tank (seconds at 1 ATA, cruise effort). */
-export const AIR_MAIN_MAX=240;
-/** Separate pony / bailout pool (~25% of main ≈ 19 cu ft vs AL80). */
-export const AIR_BAILOUT_MAX=60;
+/** Surface-equivalent main tank (seconds at 1 ATA, cruise effort). High-stakes: ~90 s surface. */
+export const AIR_MAIN_MAX=90;
+/** Separate pony / bailout pool (~⅓ of main). */
+export const AIR_BAILOUT_MAX=30;
 /** Base drain: 1 surface-second of gas per real second at 1 ATA, cruise. */
 export const AIR_BASE_DRAIN=1;
 export const AIR_EFFORT_CRUISE=1;
-export const AIR_EFFORT_SPRINT=1.75;
-export const AIR_EFFORT_PANIC=2.35;
+/** Sprint RMV — hard kick burns gas fast so Shift is a real choice. */
+export const AIR_EFFORT_SPRINT=2.2;
+/** Bite / panic RMV spike. */
+export const AIR_EFFORT_PANIC=2.9;
 /** Seconds of elevated RMV after a guardian bite. */
 export const AIR_PANIC_SECONDS=3;
 export function gasEffort(sprinting=false,panic=false){
@@ -83,7 +85,7 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  stone:{name:'Limestone',short:'Stone',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  wood:{name:'Driftwood',short:'Wood',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  flare:{name:'Signal flare',short:'Flare',description:'R · Deploy a 12-second distraction at your position.',hint:'R use · consumed'},
- air:{name:'Pony bottle',short:'Pony',description:'R · Arm a separate bailout cylinder (~60 s at surface). Drains after the main tank.',hint:'R arm bailout · consumed'},
+ air:{name:'Pony bottle',short:'Pony',description:'R · Arm a separate bailout cylinder (~30 s at surface). Drains after the main tank.',hint:'R arm bailout · consumed'},
  bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
 };
