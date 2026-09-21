@@ -59,38 +59,59 @@ export const SWIM_THRUST_CRUISE=8.7;
 export const SWIM_THRUST_SPRINT=22.05;
 /** Quadratic drag coefficient; cruise ≈2.2 m/s, sprint ≈3.5 m/s with thrusts above. */
 export const SWIM_DRAG_K=1.8;
-/** Vertical accel at full BCD (|buoyancy| = 1). */
+/**
+ * Vertical accel at full BCD (|buoyancy| = 1).
+ * Tuned so holding Space reaches a gentle float (~1.5 m/s) — not arcade ±2.8 vy.
+ */
 export const SWIM_BUOYANCY_ACCEL=4.1;
-/** How fast Space/Q fills buoyancy toward ±1 (1/s exponential approach). */
-export const BCD_FILL_RATE=1.35;
-/** Hands-off return of buoyancy toward neutral (1/s). */
+/** How fast Space/Q fills buoyancy toward ±1 (1/s exponential approach). Slow on purpose. */
+export const BCD_FILL_RATE=.95;
+/** Hands-off return of buoyancy toward the trim target (1/s). */
 export const BCD_TRIM_RATE=.55;
+/**
+ * Look-pitch finning only contributes this fraction of kick thrust on Y.
+ * Horizontal kick stays full; vertical climb is mostly a BCD skill.
+ */
+export const SWIM_KICK_VERTICAL_SCALE=.25;
 /** Predator band sits between player cruise and sprint; rage exceeds chase, damaged limps. */
 export const PREDATOR_SPEED={chase:2.7,rage:3.35,patrol:1.3,alert:.5,damaged:.85} as const;
-
 export type Vec3={x:number;y:number;z:number};
-/** Space/Q BCD input (−1..+1). Idle trims toward neutral. */
-export function updateBuoyancy(buoyancy:number,bcdInput:number,dt:number){
+/**
+ * Space/Q BCD input (−1..+1). Idle drifts toward `trimTarget` (default neutral 0).
+ * Never sets velocity directly — CaveWorld applies buoyancy as vertical accel.
+ */
+export function updateBuoyancy(buoyancy:number,bcdInput:number,dt:number,trimTarget=0){
  const b=Math.max(-1,Math.min(1,bcdInput));
+ const trim=Math.max(-1,Math.min(1,trimTarget));
  if(Math.abs(b)>.01){
   const target=Math.sign(b);
   return buoyancy+(target-buoyancy)*(1-Math.exp(-BCD_FILL_RATE*dt));
  }
- return buoyancy*Math.exp(-BCD_TRIM_RATE*dt);
+ return buoyancy+(trim-buoyancy)*(1-Math.exp(-BCD_TRIM_RATE*dt));
 }
 /**
- * Force-based swim step: look/strafe kick thrust + buoyancy − k|v|v.
- * `kick` is WASD (and look-forward Y from pitch); Space/Q must not be baked into kick.
+ * Force-based swim step: look/strafe kick + BCD buoyancy − k|v|v.
+ * `kick` is WASD (look-forward may include a small Y); Space/Q must not be baked into kick.
  */
 export function stepSwimVelocity(velocity:Vec3,kick:Vec3,buoyancy:number,sprint:boolean,dt:number){
  const thrust=sprint?SWIM_THRUST_SPRINT:SWIM_THRUST_CRUISE;
  const kLen=Math.hypot(kick.x,kick.y,kick.z);
  let ax=0,ay=buoyancy*SWIM_BUOYANCY_ACCEL,az=0;
- if(kLen>1e-6){const s=thrust/kLen;ax=kick.x*s;ay+=kick.y*s;az=kick.z*s;}
+ if(kLen>1e-6){
+  const s=thrust/kLen;
+  ax=kick.x*s;
+  // Scale Y after normalize so pure look-up is a weak fin climb, not full thrust.
+  ay+=kick.y*s*SWIM_KICK_VERTICAL_SCALE;
+  az=kick.z*s;
+ }
  const speed=Math.hypot(velocity.x,velocity.y,velocity.z);
  const drag=-SWIM_DRAG_K*speed;
  ax+=velocity.x*drag;ay+=velocity.y*drag;az+=velocity.z*drag;
  velocity.x+=ax*dt;velocity.y+=ay*dt;velocity.z+=az*dt;
+}
+/** Steady vertical speed under constant full BCD with no kick (analytic). */
+export function terminalBuoyancySpeed(){
+ return Math.sqrt(SWIM_BUOYANCY_ACCEL/SWIM_DRAG_K);
 }
 /** Steady horizontal speed under constant thrust with zero buoyancy (analytic). */
 export function terminalSwimSpeed(sprint=false){
@@ -361,6 +382,8 @@ export function writeInventoryTipsSeen(){
  position={...START};health=100;air=AIR_MAIN_MAX;bailout=0;elapsed=0;stamina=100;torch=true;
  /** BCD trim −1 (sink) .. 0 (neutral) .. +1 (float). Driven by Space/Q, not kick speed. */
  buoyancy=0;
+ /** Idle drift target for buoyancy (−1..+1). Defaults to neutral; skill play can bias trim later. */
+ buoyancyTrim=0;
  /** Elevated gas effort until this mission elapsed time (bite / panic). */
  gasPanicUntil=0;
  /** Floor-kick silt plume (fine + coarse). Stepped from CaveWorld with velocity. */
