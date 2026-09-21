@@ -7,6 +7,13 @@
 - Files: `public/assets/knife/` (1k glTF + textures) and mirrored under `src/assets/knife/`
 - Used as the diving-knife inventory icon and held FPS prop when selected. Other slots restore the dive torch as the held object.
 
+## Dive chests (Poly Haven)
+- Wooden Military Crate — https://polyhaven.com/a/wooden_military_crate — Prabhjinder Singh — CC0 1.0
+- Plastic Crate 02 — https://polyhaven.com/a/plastic_crate_02 — Fabi_G — CC0 1.0
+- Vintage Suitcase — https://polyhaven.com/a/vintage_suitcase — Maximilian Schuster — CC0 1.0
+- Files: `public/assets/chests/<kind>/` (1k glTF + textures) with notes under `src/assets/chests/`
+- Floor props in the cavern; press E to open (map fragments / loot come later).
+
 ## Blood particles (Kenney Particle Pack)
 - Source: https://kenney.nl/assets/particle-pack
 - Author: Kenney Vleugels (Kenney.nl)

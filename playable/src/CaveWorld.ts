@@ -10,6 +10,7 @@ import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
 import { createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, knifeMeshReady, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
+import { createChestVisual, upgradeChestVisual, syncChestOpen, type ChestVisual } from './chestAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
@@ -89,6 +90,8 @@ export class CaveWorld extends OceanWorld {
  torchRestPos=V(.44,-.4,-.62);torchRestRot=new THREE.Euler(.18,-.22,.32);
  composer!:EffectComposer;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
+ /** World crates / suitcase (Poly Haven) keyed by mission chest id. */
+ chestVisuals=new Map<number,ChestVisual>();
  /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
  knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
  /** PMREM for Poly Haven metal/wood specular on the held knife. */
@@ -154,7 +157,32 @@ export class CaveWorld extends OceanWorld {
    this.knifeVisual.visible=this.holdingKnife();
    this.syncHeldTorch();
   });
+  this.mountChests();
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
+ }
+ /** Place the three Poly Haven chests and upgrade stubs to glTF in the background. */
+ mountChests(){
+  for(const chest of this.mission.chests){
+   const visual=createChestVisual(chest.kind);
+   visual.root.position.set(chest.position.x,chest.position.y,chest.position.z);
+   visual.root.rotation.y=chest.yaw;
+   this.scene.add(visual.root);
+   this.chestVisuals.set(chest.id,visual);
+   upgradeChestVisual(visual).then(()=>{
+    if(!this.alive)return;
+    // Re-assert closed pose after swap in case open was toggled during load.
+    const live=this.mission.chests.find(c=>c.id===chest.id);
+    if(visual.lid)visual.lid.rotation.copy(live?.open?visual.openRot:visual.closedRot);
+   });
+  }
+ }
+ syncChests(dt:number){
+  for(const chest of this.mission.chests){
+   const visual=this.chestVisuals.get(chest.id);if(!visual)continue;
+   visual.root.position.set(chest.position.x,chest.position.y,chest.position.z);
+   visual.root.rotation.y=chest.yaw;
+   syncChestOpen(visual,chest.open,dt);
+  }
  }
  /** Soft blood Points (shader discs × Kenney maps — never square sprites). */
  buildBlood(){
@@ -735,7 +763,7 @@ export class CaveWorld extends OceanWorld {
    this.bloodGroup.visible=false;this.bloodLife=0;
    for(const layer of this.bloodLayers)layer.uniforms.uOpacity.value=0;
   }
-  this.syncPickups();this.publish();
+  this.syncPickups();this.syncChests(0);this.publish();
  }
  animate=()=>{
   if(!this.alive)return;this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);
@@ -860,7 +888,7 @@ export class CaveWorld extends OceanWorld {
    this.guardian.fins.forEach(f=>f.rotation.x=Math.sin(this.time*2*thrash+(f.userData.phase||0))*.25*(f.userData.side||1)*thrash);
    this.guardian.tail.rotation.y=Math.sin(this.time*3*thrash)*.22*thrash;
   }
-  this.syncPickups();this.decoyMesh.visible=!!this.mission.decoy;if(this.mission.decoy)this.decoyMesh.position.copy(this.mission.decoy.position);
+  this.syncPickups();this.syncChests(dt);this.decoyMesh.visible=!!this.mission.decoy;if(this.mission.decoy)this.decoyMesh.position.copy(this.mission.decoy.position);
   if(this.time-this.lastSent>.05){this.lastSent=this.time;this.publish();}
   this.composer.render();
  }
