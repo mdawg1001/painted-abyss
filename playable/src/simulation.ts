@@ -51,7 +51,9 @@ export function pathBetween(a:Point,b:Point){
  if(!parents.has(end))return [];const path:Point[]=[];let key:string|null=end;
  while(key&&key!==start){const [c,r]=key.split(',').map(Number);path.unshift(world(c,r));key=parents.get(key)!;}return path;
 }
-export const lookDelta=(yaw:number,pitch:number,dx:number,dy:number)=>({yaw:yaw-dx*.0021,pitch:Math.max(-1.4,Math.min(1.4,pitch-dy*.0021))});
+/** Radians per pointer/wheel unit; also scales arrow-key and unlocked look-stick via the same path. */
+export const LOOK_SENSITIVITY=.003;
+export const lookDelta=(yaw:number,pitch:number,dx:number,dy:number)=>({yaw:yaw-dx*LOOK_SENSITIVITY,pitch:Math.max(-1.4,Math.min(1.4,pitch-dy*LOOK_SENSITIVITY))});
 /** Frame-rate-independent multiplier for unlocked continuous yaw (paired with lookDelta). */
 export const FREE_LOOK_RATE=1.45;
 export type TorchModulation={intensity:number;distance:number;decay:number;beamOpacity:number;particle:number;r:number;g:number;b:number};
