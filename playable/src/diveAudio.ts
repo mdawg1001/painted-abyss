@@ -32,17 +32,17 @@ export class SwimWaterAudio {
     for (let i = 0; i < samples.length; i++) {
       const white = Math.random() * 2 - 1;
       brown = (brown + .02 * white) / 1.02;
-      samples[i] = brown * 3.5;
+      samples[i] = brown * 5.2;
     }
     this.noise = ctx.createBufferSource();
     this.noise.buffer = buffer;
     this.noise.loop = true;
 
-    // Cave muffling: keep everything below ~1 kHz even at full sprint.
+    // Cave muffling: keep the bed dark, but leave enough mid for laptop speakers.
     this.filter = ctx.createBiquadFilter();
     this.filter.type = 'lowpass';
-    this.filter.frequency.value = 280;
-    this.filter.Q.value = .65;
+    this.filter.frequency.value = 380;
+    this.filter.Q.value = .55;
 
     this.highpass = ctx.createBiquadFilter();
     this.highpass.type = 'highpass';
@@ -70,13 +70,15 @@ export class SwimWaterAudio {
     if (this.disposed) return;
     const t = this.ctx.currentTime;
     // Dead-zone so tiny post-stop drift does not hiss.
-    const intensity = active ? Math.min(1, Math.max(0, (speed - .18) / 4.4)) : 0;
-    // Squared curve: quiet glide, clear whoosh when pushing hard.
-    const whoosh = intensity * intensity;
-    this.gain.gain.setTargetAtTime(whoosh * .42, t, .09);
-    this.filter.frequency.setTargetAtTime(260 + intensity * 480, t, .14);
-    this.rumbleGain.gain.setTargetAtTime(intensity * .05, t, .12);
-    this.rumble.frequency.setTargetAtTime(30 + intensity * 22, t, .18);
+    const intensity = active ? Math.min(1, Math.max(0, (speed - .12) / 4.2)) : 0;
+    // Mild curve: cruise stays clearly audible; sprint peaks harder.
+    const whoosh = intensity * Math.sqrt(intensity);
+    // Loud enough to cut through the .65 music bed on laptop speakers.
+    this.gain.gain.setTargetAtTime(whoosh * 1.55, t, .07);
+    // Still cave-muffled, but open enough to hear on small speakers.
+    this.filter.frequency.setTargetAtTime(380 + intensity * 720, t, .12);
+    this.rumbleGain.gain.setTargetAtTime(intensity * .18, t, .1);
+    this.rumble.frequency.setTargetAtTime(28 + intensity * 26, t, .16);
   }
 
   dispose() {
