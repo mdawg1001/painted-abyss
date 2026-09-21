@@ -16,8 +16,8 @@ test('hydrostatic depth and ata share one surface plane',()=>{
 });
 test('force swim reaches dive-plausible cruise/sprint and coasts under quadratic drag',()=>{
  const cruise=terminalSwimSpeed(false),sprint=terminalSwimSpeed(true);
- assert.ok(cruise>=.5&&cruise<=.85,`cruise ${cruise}`);
- assert.ok(sprint>=1.0&&sprint<=1.3,`sprint ${sprint}`);
+ assert.ok(cruise>=1.35&&cruise<=1.65,`cruise ${cruise}`);
+ assert.ok(sprint>=2.0&&sprint<=2.4,`sprint ${sprint}`);
  assert.ok(PREDATOR_SPEED.chase>cruise&&PREDATOR_SPEED.chase<sprint);
  const v={x:0,y:0,z:0};
  for(let i=0;i<180;i++)stepSwimVelocity(v,{x:0,y:0,z:-1},0,false,1/60);
