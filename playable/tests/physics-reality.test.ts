@@ -12,6 +12,8 @@ import {Mission,START,RELIC,EXIT,moveBody,distance,CELL,torchModulation} from '.
 const CRUISE=2.8;
 const SPRINT=4.8;
 const VEL_K=4; // velocity.lerp(move, 1-exp(-4*dt))
+/** HUD depth in main.tsx — theatrical, not hydrostatic. */
+const hudDepth=(z:number,y:number)=>Math.max(1,Math.round(10+(-z)*.22+(5-y)*2.4));
 
 /** Recreational scuba / finswim reference ranges (open literature, shallow water). */
 const REAL={
@@ -97,6 +99,15 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  const torchFloor=torchModulation(0.8,1.2);
  const torchCeil=torchModulation(6.5,-1.2);
 
+ // Depth HUD mixes −Z progress and y; playable column is only ~6.5 m
+ const hudAtStart=hudDepth(START.z,START.y);
+ const hudAtRelic=hudDepth(RELIC.z,RELIC.y);
+ const hudFloor=hudDepth(START.z,0.65);
+ const hudCeil=hudDepth(START.z,7.1);
+ assert.equal(hudAtStart,17);
+ assert.ok(hudAtRelic>hudAtStart,'HUD depth rises mainly from cavern −Z, not hydrostatics');
+ assert.ok(hudFloor-hudCeil>depthBand,'HUD vertical span exaggerates the real y band');
+
  const report={
   generatedAt:new Date().toISOString(),
   unitAssumption:'1 world unit ≈ 1 metre (CELL=4 m tiles, playable y ∈ [0.65, 7.1])',
@@ -129,6 +140,12 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    torchIntensityCeilingAim:torchCeil.intensity,
    cellSizeM:CELL,
    exitDistanceFromStartM:+distance(START,EXIT).toFixed(1),
+   hudDepthAtStartM:hudAtStart,
+   hudDepthAtRelicM:hudAtRelic,
+   hudDepthFloorEntranceM:hudFloor,
+   hudDepthCeilingEntranceM:hudCeil,
+   hudDepthFormula:'max(1, round(10 + (-z)*0.22 + (5-y)*2.4))',
+   hudDepthIsHydrostatic:false,
   },
   reality:{
    recreationalCruiseMs:REAL.cruiseMs,
@@ -153,8 +170,9 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    gasModel:'COMPRESSED — 4 min flat timer; no depth/exertion scaling (Boyle / SAC omitted).',
    buoyancy:'OMITTED — free 6DOF flight with identical vertical/horizontal thrust; no weight/BCD.',
    dragCoast:'PLAUSIBLE ORDER — ~0.7 m coast from cruise with τ=0.25 s (arcade-responsive).',
-   depthScale:'SHALLOW CAVE — ~6.5 m water column; torch murk is stylistic, not optical attenuation law.',
-   predatorPacing:'DESIGNED CHASE — chase 3.4 m/s beats cruise 2.8, loses to sprint 4.8 (~5.6 s stamina).',
+   depthScale:'SHALLOW CAVE — ~6.5 m playable y band; torch murk is stylistic, not optical attenuation law.',
+   depthHud:'THEATRICAL — reads ~17 m at start and ~42 m at the relic while collision y spans only ~6.5 m; −Z progress inflates the gauge.',
+   predatorPacing:'DESIGNED CHASE — chase 3.4 m/s beats cruise 2.8, loses to sprint 4.8 (~5.4 s stamina).',
    overall:'Gameplay-first survival pacing, not a scuba physics simulator.',
   },
  };

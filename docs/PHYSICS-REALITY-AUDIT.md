@@ -21,6 +21,7 @@ Measured from `playable/src/CaveWorld.ts` locomotion and `playable/src/simulatio
 | Fin energy | −18/s sprint, +17/s otherwise | **~5.6 s** full sprint; **~5.9 s** full regen |
 | Guardian | Patrol 1.8 / alert 0.7 / chase **3.4** m/s | Chase beats cruise; loses to sprint |
 | Torch “depth” | `torchModulation(y, pitch)` | Stylised murk, not Beer–Lambert optics |
+| HUD `DEPTH` | `10 + (−z)·0.22 + (5−y)·2.4` | **~17 m** at start, **~42 m** at relic — theatrical |
 
 Start → relic along −Z is **100 m**. At cruise that is **~36 s** of straight swimming (scripted full route ~89 s with fights and turns).
 
@@ -51,8 +52,13 @@ There is no weight belt, BCD, or net buoyant force. Holding Space/Q moves you as
 ### Drag / inertia — closest to reality
 The exponential approach with τ = 0.25 s gives snappy control and a short glide. Real water is “heavier,” but the coast distance is not wildly wrong for a game feel check.
 
-### Depth & light — shallow set dressing
-The playable column is only ~6.5 m. Torch modulation dims toward the floor and warms the beam; it is readability art, not an optical attenuation law. Fog also shifts with −Z progress into the cavern, not with hydrostatic depth.
+### Depth & light — shallow set dressing + theatrical gauge
+The collision column is only ~6.5 m. Torch modulation dims toward the floor and warms the beam; it is readability art, not an optical attenuation law. Fog also shifts with −Z progress into the cavern, not with hydrostatic depth.
+
+The on-screen **DEPTH** readout is a separate fiction: at the entrance it shows **17 m** while you sit near mid-height in a ~6.5 m band, and it climbs to **~42 m** at the relic mostly because −Z advances (`×0.22`), not because you descended tens of metres. Full floor↔ceiling travel at the entrance only swings the HUD by ~15 m for ~6.5 m of real `y` motion. A real dive computer would track ambient pressure; this gauge sells “deeper cave” atmosphere.
+
+### Browser spot-check
+Manual play at `http://127.0.0.1:5173` confirmed AIR starting at **04:00** and ticking with wall clock, FINS at 100 until sprint, and DEPTH **17 m** near the start. Forward swim through the entrance tunnel matches the arcade-speed feel. Sprint fin drain is covered by the harness (~5.4 s to the stamina floor); automated browser Shift chords were unreliable in the headless GUI session.
 
 ### Predator pacing — designed, not zoological
 Chase **3.4 m/s** sits between cruise and sprint so the player must burn fin energy or break line of sight. Real marine-reptile estimates vary widely; the important finding is the **relative** band, which is intentional.

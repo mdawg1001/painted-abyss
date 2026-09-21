@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-21T09:30:18.930Z",
+  "generatedAt": "2026-09-21T09:49:27.566Z",
   "unitAssumption": "1 world unit ≈ 1 metre (CELL=4 m tiles, playable y ∈ [0.65, 7.1])",
   "measured": {
     "cruiseMs": 2.8,
@@ -29,7 +29,13 @@
     "torchIntensityFloorAim": 41.81368770764119,
     "torchIntensityCeilingAim": 120.31415282392028,
     "cellSizeM": 4,
-    "exitDistanceFromStartM": 32
+    "exitDistanceFromStartM": 32,
+    "hudDepthAtStartM": 17,
+    "hudDepthAtRelicM": 42,
+    "hudDepthFloorEntranceM": 23,
+    "hudDepthCeilingEntranceM": 8,
+    "hudDepthFormula": "max(1, round(10 + (-z)*0.22 + (5-y)*2.4))",
+    "hudDepthIsHydrostatic": false
   },
   "reality": {
     "recreationalCruiseMs": [
@@ -66,8 +72,9 @@
     "gasModel": "COMPRESSED — 4 min flat timer; no depth/exertion scaling (Boyle / SAC omitted).",
     "buoyancy": "OMITTED — free 6DOF flight with identical vertical/horizontal thrust; no weight/BCD.",
     "dragCoast": "PLAUSIBLE ORDER — ~0.7 m coast from cruise with τ=0.25 s (arcade-responsive).",
-    "depthScale": "SHALLOW CAVE — ~6.5 m water column; torch murk is stylistic, not optical attenuation law.",
-    "predatorPacing": "DESIGNED CHASE — chase 3.4 m/s beats cruise 2.8, loses to sprint 4.8 (~5.6 s stamina).",
+    "depthScale": "SHALLOW CAVE — ~6.5 m playable y band; torch murk is stylistic, not optical attenuation law.",
+    "depthHud": "THEATRICAL — reads ~17 m at start and ~42 m at the relic while collision y spans only ~6.5 m; −Z progress inflates the gauge.",
+    "predatorPacing": "DESIGNED CHASE — chase 3.4 m/s beats cruise 2.8, loses to sprint 4.8 (~5.4 s stamina).",
     "overall": "Gameplay-first survival pacing, not a scuba physics simulator."
   }
 }
