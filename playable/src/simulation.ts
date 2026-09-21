@@ -15,6 +15,27 @@ export function hydrostaticDepth(y:number){return Math.max(0,SURFACE_Y-y);}
 /** Ambient pressure in atmospheres (≈ 1 + depth_m/10). */
 export function ata(y:number){return 1+hydrostaticDepth(y)/10;}
 
+/** Surface-equivalent main tank (seconds at 1 ATA, cruise effort). */
+export const AIR_MAIN_MAX=240;
+/** Separate pony / bailout pool (~25% of main ≈ 19 cu ft vs AL80). */
+export const AIR_BAILOUT_MAX=60;
+/** Base drain: 1 surface-second of gas per real second at 1 ATA, cruise. */
+export const AIR_BASE_DRAIN=1;
+export const AIR_EFFORT_CRUISE=1;
+export const AIR_EFFORT_SPRINT=1.75;
+export const AIR_EFFORT_PANIC=2.35;
+/** Seconds of elevated RMV after a guardian bite. */
+export const AIR_PANIC_SECONDS=3;
+export function gasEffort(sprinting=false,panic=false){
+ if(panic)return AIR_EFFORT_PANIC;
+ if(sprinting)return AIR_EFFORT_SPRINT;
+ return AIR_EFFORT_CRUISE;
+}
+/** Surface-equivalent gas seconds consumed per real second (DAN: RMV × ATA × effort). */
+export function gasDrainRate(depthY:number,sprinting=false,panic=false){
+ return AIR_BASE_DRAIN*ata(depthY)*gasEffort(sprinting,panic);
+}
+
 /** Kick thrust (m/s²) — terminal speed ≈ sqrt(thrust / SWIM_DRAG_K). */
 export const SWIM_THRUST_CRUISE=8.7;
 export const SWIM_THRUST_SPRINT=22.05;
@@ -62,7 +83,7 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  stone:{name:'Limestone',short:'Stone',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  wood:{name:'Driftwood',short:'Wood',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  flare:{name:'Signal flare',short:'Flare',description:'R · Deploy a 12-second distraction at your position.',hint:'R use · consumed'},
- air:{name:'Air reserve',short:'Air',description:'R · Restore up to 60 seconds of air (consumed).',hint:'R use · consumed'},
+ air:{name:'Pony bottle',short:'Pony',description:'R · Arm a separate bailout cylinder (~60 s at surface). Drains after the main tank.',hint:'R arm bailout · consumed'},
  bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
 };
@@ -216,9 +237,11 @@ export function writeInventoryTipsSeen(){
  try{globalThis.localStorage?.setItem(INVENTORY_TIPS_KEY,'1');}catch{/* private mode */}
 }
 export class Mission {
- position={...START};health=100;air=240;elapsed=0;stamina=100;torch=true;
+ position={...START};health=100;air=AIR_MAIN_MAX;bailout=0;elapsed=0;stamina=100;torch=true;
  /** BCD trim −1 (sink) .. 0 (neutral) .. +1 (float). Driven by Space/Q, not kick speed. */
  buoyancy=0;
+ /** Elevated gas effort until this mission elapsed time (bite / panic). */
+ gasPanicUntil=0;
  inventory:(Item|null)[]=['stone','wood','flare','air','bandage'];selected=0;
  pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},{id:2,item:'flare',position:{x:-20,y:2,z:-56}}];nextId=3;
  pending:number|null=null;outcome:'playing'|'won'|'lost'='playing';reason='';
@@ -269,8 +292,8 @@ export class Mission {
   const item=this.inventory[this.selected];
   if(!item){this.pulse('blocked');return;}
   if(item==='air'){
-   if(this.air>=240){this.pulse('blocked');return;}
-   this.air=Math.min(240,this.air+60);this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
+   if(this.bailout>=AIR_BAILOUT_MAX){this.pulse('blocked');return;}
+   this.bailout=AIR_BAILOUT_MAX;this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
   }
   if(item==='bandage'){
    if(this.health>=100){this.pulse('blocked');return;}
@@ -283,8 +306,13 @@ export class Mission {
   this.pulse('blocked');
  }
  update(dt:number,sprinting=false){
-  if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;this.air=Math.max(0,this.air-dt);this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?-18:17)*dt));
-  if(this.air<=0){this.outcome='lost';this.reason='Your air ran out. Use the reserve earlier or take a shorter route.';return;}
+  if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;
+  const panic=this.elapsed<this.gasPanicUntil;
+  let need=gasDrainRate(this.position.y,sprinting,panic)*dt;
+  if(this.air>=need){this.air-=need;need=0;}
+  else{need-=this.air;this.air=0;this.bailout=Math.max(0,this.bailout-need);need=0;}
+  this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?-18:17)*dt));
+  if(this.air<=0&&this.bailout<=0){this.outcome='lost';this.reason='Your air ran out. Arm the pony earlier or climb and calm your kick.';return;}
   if(this.pending!==null&&!this.pickups.some(p=>p.id===this.pending&&distance(p.position,this.position)<3.2))this.pending=null;
   const p=this.predator;const d=distance(p.position,this.position);const canSee=visible(p.position,this.position);
   const sense=canSee&&(d<4.5||d<(this.torch?16:sprinting?13:8));
@@ -308,6 +336,10 @@ export class Mission {
   const dx=target.x-p.position.x,dz=target.z-p.position.z,len=Math.hypot(dx,dz),speed=p.state==='chase'?PREDATOR_SPEED.chase:p.state==='alert'?PREDATOR_SPEED.alert:PREDATOR_SPEED.patrol;
   if(len>.05){p.heading=Math.atan2(-dz,dx);moveBody(p.position,dx/len*Math.min(len,speed*dt),0,dz/len*Math.min(len,speed*dt),1.3);}
   p.position.y+=((p.state==='chase'?Math.max(1.2,Math.min(6.2,this.position.y)):3)-p.position.y)*Math.min(1,dt*2);
-  if(p.state==='chase'&&!safe&&canSee&&distance(p.position,this.position)<3.2&&p.bite<=0){this.health=Math.max(0,this.health-25);p.bite=1.7;this.say('Suit breached! Sprint to cover or deploy a flare.');if(this.health<=0){this.outcome='lost';this.reason='The guardian caught you. Break sight around the central pillar; the narrow exit passage is safe.';}}
+  if(p.state==='chase'&&!safe&&canSee&&distance(p.position,this.position)<3.2&&p.bite<=0){
+   this.health=Math.max(0,this.health-25);p.bite=1.7;this.gasPanicUntil=this.elapsed+AIR_PANIC_SECONDS;
+   this.say('Suit breached! Sprint to cover or deploy a flare.');
+   if(this.health<=0){this.outcome='lost';this.reason='The guardian caught you. Break sight around the central pillar; the narrow exit passage is safe.';}
+  }
  }
 }

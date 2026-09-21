@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {CaveWorld,type Snapshot} from './CaveWorld';
-import {ITEMS,EXIT,distance,hydrostaticDepth,type Item} from './simulation';
+import {ITEMS,EXIT,distance,hydrostaticDepth,AIR_MAIN_MAX,AIR_BAILOUT_MAX,type Item} from './simulation';
 import {APP_VERSION,APP_BUILD_LABEL,APP_BUILD_SHA} from './version';
 import './style.css';
 
@@ -61,7 +61,11 @@ function App(){
  const nearest=m?.nearest();const extraction=m&&distance(m.position,EXIT)<4;
  const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):nearest?`E · Collect ${ITEMS[nearest.item].name}`:'';
  const yaw=snap?.yaw??0;
- const air=m?Math.ceil(m.air):240;const time=`${String(Math.floor(air/60)).padStart(2,'0')}:${String(air%60).padStart(2,'0')}`;
+ const onBailout=!!(m&&m.air<=0&&m.bailout>0);
+ const airPool=m?Math.ceil(onBailout?m.bailout:m.air):AIR_MAIN_MAX;
+ const airMax=onBailout?AIR_BAILOUT_MAX:AIR_MAIN_MAX;
+ const time=`${String(Math.floor(airPool/60)).padStart(2,'0')}:${String(airPool%60).padStart(2,'0')}`;
+ const ponyReady=!!(m&&m.bailout>0&&m.air>0);
  const depth=m?Math.round(hydrostaticDepth(m.position.y)):0;
  const predator=m?.predator.state||'patrol';const close=m?distance(m.position,m.predator.position)<23:false;
  const threat=close?{patrol:'Movement in the dark',alert:'It heard something',chase:'It is hunting you',search:'Searching your last position'}[predator]:'';
@@ -79,7 +83,7 @@ function App(){
    <Compass yaw={yaw}/>
    <div className="depth">DEPTH {depth} m</div>
    <section className="vitals" aria-label="Vitals">
-    <div className="vital"><div className="vital-row"><span>AIR</span><strong className={air<45?'warning':''}>{time}</strong></div><div className="meter air"><i style={{width:`${m.air/240*100}%`}}/></div></div>
+    <div className="vital"><div className="vital-row"><span>{onBailout?'PONY':'AIR'}{ponyReady?` · +${Math.ceil(m.bailout)}s`:''}</span><strong className={airPool<45||onBailout?'warning':''}>{time}</strong></div><div className={`meter air ${onBailout?'bailout':''}`}><i style={{width:`${airPool/airMax*100}%`}}/></div></div>
     <div className="vital"><div className="vital-row"><span>SUIT</span><strong className={m.health<40?'warning':''}>{Math.ceil(m.health)}</strong></div><div className="meter suit"><i style={{width:`${m.health}%`}}/></div></div>
     <div className="vital"><div className="vital-row"><span>FINS</span><strong>{Math.round(m.stamina)}</strong></div><div className="meter fins"><i style={{width:`${m.stamina}%`}}/></div></div>
    </section>

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {Mission,moveBody,distance,terminalSwimSpeed} from '../src/simulation';
 test('full dive can be completed through collision and live AI with sprinting and usable supplies',()=>{
  const m=new Mission();const states=new Set<string>();
- // Force-model speeds are ~2.2 / ~3.5 m/s; air buffer kept until the SAC step.
+ // Force-model speeds are ~2.2 / ~3.5 m/s; oversized air so route timing is not gas-gated.
  m.air=900;
  // Bite lethality is covered in mission tests; this route proves pathing + AI under slow swim.
  m.health=500;
