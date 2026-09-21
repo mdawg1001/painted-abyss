@@ -90,10 +90,10 @@ vec3 triNormalView(sampler2D map,vec3 p,vec3 wn,vec3 b,float s,mat4 viewMatrix){
 }
 // Patchy moss: crevices + near-floor + ledge tops + wall streaks.
 float mossCoverage(vec3 p,vec3 wn,float ao,float amount){
-  float patch=valueNoise(p.xz*.22+p.y*.14);
-  float patch2=valueNoise(p.xy*.14+p.z*.19);
+  float blob=valueNoise(p.xz*.22+p.y*.14);
+  float blob2=valueNoise(p.xy*.14+p.z*.19);
   float streaks=valueNoise(vec2(p.y*1.1+p.x*.08,p.z*.35));
-  float clumps=smoothstep(.18,.62,patch*.55+patch2*.45);
+  float clumps=smoothstep(.18,.62,blob*.55+blob2*.45);
   float nearFloor=1.-smoothstep(.2,4.8,p.y);
   float ledge=smoothstep(-.35,.55,wn.y);
   float wall=smoothstep(.15,.85,1.-abs(wn.y));
