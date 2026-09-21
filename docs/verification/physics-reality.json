@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-21T14:01:06.998Z",
+  "generatedAt": "2026-09-21T14:16:32.634Z",
   "unitAssumption": "1 world unit ≈ 1 metre (CELL=4 m tiles, playable y ∈ [0.65, 7.1])",
   "measured": {
     "cruiseMs": 2.198,

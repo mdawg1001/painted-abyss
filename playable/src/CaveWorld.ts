@@ -14,7 +14,28 @@ import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, 
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
 /** Soft underwater blood: droplets + plume (Kenney alpha maps, not square Points). */
-type BloodLayer={points:THREE.Points;vel:Float32Array;baseSize:number};
+type BloodLayer={points:THREE.Points;vel:Float32Array;baseSize:number;uniforms:{uMap:{value:THREE.Texture};uColor:{value:THREE.Color};uOpacity:{value:number};uSize:{value:number};uPixelRatio:{value:number}}};
+
+const bloodVert=`uniform float uSize;uniform float uPixelRatio;
+void main(){
+  vec4 mv=modelViewMatrix*vec4(position,1.);
+  gl_PointSize=clamp(uSize*180./-mv.z,2.,96.)*uPixelRatio;
+  gl_Position=projectionMatrix*mv;
+}`;
+/** Soft disc × Kenney map — never solid square point sprites. */
+const bloodFrag=`uniform sampler2D uMap;uniform vec3 uColor;uniform float uOpacity;
+void main(){
+  vec2 pc=gl_PointCoord-.5;
+  float soft=smoothstep(.5,.12,length(pc));
+  if(soft<.01)discard;
+  vec4 tex=texture2D(uMap,gl_PointCoord);
+  float a=soft*tex.a*uOpacity;
+  if(a<.02)discard;
+  // Tint map luminance into deep blood red (maps are white soft sprites).
+  float lum=dot(tex.rgb,vec3(.3,.5,.2));
+  vec3 col=uColor*(.55+.45*lum);
+  gl_FragColor=vec4(col,a);
+}`;
 
 const shaftVert=`varying vec2 vUv;varying vec3 wPos;void main(){vUv=uv;wPos=(modelMatrix*vec4(position,1.)).xyz;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
 const shaftFrag=`varying vec2 vUv;varying vec3 wPos;uniform float uTime;uniform vec3 uColor;uniform float uOpacity;
@@ -130,36 +151,44 @@ export class CaveWorld extends OceanWorld {
   });
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
  }
- /** Soft blood Points (procedural maps first; Kenney textures swap in when loaded). */
+ /** Soft blood Points (shader discs × Kenney maps — never square sprites). */
  buildBlood(){
   const blob=makeSoftBlobTexture(48);
   const group=new THREE.Group();group.name='bloodCloud';group.visible=false;
+  const pr=Math.min(typeof window!=='undefined'?window.devicePixelRatio:1,2);
   const mk=(n:number,size:number,color:number,map:THREE.Texture):BloodLayer=>{
    const pos=new Float32Array(n*3);const vel=new Float32Array(n*3);
    for(let i=0;i<n;i++){pos[i*3]=0;pos[i*3+1]=-40;pos[i*3+2]=0;}
    const geo=new THREE.BufferGeometry();
    geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
-   const mat=new THREE.PointsMaterial({
-    map,color,size,transparent:true,opacity:0,depthWrite:false,depthTest:true,
-    sizeAttenuation:true,blending:THREE.NormalBlending,alphaTest:.02,
+   const uniforms={
+    uMap:{value:map},
+    uColor:{value:new THREE.Color(color)},
+    uOpacity:{value:0},
+    uSize:{value:size},
+    uPixelRatio:{value:pr},
+   };
+   const mat=new THREE.ShaderMaterial({
+    uniforms,vertexShader:bloodVert,fragmentShader:bloodFrag,
+    transparent:true,depthWrite:false,depthTest:true,blending:THREE.NormalBlending,
    });
    const points=new THREE.Points(geo,mat);points.frustumCulled=false;
    group.add(points);
-   return {points,vel,baseSize:size};
+   return {points,vel,baseSize:size,uniforms};
   };
   // Droplets + plume + faint glow — ~118 points total, light for the prototype.
   this.bloodLayers=[
-   mk(64,.22,0x7a1218,blob),
-   mk(36,.55,0x5c0e14,blob),
-   mk(18,.32,0x9a1e28,blob),
+   mk(64,.28,0x7a1218,blob),
+   mk(36,.72,0x5c0e14,blob),
+   mk(18,.4,0x9a1e28,blob),
   ];
   this.bloodGroup=group;this.scene.add(group);
  }
  applyBloodMaps(maps:BloodMaps){
   if(this.bloodLayers.length<3)return;
-  const mats=this.bloodLayers.map(l=>l.points.material as THREE.PointsMaterial);
-  mats[0].map=maps.droplet;mats[1].map=maps.plume;mats[2].map=maps.glow;
-  for(const m of mats)m.needsUpdate=true;
+  this.bloodLayers[0].uniforms.uMap.value=maps.droplet;
+  this.bloodLayers[1].uniforms.uMap.value=maps.plume;
+  this.bloodLayers[2].uniforms.uMap.value=maps.glow;
  }
  /** Floating blood near the guardian — `hit` is a small puff; `kill` a lingering cloud. */
  spawnBlood(at:THREE.Vector3|{x:number;y:number;z:number},kind:'hit'|'kill'='kill'){
@@ -172,7 +201,6 @@ export class CaveWorld extends OceanWorld {
   const drift=kind==='kill'?.42:.22;
   for(const layer of this.bloodLayers){
    const pos=layer.points.geometry.attributes.position as THREE.BufferAttribute;
-   const mat=layer.points.material as THREE.PointsMaterial;
    for(let i=0;i<pos.count;i++){
     pos.setXYZ(
      i,
@@ -185,8 +213,8 @@ export class CaveWorld extends OceanWorld {
     layer.vel[i*3+2]=(Math.random()-.5)*drift;
    }
    pos.needsUpdate=true;
-   mat.size=layer.baseSize*sizeMul*(.85+Math.random()*.25);
-   mat.opacity=opac;
+   layer.uniforms.uSize.value=layer.baseSize*sizeMul*(.85+Math.random()*.25);
+   layer.uniforms.uOpacity.value=opac;
   }
   this.bloodGroup.visible=true;this.bloodLife=life;this.bloodPeakLife=life;
  }
@@ -208,12 +236,11 @@ export class CaveWorld extends OceanWorld {
     pos.setXYZ(i,x,y,z);
    }
    pos.needsUpdate=true;
-   const mat=layer.points.material as THREE.PointsMaterial;
-   mat.opacity=fade*(layer===this.bloodLayers[1]?.75:.9);
+   layer.uniforms.uOpacity.value=fade*(layer===this.bloodLayers[1]?.75:.9);
   }
   if(this.bloodLife<=0){
    this.bloodGroup.visible=false;
-   for(const layer of this.bloodLayers)(layer.points.material as THREE.PointsMaterial).opacity=0;
+   for(const layer of this.bloodLayers)layer.uniforms.uOpacity.value=0;
   }
  }
  /** Dense silt motes spawned by bed shear — settle with gravity, not ambient dust. */
@@ -723,6 +750,18 @@ export class CaveWorld extends OceanWorld {
   if(!this.mission.tipsSeen)writeInventoryTipsSeen();
   this.playing=true;this.started=true;this.keys.clear();this.clock.getDelta();this.testingAudio=false;if(this.sound)this.enableAudio(true);
   this.lookPointer=null;this.fallbackTurn=0;this.requestLookLock(true);this.publish();
+  // QA: `?bloodTest=1` spawns a kill-scale blood cloud ahead of the diver (no combat required).
+  if(typeof location!=='undefined'&&new URLSearchParams(location.search).has('bloodTest')){
+   window.setTimeout(()=>{
+    if(!this.alive||!this.playing)return;
+    this.camera.getWorldDirection(this.forward);
+    this.spawnBlood({
+     x:this.position.x+this.forward.x*2.2,
+     y:this.position.y+this.forward.y*2.2,
+     z:this.position.z+this.forward.z*2.2,
+    },'kill');
+   },400);
+  }
  }
  pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
  reset(){
@@ -734,7 +773,7 @@ export class CaveWorld extends OceanWorld {
   this.setTorchMeshesVisible(!this.holdingKnife());
   if(this.bloodGroup){
    this.bloodGroup.visible=false;this.bloodLife=0;
-   for(const layer of this.bloodLayers)(layer.points.material as THREE.PointsMaterial).opacity=0;
+   for(const layer of this.bloodLayers)layer.uniforms.uOpacity.value=0;
   }
   this.mission.silt=createSiltPlume(this.mission.position);
   if(this.siltStorm&&this.siltStormLife){
