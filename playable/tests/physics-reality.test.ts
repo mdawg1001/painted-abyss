@@ -74,7 +74,7 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  const airAfterCruiseShallow=airMission2.air;
  assert.ok(airAfterSprintDeep<airAfterCruiseShallow,'deep sprint burns more surface-equivalent gas');
  assert.ok(airAfterCruiseShallow<AIR_MAIN_MAX);
- assert.ok(airAfterSprintDeep>200);
+ assert.ok(airAfterSprintDeep>AIR_MAIN_MAX-15,'1 s deep sprint leaves most of the short tank');
 
  // Equal kick thrust on Y vs Z no longer applies — buoyancy is separate.
  let b=0;for(let i=0;i<90;i++)b=updateBuoyancy(b,1,1/60);
@@ -176,12 +176,12 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    gameCruiseOverRealCruiseMin:+cruiseVsRealMin.toFixed(1),
    gameCruiseOverRealCruiseMax:+cruiseVsRealMax.toFixed(1),
    gameSprintOverHardKickMax:+sprintVsHard.toFixed(1),
-   gameAirMinutesOverRealShallowMin:+(4/REAL.airMinutesShallow[1]).toFixed(2),
-   gameAirMinutesOverRealShallowMax:+(4/REAL.airMinutesShallow[0]).toFixed(2),
+   gameAirMinutesOverRealShallowMin:+((AIR_MAIN_MAX/60)/REAL.airMinutesShallow[1]).toFixed(2),
+   gameAirMinutesOverRealShallowMax:+((AIR_MAIN_MAX/60)/REAL.airMinutesShallow[0]).toFixed(2),
   },
   verdicts:{
    swimSpeed:'GAMEPLAY PACE — force model cruise ~2.2 m/s / sprint ~3.5 m/s (force model retained; closer to old arcade feel).',
-   gasModel:'SAC × ATA × EFFORT — surface-equivalent drain; main 240 s + pony 60 s; sprint/panic raise RMV.',
+   gasModel:`SAC × ATA × EFFORT — high-stakes; main ${AIR_MAIN_MAX} s + pony ${AIR_BAILOUT_MAX} s; sprint/panic raise RMV.`,
    buoyancy:'BCD STATE — Space/Q fill buoyancy −1..+1 with neutral trim; kick is look/strafe only.',
    dragCoast:'QUADRATIC — −k|v|v; short coast after releasing kick.',
    depthScale:'SHALLOW CAVE — ~6.5 m playable y band; torch murk is stylistic, not optical attenuation law.',

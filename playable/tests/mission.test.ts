@@ -106,6 +106,13 @@ test('air loss, pony bailout, sealant and distraction have tangible effects',()=
  m.selected=2;m.use();assert.ok(m.decoy);assert.equal(m.predator.state,'search');advance(m,13);assert.equal(m.decoy,null);
  m.air=.01;m.bailout=0;m.update(.05);assert.equal(m.outcome,'lost');
 });
+test('high-stakes tank empties in well under four minutes at depth',()=>{
+ const m=new Mission(true);m.position={...START,y:FLOOR_Y};
+ // Floor cruise: ~1.65 ATA × 1 → ~55 s of a 90 s surface tank.
+ for(let i=0;i<Math.ceil(70*60);i++)m.update(1/60,false);
+ assert.equal(m.outcome,'lost');
+ assert.ok(m.elapsed<80,'main tank should die well before the old 4-minute fuse');
+});
 test('gas drain scales with ATA and sprint; bailout feeds after main',()=>{
  assert.ok(gasDrainRate(FLOOR_Y,false)>gasDrainRate(SURFACE_Y,false));
  assert.ok(gasDrainRate(FLOOR_Y,true)>gasDrainRate(FLOOR_Y,false));
