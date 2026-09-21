@@ -90,33 +90,63 @@ export class CaveWorld extends OceanWorld {
   const mesh=new THREE.Mesh(new THREE.CylinderGeometry(topR,botR,len,28,1,true),this.beamMaterial(color,opacity));
   mesh.position.set(x,y,z);mesh.rotation.x=tiltX;mesh.rotation.z=tiltZ;this.scene.add(mesh);return mesh;
  }
- /** Procedural Diving Behemoth: safety-yellow dive lantern. Local −Z = beam. */
+ /** Procedural Diving Behemoth: battered safety-yellow dive lantern. Local −Z = beam. */
  buildTorchBody(){
   const group=new THREE.Group();
-  const yellow=new THREE.MeshStandardMaterial({color:0xf0c20a,metalness:.12,roughness:.42});
-  const yellowDark=new THREE.MeshStandardMaterial({color:0xd4a006,metalness:.1,roughness:.5});
-  const black=new THREE.MeshStandardMaterial({color:0x121416,metalness:.25,roughness:.55});
-  const chrome=new THREE.MeshStandardMaterial({color:0xc8d0d8,metalness:.95,roughness:.18});
-  const reflector=new THREE.MeshStandardMaterial({color:0xe8eef4,metalness:1,roughness:.08});
-  this.torchLensMat=new THREE.MeshStandardMaterial({color:0xf4faff,emissive:0xb8d8f0,emissiveIntensity:1.4,metalness:.05,roughness:.15,transparent:true,opacity:.92});
+  // Worn paint — duller yellow with grit
+  const yellow=new THREE.MeshStandardMaterial({color:0xd4a80e,metalness:.08,roughness:.62});
+  const yellowDark=new THREE.MeshStandardMaterial({color:0xb8890a,metalness:.06,roughness:.7});
+  const yellowStain=new THREE.MeshStandardMaterial({color:0x8a7020,metalness:.05,roughness:.82});
+  const black=new THREE.MeshStandardMaterial({color:0x141618,metalness:.2,roughness:.68});
+  const blackWorn=new THREE.MeshStandardMaterial({color:0x2a2e32,metalness:.15,roughness:.78});
+  const chrome=new THREE.MeshStandardMaterial({color:0xa8b0b8,metalness:.88,roughness:.32});
+  const chromeRust=new THREE.MeshStandardMaterial({color:0x6a5a48,metalness:.55,roughness:.55});
+  const bareMetal=new THREE.MeshStandardMaterial({color:0x4a5056,metalness:.7,roughness:.45});
+  const scratchMat=new THREE.MeshStandardMaterial({color:0x2a2c28,metalness:.4,roughness:.35});
+  const moss=new THREE.MeshStandardMaterial({color:0x3a6a38,metalness:0,roughness:.95});
+  const mossDark=new THREE.MeshStandardMaterial({color:0x2a4a2c,metalness:0,roughness:.98});
+  const kelp=new THREE.MeshStandardMaterial({color:0x4a7a3a,metalness:0,roughness:.85,side:THREE.DoubleSide});
+  const kelpBright=new THREE.MeshStandardMaterial({color:0x5a8a42,metalness:0,roughness:.8,side:THREE.DoubleSide});
+  const reflector=new THREE.MeshStandardMaterial({color:0xd0d8e0,metalness:.92,roughness:.22});
+  this.torchLensMat=new THREE.MeshStandardMaterial({color:0xe8f0f4,emissive:0xb8d8f0,emissiveIntensity:1.4,metalness:.05,roughness:.28,transparent:true,opacity:.9});
   const alongZ=(geo:THREE.BufferGeometry)=>{geo.rotateX(Math.PI/2);return geo;};
 
   const barrel=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.055,.058,.42,24)),yellow);
   barrel.position.set(0,0,-.08);group.add(barrel);
   for(let i=0;i<7;i++){
-   const rib=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.062,.062,.012,20)),yellowDark);
+   const rib=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.062,.062,.012,20)),i%3===0?yellowStain:yellowDark);
    rib.position.set(0,0,.04-i*.038);group.add(rib);
   }
-  const neck=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.07,.055,.06,20)),yellow);
+  const neck=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.07,.055,.06,20)),yellowDark);
   neck.position.set(0,0,-.31);group.add(neck);
 
-  const bezel=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.118,.112,.07,28)),black);
+  // Paint chips — bare metal showing through yellow
+  for(const [x,y,z,sx,sy] of [[.05,-.02,-.12,.022,.012],[-.048,.025,0,.018,.01],[.03,.04,.05,.025,.014],[-.04,-.035,-.22,.02,.011],[.045,.01,-.28,.016,.009]] as const){
+   const chip=new THREE.Mesh(new THREE.SphereGeometry(1,6,5),bareMetal);
+   chip.scale.set(sx,sy,.008);chip.position.set(x,y,z);group.add(chip);
+  }
+
+  // Deep scratches / scrapes along the barrel (visible gouges)
+  for(const [y,z,len,ang] of [[.052,-.05,.16,.15],[-.05,-.14,.13,-.2],[.025,.02,.14,.35],[-.035,-.24,.1,.05],[.04,-.2,.11,-.4]] as const){
+   const scratch=new THREE.Mesh(new THREE.BoxGeometry(.0045,.0022,len),scratchMat);
+   scratch.position.set(Math.cos(ang)*.059,y,z);scratch.rotation.z=ang*.5;group.add(scratch);
+   // Bright metal lip beside the gouge
+   const lip=new THREE.Mesh(new THREE.BoxGeometry(.002,.0015,len*.85),bareMetal);
+   lip.position.set(Math.cos(ang)*.061,y+.003,z);lip.rotation.z=ang*.5;group.add(lip);
+  }
+  // Gouge on the bezel rim
+  const gouge=new THREE.Mesh(new THREE.BoxGeometry(.036,.014,.01),blackWorn);
+  gouge.position.set(.09,.05,-.41);gouge.rotation.z=.4;group.add(gouge);
+  const gougeMetal=new THREE.Mesh(new THREE.BoxGeometry(.02,.008,.006),bareMetal);
+  gougeMetal.position.set(.095,.055,-.408);gougeMetal.rotation.z=.4;group.add(gougeMetal);
+
+  const bezel=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.118,.112,.07,28)),blackWorn);
   bezel.position.set(0,0,-.38);group.add(bezel);
   const bezelRim=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.122,.122,.014,28)),black);
   bezelRim.position.set(0,0,-.415);group.add(bezelRim);
   for(let i=0;i<8;i++){
    const a=(i/8)*Math.PI*2;
-   const screw=new THREE.Mesh(new THREE.CylinderGeometry(.008,.008,.016,6),chrome);
+   const screw=new THREE.Mesh(new THREE.CylinderGeometry(.008,.008,.016,6),i%3===0?chromeRust:chrome);
    screw.rotation.x=Math.PI/2;screw.position.set(Math.cos(a)*.1,Math.sin(a)*.1,-.425);group.add(screw);
   }
 
@@ -124,13 +154,16 @@ export class CaveWorld extends OceanWorld {
   cup.scale.set(1,1,.55);cup.rotation.x=Math.PI;cup.position.set(0,0,-.36);group.add(cup);
   const lens=new THREE.Mesh(new THREE.CircleGeometry(.088,28),this.torchLensMat);
   lens.position.set(0,0,-.432);group.add(lens);
+  // Cracked / cloudy lens edge smear
+  const smear=new THREE.Mesh(new THREE.RingGeometry(.06,.086,20),new THREE.MeshStandardMaterial({color:0x6a7880,metalness:.1,roughness:.85,transparent:true,opacity:.35}));
+  smear.position.set(0,0,-.433);group.add(smear);
 
-  const switchBase=new THREE.Mesh(new THREE.BoxGeometry(.028,.04,.055),yellowDark);
+  const switchBase=new THREE.Mesh(new THREE.BoxGeometry(.028,.04,.055),yellowStain);
   switchBase.position.set(.065,.01,-.2);group.add(switchBase);
-  const switchKnob=new THREE.Mesh(new THREE.BoxGeometry(.022,.028,.03),yellow);
+  const switchKnob=new THREE.Mesh(new THREE.BoxGeometry(.022,.028,.03),yellowDark);
   switchKnob.position.set(.078,.01,-.2);group.add(switchKnob);
 
-  const tail=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.06,.058,.08,20)),black);
+  const tail=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.06,.058,.08,20)),blackWorn);
   tail.position.set(0,0,.18);group.add(tail);
   for(let i=0;i<4;i++){
    const knurl=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.063,.063,.008,16)),black);
@@ -139,17 +172,52 @@ export class CaveWorld extends OceanWorld {
   const tailEnd=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.052,.055,.02,16)),black);
   tailEnd.position.set(0,0,.225);group.add(tailEnd);
 
-  const bracketPlate=new THREE.Mesh(new THREE.BoxGeometry(.035,.012,.1),chrome);
+  const bracketPlate=new THREE.Mesh(new THREE.BoxGeometry(.035,.012,.1),chromeRust);
   bracketPlate.position.set(0,.07,-.28);group.add(bracketPlate);
   const bracketArm=new THREE.Mesh(new THREE.BoxGeometry(.035,.055,.012),chrome);
   bracketArm.position.set(0,.095,-.235);group.add(bracketArm);
   for(const z of [-.3,-.26]){
-   const bolt=new THREE.Mesh(new THREE.CylinderGeometry(.006,.006,.014,8),chrome);
+   const bolt=new THREE.Mesh(new THREE.CylinderGeometry(.006,.006,.014,8),chromeRust);
    bolt.rotation.x=Math.PI/2;bolt.position.set(0,.077,z);group.add(bolt);
   }
 
   const handlePts=[V(0,.078,-.32),V(0,.155,-.22),V(0,.17,-.05),V(0,.14,.1),V(0,.075,.16)];
-  group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(handlePts),24,.018,10,false),black));
+  group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(handlePts),24,.018,10,false),blackWorn));
+
+  // Moss clumps — wet growth on handle, bezel crease, and grip ribs
+  const mossSpots:[number,number,number,number][]=[
+   [0,.12,-.08,.022],[.02,.14,-.2,.018],[-.015,.1,.08,.016],
+   [.08,-.02,-.36,.02],[-.07,.04,-.39,.017],[.06,.06,-.4,.014],
+   [-.05,-.04,.02,.019],[.04,-.05,-.18,.015],[0,.02,.2,.018],
+   [-.04,.08,-.28,.012],[.05,.09,-.12,.014],
+  ];
+  for(const [x,y,z,s] of mossSpots){
+   const clump=new THREE.Mesh(new THREE.IcosahedronGeometry(1,0),((x*10+z*3)&1)?moss:mossDark);
+   clump.scale.set(s,s*(.75+((x*5)&1)*.35),s*(.85+((z*7)&1)*.3));
+   clump.position.set(x,y,z);clump.rotation.set(x*4,y*5,z*3);group.add(clump);
+  }
+
+  // Kelp / seaweed strands trailing from handle and bezel (thick enough to read in FPS)
+  const strand=(pts:THREE.Vector3[],r:number)=>{
+   group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),14,r,6,false),kelp));
+  };
+  strand([V(.02,.17,-.2),V(.05,.14,-.12),V(.08,.06,-.05),V(.1,-.04,.02),V(.09,-.12,.06),V(.06,-.18,.08)],.007);
+  strand([V(-.02,.16,-.08),V(-.04,.11,0),V(-.06,.02,.06),V(-.05,-.08,.1),V(-.03,-.14,.12)],.006);
+  strand([V(.1,.03,-.39),V(.12,-.02,-.33),V(.11,-.09,-.27),V(.08,-.14,-.22)],.0055);
+  strand([V(-.09,.06,-.41),V(-.11,.01,-.35),V(-.1,-.06,-.3),V(-.07,-.11,-.26)],.005);
+  strand([V(0,.15,.05),V(.03,.08,.1),V(.04,-.02,.14),V(.02,-.1,.16)],.005);
+  // Leaf flaps on strands
+  for(const [x,y,z,rx,ry] of [[.09,-.02,0,.6,.2],[-.05,.05,.05,-.5,-.3],[.11,-.07,-.28,.9,.4],[-.09,-.04,-.32,-.7,.2],[.07,-.14,.07,.3,-.5]] as const){
+   const leaf=new THREE.Mesh(new THREE.PlaneGeometry(.028,.045),kelpBright);
+   leaf.position.set(x,y,z);leaf.rotation.set(rx,ry,.15);group.add(leaf);
+  }
+
+  // Dirt / algae film patches on yellow body
+  for(const [a,z,s] of [[.8,-.1,.02],[2.2,-.2,.016],[4.0,.05,.018],[5.5,-.28,.014]] as const){
+   const film=new THREE.Mesh(new THREE.SphereGeometry(1,5,4),mossDark);
+   film.scale.set(s*.6,s*.4,s*.15);
+   film.position.set(Math.cos(a)*.06,Math.sin(a)*.06,z);group.add(film);
+  }
 
   group.position.set(.44,-.4,-.62);group.rotation.set(.18,-.22,.32);group.scale.setScalar(1.15);
   return group;
