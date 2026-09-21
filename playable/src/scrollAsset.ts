@@ -123,10 +123,13 @@ export function buildScrollMesh(mats:THREE.MeshStandardMaterial[]){
  seal.position.set(0,0,.055);
  root.add(seal);
 
- // Soft glow so the scrap reads in murk.
- const glow=new THREE.PointLight(0xd4b878,1.2,2.4,2);
- glow.position.set(0,.05,.08);
- root.add(glow);
+ // Soft emissive parchment — no PointLight (UnrealBloomPass turns lamps into glowing orbs).
+ root.traverse(o=>{
+  if(o instanceof THREE.Mesh&&o.material&&'emissiveIntensity' in o.material){
+   const m=o.material as THREE.MeshStandardMaterial;
+   if(m.emissiveIntensity<0.2)m.emissiveIntensity=.35;
+  }
+ });
 
  root.scale.setScalar(1);
  return root;
@@ -157,13 +160,10 @@ export function syncScrollPresent(visual:ScrollVisual,want:boolean,dt:number,kin
  visual.present+= (target-visual.present)*k;
  const t=visual.present;
  visual.root.visible=t>.02;
- // Nest height by crate kind so the scrap sits in the opening.
- const baseY=kind==='suitcase'?.22:kind==='plastic'?.28:.32;
- visual.root.position.set(0,baseY+.06*t,kind==='plastic'?.05:0);
- visual.root.rotation.set(-.35+.1*t,.4,0);
- visual.root.scale.setScalar(.55+.45*t);
- // Dim the point light when hidden so closed crates stay dark.
- visual.root.traverse(o=>{
-  if(o instanceof THREE.PointLight)o.intensity=1.2*t;
- });
+ // Sit clearly above the open mouth so it isn't buried in the crate mesh.
+ const baseY=kind==='suitcase'?.42:kind==='plastic'?.48:.55;
+ visual.root.position.set(0,baseY+.12*t,kind==='plastic'?.08:.02);
+ visual.root.rotation.set(-.55+.15*t,.55,0);
+ // ~35 cm roll — readable from interact range.
+ visual.root.scale.setScalar(.9+.35*t);
 }
