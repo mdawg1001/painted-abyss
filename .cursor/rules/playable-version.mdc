@@ -1,0 +1,32 @@
+---
+description: Keep the playable build version visible, bumped, and impossible to play stale
+alwaysApply: true
+---
+
+# Playable build version (required)
+
+Players must always know which build they are running. Merging to GitHub does **not** update a laptop still running an old `serve.mjs` — agents must leave the tree so `node playable/refresh.mjs` always yields the new BUILD label.
+
+## Source of truth
+- `playable/package.json` → `"version"` is the only version number to edit.
+- UI imports `APP_VERSION` / `APP_BUILD_LABEL` from `playable/src/version.ts` (Vite bakes version + git sha at build time).
+- `playable/dist/build-info.json` is written on every production build. Do **not** hand-edit it.
+- Do **not** hardcode `0.x.y` strings in HUD, menus, or copy.
+
+## On every playable change that players can notice
+1. Bump `playable/package.json` version (patch for fixes/polish, minor for larger features).
+2. Keep the root `README.md` title line version in sync (`Painted Abyss — First Dive · x.y.z`).
+3. Keep the on-screen `BUILD v… · <sha>` badge visible on the **menu and during the dive**. Do not remove it or the stale-tab warning.
+4. Run `npm run build` in `playable/` and **commit the updated `playable/dist/`** (including `build-info.json`) so `serve.mjs` / `refresh.mjs` match GitHub without an extra local rebuild dependency.
+5. Mention the new version in the PR summary so playtesters know what to look for.
+
+## Serving / playtest (tell humans this)
+- After any agent merges: on the Mac run `node playable/refresh.mjs` (pulls `main`, kills port 5173, rebuilds, serves).
+- Or: kill old server, `git pull`, then `node playable/serve.mjs` (auto-rebuilds if `dist` version ≠ `package.json`).
+- Terminal must print `Painted Abyss vX.Y.Z · <sha> ready`.
+- UI must show the same `BUILD vX.Y.Z · <sha>`. If a yellow **OUTDATED TAB** banner appears, hard-refresh or re-run `refresh.mjs`.
+
+## Do not
+- Leave a playable PR without bumping the version.
+- Ship source-only changes without rebuilding `dist`.
+- Assume the player's already-open Safari tab updates when GitHub updates — it does not.

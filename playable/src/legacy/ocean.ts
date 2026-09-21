@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { type PbrMaps, triplanarGlsl } from '../rockMaps';
 
 type Hooks = { onReady:()=>void; onPause:()=>void; onStatus:(d:number,z:string)=>void; onToggleUI:()=>void; onGlide:(v:boolean)=>void; onError:(s:string)=>void };
 type Creature = { group:THREE.Group; fins:THREE.Group[]; tail:THREE.Group; center:THREE.Vector3; radius:number; speed:number; phase:number; kind:string; scale:number };
@@ -34,7 +35,7 @@ export class OceanWorld {
     this.camera=new THREE.PerspectiveCamera(67,host.clientWidth/host.clientHeight,.12,600);
     this.camera.position.copy(this.position);this.camera.rotation.order='YXZ';this.camera.rotation.set(this.pitch,this.yaw,0);
     this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.7));this.renderer.setSize(host.clientWidth,host.clientHeight);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));this.renderer.setSize(host.clientWidth,host.clientHeight);
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.18;
     this.renderer.setClearColor(0x0a5365);host.appendChild(this.renderer.domElement);
     this.scene.background=new THREE.Color(0x0b5363);this.scene.fog=new THREE.FogExp2(0x0b5363,.014);
@@ -47,27 +48,119 @@ export class OceanWorld {
     this.animate();requestAnimationFrame(()=>hooks.onReady());
   }
 
-  material(color:THREE.ColorRepresentation,detail:'rock'|'skin'|'sand'|'plain'='plain',roughness=.82){
+  material(color:THREE.ColorRepresentation,detail:'rock'|'skin'|'sand'|'plain'='plain',roughness=.82,causticGain=1,maps?:PbrMaps,mossMaps?:PbrMaps){
     const m=new THREE.MeshStandardMaterial({color,roughness,metalness:detail==='skin'?.05:0});
+    const gain=Math.max(0,causticGain);
+    const usePbr=!!maps&&(detail==='rock'||detail==='sand');
+    const useMoss=usePbr&&!!mossMaps;
+    const mossAmount=detail==='rock'?'0.7':detail==='sand'?'0.4':'0.';
     m.onBeforeCompile=shader=>{
       shader.uniforms.uTime=this.uniforms.uTime;
-      shader.vertexShader='varying vec3 vOceanWorld; varying vec3 vOceanLocal;\n'+shader.vertexShader;
+      shader.vertexShader='varying vec3 vOceanWorld; varying vec3 vOceanLocal; varying vec3 vOceanWNormal;\n'+shader.vertexShader;
       shader.vertexShader=shader.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\nvOceanLocal=position;');
+      shader.vertexShader=shader.vertexShader.replace('#include <defaultnormal_vertex>',`#include <defaultnormal_vertex>
+        vOceanWNormal=normalize(mat3(modelMatrix)*objectNormal);`);
       shader.vertexShader=shader.vertexShader.replace('#include <worldpos_vertex>',`#include <worldpos_vertex>
         vec4 oceanPos=vec4(transformed,1.0);
         #ifdef USE_INSTANCING
           oceanPos=instanceMatrix*oceanPos;
         #endif
         vOceanWorld=(modelMatrix*oceanPos).xyz;`);
-      shader.fragmentShader='uniform float uTime; varying vec3 vOceanWorld; varying vec3 vOceanLocal;\n'+shaderNoise+shader.fragmentShader;
+      let fragHead='uniform float uTime; varying vec3 vOceanWorld; varying vec3 vOceanLocal; varying vec3 vOceanWNormal;\n'+shaderNoise;
+      if(usePbr&&maps){
+        shader.uniforms.uPbrDiff={value:maps.diff};
+        shader.uniforms.uPbrNor={value:maps.nor};
+        shader.uniforms.uPbrArm={value:maps.arm};
+        shader.uniforms.uPbrScale={value:maps.scale};
+        fragHead+='uniform sampler2D uPbrDiff;uniform sampler2D uPbrNor;uniform sampler2D uPbrArm;uniform float uPbrScale;\n'+triplanarGlsl;
+        if(useMoss&&mossMaps){
+          shader.uniforms.uMossDiff={value:mossMaps.diff};
+          shader.uniforms.uMossNor={value:mossMaps.nor};
+          shader.uniforms.uMossArm={value:mossMaps.arm};
+          shader.uniforms.uMossScale={value:mossMaps.scale};
+          fragHead+='uniform sampler2D uMossDiff;uniform sampler2D uMossNor;uniform sampler2D uMossArm;uniform float uMossScale;\n';
+        }
+      }
+      shader.fragmentShader=fragHead+shader.fragmentShader;
       let detailCode='';
-      if(detail==='sand')detailCode=`float grain=valueNoise(vOceanWorld.xz*15.);float ripple=sin(vOceanWorld.x*.7+vOceanWorld.z*3.+valueNoise(vOceanWorld.xz*.11)*5.);diffuseColor.rgb*=.82+grain*.22+ripple*.07;`;
-      if(detail==='rock')detailCode=`float n=valueNoise(vOceanWorld.xz*1.7+vOceanWorld.y*.8);float layer=sin(vOceanWorld.y*5.+valueNoise(vOceanWorld.xz)*3.);diffuseColor.rgb*=.67+n*.5+layer*.075;diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.12,.22,.16),smoothstep(.57,.84,n)*.6);`;
+      if(usePbr){
+        // Albedo + AO only here; roughness/metalness applied after their map chunks.
+        detailCode=`{
+          vec3 wn=normalize(vOceanWNormal);
+          vec3 b=triBlend(wn);
+          vec3 albedo=triAlbedo(uPbrDiff,vOceanWorld,b,uPbrScale);
+          vec3 arm=triArm(uPbrArm,vOceanWorld,b,uPbrScale);
+          float wet=${detail==='sand'?'0.5':'0.62'};
+          albedo*=mix(1.,.62,wet);
+          ${useMoss?`
+          vec3 mossAlb=triAlbedo(uMossDiff,vOceanWorld,b,uMossScale);
+          vec3 mossArm=triArm(uMossArm,vOceanWorld,b,uMossScale);
+          // Sparse accent — up to 35% over base stone
+          float moss=min(mossCoverage(vOceanWorld,wn,arm.r,${mossAmount}),.35);
+          mossAlb*=mix(1.,.9,wet*.35);
+          albedo=mix(albedo,mossAlb,moss);
+          arm=mix(arm,mossArm,moss);
+          `:''}
+          diffuseColor.rgb*=albedo*mix(.62,1.,arm.r);
+        }`;
+      }else{
+        if(detail==='sand')detailCode=`float grain=valueNoise(vOceanWorld.xz*15.);float ripple=sin(vOceanWorld.x*.7+vOceanWorld.z*3.+valueNoise(vOceanWorld.xz*.11)*5.);diffuseColor.rgb*=.82+grain*.22+ripple*.07;`;
+        if(detail==='rock')detailCode=`float n=valueNoise(vOceanWorld.xz*1.7+vOceanWorld.y*.8);float layer=sin(vOceanWorld.y*5.+valueNoise(vOceanWorld.xz)*3.);diffuseColor.rgb*=.67+n*.5+layer*.075;diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.12,.22,.16),smoothstep(.57,.84,n)*.6);`;
+      }
       if(detail==='skin')detailCode=`float blot=valueNoise(vOceanLocal.xz*5.+vOceanLocal.y*2.);float fine=valueNoise(vOceanLocal.xy*48.);float bands=sin(vOceanLocal.x*5.5+vOceanLocal.z*3.+blot*4.);diffuseColor.rgb*=.6+blot*.5+fine*.15;diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*.42,smoothstep(.5,.9,bands)*.45);diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.54,.62,.49),(1.-smoothstep(-.75,.0,vOceanLocal.y))*.65);`;
       shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>\n${detailCode}`);
-      shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=max(0.,normal.y)*.8+.15;outgoingLight+=vec3(.31,.62,.48)*ca*sunward*.035;\n#include <opaque_fragment>`);
+      if(usePbr){
+        const wet=detail==='sand'?'0.5':'0.62';
+        shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
+          {
+            vec3 wn=normalize(vOceanWNormal);vec3 b=triBlend(wn);
+            vec3 arm=triArm(uPbrArm,vOceanWorld,b,uPbrScale);
+            float wet=${wet};
+            ${useMoss?`
+            vec3 mossArm=triArm(uMossArm,vOceanWorld,b,uMossScale);
+            float moss=min(mossCoverage(vOceanWorld,wn,arm.r,${mossAmount}),.35);
+            arm.g=mix(arm.g,mossArm.g,moss);
+            roughnessFactor=clamp(mix(arm.g*roughnessFactor,mix(arm.g*roughnessFactor*.35,arm.g*roughnessFactor*.78,moss),wet),.06,.98);
+            `:`
+            roughnessFactor=clamp(mix(arm.g*roughnessFactor,arm.g*roughnessFactor*.35,wet),.06,.95);
+            `}
+          }`);
+        shader.fragmentShader=shader.fragmentShader.replace('#include <metalnessmap_fragment>',`#include <metalnessmap_fragment>
+          {
+            vec3 wn=normalize(vOceanWNormal);vec3 b=triBlend(wn);
+            vec3 arm=triArm(uPbrArm,vOceanWorld,b,uPbrScale);
+            ${useMoss?`
+            vec3 mossArm=triArm(uMossArm,vOceanWorld,b,uMossScale);
+            float moss=min(mossCoverage(vOceanWorld,wn,arm.r,${mossAmount}),.35);
+            arm.b=mix(arm.b,mossArm.b,moss);
+            `:''}
+            metalnessFactor=clamp(arm.b,.0,.35);
+          }`);
+        shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
+          {
+            vec3 wn=normalize(vOceanWNormal);
+            vec3 b=triBlend(wn);
+            vec3 nRock=triNormalView(uPbrNor,vOceanWorld,wn,b,uPbrScale,viewMatrix);
+            ${useMoss?`
+            vec3 arm=triArm(uPbrArm,vOceanWorld,b,uPbrScale);
+            float moss=min(mossCoverage(vOceanWorld,wn,arm.r,${mossAmount}),.35);
+            vec3 nMoss=triNormalView(uMossNor,vOceanWorld,wn,b,uMossScale,viewMatrix);
+            normal=normalize(mix(nRock,nMoss,moss));
+            `:`
+            normal=nRock;
+            `}
+          }`);
+      }
+      if(gain>0){
+        if(usePbr){
+          // Soft caustics only — strong procedural caustics fight photographic albedo
+          shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.012*gain).toFixed(4)};\n#include <opaque_fragment>`);
+        }else{
+          shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.055*gain).toFixed(4)};\n#include <opaque_fragment>`);
+        }
+      }
     };
-    m.customProgramCacheKey=()=>detail;
+    m.customProgramCacheKey=()=>`${detail}:${gain.toFixed(2)}:pbr${usePbr?maps!.key:'0'}:moss${useMoss?mossMaps!.key+':35pct':'0'}`;
     return m;
   }
 
@@ -326,7 +419,7 @@ export class OceanWorld {
       const bass=ctx.createOscillator(),bassGain=ctx.createGain();bass.type='sine';bass.frequency.value=47;bassGain.gain.value=.055;bass.connect(bassGain);bassGain.connect(this.master);bass.start();
     }catch{/* Ocean remains fully playable when audio is unavailable. */}
   }
-  resize(){if(!this.alive)return;const w=this.host.clientWidth,h=this.host.clientHeight;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setSize(w,h);}
+  resize(){if(!this.alive)return;const w=this.host.clientWidth,h=this.host.clientHeight;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));this.renderer.setSize(w,h);}
 
   animate=()=>{
     if(!this.alive)return;this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);

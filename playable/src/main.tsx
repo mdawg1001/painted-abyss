@@ -1,35 +1,154 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {CaveWorld,type Snapshot} from './CaveWorld';
-import {ITEMS,EXIT,RELIC,distance,type Item} from './simulation';
+import {ITEMS,EXIT,distance,hydrostaticDepth,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,CHEST_LABEL,MAP_FRAGMENT_ORDER,type Item} from './simulation';
+import {DiveMap} from './DiveMap';
+import {KNIFE_THUMB_URL} from './knifeAsset';
+import {APP_VERSION,APP_BUILD_LABEL,APP_BUILD_SHA} from './version';
 import './style.css';
-function Icon({item}:{item:Item|null}){const paths:Record<Item,React.ReactNode>={stone:<path d="m6 24 6-16 17-3 12 13-6 18-18 2Z M12 8l8 14 15 14M20 22l21-4"/>,wood:<><path d="m7 31 26-23 7 8-26 24Z M14 31l20-18M20 29l4 4"/><path d="m7 31 7 1v8"/></>,flare:<><path d="m17 35 6-18 8 3-6 18Z M26 12l2-7m7 10 6-3M19 9l-3-5"/><path d="m20 27 8 3"/></>,air:<><rect x="15" y="12" width="18" height="29" rx="7"/><path d="M20 12V6h8v6M15 23h18M24 18v15"/></>,bandage:<><rect x="8" y="14" width="32" height="25" rx="4"/><path d="M18 14V8h12v6m-6 7v12m-6-6h12"/></>,relic:<><path d="M37 32c-13 13-33-2-26-16S42 6 39 22 20 35 18 24s13-13 13-3-9 7-8 2"/><path d="m35 34 7 4"/></>};return <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{item?paths[item]:<path opacity=".3" d="M20 24h8m-4-4v8"/>}</svg>;}
+
+function Icon({item}:{item:Item|null}){
+ if(item==='knife'){
+  return <img className="slot-thumb" src={KNIFE_THUMB_URL} alt="" width={36} height={36} draggable={false}/>;
+ }
+ const paths:Record<Exclude<Item,'knife'>,React.ReactNode>={
+  stone:<path fill="#7a8480" d="M12 28c1-9 7-15 13-16 8-2 15 3 16 11 2 9-4 17-13 18-8 1-15-4-16-13z"/>,
+  wood:<g transform="rotate(-35 24 24)"><rect x="20" y="8" width="8" height="32" rx="2.5" fill="#2c343a"/><rect x="19" y="8" width="10" height="7" rx="1.5" fill="#4a545c"/><rect x="21" y="18" width="6" height="2" fill="#1a2024"/></g>,
+  flare:<><rect x="22" y="16" width="5" height="24" rx="1.5" fill="#e8e8e8"/><path fill="#ff1e14" d="M21 16c1-5 2.5-10 3.5-13 1.5 3 3.5 7 4.5 11H21z"/><path fill="#ffc14a" d="M24 5c0-2 .6-4 1-5 .4 1.5 1.2 3 2 4.5-.7.2-1.8.4-3 .5z"/></>,
+  air:<><rect x="17" y="13" width="14" height="26" rx="5" fill="#c8d0d6"/><rect x="20" y="7" width="8" height="8" rx="2" fill="#a8b2ba"/><line x1="17" y1="23" x2="31" y2="23" stroke="#3a444a" strokeWidth="1.3"/><line x1="24" y1="17" x2="24" y2="30" stroke="#3a444a" strokeWidth="1.3"/></>,
+  bandage:<><rect x="11" y="17" width="26" height="18" rx="2.5" fill="#9aa4aa"/><path fill="#5c666c" d="M22 17v-5h4v5m-2 6v8m-5-4h10"/></>,
+  relic:<><path fill="#c4923a" d="M24 8c9 0 15 6 15 13 0 10-8 17-15 17S9 31 9 21 12 8 24 8z"/><path fill="none" stroke="#4a2a08" strokeWidth="2.2" d="M31 28c-9 9-19 1-16-7s13-11 14-1-7 8-6 2"/><circle cx="28" cy="17" r="3.2" fill="#ecc878"/></>,
+ };
+ return <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">{item?paths[item]:null}</svg>;
+}
+
+function Compass({yaw}:{yaw:number}){
+ const heading=(((-yaw*180)/Math.PI)%360+360)%360;
+ const marks: {deg:number;x:number;label:string;major:boolean}[]=[];
+ for(let deg=0;deg<360;deg+=5){
+  let offset=((deg-heading+540)%360)-180;
+  if(Math.abs(offset)>52)continue;
+  const label=deg===0?'N':deg===90?'E':deg===180?'S':deg===270?'W':'';
+  marks.push({deg,x:offset,label,major:deg%90===0});
+ }
+ return <div className="compass" aria-hidden="true">
+  <div className="compass-needle"/>
+  <div className="compass-track">
+   {marks.map(m=><div key={m.deg} className={`compass-mark ${m.major?'major':m.deg%15===0?'mid':''}`} style={{transform:`translateX(${m.x*2.55}px)`}}>
+    <i/>{m.label&&<span>{m.label}</span>}
+   </div>)}
+  </div>
+ </div>;
+}
+
 function App(){
  const host=useRef<HTMLDivElement>(null),engine=useRef<CaveWorld|null>(null);const [snap,setSnap]=useState<Snapshot|null>(null),[error,setError]=useState('');
+ const [staleMsg,setStaleMsg]=useState('');
  useEffect(()=>{if(!host.current)return;let instance:CaveWorld;try{instance=new CaveWorld(host.current,s=>setSnap({...s}));engine.current=instance;if(import.meta.env.DEV&&new URLSearchParams(location.search).has('test'))(window as any).__abyss=instance;}catch(e){console.error(e);setError('The cave needs WebGL. Enable graphics acceleration in a desktop browser, then reload.');}return()=>{instance?.dispose();engine.current=null;};},[]);
+ useEffect(()=>{
+  let alive=true;
+  const check=()=>{
+   fetch('/__build.json',{cache:'no-store'}).then(r=>r.json()).then((info:{packageVersion?:string;distVersion?:string;sha?:string})=>{
+    if(!alive||!info?.packageVersion)return;
+    if(info.packageVersion!==APP_VERSION||(info.sha&&info.sha!==APP_BUILD_SHA)){
+     setStaleMsg(`OUTDATED TAB — server is ${info.packageVersion}${info.sha?` · ${info.sha}`:''}. Hard refresh (Cmd+Shift+R) or run: node playable/refresh.mjs`);
+    }else setStaleMsg('');
+   }).catch(()=>{});
+  };
+  check();
+  const id=window.setInterval(check,4000);
+  const onFocus=()=>check();
+  window.addEventListener('focus',onFocus);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)check();});
+  return()=>{alive=false;window.clearInterval(id);window.removeEventListener('focus',onFocus);};
+ },[]);
  const m=snap?.mission,playing=!!snap?.playing,terminal=m?.outcome!=='playing'&&!!m;
- const target=m?.hasRelic?EXIT:RELIC,d=m?distance(m.position,target):0;
- const nearest=m?.nearest();const extraction=m&&distance(m.position,EXIT)<4;
- const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):nearest?`E · Collect ${ITEMS[nearest.item].name}`:'';
- const bearing=m&&engine.current?Math.atan2(target.x-m.position.x,-(target.z-m.position.z))+engine.current.yaw:0;
- const air=m?Math.ceil(m.air):240;const time=`${Math.floor(air/60)}:${String(air%60).padStart(2,'0')}`;
+ const nearest=m?.nearest();const nearChest=m?.nearestChest();const extraction=m&&distance(m.position,EXIT)<4;
+ const chestPrompt=nearChest
+  ?(nearChest.open
+   ?(m?.hasMapFragment(nearChest.fragment)?`The ${CHEST_LABEL[nearChest.kind]} is empty`:`E · Take map scrap`)
+   :`E · Open ${CHEST_LABEL[nearChest.kind]}`)
+  :'';
+ const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):chestPrompt?chestPrompt:nearest?`E · Collect ${ITEMS[nearest.item].name}`:'';
+ const mapCount=m?.mapFragmentCount??0;
+ const mapComplete=!!m?.mapComplete;
+ const yaw=snap?.yaw??0;
+ const onBailout=!!(m&&m.air<=0&&m.bailout>0);
+ const airPool=m?(onBailout?m.bailout:m.air):AIR_MAIN_LITRES;
+ const airMax=onBailout?AIR_BAILOUT_LITRES:AIR_MAIN_LITRES;
+ const airLitres=Math.max(0,Math.ceil(airPool));
+ const ponyReady=!!(m&&m.bailout>0&&m.air>0);
+ const depth=m?Math.round(hydrostaticDepth(m.position.y)):0;
+ const buoyancy=m?.buoyancy??0;
+ const trimBias=m?.buoyancyTrim??0;
+ const trimLabel=buoyancy>.2?'FLOAT':buoyancy<-.2?'SINK':'LEVEL';
+ const biasLabel=trimBias>.08?' · BIAS↑':trimBias<-.08?' · BIAS↓':'';
+ const trimLeft=buoyancy>=0?50:50+buoyancy*50;
+ const trimWidth=Math.abs(buoyancy)*50;
+ const biasMark=50+trimBias*50;
  const predator=m?.predator.state||'patrol';const close=m?distance(m.position,m.predator.position)<23:false;
- const threat=close?{patrol:'Movement in the dark',alert:'It heard something',chase:'It is hunting you',search:'Searching your last position'}[predator]:'Listen. Watch the shadows.';
+ const raging=!!(m?.predator.raged&&predator==='chase');
+ const threat=close?({
+  patrol:'Movement in the dark',
+  alert:'It heard something',
+  chase:raging?'Wounded — raging at you':'It is hunting you',
+  search:'Searching your last position',
+  damaged:'Wounded — moving slow',
+  dead:'Guardian down',
+ } as Record<string,string>)[predator]:'';
  return <main className={playing?'app playing':'app'}>
   <div className="viewport" ref={host} aria-label="Three-dimensional underwater cave"/>
   <div className="vignette"/>
-  <header><div className="brand"><span className="brand-mark">◉</span> PAINTED ABYSS<small>THE DROWNED SHELF</small></div><div className="build-label">FIRST DIVE <span> / </span> 01</div></header>
+  <div className="build-version" aria-label={`Build version ${APP_VERSION}`}>BUILD {APP_BUILD_LABEL}</div>
+  {staleMsg&&<div className="stale-build" role="alert">{staleMsg}</div>}
+  {!playing&&<header><div className="brand"><span className="brand-mark">◉</span> PAINTED ABYSS<small>THE DROWNED SHELF</small></div><div className="build-label">FIRST DIVE <span> / </span> {APP_VERSION}</div></header>}
   {playing&&m&&<>
-   <section className="mission"><div className="eyebrow">{m.hasRelic?'02 / RETURN TO THE LIGHT':'01 / RECOVER THE RELIC'}</div><h2>{m.hasRelic?'Reach the extraction pool':'Find the ammonite relic'}</h2><p>{m.hasRelic?'Follow amber lights through the east fissure.':'Follow turquoise lights. Keep the pillar between you and it.'}</p><div className="bearing"><span style={{transform:`rotate(${bearing}rad)`}}>↑</span> {Math.round(d)} m <small>direct bearing · follow passages</small></div></section>
-   <section className="vitals"><div><span>AIR REMAINING</span><strong className={air<45?'warning':''}>{time}</strong></div><div className="meter"><i style={{width:`${m.air/240*100}%`}}/></div><div className="suit"><span>SUIT {Math.ceil(m.health)}%</span><span>FIN ENERGY {Math.round(m.stamina)}%</span></div><div className="meter suit-meter"><i style={{width:`${m.health}%`,background:m.health<40?'#f6856c':'#91c4b7'}}/></div><p>{m.torch?'● TORCH ON':'○ TORCH OFF'} <kbd>F</kbd></p></section>
-   <div className={`threat ${close?predator:''}`}><span/> {threat}</div>
+   <section className="objectives" aria-label="Objectives">
+    <div className={`obj ${m.hasRelic?'done':''}`}><span className="obj-icon" aria-hidden="true">◆</span>{m.hasRelic?'Carry the ammonite relic':'Recover the ammonite relic'}</div>
+    <div className={`obj ${mapComplete?'done':''}`}><span className="obj-icon" aria-hidden="true">▣</span>{mapComplete?'Cave chart fitted':'Find map scraps in crates'}{mapCount>0&&!mapComplete?` (${mapCount}/3)`:''}</div>
+    <div className="obj"><span className="obj-icon" aria-hidden="true">○</span>Reach the extraction pool</div>
+   </section>
+   <div className={`map-chip ${mapComplete?'complete':''}`} aria-label={`Map fragments ${mapCount} of ${MAP_FRAGMENT_ORDER.length}`}>
+    <span>MAP</span><strong>{mapCount}/{MAP_FRAGMENT_ORDER.length}</strong><em>Tab</em>
+   </div>
+   <Compass yaw={yaw}/>
+   <div className="depth">DEPTH {depth} m</div>
+   <section className="vitals" aria-label="Vitals">
+    <div className="vital"><div className="vital-row"><span>{onBailout?'PONY':'AIR'}{ponyReady?` · +${Math.ceil(m.bailout)} L`:''}</span><strong className={airLitres<airMax*.2||onBailout?'warning':''}>{airLitres} L</strong></div><div className={`meter air ${onBailout?'bailout':''}`}><i style={{width:`${Math.min(100,airPool/airMax*100)}%`}}/></div></div>
+    <div className="vital"><div className="vital-row"><span>TRIM</span><strong className={Math.abs(buoyancy)>.55?'warning':''}>{trimLabel}{biasLabel}</strong></div><div className="meter trim" aria-valuemin={-1} aria-valuemax={1} aria-valuenow={+buoyancy.toFixed(2)}><em className="trim-bias" style={{left:`${biasMark}%`}} aria-hidden="true"/><i style={{left:`${trimLeft}%`,width:`${trimWidth}%`}}/></div></div>
+    <div className="vital"><div className="vital-row"><span>SUIT</span><strong className={m.health<40?'warning':''}>{Math.ceil(m.health)}</strong></div><div className="meter suit"><i style={{width:`${m.health}%`}}/></div></div>
+    <div className="vital"><div className="vital-row"><span>FINS</span><strong>{Math.round(m.stamina)}</strong></div><div className="meter fins"><i style={{width:`${m.stamina}%`}}/></div></div>
+   </section>
+   {threat&&<div className={`threat ${predator}`} role="status">{threat}</div>}
    {snap?.audioNotice&&<div className="audio-notice" role="status">{snap.audioNotice}</div>}
-   <div className="crosshair">·</div>
    {m.health<40&&<div className="injury"/>}
-   <div className="interaction" role="status">{prompt&&<div className="prompt">{prompt}</div>}{m.elapsed<m.noticeUntil&&<p>{m.notice}</p>}</div>
-   <div className="inventory"><div className="inventory-label">{m.pending!==null?'INVENTORY FULL · SELECT AN ITEM TO LEAVE BEHIND':'CARRIED ITEMS'}<span>5 SLOTS</span></div><div className="slots">{m.inventory.map((item,i)=><div className={`slot ${i===m.selected?'selected':''} ${item==='relic'?'relic':''}`} key={i}><kbd>{i+1}</kbd><Icon item={item}/><span>{item?ITEMS[item].short:'Empty'}</span></div>)}</div><div className="item-note">{m.inventory[m.selected]?ITEMS[m.inventory[m.selected]!].description:'Empty slot · E to collect nearby items.'}</div></div>
-   <footer><span><kbd>W A S D</kbd> swim <kbd>Space / Q</kbd> up / down <kbd>Shift</kbd> sprint</span><span><kbd>1–5</kbd> select <kbd>R</kbd> use <kbd>G</kbd> drop <kbd>Esc</kbd> pause</span></footer>
-   {!snap?.pointerLocked&&<div className="free-look">360° free look · move to look · hold left or right of center to keep turning</div>}
+   <div className="interaction" role="status">{prompt&&<div className="prompt">{prompt}</div>}{m.elapsed<m.noticeUntil&&<p key={m.feedbackPulse} className={`notice ${m.feedbackKind}`}>{m.notice}</p>}</div>
+   <div className="inventory" aria-label="Inventory">
+    <div className="slots">{m.inventory.map((item,i)=>{const selected=i===m.selected;const pulse=selected&&m.feedbackKind?m.feedbackKind:'';return <div className={`slot ${selected?'selected':''} ${item==='relic'?'relic':''} ${item==='flare'?'flare':''} ${item==='knife'?'knife':''} ${pulse?`pulse-${pulse}`:''}`} key={selected?`${i}-p${m.feedbackPulse}`:i}><kbd>{i+1}</kbd><Icon item={item}/>{selected&&<em className="slot-mark" aria-hidden="true">●</em>}</div>;})}</div>
+   </div>
+   <aside className="keybinds" aria-hidden="true">
+    <div><kbd>1–5</kbd><span>Select</span></div>
+    <div><kbd>Click</kbd><span>Stab</span></div>
+    <div><kbd>F</kbd><span>Torch</span></div>
+    <div><kbd>E</kbd><span>Interact</span></div>
+    <div><kbd>Tab</kbd><span>Map</span></div>
+    <div><kbd>R</kbd><span>Use</span></div>
+    <div><kbd>G</kbd><span>Drop</span></div>
+   </aside>
+   <DiveMap
+    open={!!m.mapOpen}
+    fragments={m.mapFragments}
+    complete={mapComplete}
+    player={m.position}
+    onClose={()=>{
+     if(engine.current?.mission){
+      engine.current.mission.mapOpen=false;
+      engine.current.requestLookLock?.(false);
+      engine.current.publish();
+     }
+    }}
+   />
+   {!snap?.pointerLocked&&!m.mapOpen&&<div className="free-look">360° free look · move to look · hold left or right of center to keep turning</div>}
   </>}
   {!playing&&<div className="menu-backdrop"><section className="menu">
    <div className="eyebrow">{terminal?m?.outcome==='won'?'EXPEDITION COMPLETE':'DIVE LOST':snap?.started?'DIVE PAUSED':'A SHORT UNDERWATER SURVIVAL PROTOTYPE'}</div>
@@ -38,9 +157,9 @@ function App(){
    {terminal&&<div className="results"><span>{Math.floor((m?.elapsed||0)/60)}m {Math.floor((m?.elapsed||0)%60)}s underwater</span><span>{m?.outcome==='won'?'1 relic secured':'No relic secured'}</span></div>}
    {(error||snap?.error)?<p className="error" role="alert">{error||snap?.error}</p>:<button className="primary" disabled={!snap} onClick={()=>engine.current?.start()}>{!snap?'Opening the cave…':terminal?'Try another dive':snap.started?'Resume dive':'Begin dive'} <span>↗</span></button>}
    <div className="menu-actions"><button onClick={()=>{const w=engine.current;if(w){w.setSound(!w.sound);w.publish();}}}>{engine.current?.sound===false?'Sound off':'Sound on'}</button><button onClick={()=>engine.current?.testSound()}>Test sound</button>{snap?.started&&!terminal&&<button onClick={()=>{engine.current?.reset();engine.current?.start();}}>Restart dive</button>}</div>
-   <p className="sound-help" role="status">{snap?.audioNotice||'Test sound plays two clear tones. During the dive, hear your music and regulator breathing.'}</p>
-   <div className="dive-note">2–4 MINUTES <span>·</span> DESKTOP / HEADPHONES <span>·</span> PROTOTYPE 0.1.3 · CALMER LOOK</div>
-   </section><aside className="briefing"><div className="eyebrow">BEFORE YOU DESCEND</div><ol><li><b>Follow the turquoise lights.</b><span>Find the relic in the bone alcove, beyond the central pillar.</span></li><li><b>Make room for your discovery.</b><span>Five slots, no backpack. Press E, choose 1–5, then E to swap. The old item drops.</span></li><li><b>Escape through the east fissure.</b><span>Follow amber lights north to the extraction pool. The guardian cannot enter the narrow passage.</span></li></ol><div className="control-grid"><span><kbd>W A S D</kbd> Swim</span><span><kbd>Space / Q</kbd> Up / down</span><span><kbd>Shift</kbd> Sprint</span><span><kbd>F</kbd> Torch</span><span><kbd>E</kbd> Collect / extract</span><span><kbd>R</kbd> Use selected item</span><span><kbd>1–5</kbd> Select slot</span><span><kbd>G</kbd> Drop selected item</span></div><p className="look-note">Move the mouse or trackpad to look — right looks right. No button held. If the browser limits the pointer, hold left or right of center to keep turning through 360° without leaving the dive window. Arrow keys also look. <kbd>Esc</kbd> pauses; <kbd>M</kbd> mutes.</p><p className="tip">Rock blocks its sight. Torchlight and fast swimming draw attention. Use a flare to distract it, then move away.</p></aside></div>}
+   <p className="sound-help" role="status">{snap?.audioNotice||'Test sound plays two clear tones. During the dive, hear your music.'}</p>
+   <div className="dive-note">2–4 MINUTES <span>·</span> DESKTOP / HEADPHONES <span>·</span> PROTOTYPE {APP_VERSION}</div>
+   </section><aside className="briefing"><div className="eyebrow">BEFORE YOU DESCEND</div><ol><li><b>Follow the turquoise lights.</b><span>Find the relic in the bone alcove, beyond the central pillar.</span></li><li><b>Open crates for chart scraps.</b><span>Three floor crates hide torn map pieces. Press E to open; Tab reviews the field chart. Exits stay unmarked until all three fit.</span></li><li><b>Make room for your discovery.</b><span>Five slots, no backpack. Press E, choose 1–5, then E to swap. The old item drops. Slot 1 starts with a diving knife.</span></li><li><b>Escape through the east fissure.</b><span>Follow amber lights north to the extraction pool. The guardian cannot enter the narrow passage.</span></li></ol><div className="control-grid"><span><kbd>W A S D</kbd> Swim</span><span><kbd>Space / Q</kbd> Buoyancy</span><span><kbd>[ ]</kbd> Set trim bias</span><span><kbd>X</kbd> Clear trim</span><span><kbd>Shift</kbd> Sprint</span><span><kbd>F</kbd> Torch</span><span><kbd>E</kbd> Collect / open crate</span><span><kbd>Tab</kbd> Cave chart</span><span><kbd>1–5</kbd> Select slot</span><span><kbd>Click</kbd> Stab (knife)</span><span><kbd>R</kbd> Use / consume</span><span><kbd>G</kbd> Drop selected</span></div><p className="look-note">Move the mouse or trackpad to look — right looks right. No button held. If the browser limits the pointer, hold left or right of center to keep turning through 360° without leaving the dive window. Arrow keys also look. <kbd>Esc</kbd> pauses; <kbd>M</kbd> mutes.</p><p className="tip">Inventory: <kbd>1</kbd> selects the diving knife, then <kbd>click</kbd> stabs at close range — wound it and it rages; cut deep and it breaks off slow, or sinks bloody when killed. <kbd>R</kbd> uses consumables (air, sealant, flares). Crates yield chart scraps — <kbd>Tab</kbd> opens the field chart; exits stay unmarked until all three fit. A one-time tip appears on the first dive only. Rock blocks its sight; a flare distracts it while you move away. Killing is optional — extraction still only needs the relic.</p></aside></div>}
  </main>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);
