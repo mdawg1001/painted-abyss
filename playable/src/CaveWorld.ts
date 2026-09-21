@@ -8,7 +8,8 @@ import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
-import { createKnifeVisual, upgradeKnifeVisual, poseKnife, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
+import { createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, applySiltToTorch, stepSilt, siltAt, createSiltPlume, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, stepSwimVelocity } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
@@ -91,6 +92,8 @@ export class CaveWorld extends OceanWorld {
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
  knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
+ /** PMREM for Poly Haven metal/wood specular on the held knife. */
+ knifeEnvMap:THREE.Texture|null=null;
  shakeAmp=0;
  /** Soft blood cloud group (droplets + plume); hidden until hit/kill. */
  bloodGroup:THREE.Group|null=null;
@@ -138,12 +141,16 @@ export class CaveWorld extends OceanWorld {
   this.buildSiltStorm();
   loadBloodMaps().then(maps=>{if(this.alive)this.applyBloodMaps(maps);});
   // Mount knife stub immediately so selecting slot 1 always shows a held prop;
-  // Poly Haven glTF upgrades the mesh when ready.
+  // Poly Haven glTF upgrades the mesh when ready (with RoomEnvironment specular).
+  const pmrem=new THREE.PMREMGenerator(this.renderer);
+  this.knifeEnvMap=pmrem.fromScene(new RoomEnvironment(),.04).texture;
+  pmrem.dispose();
   this.knifeVisual=createKnifeVisual();
   this.camera.add(this.knifeVisual);
+  applyKnifeEnvMap(this.knifeVisual,this.knifeEnvMap);
   this.knifeVisual.visible=this.holdingKnife();
   if(this.holdingKnife())this.setTorchMeshesVisible(false);
-  upgradeKnifeVisual(this.knifeVisual).then(ok=>{
+  upgradeKnifeVisual(this.knifeVisual,this.knifeEnvMap).then(ok=>{
    if(!this.alive||!this.knifeVisual)return;
    if(ok)poseKnife(this.knifeVisual);
    this.knifeVisual.visible=this.holdingKnife();
