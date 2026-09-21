@@ -21,6 +21,13 @@
 - Files: `public/assets/chests/<kind>/` (1k glTF + textures) with notes under `src/assets/chests/`
 - Floor props in the cavern; press E to open (map fragments / loot come later).
 
+## Small LPG Tank (Poly Haven)
+- Source: https://polyhaven.com/a/small_lpg_tank
+- Author: Ulan Cabanilla
+- License: CC0 1.0 Universal (public domain dedication)
+- Files: `public/assets/lpg_tank/` (1k glTF + textures) and notes under `src/assets/lpg_tank/`
+- Floor scenery on the west sand shelf before the central chamber.
+
 ## Blood particles (Kenney Particle Pack)
 - Source: https://kenney.nl/assets/particle-pack
 - Author: Kenney Vleugels (Kenney.nl)
