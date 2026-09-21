@@ -94,11 +94,11 @@ export class CaveWorld extends OceanWorld {
  buildLights(){
   this.scene.add(this.camera);
   // Cool-white tactical torch — reference key light
-  this.torchLight.color.set(0xf0f7ff);this.torchLight.intensity=260;this.torchLight.distance=36;
-  this.torchLight.angle=.34;this.torchLight.penumbra=.42;this.torchLight.decay=1.1;
+  this.torchLight.color.set(0xf0f7ff);this.torchLight.intensity=160;this.torchLight.distance=32;
+  this.torchLight.angle=.36;this.torchLight.penumbra=.48;this.torchLight.decay=1.2;
   this.torchLight.position.set(.32,-.22,-.15);
   this.torchLight.target.position.set(.12,-.28,-16);
-  this.torchFill.color.set(0xd8e8f4);this.torchFill.intensity=7;this.torchFill.distance=8;
+  this.torchFill.color.set(0xd8e8f4);this.torchFill.intensity=4;this.torchFill.distance=7;
   this.torchFill.position.set(.2,-.15,-.4);
   this.camera.add(this.torchLight,this.torchLight.target,this.torchFill);
 
@@ -164,7 +164,7 @@ export class CaveWorld extends OceanWorld {
   const w=this.host.clientWidth,h=this.host.clientHeight;
   this.composer=new EffectComposer(this.renderer);
   this.composer.addPass(new RenderPass(this.scene,this.camera));
-  this.bloom=new UnrealBloomPass(new THREE.Vector2(w,h),.42,.55,.82);
+  this.bloom=new UnrealBloomPass(new THREE.Vector2(w,h),.18,.65,.92);
   this.composer.addPass(this.bloom);
   this.composer.addPass(new OutputPass());
  }
@@ -316,15 +316,15 @@ export class CaveWorld extends OceanWorld {
    const torch=torchModulation(this.position.y,this.pitch);
    const mid=torchModulation(3,0);
    const iScale=torch.intensity/mid.intensity,dScale=torch.distance/mid.distance,bScale=torch.beamOpacity/mid.beamOpacity;
-   this.torchLight.intensity=260*iScale;this.torchLight.distance=36*dScale;this.torchLight.decay=1.1+(torch.decay-mid.decay);
+   this.torchLight.intensity=160*iScale;this.torchLight.distance=32*dScale;this.torchLight.decay=1.2+(torch.decay-mid.decay);
    this.torchLight.color.setRGB(torch.r,torch.g,torch.b);
-   this.torchFill.intensity=7*iScale;this.torchFill.color.setRGB(torch.r,torch.g,torch.b);
-   const beamMat=this.beam.material as THREE.ShaderMaterial;beamMat.uniforms.uOpacity.value=.11*bScale;beamMat.uniforms.uColor.value.setRGB(torch.r,torch.g,torch.b);
-   const haloMat=this.beamHalo.material as THREE.ShaderMaterial;haloMat.uniforms.uOpacity.value=.045*bScale;haloMat.uniforms.uColor.value.setRGB(torch.r*.85,torch.g*.9,torch.b);
+   this.torchFill.intensity=4*iScale;this.torchFill.color.setRGB(torch.r,torch.g,torch.b);
+   const beamMat=this.beam.material as THREE.ShaderMaterial;beamMat.uniforms.uOpacity.value=.09*bScale;beamMat.uniforms.uColor.value.setRGB(torch.r,torch.g,torch.b);
+   const haloMat=this.beamHalo.material as THREE.ShaderMaterial;haloMat.uniforms.uOpacity.value=.035*bScale;haloMat.uniforms.uColor.value.setRGB(torch.r*.85,torch.g*.9,torch.b);
    (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=torch.particle;
   }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
-  // Bloom lifts shaft cores and torch hotspot without washing the HUD
-  this.bloom.strength=torchOn?.48:.36;
+  // Soft bloom on shafts only — keep torch hotspots from blowing out
+  this.bloom.strength=torchOn?.2:.14;
   const p=this.mission.predator;this.guardian.group.position.copy(p.position);const diff=Math.atan2(Math.sin(p.heading-this.guardian.group.rotation.y),Math.cos(p.heading-this.guardian.group.rotation.y));this.guardian.group.rotation.y+=diff*Math.min(1,dt*5);
   this.guardian.fins.forEach(f=>f.rotation.x=Math.sin(this.time*2+(f.userData.phase||0))*.25*(f.userData.side||1));this.guardian.tail.rotation.y=Math.sin(this.time*3)*.22;
   this.syncPickups();this.decoyMesh.visible=!!this.mission.decoy;if(this.mission.decoy)this.decoyMesh.position.copy(this.mission.decoy.position);
