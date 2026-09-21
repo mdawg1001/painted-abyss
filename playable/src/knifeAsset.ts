@@ -1,8 +1,9 @@
 /**
  * Diving-knife visual (Poly Haven “Fish Knife”).
  *
- * Torch remains the main camera-held FPS prop. This mesh is only a brief stab
- * cue when the inventory knife is selected — never a torch replacement.
+ * When the inventory knife is selected, this mesh is the camera-held FPS prop
+ * (torch body meshes hide; torch SpotLight can stay on). Otherwise it stays
+ * hidden and the torch returns as the held object.
  *
  * Runtime files live in `public/assets/knife/` so glTF relative URIs resolve.
  */
@@ -12,6 +13,13 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 /** Public path — must match files under `playable/public/assets/knife/`. */
 export const KNIFE_ASSET_URL='/assets/knife/fish_knife_1k.gltf';
 export const KNIFE_THUMB_URL='/assets/knife/thumb.png';
+
+/** Camera-local FPS hold — lower-right, roughly where the torch sits. */
+export const KNIFE_HOLD_POS={x:.38,y:-.42,z:-.58} as const;
+export const KNIFE_HOLD_ROT={x:.32,y:-.55,z:.22} as const;
+export const KNIFE_HOLD_SCALE=.88;
+/** Thrust depth during a stab click (more negative = farther along look). */
+export const KNIFE_STAB_Z=-.78;
 
 const stubMat=()=>new THREE.MeshStandardMaterial({
  color:0xb8c0c4,metalness:.55,roughness:.35,emissive:0x1a2228,emissiveIntensity:.15,
@@ -31,17 +39,16 @@ export function createKnifeStub():THREE.Group{
  return g;
 }
 
-/** Camera-local rest pose — secondary to the torch on the opposite side. */
+/** Camera-local rest pose for the held diving knife. */
 export function poseKnife(g:THREE.Group){
- // Asset is ~0.22 m long in Blender units; scale to a small hand cue.
- g.scale.setScalar(.55);
- g.position.set(-.32,-.38,-.55);
- g.rotation.set(.25,.85,.15);
+ g.scale.setScalar(KNIFE_HOLD_SCALE);
+ g.position.set(KNIFE_HOLD_POS.x,KNIFE_HOLD_POS.y,KNIFE_HOLD_POS.z);
+ g.rotation.set(KNIFE_HOLD_ROT.x,KNIFE_HOLD_ROT.y,KNIFE_HOLD_ROT.z);
 }
 
 /**
  * Load Poly Haven fish_knife (or stub on failure).
- * Parent under the camera; keep `visible=false` until a stab flash.
+ * Parent under the camera; keep `visible=false` until the knife slot is selected.
  */
 export async function loadKnifeVisual():Promise<THREE.Group>{
  try{
