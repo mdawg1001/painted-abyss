@@ -20,7 +20,7 @@
   ],
   "materials": [
     {
-      "alphaMode": "BLEND",
+      "alphaMode": "OPAQUE",
       "name": "plastic_crate_02",
       "normalTexture": {
         "index": 0
@@ -39,7 +39,8 @@
         "metallicRoughnessTexture": {
           "index": 2
         }
-      }
+      },
+      "doubleSided": true
     }
   ],
   "meshes": [
@@ -101,7 +102,7 @@
       ],
       "min": [
         -0.2527506947517395,
-        -0.00001595914363861084,
+        -1.595914363861084e-05,
         -0.20275069773197174
       ],
       "type": "VEC3"
