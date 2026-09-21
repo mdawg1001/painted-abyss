@@ -7,8 +7,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { FLOOR_Y } from './simulation';
 
 export const LPG_TANK_URL='/assets/lpg_tank/small_lpg_tank_1k.gltf';
-/** World placement — west sand shelf before the central chamber. */
-export const LPG_TANK_POS={x:-14,y:FLOOR_Y,z:-38};
+/** World placement — west edge of the central cavern (open floor cell). */
+export const LPG_TANK_POS={x:-12,y:FLOOR_Y,z:-44};
 export const LPG_TANK_YAW=.7;
 /** Target height after normalize (~camping cylinder). */
 export const LPG_TANK_HEIGHT=.72;

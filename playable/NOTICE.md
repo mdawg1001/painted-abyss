@@ -26,7 +26,7 @@
 - Author: Ulan Cabanilla
 - License: CC0 1.0 Universal (public domain dedication)
 - Files: `public/assets/lpg_tank/` (1k glTF + textures) and notes under `src/assets/lpg_tank/`
-- Floor scenery on the west sand shelf before the central chamber.
+- Floor scenery on the west edge of the central cavern (open floor).
 
 ## Blood particles (Kenney Particle Pack)
 - Source: https://kenney.nl/assets/particle-pack

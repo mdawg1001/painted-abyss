@@ -6,7 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {
  LPG_TANK_URL,LPG_TANK_POS,LPG_TANK_HEIGHT,createLpgTankStub,normalizeLpgToFloor,
 } from '../src/lpgTankAsset.ts';
-import {FLOOR_Y} from '../src/simulation.ts';
+import {FLOOR_Y,isOpen} from '../src/simulation.ts';
 import * as THREE from 'three';
 
 const dir=path.join(path.dirname(fileURLToPath(import.meta.url)),'../public/assets/lpg_tank');
@@ -19,10 +19,11 @@ test('LPG tank public assets exist (1k glTF + maps)',()=>{
  ])assert.ok(statSync(path.join(dir,f)).isFile(),f);
 });
 
-test('LPG tank sits on the cave floor west of the central approach',()=>{
+test('LPG tank sits on an open cave floor cell west of the central approach',()=>{
  assert.equal(LPG_TANK_POS.y,FLOOR_Y);
- assert.ok(LPG_TANK_POS.x<-8);
- assert.ok(LPG_TANK_POS.z<-20&&LPG_TANK_POS.z>-60);
+ assert.ok(LPG_TANK_POS.x<=-8);
+ assert.ok(LPG_TANK_POS.z<=-40&&LPG_TANK_POS.z>=-56);
+ assert.equal(isOpen(LPG_TANK_POS.x,LPG_TANK_POS.z),true);
 });
 
 test('stub tank has height near the authored target',()=>{
