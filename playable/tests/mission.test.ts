@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,updateBuoyancy,stepSwimVelocity,terminalSwimSpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,PREDATOR_HP_MAX,PREDATOR_BREAK_HP} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,applySiltToTorch,stepSilt,siltAt,createSiltPlume,siltLoad,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,updateBuoyancy,stepSwimVelocity,terminalSwimSpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,PREDATOR_HP_MAX,PREDATOR_BREAK_HP} from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{for(let i=0;i<seconds*60;i++)m.update(1/60);};
 test('hydrostatic depth and ata share one surface plane',()=>{
  assert.equal(hydrostaticDepth(SURFACE_Y),0);
@@ -43,6 +43,22 @@ test('BCD buoyancy rises on Space input and trims toward neutral when released',
  assert.ok(Math.abs(v.x)<1e-9&&Math.abs(v.z)<1e-9);
  assert.ok(SWIM_BUOYANCY_ACCEL>0);
  const m=new Mission(true);assert.equal(m.buoyancy,0);
+});
+test('floor sprint kicks a two-phase silt plume; mid-water settling clears coarse first',()=>{
+ const plume=createSiltPlume({...START,y:FLOOR_Y+.2});
+ for(let i=0;i<90;i++)stepSilt(plume,{x:0,y:FLOOR_Y+.15,z:-12},{x:0,y:-.4,z:-3.2},true,1/60);
+ assert.ok(siltLoad(plume)>.55,'bed shear must raise suspended load');
+ assert.ok(plume.coarse>plume.fine*.4);
+ assert.ok(siltAt(plume,{x:0,y:FLOOR_Y+.2,z:-12})>siltAt(plume,{x:0,y:SURFACE_Y-0.2,z:-12}),'density falls with height');
+ const beforeFine=plume.fine,beforeCoarse=plume.coarse;
+ for(let i=0;i<180;i++)stepSilt(plume,{x:0,y:4,z:-12},{x:0,y:.6,z:0},false,1/60);
+ assert.ok(plume.coarse<beforeCoarse*.35,'coarse settles faster once you leave the bed');
+ assert.ok(plume.fine>beforeFine*.25,'fine clay hangs longer');
+ const clear=torchModulation(3,0);
+ const stormed=applySiltToTorch(clear,.9);
+ assert.ok(stormed.distance<clear.distance*.5);
+ assert.ok(stormed.beamOpacity>clear.beamOpacity*2);
+ assert.ok(stormed.betaBackscatter.r>clear.betaBackscatter.r*2);
 });
 test('torch modulation dims and muddies with depth and floor aim',()=>{
  const shallowUp=torchModulation(6.5,-1.2);
