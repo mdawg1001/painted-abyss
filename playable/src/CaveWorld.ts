@@ -180,7 +180,7 @@ export class CaveWorld extends OceanWorld {
   const vol=new THREE.Mesh(
    new THREE.SphereGeometry(1,20,14),
    new THREE.MeshBasicMaterial({
-    color:0x8b7355,transparent:true,opacity:0,depthWrite:false,depthTest:true,
+    color:0xa89078,transparent:true,opacity:0,depthWrite:false,depthTest:false,
     blending:THREE.NormalBlending,side:THREE.DoubleSide,
    }),
   );
@@ -768,14 +768,17 @@ export class CaveWorld extends OceanWorld {
 
    if(m.outcome!=='playing')this.pause();
   }
-  // Atmosphere: cyan-teal cave murk. Silt is local particles — do NOT wash the world gray/cyan.
+  // Atmosphere: cyan-teal cave murk. In-plume whiteout goes muddy taupe (chocolate milk), never gray/cyan wash.
   const deep=THREE.MathUtils.smoothstep(-this.position.z,35,100);
   const nearExit=1-THREE.MathUtils.smoothstep(distance(this.position,EXIT),4,22);
   const siltFog=this.playing?siltAt(this.mission.silt,this.mission.position):0;
   const fog=this.scene.fog as THREE.FogExp2;
   fog.color.set(0x0c3540).lerp(new THREE.Color(0x062430),deep).lerp(new THREE.Color(0x1a5a62),nearExit*.65);
-  // Tiny residual density only; the storm Points carry the chocolate-milk look.
-  fog.density=.032+.022*deep-.014*nearExit+siltFog*.012;
+  if(siltFog>.04){
+   // Local optical load only — butterscotch/taupe, not #b8c8d0 gray.
+   fog.color.lerp(new THREE.Color(0x6b5344),Math.min(.62,siltFog*.72));
+  }
+  fog.density=.032+.022*deep-.014*nearExit+siltFog*.038;
   (this.scene.background as THREE.Color).copy(fog.color);
   this.uniforms.uTime.value=this.time;
   const torchOn=this.mission.torch;
