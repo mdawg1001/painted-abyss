@@ -4,7 +4,7 @@ Measured from `playable/src/CaveWorld.ts` locomotion and `playable/src/simulatio
 
 ## Verdict
 
-**Painted Abyss First Dive is gameplay-first survival pacing, not a scuba physics simulator.** Swim speed and air are heavily compressed; buoyancy, ambient-pressure gas use, and unequal vertical control are omitted. Drag coasting is in a plausible order of magnitude. Predator chase timing is deliberately tuned so sprint escapes and cruise does not.
+**Painted Abyss First Dive is gameplay-first survival pacing, not a scuba physics simulator.** Swim speed and air are heavily compressed for a short mission fuse; gas burn does scale with ATA and effort. Drag coasting is in a plausible order of magnitude. Predator chase timing is deliberately tuned so sprint escapes and cruise does not.
 
 ## What the game actually does
 
@@ -32,10 +32,10 @@ Start → relic along −Z is **100 m**. At cruise that is **~36 s** of straight
 |---|---|---|
 | Relaxed fin cruise | **0.25–0.5 m/s** (~0.5–1 kn; air-conserving) | Game cruise is **~6–11×** faster |
 | Strong recreational kick | **0.8–1.2 m/s** | Game sprint is **~4×** the top of this band |
-| Elite finswim / monofin burst | **~2–3 m/s** (often surface) | Game sprint **4.8** still above competitive burst |
-| AL80 bottom time ~5–10 m | **~40–60 min** moderate SAC | Game **4 min** ≈ **7–15%** of a real tank |
-| Gas vs depth | Use scales ~with ATA (`1 + depth/10`) | **No** pressure model |
-| Vertical control | Buoyancy + BCD + slow finning | Free **6DOF flight**; up = forward speed |
+| Elite finswim / monofin burst | **~2–3 m/s** (often surface) | Game sprint **~3.5** sits near competitive burst |
+| AL80 bottom time ~5–10 m | **~40–60 min** moderate SAC | Game **4 min** surface ≈ **7–15%** of a real tank |
+| Gas vs depth | Use scales ~with ATA (`1 + depth/10`) | **Yes** — SAC × `ata(y)` (tank still time-compressed) |
+| Vertical control | Buoyancy + BCD + slow finning | BCD state + look kick; not free 6DOF flight |
 | Stop kicking | Short coast under quadratic drag | **~0.7 m** coast — order-of-magnitude OK, very responsive |
 | Cave depth here | Flooded entrance-scale chamber | **~6.5 m** band is shallow-cave plausible |
 
@@ -56,20 +56,20 @@ Air is free-gas **litres** (`AIR_TANK_LITRES = 72`, ≈ 4 minutes of surface cru
 ### Depth & light — shallow set dressing + hydrostatic gauge
 The collision column is only ~6.5 m. Torch modulation dims toward the floor and warms the beam using the same `hydrostaticDepth` model as the HUD; murk remains readability art, not an optical attenuation law. Fog still shifts with −Z progress into the cavern for atmosphere, separate from hydrostatic depth.
 
-The on-screen **DEPTH** readout is now `round(SURFACE_Y − y)` (**~4 m** at start, **0 m** at the ceiling, **~6 m** at the floor). Cavern −Z no longer inflates the gauge. `ata(y)` is exported for upcoming gas/buoyancy work; air consumption is still the flat 4-minute timer.
+The on-screen **DEPTH** readout is `round(SURFACE_Y − y)` (**~4 m** at start, **0 m** at the ceiling, **~6 m** at the floor). Cavern −Z no longer inflates the gauge. `ata(y)` drives SAC air burn; the HUD AIR clock shows surface-equivalent seconds remaining.
 
 ### Browser spot-check
-Manual play should show DEPTH tracking swim height only (not tunnel progress). AIR still starts at **04:00**. Sprint fin drain remains harness-covered (~5.4 s).
+Manual play should show DEPTH tracking swim height only (not tunnel progress). AIR starts at **04:00** surface-equivalent and drains faster when deep or sprinting. Sprint fin drain remains harness-covered (~5.4 s).
 
 ### Predator pacing — designed, not zoological
-Chase **3.4 m/s** sits between cruise and sprint so the player must burn fin energy or break line of sight. Real marine-reptile estimates vary widely; the important finding is the **relative** band, which is intentional.
+Chase **2.7 m/s** sits between cruise and sprint so the player must burn fin energy or break line of sight. Real marine-reptile estimates vary widely; the important finding is the **relative** band, which is intentional.
 
 ## Method
 
-1. Constants read from `CaveWorld` animate (`2.8` / `4.8`, `exp(−4·dt)`) and `Mission.update` (air, stamina, predator speeds).
-2. Discrete 60 Hz integration of the same lerp for accel / coast.
-3. Live `Mission` ticks for stamina empty/regen and air independence.
-4. `moveBody` equality check for vertical vs horizontal thrust.
+1. Constants read from `simulation.ts` (thrust/drag, SAC/ATA, BCD) and `CaveWorld` animate integration.
+2. Discrete 60 Hz integration of force swim for terminal speed / coast.
+3. Live `Mission` ticks for stamina and SAC air (deep sprint vs shallow cruise).
+4. `updateBuoyancy` / `stepSwimVelocity` checks for vertical vs horizontal control.
 5. Automated test: `npm test -- tests/physics-reality.test.ts` (also runs in full `npm test`).
 
 ## Limits
