@@ -59,7 +59,8 @@ void main(){
   // Cylinder UV: y≈1 at top (ceiling aperture), y≈0 at floor.
   float along=1.-vUv.y;
   float scatter=exp(-uBeta*along*8.5);
-  float aperture=smoothstep(.0,.14,vUv.y);
+  // Hot under the opening; soft residual glow toward the floor.
+  float aperture=mix(.22,1.,pow(clamp(vUv.y,0.,1.),.55));
   // Soft tube wall — feathered radial, not a hard lit shell.
   float radial=pow(max(0.,sin(vUv.x*3.14159)),1.05);
   float core=pow(max(0.,1.-abs(vUv.x-.5)*2.15),2.6)*.7;
