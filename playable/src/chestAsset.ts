@@ -45,7 +45,7 @@ export const CHEST_META:Record<ChestKind,{
 const BASE='/assets/chests';
 
 /** Brighten PBR mats so crates read under cave murk without a strong env map. */
-export function litChestMaterials(root:THREE.Object3D){
+export function litChestMaterials(root:THREE.Object3D,kind?:ChestKind){
  root.traverse(o=>{
   if(!(o instanceof THREE.Mesh))return;
   o.castShadow=true;o.receiveShadow=true;o.frustumCulled=false;
@@ -53,9 +53,16 @@ export function litChestMaterials(root:THREE.Object3D){
   for(const m of mats){
    if(!m||!('roughness' in m))continue;
    const sm=m as THREE.MeshStandardMaterial;
+   // Poly Haven plastic_crate_02 ships alphaMode=BLEND — under murk that reads as
+   // missing walls. Force opaque + double-sided so vented sides stay solid.
+   sm.transparent=false;
+   sm.opacity=1;
+   sm.depthWrite=true;
+   sm.alphaTest=0;
+   sm.side=THREE.DoubleSide;
    sm.envMapIntensity=.35;
-   sm.emissive=new THREE.Color(0x2a3840);
-   sm.emissiveIntensity=.38;
+   sm.emissive=new THREE.Color(kind==='plastic'?0x3a2810:0x2a3840);
+   sm.emissiveIntensity=kind==='plastic'?.22:.38;
    sm.needsUpdate=true;
   }
  });
@@ -95,7 +102,7 @@ export function createChestStub(kind:ChestKind):THREE.Group{
   lid.position.y=meta.targetHeight*.85;
   g.add(lid);
  }
- litChestMaterials(g);
+ litChestMaterials(g,kind);
  return g;
 }
 
@@ -133,8 +140,8 @@ function pickLid(kind:ChestKind,scene:THREE.Object3D):THREE.Object3D|null{
 
 function openPose(kind:ChestKind,lid:THREE.Object3D|null):{closed:THREE.Euler;open:THREE.Euler}{
  if(kind==='plastic'){
-  // Tip onto its side — no hinged lid in the asset.
-  return{closed:new THREE.Euler(0,0,0),open:new THREE.Euler(0,0,Math.PI/2*.92)};
+  // Stay upright — tip looked like broken mesh; open = slight hop + yaw wiggle only.
+  return{closed:new THREE.Euler(0,0,0),open:new THREE.Euler(0,.35,0)};
  }
  if(kind==='suitcase'){
   return{closed:new THREE.Euler().copy(lid?.rotation??new THREE.Euler()),open:new THREE.Euler(-1.15,lid?.rotation.y??0,lid?.rotation.z??0)};
@@ -168,7 +175,7 @@ export async function upgradeChestVisual(visual:ChestVisual):Promise<boolean>{
   loader.setPath(`${BASE}/${meta.folder}/`);
   const gltf=await loader.loadAsync(meta.gltf);
   const scene=gltf.scene;
-  litChestMaterials(scene);
+  litChestMaterials(scene,visual.kind);
   normalizeToFloor(scene,meta.targetHeight);
   while(visual.pivot.children.length)visual.pivot.remove(visual.pivot.children[0]);
   visual.pivot.add(scene);
