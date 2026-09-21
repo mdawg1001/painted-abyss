@@ -151,6 +151,7 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 }
 .meter i{display:block;height:100%;border-radius:0;transition:width .12s linear}
 .meter.air i{background:#3de8ff;box-shadow:0 0 6px rgba(61,232,255,.55)}
+.meter.air.bailout i{background:#7ee0ff;box-shadow:0 0 6px rgba(126,224,255,.55)}
 .meter.suit i{background:#4eb8d0;box-shadow:0 0 5px rgba(78,184,208,.45)}
 .meter.fins i{background:#e8b52e;box-shadow:0 0 5px rgba(232,181,46,.5)}
 

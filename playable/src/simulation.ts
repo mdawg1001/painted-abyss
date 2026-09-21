@@ -15,19 +15,42 @@ export function hydrostaticDepth(y:number){return Math.max(0,SURFACE_Y-y);}
 /** Ambient pressure in atmospheres (≈ 1 + depth_m/10). */
 export function ata(y:number){return 1+hydrostaticDepth(y)/10;}
 
+/** Surface-equivalent main tank (seconds at 1 ATA, cruise effort). High-stakes: ~90 s surface. */
+export const AIR_MAIN_MAX=90;
+/** Separate pony / bailout pool (~⅓ of main). */
+export const AIR_BAILOUT_MAX=30;
+/** Base drain: 1 surface-second of gas per real second at 1 ATA, cruise. */
+export const AIR_BASE_DRAIN=1;
+export const AIR_EFFORT_CRUISE=1;
+/** Sprint RMV — hard kick burns gas fast so Shift is a real choice. */
+export const AIR_EFFORT_SPRINT=2.2;
+/** Bite / panic RMV spike. */
+export const AIR_EFFORT_PANIC=2.9;
+/** Seconds of elevated RMV after a guardian bite. */
+export const AIR_PANIC_SECONDS=3;
+export function gasEffort(sprinting=false,panic=false){
+ if(panic)return AIR_EFFORT_PANIC;
+ if(sprinting)return AIR_EFFORT_SPRINT;
+ return AIR_EFFORT_CRUISE;
+}
+/** Surface-equivalent gas seconds consumed per real second (DAN: RMV × ATA × effort). */
+export function gasDrainRate(depthY:number,sprinting=false,panic=false){
+ return AIR_BASE_DRAIN*ata(depthY)*gasEffort(sprinting,panic);
+}
+
 /** Kick thrust (m/s²) — terminal speed ≈ sqrt(thrust / SWIM_DRAG_K). */
-export const SWIM_THRUST_CRUISE=1.0;
-export const SWIM_THRUST_SPRINT=2.2;
-/** Quadratic drag coefficient; cruise ≈0.75 m/s, sprint ≈1.11 m/s with thrusts above. */
+export const SWIM_THRUST_CRUISE=8.7;
+export const SWIM_THRUST_SPRINT=22.05;
+/** Quadratic drag coefficient; cruise ≈2.2 m/s, sprint ≈3.5 m/s with thrusts above. */
 export const SWIM_DRAG_K=1.8;
 /** Vertical accel at full BCD (|buoyancy| = 1). */
-export const SWIM_BUOYANCY_ACCEL=1.5;
+export const SWIM_BUOYANCY_ACCEL=4.1;
 /** How fast Space/Q fills buoyancy toward ±1 (1/s exponential approach). */
 export const BCD_FILL_RATE=1.35;
 /** Hands-off return of buoyancy toward neutral (1/s). */
 export const BCD_TRIM_RATE=.55;
 /** Predator band sits between player cruise and sprint. */
-export const PREDATOR_SPEED={chase:.92,patrol:.48,alert:.2} as const;
+export const PREDATOR_SPEED={chase:2.7,patrol:1.3,alert:.5} as const;
 
 export type Vec3={x:number;y:number;z:number};
 /** Space/Q BCD input (−1..+1). Idle trims toward neutral. */
@@ -62,7 +85,7 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  stone:{name:'Limestone',short:'Stone',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  wood:{name:'Driftwood',short:'Wood',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  flare:{name:'Signal flare',short:'Flare',description:'R · Deploy a 12-second distraction at your position.',hint:'R use · consumed'},
- air:{name:'Air reserve',short:'Air',description:'R · Restore up to 60 seconds of air (consumed).',hint:'R use · consumed'},
+ air:{name:'Pony bottle',short:'Pony',description:'R · Arm a separate bailout cylinder (~30 s at surface). Drains after the main tank.',hint:'R arm bailout · consumed'},
  bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
 };
@@ -100,28 +123,97 @@ export const LOOK_SENSITIVITY=.003;
 export const lookDelta=(yaw:number,pitch:number,dx:number,dy:number)=>({yaw:yaw-dx*LOOK_SENSITIVITY,pitch:Math.max(-1.4,Math.min(1.4,pitch-dy*LOOK_SENSITIVITY))});
 /** Frame-rate-independent multiplier for unlocked continuous yaw (paired with lookDelta). */
 export const FREE_LOOK_RATE=1.45;
-export type TorchModulation={intensity:number;distance:number;decay:number;beamOpacity:number;particle:number;r:number;g:number;b:number};
+export type Rgb={r:number;g:number;b:number};
+export type TorchModulation={
+ intensity:number;distance:number;decay:number;beamOpacity:number;particle:number;
+ /** Direct-path lamp tint (SpotLight / wall wash). */
+ r:number;g:number;b:number;
+ /** Backscatter haze tint (volumetric beam). Teal-biased vs direct. */
+ beamR:number;beamG:number;beamB:number;
+ /** Beer–Lambert coefficients (1/m). Direct ≠ backscatter (Sea-thru). */
+ betaDirect:Rgb;betaBackscatter:Rgb;
+};
+/** Mid-swim, level-look render baseline (soft SpotLight · 0.1.17). */
+export const TORCH_BASELINE={intensity:85,distance:34,decay:1.15,beamOpacity:.09} as const;
 /**
- * Underwater torch response from swim height and look pitch (Three.js YXZ: +pitch looks down).
- * Deeper / floor-aimed → dimmer, shorter, muddier. Shallower / ceiling-aimed → brighter, cooler.
- * Clarity uses hydrostatic depth so torch, HUD, and future gas share one depth model.
+ * Coastal-cave water betas (1/m), clear → murky. Red dies first on the direct path;
+ * backscatter leans cyan-teal (Sea-thru β^D ≠ β^B; Jerlov coastal murk order of magnitude).
  */
-export function torchModulation(depthY:number,pitch:number):TorchModulation{
+const BETA_CLEAR_D:Rgb={r:.18,g:.11,b:.08};
+const BETA_MURK_D:Rgb={r:.62,g:.38,b:.28};
+const BETA_CLEAR_B:Rgb={r:.06,g:.08,b:.1};
+const BETA_MURK_B:Rgb={r:.2,g:.3,b:.4};
+const lerp=(a:number,b:number,t:number)=>a+(b-a)*t;
+const lerpRgb=(a:Rgb,b:Rgb,t:number):Rgb=>({r:lerp(a.r,b.r,t),g:lerp(a.g,b.g,t),b:lerp(a.b,b.b,t)});
+const meanRgb=(c:Rgb)=>(c.r+c.g+c.b)/3;
+/** Effective murk 0..1 from swim height and look pitch (Three.js YXZ: +pitch looks down). */
+export function torchMurk(depthY:number,pitch:number){
  const column=SURFACE_Y-FLOOR_Y;
  const clarity=Math.max(0,Math.min(1,1-hydrostaticDepth(depthY)/column));
  const aimUp=Math.max(-1,Math.min(1,-pitch/1.4));
- const murk=1-clarity;
  const floorBias=Math.max(0,-aimUp);
  const ceilingBias=Math.max(0,aimUp);
- const intensity=(48+clarity*62)*(1+aimUp*.18);
- const distance=(15+clarity*19)*(1+aimUp*.12-floorBias*.08);
- const decay=1.05+murk*.5+floorBias*.18-ceilingBias*.06;
- const beamOpacity=(.006+clarity*.022)*(1+aimUp*.28);
- const particle=.35+clarity*.55+aimUp*.12;
- const r=(.55+clarity*.3-floorBias*.12+ceilingBias*.05);
- const g=(.62+clarity*.28-floorBias*.05);
- const b=(.48+clarity*.42-floorBias*.18+ceilingBias*.12);
- return{intensity,distance,decay,beamOpacity:Math.max(.004,beamOpacity),particle:Math.max(0,Math.min(1,particle)),r,g,b};
+ const murkEff=Math.max(0,Math.min(1,(1-clarity)+floorBias*.22-ceilingBias*.12));
+ return{clarity,aimUp,floorBias,ceilingBias,murkEff};
+}
+/** Direct + backscatter betas for the current murk (shared by SpotLight and volume beam). */
+export function torchBetas(murkEff:number){
+ return{
+  direct:lerpRgb(BETA_CLEAR_D,BETA_MURK_D,murkEff),
+  backscatter:lerpRgb(BETA_CLEAR_B,BETA_MURK_B,murkEff),
+ };
+}
+/** Range (m) where direct transmission drops to ~5%. */
+export function beerLambertRange(beta:Rgb,transmission=.05){
+ return -Math.log(transmission)/Math.max(1e-4,meanRgb(beta));
+}
+/** Channel transmission through path length z (Beer–Lambert). */
+export function beerLambertTransmit(beta:Rgb,z:number):Rgb{
+ return{r:Math.exp(-beta.r*z),g:Math.exp(-beta.g*z),b:Math.exp(-beta.b*z)};
+}
+/**
+ * Shared underwater torch response: one murk model drives SpotLight (direct) and
+ * volumetric beam (backscatter). Outputs are absolute render params calibrated to
+ * TORCH_BASELINE at mid swim / level look (y=3, pitch=0).
+ */
+export function torchModulation(depthY:number,pitch:number):TorchModulation{
+ const {clarity,aimUp,floorBias,ceilingBias,murkEff}=torchMurk(depthY,pitch);
+ const {direct:betaDirect,backscatter:betaBackscatter}=torchBetas(murkEff);
+ const mid=torchMurk(3,0);
+ const midBetas=torchBetas(mid.murkEff);
+ const rangeM=beerLambertRange(betaDirect)*(1+aimUp*.1-floorBias*.06);
+ const midRange=beerLambertRange(midBetas.direct);
+ // Cap clear-water stretch so cave chambers stay dive-torch scale (~tens of metres).
+ const distance=Math.min(52,TORCH_BASELINE.distance*(rangeM/midRange));
+ const near=beerLambertTransmit(betaDirect,.8);
+ const midNear=beerLambertTransmit(midBetas.direct,.8);
+ const nearEnergy=(near.r+near.g+near.b)/3;
+ const midEnergy=(midNear.r+midNear.g+midNear.b)/3;
+ // Floor-aim / murk also pulls peak intensity down (shared with β^D); mid-normalized.
+ const murkDim=(1-murkEff*.18)/(1-mid.murkEff*.18);
+ const intensity=TORCH_BASELINE.intensity*(nearEnergy/midEnergy)*(1+aimUp*.16)*murkDim;
+ const decay=TORCH_BASELINE.decay+.55*(meanRgb(betaDirect)-meanRgb(midBetas.direct));
+ const tintPath=Math.min(distance*.35,8);
+ const tint=beerLambertTransmit(betaDirect,tintPath);
+ const tintMax=Math.max(tint.r,tint.g,tint.b,1e-4);
+ // Relative spectral transmit, then murk pulls toward muddy amber (keeps deep.b < shallow.b).
+ let r=tint.r/tintMax,g=tint.g/tintMax,b=tint.b/tintMax;
+ r=lerp(r,.62,murkEff*.5);g=lerp(g,.55,murkEff*.35);b=lerp(b,.4,murkEff*.55);
+ r=Math.max(0,Math.min(1,r));g=Math.max(0,Math.min(1,g));b=Math.max(0,Math.min(1,b));
+ const beamLen=Math.min(12,distance*.55);
+ const midBeamLen=Math.min(12,TORCH_BASELINE.distance*.55);
+ const scatter=1-Math.exp(-meanRgb(betaBackscatter)*beamLen);
+ const midScatter=1-Math.exp(-meanRgb(midBetas.backscatter)*midBeamLen);
+ const clarityFactor=.72+clarity*.45;
+ const midClarityFactor=.72+mid.clarity*.45;
+ const beamOpacity=Math.max(.004,TORCH_BASELINE.beamOpacity*(scatter/Math.max(1e-4,midScatter))*(clarityFactor/midClarityFactor)*(1+aimUp*.22));
+ const haze=beerLambertTransmit(betaBackscatter,beamLen*.4);
+ const hazeMax=Math.max(haze.r,haze.g,haze.b,1e-4);
+ const beamR=Math.max(0,Math.min(1,.42+.35*(1-haze.r/hazeMax)+ceilingBias*.04));
+ const beamG=Math.max(0,Math.min(1,.55+.3*(1-haze.g/hazeMax)));
+ const beamB=Math.max(0,Math.min(1,.48+.42*(haze.b/hazeMax)+ceilingBias*.08-floorBias*.12));
+ const particle=Math.max(0,Math.min(1,.35+clarity*.55+aimUp*.12));
+ return{intensity,distance,decay,beamOpacity,particle,r,g,b,beamR,beamG,beamB,betaDirect,betaBackscatter};
 }
 /**
  * Soft look-stick yaw when pointer lock is unavailable.
@@ -147,9 +239,11 @@ export function writeInventoryTipsSeen(){
  try{globalThis.localStorage?.setItem(INVENTORY_TIPS_KEY,'1');}catch{/* private mode */}
 }
 export class Mission {
- position={...START};health=100;air=240;elapsed=0;stamina=100;torch=true;
+ position={...START};health=100;air=AIR_MAIN_MAX;bailout=0;elapsed=0;stamina=100;torch=true;
  /** BCD trim −1 (sink) .. 0 (neutral) .. +1 (float). Driven by Space/Q, not kick speed. */
  buoyancy=0;
+ /** Elevated gas effort until this mission elapsed time (bite / panic). */
+ gasPanicUntil=0;
  inventory:(Item|null)[]=['stone','wood','flare','air','bandage'];selected=0;
  pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},{id:2,item:'flare',position:{x:-20,y:2,z:-56}}];nextId=3;
  pending:number|null=null;outcome:'playing'|'won'|'lost'='playing';reason='';
@@ -200,8 +294,8 @@ export class Mission {
   const item=this.inventory[this.selected];
   if(!item){this.pulse('blocked');return;}
   if(item==='air'){
-   if(this.air>=240){this.pulse('blocked');return;}
-   this.air=Math.min(240,this.air+60);this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
+   if(this.bailout>=AIR_BAILOUT_MAX){this.pulse('blocked');return;}
+   this.bailout=AIR_BAILOUT_MAX;this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
   }
   if(item==='bandage'){
    if(this.health>=100){this.pulse('blocked');return;}
@@ -214,8 +308,13 @@ export class Mission {
   this.pulse('blocked');
  }
  update(dt:number,sprinting=false){
-  if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;this.air=Math.max(0,this.air-dt);this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?-18:17)*dt));
-  if(this.air<=0){this.outcome='lost';this.reason='Your air ran out. Use the reserve earlier or take a shorter route.';return;}
+  if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;
+  const panic=this.elapsed<this.gasPanicUntil;
+  let need=gasDrainRate(this.position.y,sprinting,panic)*dt;
+  if(this.air>=need){this.air-=need;need=0;}
+  else{need-=this.air;this.air=0;this.bailout=Math.max(0,this.bailout-need);need=0;}
+  this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?-18:17)*dt));
+  if(this.air<=0&&this.bailout<=0){this.outcome='lost';this.reason='Your air ran out. Arm the pony earlier or climb and calm your kick.';return;}
   if(this.pending!==null&&!this.pickups.some(p=>p.id===this.pending&&distance(p.position,this.position)<3.2))this.pending=null;
   const p=this.predator;const d=distance(p.position,this.position);const canSee=visible(p.position,this.position);
   const sense=canSee&&(d<4.5||d<(this.torch?16:sprinting?13:8));
@@ -239,6 +338,10 @@ export class Mission {
   const dx=target.x-p.position.x,dz=target.z-p.position.z,len=Math.hypot(dx,dz),speed=p.state==='chase'?PREDATOR_SPEED.chase:p.state==='alert'?PREDATOR_SPEED.alert:PREDATOR_SPEED.patrol;
   if(len>.05){p.heading=Math.atan2(-dz,dx);moveBody(p.position,dx/len*Math.min(len,speed*dt),0,dz/len*Math.min(len,speed*dt),1.3);}
   p.position.y+=((p.state==='chase'?Math.max(1.2,Math.min(6.2,this.position.y)):3)-p.position.y)*Math.min(1,dt*2);
-  if(p.state==='chase'&&!safe&&canSee&&distance(p.position,this.position)<3.2&&p.bite<=0){this.health=Math.max(0,this.health-25);p.bite=1.7;this.say('Suit breached! Sprint to cover or deploy a flare.');if(this.health<=0){this.outcome='lost';this.reason='The guardian caught you. Break sight around the central pillar; the narrow exit passage is safe.';}}
+  if(p.state==='chase'&&!safe&&canSee&&distance(p.position,this.position)<3.2&&p.bite<=0){
+   this.health=Math.max(0,this.health-25);p.bite=1.7;this.gasPanicUntil=this.elapsed+AIR_PANIC_SECONDS;
+   this.say('Suit breached! Sprint to cover or deploy a flare.');
+   if(this.health<=0){this.outcome='lost';this.reason='The guardian caught you. Break sight around the central pillar; the narrow exit passage is safe.';}
+  }
  }
 }
