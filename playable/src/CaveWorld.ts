@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import sconceUrl from './assets/industrial_caged_sconce.glb?url';
 import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
@@ -14,13 +16,14 @@ export class CaveWorld extends OceanWorld {
  fallbackTurn=0;lockDenied=false;lookPointer:{x:number;y:number}|null=null;
  torchLight=new THREE.SpotLight(0xd9f9e5,95,29,.48,.7,1.15);beam!:THREE.Mesh;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
+ sconceGroup=new THREE.Group();sconceLights:{light:THREE.PointLight;base:number;phase:number}[]=[];
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
   super(host,{onReady:()=>{},onPause:()=>{},onStatus:()=>{},onToggleUI:()=>{},onGlide:()=>{},onError:()=>{}},{deferStart:true});
   this.ui=ui;this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
   this.scene.background=new THREE.Color(0x031015);this.scene.fog=new THREE.FogExp2(0x031015,.065);
   this.camera.far=110;this.camera.updateProjectionMatrix();this.renderer.toneMappingExposure=1.25;
   this.scene.add(new THREE.HemisphereLight(0x5a8692,0x14251f,.32));
-  this.buildCave();this.buildLights();this.guardian=this.ichthyosaur(.9);this.scene.add(this.guardian.group);
+  this.buildCave();this.buildLights();this.mountWallSconces();this.guardian=this.ichthyosaur(.9);this.scene.add(this.guardian.group);
   const eyeMat=new THREE.MeshBasicMaterial({color:0xe0a772});
   for(const side of [-1,1])this.ellipsoid(this.guardian.group,eyeMat,1.8,.27,side*.5,.1,.1,.04);
   // Retain the original procedural sediment and animated skin/material foundations.
@@ -62,6 +65,44 @@ export class CaveWorld extends OceanWorld {
   const exit=new THREE.Group();exit.position.set(EXIT.x,.65,EXIT.z);const ring=new THREE.Mesh(new THREE.TorusGeometry(1.6,.05,8,48),new THREE.MeshBasicMaterial({color:0xb9ffdc}));ring.rotation.x=Math.PI/2;exit.add(ring);this.scene.add(exit);
   const sunlight=new THREE.SpotLight(0x9be3de,120,18,.65,1,1);sunlight.position.set(32,11,-12);sunlight.target.position.set(32,0,-12);this.scene.add(sunlight,sunlight.target);
   const shaft=new THREE.Mesh(new THREE.CylinderGeometry(.9,2.6,8,24,1,true),new THREE.MeshBasicMaterial({color:0x9ce1d4,transparent:true,opacity:.065,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}));shaft.position.set(32,4,-12);this.scene.add(shaft);
+ }
+ /** Candidate wall faces: each solid wall gives an interior mount point and an inward-facing yaw. */
+ wallMounts(){
+  const mounts:{x:number;z:number;yaw:number}[]=[];
+  for(const key of cells){const [c,r]=key.split(',').map(Number),p=world(c,r);
+   for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]])if(!cells.has(`${c+dc},${r+dr}`)){
+    // Inner face of the wall box (built at p.x+dc*2.5 / p.z-dr*2.5, 1 unit thick) and the normal into the room.
+    const nx=-dc,nz=dr;const x=p.x+dc*2.5+nx*.5,z=p.z-dr*2.5+nz*.5;
+    mounts.push({x,z,yaw:Math.atan2(nx,nz)});
+   }
+  }
+  return mounts;
+ }
+ /** Load the Poly Haven caged sconce and bolt spaced copies to the cave walls as warm lamps. */
+ mountWallSconces(){
+  this.scene.add(this.sconceGroup);
+  // Greedy spacing keeps the sconces spread along the walls instead of clustering per cell corner.
+  const chosen:{x:number;z:number;yaw:number}[]=[];
+  for(const m of this.wallMounts()){if(chosen.every(k=>Math.hypot(k.x-m.x,k.z-m.z)>11)){chosen.push(m);}if(chosen.length>=18)break;}
+  const MOUNT_Y=4.4;
+  new GLTFLoader().load(sconceUrl,gltf=>{
+   if(!this.alive){return;}
+   const proto=gltf.scene;
+   const size=new THREE.Box3().setFromObject(proto).getSize(new THREE.Vector3());
+   const scale=1.3/(size.y||1);
+   // Boost the baked emissive so the bulb reads as lit in the dark water.
+   proto.traverse(o=>{if(o instanceof THREE.Mesh){for(const mat of (Array.isArray(o.material)?o.material:[o.material]))if(mat instanceof THREE.MeshStandardMaterial){mat.emissive.setHex(0xffb867);mat.emissiveIntensity=2.6;mat.toneMapped=true;}}});
+   for(const m of chosen){
+    const inward=new THREE.Vector3(Math.sin(m.yaw),0,Math.cos(m.yaw));
+    const inst=proto.clone(true);inst.scale.setScalar(scale);inst.rotation.y=m.yaw;
+    inst.position.set(m.x,MOUNT_Y,m.z).addScaledVector(inward,-.05);
+    this.sconceGroup.add(inst);
+    const light=new THREE.PointLight(0xffb066,13,13,1.6);
+    light.position.set(m.x,MOUNT_Y+.55,m.z).addScaledVector(inward,.5);
+    this.sconceGroup.add(light);
+    this.sconceLights.push({light,base:light.intensity,phase:Math.random()*Math.PI*2});
+   }
+  },undefined,err=>{if(this.alive)console.warn('Wall sconce model failed to load:',err);});
  }
  syncPickups(){
   for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);group.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
@@ -182,6 +223,7 @@ export class CaveWorld extends OceanWorld {
   const fog=this.scene.fog as THREE.FogExp2;fog.color.set(0x041913).lerp(new THREE.Color(0x030c1b),blue);(this.scene.background as THREE.Color).copy(fog.color);
   this.uniforms.uTime.value=this.time;this.torchLight.visible=this.mission.torch;this.beam.visible=this.mission.torch;
   (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=this.mission.torch?1:0;
+  for(const s of this.sconceLights)s.light.intensity=s.base*(.86+.14*Math.sin(this.time*6+s.phase)+.04*Math.sin(this.time*19+s.phase*1.7));
   const p=this.mission.predator;this.guardian.group.position.copy(p.position);const diff=Math.atan2(Math.sin(p.heading-this.guardian.group.rotation.y),Math.cos(p.heading-this.guardian.group.rotation.y));this.guardian.group.rotation.y+=diff*Math.min(1,dt*5);
   this.guardian.fins.forEach(f=>f.rotation.x=Math.sin(this.time*2+(f.userData.phase||0))*.25*(f.userData.side||1));this.guardian.tail.rotation.y=Math.sin(this.time*3)*.22;
   this.syncPickups();this.decoyMesh.visible=!!this.mission.decoy;if(this.mission.decoy)this.decoyMesh.position.copy(this.mission.decoy.position);
