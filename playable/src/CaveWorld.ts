@@ -22,6 +22,36 @@ void main(){
   float a=(edge*vertical*pulse+core*vertical)*uOpacity;
   gl_FragColor=vec4(uColor,a);
 }`;
+/** Torch volume: Beer–Lambert scatter along the spot cone (not a flat lit shell). */
+const torchBeamVert=`varying vec2 vUv;varying vec3 vLocal;varying vec3 vView;
+void main(){
+  vUv=uv;vLocal=position;
+  vec4 mv=modelViewMatrix*vec4(position,1.);
+  vView=mv.xyz;gl_Position=projectionMatrix*mv;
+}`;
+const torchBeamFrag=`varying vec2 vUv;varying vec3 vLocal;varying vec3 vView;
+uniform float uTime;uniform vec3 uColor;uniform float uOpacity;uniform float uBeta;uniform float uBeamLen;
+void main(){
+  // Cylinder UV: y=1 at tip (+Z), y=0 at far end. along 0→1 tip→far.
+  float along=1.-vUv.y;
+  float dist=along*uBeamLen;
+  // Backscatter column: bright near the lamp, dies with β^B · range (Sea-thru / Beer–Lambert).
+  float scatter=exp(-uBeta*dist);
+  float tip=smoothstep(0.,.06,along);
+  float endFade=1.-smoothstep(.5,1.,along);
+  // Soft radial core — denser on axis, soft outer edge (reads as spot penumbra, not a solid tube).
+  float axis=length(vLocal.xy);
+  float coneR=mix(.02,3.15,along);
+  float radial=1.-smoothstep(coneR*.15,coneR*.92,axis);
+  radial*=radial;
+  // Prefer looking across the shaft (cheap Mie-ish); dims when staring straight down the bore.
+  vec3 Vn=normalize(vView);
+  float across=1.-pow(abs(Vn.z),.85);
+  float pulse=.88+sin(dist*.35+uTime*.55+axis*2.2)*.1;
+  float a=scatter*tip*endFade*radial*across*pulse*uOpacity;
+  if(a<.002)discard;
+  gl_FragColor=vec4(uColor,a);
+}`;
 
 export class CaveWorld extends OceanWorld {
  audioNotice='';audioProbe:AnalyserNode|null=null;audioTestTimer=0;
@@ -104,6 +134,20 @@ export class CaveWorld extends OceanWorld {
    uniforms:{uTime:this.uniforms.uTime,uColor:{value:new THREE.Color(color)},uOpacity:{value:opacity}},
    transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
    vertexShader:shaftVert,fragmentShader:shaftFrag,
+  });
+ }
+ /** Dive-torch volume cone — scatter fade along range; shafts keep beamMaterial(). */
+ torchBeamMaterial(color:THREE.ColorRepresentation,opacity:number){
+  return new THREE.ShaderMaterial({
+   uniforms:{
+    uTime:this.uniforms.uTime,
+    uColor:{value:new THREE.Color(color)},
+    uOpacity:{value:opacity},
+    uBeta:{value:.12},
+    uBeamLen:{value:20},
+   },
+   transparent:true,depthWrite:false,depthTest:true,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
+   vertexShader:torchBeamVert,fragmentShader:torchBeamFrag,
   });
  }
  addShaft(x:number,y:number,z:number,len:number,topR:number,botR:number,color:number,opacity:number,tiltX=0,tiltZ=0){
@@ -284,9 +328,9 @@ export class CaveWorld extends OceanWorld {
   this.torchBody.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=false;o.receiveShadow=false;}});
 
   const cone=new THREE.CylinderGeometry(.018,3.2,20,28,1,true);cone.rotateX(Math.PI/2);
-  this.beam=new THREE.Mesh(cone,this.beamMaterial(0xd4eaf8,.09));
-  this.beam.castShadow=false;this.beam.receiveShadow=false;
-  // Cone length 20 along −Z; center so the near tip sits at the lens.
+  this.beam=new THREE.Mesh(cone,this.torchBeamMaterial(0xd4eaf8,.09));
+  this.beam.castShadow=false;this.beam.receiveShadow=false;this.beam.frustumCulled=false;
+  // Base length 20 along −Z; tip kept at the lens via position (updated with range each frame).
   this.beam.position.set(0,0,-10.45);
   this.torchBody.add(this.beam);
 
@@ -506,8 +550,16 @@ export class CaveWorld extends OceanWorld {
     this.torchLight.shadow.camera.far=far;this.torchLight.shadow.camera.updateProjectionMatrix();
    }
    const beamMat=this.beam.material as THREE.ShaderMaterial;
-   beamMat.uniforms.uOpacity.value=torch.beamOpacity;
+   const betaB=(torch.betaBackscatter.r+torch.betaBackscatter.g+torch.betaBackscatter.b)/3;
+   // Physical length tracks attenuated spot range; tip stays on the lens.
+   const beamLen=Math.max(8,Math.min(28,torch.distance*.82));
+   const sz=beamLen/20;
+   this.beam.scale.set(1,1,sz);
+   this.beam.position.set(0,0,-(beamLen*.5+.45));
+   beamMat.uniforms.uOpacity.value=torch.beamOpacity*1.35;
    beamMat.uniforms.uColor.value.setRGB(torch.beamR,torch.beamG,torch.beamB);
+   beamMat.uniforms.uBeta.value=betaB;
+   beamMat.uniforms.uBeamLen.value=beamLen;
    // No camera-forward particle cone — that was a second beam fighting the lantern aim.
    (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
   }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
