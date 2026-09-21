@@ -15,13 +15,13 @@ export const KNIFE_ASSET_URL='/assets/knife/fish_knife_1k.gltf';
 export const KNIFE_THUMB_URL='/assets/knife/thumb.png';
 
 /**
- * Camera-local FPS hold — lower-right, blade along look (−Z).
- * Roll keeps the carved fish face readable toward the camera.
+ * Camera-local FPS hold — grip in the lower-right “hand” pocket,
+ * blade tip toward look (−Z) / screen center.
  */
-export const KNIFE_HOLD_POS={x:.28,y:-.22,z:-.48} as const;
-export const KNIFE_HOLD_ROT={x:.32,y:.95,z:.42} as const;
-export const KNIFE_HOLD_SCALE=3.5;
-export const KNIFE_STAB_Z=-.86;
+export const KNIFE_HOLD_POS={x:.38,y:-.34,z:-.45} as const;
+export const KNIFE_HOLD_ROT={x:.12,y:.22,z:.18} as const;
+export const KNIFE_HOLD_SCALE=3.2;
+export const KNIFE_STAB_Z=-.78;
 
 const stubMetal=()=>new THREE.MeshStandardMaterial({
  color:0x6a7078,metalness:.55,roughness:.55,envMapIntensity:.35,
@@ -54,8 +54,8 @@ export function prepareKnifeMaterials(root:THREE.Object3D,envMap?:THREE.Texture|
 }
 
 /**
- * Orient glTF: longest axis → −Z (tip forward), blade on −Z side,
- * then roll so the flat fish-carved face is camera-readable.
+ * Orient glTF so the tip points along −Z (look) and the grip is at the pivot.
+ * Screenshot bug: tip was aimed at the camera; handle floated mid-frame.
  */
 export function alignKnifeBladeForward(scene:THREE.Object3D){
  scene.rotation.set(0,0,0);
@@ -72,20 +72,31 @@ export function alignKnifeBladeForward(scene:THREE.Object3D){
   if(o.name==='fish_knife_blade')blade=o;
   if(o.name==='fish_knife_handle')handle=o;
  });
- if(blade){
-  const tip=new THREE.Box3().setFromObject(blade).getCenter(new THREE.Vector3());
-  if(tip.z>0)scene.rotation.y+=Math.PI;
+ if(blade&&handle){
+  const bladeC=new THREE.Box3().setFromObject(blade).getCenter(new THREE.Vector3());
+  const handleC=new THREE.Box3().setFromObject(handle).getCenter(new THREE.Vector3());
+  // Blade (tip) must sit on −Z relative to the handle (toward look).
+  if(bladeC.z>handleC.z)scene.rotation.y+=Math.PI;
   scene.updateMatrixWorld(true);
- }
- // Prefer the thinner handle axis facing the camera (±Y) so scales/eye read.
- if(handle){
+  // Roll so the carved fish face reads toward +Y (camera-up), not edge-on.
   const hs=new THREE.Box3().setFromObject(handle).getSize(new THREE.Vector3());
   if(hs.x<hs.y)scene.rotation.z+=Math.PI/2;
   scene.updateMatrixWorld(true);
+  // Re-check tip after roll (roll can swap axes on some assets).
+  const blade2=new THREE.Box3().setFromObject(blade).getCenter(new THREE.Vector3());
+  const handle2=new THREE.Box3().setFromObject(handle).getCenter(new THREE.Vector3());
+  if(blade2.z>handle2.z){scene.rotation.y+=Math.PI;scene.updateMatrixWorld(true);}
  }
 
- const center=new THREE.Box3().setFromObject(scene).getCenter(new THREE.Vector3());
- scene.position.sub(center);
+ // Pivot on the grip so the hand holds the handle, not mid-air mid-blade.
+ scene.updateMatrixWorld(true);
+ if(handle){
+  const grip=new THREE.Box3().setFromObject(handle).getCenter(new THREE.Vector3());
+  scene.position.sub(grip);
+ }else{
+  const center=new THREE.Box3().setFromObject(scene).getCenter(new THREE.Vector3());
+  scene.position.sub(center);
+ }
 }
 
 /** Minimal stand-in — hidden until glTF upgrades (avoids chrome flash). */

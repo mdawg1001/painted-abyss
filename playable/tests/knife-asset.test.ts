@@ -39,16 +39,25 @@ test('stub knife stays unready until upgrade (no fill lights)',()=>{
  assert.equal(g.position.x,KNIFE_HOLD_POS.x);
 });
 
-test('alignKnifeBladeForward puts longest axis on Z and recenters',()=>{
+test('alignKnifeBladeForward puts tip on −Z and pivots on handle',()=>{
  const scene=new THREE.Group();
- const mesh=new THREE.Mesh(new THREE.BoxGeometry(.22,.03,.02));
- scene.add(mesh);
+ const handle=new THREE.Mesh(new THREE.BoxGeometry(.04,.03,.08));
+ handle.name='fish_knife_handle';
+ handle.position.z=.04;
+ const blade=new THREE.Mesh(new THREE.BoxGeometry(.03,.01,.14));
+ blade.name='fish_knife_blade';
+ blade.position.z=-.09;
+ scene.add(handle,blade);
+ // Intentionally tip on +Z so align must flip.
+ scene.rotation.y=Math.PI;
+ scene.updateMatrixWorld(true);
  alignKnifeBladeForward(scene);
  scene.updateMatrixWorld(true);
- const size=new THREE.Box3().setFromObject(scene).getSize(new THREE.Vector3());
- assert.ok(size.z>size.x&&size.z>size.y,'longest axis should be Z after align');
- const center=new THREE.Box3().setFromObject(scene).getCenter(new THREE.Vector3());
- assert.ok(Math.abs(center.x)<1e-5&&Math.abs(center.y)<1e-5&&Math.abs(center.z)<1e-5);
+ const bladeC=new THREE.Box3().setFromObject(blade).getCenter(new THREE.Vector3());
+ const handleC=new THREE.Box3().setFromObject(handle).getCenter(new THREE.Vector3());
+ assert.ok(bladeC.z<handleC.z,'blade tip must be forward (−Z) of the grip');
+ // Grip near origin (pivot on handle).
+ assert.ok(Math.abs(handleC.x)<.02&&Math.abs(handleC.y)<.02&&Math.abs(handleC.z)<.05);
 });
 
 test('prepareKnifeMaterials attaches soft envMap without washing PBR',()=>{
