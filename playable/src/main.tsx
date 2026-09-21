@@ -7,12 +7,12 @@ import './style.css';
 
 function Icon({item}:{item:Item|null}){
  const paths:Record<Item,React.ReactNode>={
-  stone:<ellipse cx="24" cy="26" rx="14" ry="11" fill="#6a7270"/>,
-  wood:<><rect x="18" y="10" width="12" height="28" rx="3" fill="#3a4248" transform="rotate(-28 24 24)"/><rect x="20" y="12" width="8" height="6" rx="1" fill="#5a646c" transform="rotate(-28 24 24)"/></>,
-  flare:<><path fill="#e8e8e8" d="M21 40V18h6v22z"/><path fill="#ff2a1f" d="M20 18c1-6 3-12 4-14 2 3 5 8 6 12H20z"/><path fill="#ffb040" d="M23 8c0-3 1-6 1.5-7 .5 2 1.5 4 2.5 6-.5.2-2 .4-4 1z"/></>,
-  air:<><rect x="17" y="12" width="14" height="26" rx="5" fill="#c5ced4"/><rect x="20" y="6" width="8" height="8" rx="2" fill="#aeb8c0"/><path stroke="#2a3338" strokeWidth="1.2" d="M17 22h14M24 16v12" fill="none"/></>,
-  bandage:<><rect x="10" y="16" width="28" height="20" rx="3" fill="#9aa4aa"/><path fill="#5a646a" d="M22 16V10h4v6m-2 8v8m-5-4h10"/></>,
-  relic:<><path fill="#b8893a" d="M24 7c9 0 16 6 16 14 0 10-8 18-16 18S8 31 8 21 12 7 24 7z"/><path fill="none" stroke="#4a2a0a" strokeWidth="2.2" d="M31 29c-9 9-20 1-17-8s14-11 15-1-8 9-7 2"/><circle cx="28" cy="18" r="3.5" fill="#e8c878"/></>,
+  stone:<path fill="#7a8480" d="M12 28c1-9 7-15 13-16 8-2 15 3 16 11 2 9-4 17-13 18-8 1-15-4-16-13z"/>,
+  wood:<g transform="rotate(-35 24 24)"><rect x="20" y="8" width="8" height="32" rx="2.5" fill="#2c343a"/><rect x="19" y="8" width="10" height="7" rx="1.5" fill="#4a545c"/><rect x="21" y="18" width="6" height="2" fill="#1a2024"/></g>,
+  flare:<><rect x="22" y="16" width="5" height="24" rx="1.5" fill="#e8e8e8"/><path fill="#ff1e14" d="M21 16c1-5 2.5-10 3.5-13 1.5 3 3.5 7 4.5 11H21z"/><path fill="#ffc14a" d="M24 5c0-2 .6-4 1-5 .4 1.5 1.2 3 2 4.5-.7.2-1.8.4-3 .5z"/></>,
+  air:<><rect x="17" y="13" width="14" height="26" rx="5" fill="#c8d0d6"/><rect x="20" y="7" width="8" height="8" rx="2" fill="#a8b2ba"/><line x1="17" y1="23" x2="31" y2="23" stroke="#3a444a" strokeWidth="1.3"/><line x1="24" y1="17" x2="24" y2="30" stroke="#3a444a" strokeWidth="1.3"/></>,
+  bandage:<><rect x="11" y="17" width="26" height="18" rx="2.5" fill="#9aa4aa"/><path fill="#5c666c" d="M22 17v-5h4v5m-2 6v8m-5-4h10"/></>,
+  relic:<><path fill="#c4923a" d="M24 8c9 0 15 6 15 13 0 10-8 17-15 17S9 31 9 21 12 8 24 8z"/><path fill="none" stroke="#4a2a08" strokeWidth="2.2" d="M31 28c-9 9-19 1-16-7s13-11 14-1-7 8-6 2"/><circle cx="28" cy="17" r="3.2" fill="#ecc878"/></>,
  };
  return <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">{item?paths[item]:null}</svg>;
 }
@@ -54,8 +54,8 @@ function App(){
   {!playing&&<header><div className="brand"><span className="brand-mark">◉</span> PAINTED ABYSS<small>THE DROWNED SHELF</small></div><div className="build-label">FIRST DIVE <span> / </span> {APP_VERSION}</div></header>}
   {playing&&m&&<>
    <section className="objectives" aria-label="Objectives">
-    <div className={`obj ${m.hasRelic?'done':''}`}><span className="obj-icon diamond"/>{m.hasRelic?'Carry the ammonite relic':'Recover the ammonite relic'}</div>
-    <div className="obj"><span className="obj-icon circle"/>Reach the extraction pool</div>
+    <div className={`obj ${m.hasRelic?'done':''}`}><span className="obj-icon" aria-hidden="true">◆</span>{m.hasRelic?'Carry the ammonite relic':'Recover the ammonite relic'}</div>
+    <div className="obj"><span className="obj-icon" aria-hidden="true">○</span>Reach the extraction pool</div>
    </section>
    <Compass yaw={yaw}/>
    <div className="depth">DEPTH {depth} m</div>
