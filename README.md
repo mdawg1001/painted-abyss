@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.1.49
+# Painted Abyss — First Dive · 0.1.50
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -73,7 +73,7 @@ Pointer lock is requested by Begin / Resume. If the browser refuses it, moving t
 - Driftwood is spare salvage; replacing it keeps your useful supplies. Press **1** then **click** to stab the guardian at close range — wounds make it rage harder; at ~85% damage taken it breaks off slow and limping; killing it sinks the corpse with soft floating blood sprites in the water (optional — extract still only needs the relic). Press **1–5** to select a slot, then **R** to use consumables — air, sealant, and flares are consumed. A one-time tip appears on the first dive only; later dives rely on the selected-slot chrome. Selecting the knife puts the Poly Haven fish knife in hand; other slots return the mounted torch as the held FPS object.
 - Carry the relic east toward the **amber markers**, enter the narrow fissure, then follow it north to the extraction pool. Press **E** near the light to win. You must still be carrying the relic; dropping it removes eligibility to extract.
 - Rock blocks the guardian's sight. Its states are patrol, alert, chase, search, damaged, and dead. Use the pillar, briefly sprint away, switch off the torch, deploy a flare, or fight with the knife. It cannot enter the narrow exit passage.
-- Air is a short free-gas tank shown in **litres** on the HUD (**27 L** main ≈ 90 s surface cruise at 18 L/min SAC, plus a **9 L** pony). Burn scales with depth (ATA) and sprint/panic effort (R arms the pony). Space/Q fill a **BCD trim** (−1..+1); **[ ]** lock an idle bias and **X** clears it; look-pitch finning only adds a little vertical thrust. Sealant repairs 45 suit integrity. A flare distracts for 12 seconds unless you remain very close to the guardian. Dying or running out of air brings up Restart.
+- Air is a free-gas tank shown in **litres** on the HUD (**100 L** main ≈ 5.6 min surface cruise at 18 L/min SAC, plus a **9 L** pony). Burn scales with depth (ATA) and sprint/panic effort (R arms the pony). Space/Q fill a **BCD trim** (−1..+1); **[ ]** lock an idle bias and **X** clears it; look-pitch finning only adds a little vertical thrust. Sealant repairs 45 suit integrity. A flare distracts for 12 seconds unless you remain very close to the guardian. Dying or running out of air brings up Restart.
 - **Out of scope for First Dive:** cave currents / surge, a weight-belt inventory model, and real decompression stops or NDL tracking. The short mission stays shallow and theatrical; those systems are deferred.
 
 ## Edit and rebuild
