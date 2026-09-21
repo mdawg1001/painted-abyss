@@ -10,17 +10,17 @@ Measured from `playable/src/CaveWorld.ts` locomotion and `playable/src/simulatio
 
 | System | Implementation | Measured value |
 |---|---|---|
-| Cruise swim | Target speed on WASD / Space / Q, then exponential lerp | **2.8 m/s** (~10 km/h) |
-| Sprint swim | Shift while fin energy > 3 | **4.8 m/s** (~17 km/h) |
-| Acceleration | `velocity.lerp(move, 1 − e^(−4·dt))` | τ ≈ **0.25 s**; ~95% of target in **0.75 s** |
-| Coast after release | Same lerp toward 0 | **~0.68 m** / **~0.9 s** from cruise |
-| Vertical vs horizontal | Same thrust magnitude on every axis | **Identical** step size; no gravity / buoyancy force |
+| Cruise swim | Force kick + quadratic drag | **~0.75 m/s** (`sqrt(1.0/1.8)`) |
+| Sprint swim | Shift while fin energy > 3 | **~1.11 m/s** (`sqrt(2.2/1.8)`) |
+| Acceleration | Thrust − k\|v\|v | Terminal speed from thrust vs drag |
+| Coast after release | Quadratic drag to rest | Short coast (sub‑2 m from cruise) |
+| Vertical vs horizontal | Look/strafe kick; Space/Q = BCD | **Buoyancy state −1..+1**, not equal XYZ thrust |
 | Depth band | `fits()` clamps `y` | **~6.45 m** water column |
 | Air | `air −= dt` every frame | **240 s (4 min)** flat; reserve **+60 s** |
 | Air vs depth / effort | None | Sprint at floor == cruise at ceiling (−1 s/s) |
-| Fin energy | −18/s sprint, +17/s otherwise | **~5.6 s** full sprint; **~5.9 s** full regen |
-| Guardian | Patrol 1.8 / alert 0.7 / chase **3.4** m/s | Chase beats cruise; loses to sprint |
-| Torch “depth” | `torchModulation(y, pitch)` | Stylised murk, not Beer–Lambert optics |
+| Fin energy | −18/s sprint, +17/s otherwise | **~5.4 s** full sprint; **~5.7 s** full regen |
+| Guardian | Patrol 0.5 / alert 0.22 / chase **1.05** m/s | Chase between cruise and sprint |
+| Torch “depth” | `torchModulation` via `hydrostaticDepth` | Stylised murk, not Beer–Lambert optics |
 | HUD `DEPTH` | `round(SURFACE_Y − y)` via `hydrostaticDepth` | **~4 m** at start, **~6 m** at floor — hydrostatic |
 
 Start → relic along −Z is **100 m**. At cruise that is **~36 s** of straight swimming (scripted full route ~89 s with fights and turns).
@@ -40,17 +40,17 @@ Start → relic along −Z is **100 m**. At cruise that is **~36 s** of straight
 
 ## System-by-system notes
 
-### Swim speed — arcade
-Cruise **2.8 m/s** is faster than most human underwater locomotion outside competition. Sprint **4.8 m/s** is fantasy for a tanked diver in a cave. That compression keeps a 2–4 minute mission readable and lets the guardian chase feel urgent without multi-minute pursuits.
+### Swim speed — dive-plausible force model
+Cruise **~0.75 m/s** and sprint **~1.11 m/s** come from thrust vs quadratic drag (`SWIM_THRUST_*` / `SWIM_DRAG_K`). That sits near strong recreational finning and well below the old arcade 2.8 / 4.8 band. Space/Q no longer grant equal XYZ flight — they fill a BCD buoyancy state with neutral trim.
 
 ### Gas / air — time-compressed timer
-Air is a wall-clock fuse, not a cylinder. Real SAC would also rise with sprinting and with depth; the game spends air at **1 s/s** everywhere. The +60 s reserve is a design pickup, not a pony bottle sized to real litres.
+Air is still a wall-clock fuse, not a cylinder. Real SAC would also rise with sprinting and with depth; the game spends air at **1 s/s** everywhere. The +60 s reserve is a design pickup, not a pony bottle sized to real litres. Slower swimming means a rehearsed full route needs more than 240 s of air in automation until the SAC step retunes the tank.
 
-### Buoyancy & gravity — omitted on purpose
-There is no weight belt, BCD, or net buoyant force. Holding Space/Q moves you as fast as W/S. That matches many FPS underwater modes and diverges from diving, where vertical motion is the hard skill.
+### Buoyancy — BCD state
+`Mission.buoyancy` (−1..+1) is driven by Space/Q and trims toward 0 when released. Vertical kick from look pitch remains on WASD look-forward; pure up/down is buoyancy accel (`SWIM_BUOYANCY_ACCEL`).
 
-### Drag / inertia — closest to reality
-The exponential approach with τ = 0.25 s gives snappy control and a short glide. Real water is “heavier,” but the coast distance is not wildly wrong for a game feel check.
+### Drag / inertia — quadratic
+`stepSwimVelocity` applies `−k|v|v`. Coast after releasing kick is short.
 
 ### Depth & light — shallow set dressing + hydrostatic gauge
 The collision column is only ~6.5 m. Torch modulation dims toward the floor and warms the beam using the same `hydrostaticDepth` model as the HUD; murk remains readability art, not an optical attenuation law. Fog still shifts with −Z progress into the cavern for atmosphere, separate from hydrostatic depth.
