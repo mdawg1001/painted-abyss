@@ -1,0 +1,7 @@
+# First playable slice · 0.1
+
+1. **Preserve and isolate.** Retained the export's source, deployment and all artwork. Added a portable React / Three.js client under `playable/`, avoiding the hosting-only dependencies for local play. OceanWorld's renderer, procedural model helpers, skin/rock/sand materials, audio and movement foundations are reused.
+2. **Build the cave.** Connected entrance, central-pillar cavern with two routes, bone alcove, narrow escape fissure and extraction pool. Shared floor/ceiling/wall rules constrain player movement; solid rock blocks sensing and AI paths. Torch cone, sediment, blue/green fog, turquoise route markers and amber exit markers provide limited visibility and orientation.
+3. **Complete the loop.** Added predator patrol/alert/chase/search, bites, air, fin energy, usable flare/air/sealant, collectible relic, exactly five carried slots, confirmed replacement with physical drop, extraction, win/loss and complete restart. Tuned encounter speed and damage after a full-route test.
+4. **Correct and verify input.** Native pointer motion turns right on positive horizontal movement. Begin requests pointer lock; absence of lock no longer requires dragging. Wheel input looks rather than conflicting with slot selection. Removed pointer-capture handling from the active game. Escape and focus loss pause gameplay; menus own clickable controls.
+5. **Package.** Type-checked production build, deterministic tests, browser evidence, source/artwork preservation checks, runtime licences and a dependency-free Node static launcher.

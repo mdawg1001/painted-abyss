@@ -1,0 +1,19 @@
+PAINTED ABYSS — FIRST DIVE
+
+Unzip the entire folder. With Node.js 22.13+ installed, open a terminal
+in this folder and run:
+
+    node playable/serve.mjs
+
+Open http://127.0.0.1:5173 in a desktop browser and click Begin dive.
+No dependency installation is needed to play the included build.
+
+WASD swim · Space/Q up/down · Shift sprint · mouse/trackpad look
+F torch · E collect/extract · 1–5 select · R use · G drop · Esc pause
+
+Recover the relic by following turquoise markers. If inventory is full,
+press E, choose a slot with 1–5, then E again to swap. Follow amber
+markers through the narrow exit passage and press E at the lit pool.
+
+README.md has complete controls and editing instructions.
+The root index.html is the original artwork gallery, not the game.

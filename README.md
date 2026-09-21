@@ -1,0 +1,96 @@
+# Painted Abyss — First Dive · 0.1.2
+
+Includes the sound update and continuous 360° horizontal camera turning. When pointer lock is unavailable, hold the pointer near either edge to keep turning; move it back towards the centre to stop.
+
+## Open in Cursor
+
+Clone this private repository using Cursor's **Clone Repository** command and open the cloned folder. The current game is in `playable/`; `source/` is the preserved original prototype.
+
+In Cursor's terminal, run:
+
+```sh
+cd playable
+npm ci
+npm run dev
+```
+
+Open the local address printed in the terminal. Pull the latest commits before continuing work in another checkout. Commit and push completed changes so both editors use the same version.
+
+A small playable underwater survival mission built from the supplied Ancient Seas React / Three.js foundation. Recover an ammonite relic, survive one guardian, and extract through a narrow passage into a lit pool. Intended first-play duration: about 2–4 minutes. A rehearsed scripted route completes in about 89 seconds.
+
+## Play the included build — no dependency installation
+
+1. Clone the repository or unzip the entire downloaded folder.
+2. With **Node.js 22.13 or newer** installed, open a terminal in this folder and run:
+
+   ```sh
+   node playable/serve.mjs
+   ```
+
+3. Open **http://127.0.0.1:5173** in desktop Chrome, Edge, or another WebGL 2 browser.
+4. Click **Begin dive** once. Move the mouse or trackpad normally to look. No button needs to be held.
+
+Keep the terminal open while playing. Stop it with Ctrl+C. If port 5173 is already occupied, stop that other local server or set the `PORT` environment variable to a free port before running. The ready-made game requires no internet after extraction. Opening an HTML file by double-clicking does not start its local server. The root `index.html` is the preserved artwork gallery, not the new game.
+
+## Controls
+
+| Input | Action |
+|---|---|
+| Mouse / one-finger trackpad motion | Look; right turns right, left turns left |
+| Two-finger scroll | Additional camera look; does not select items |
+| Arrow keys | Keyboard camera look |
+| W / A / S / D | Swim forward / left / back / right |
+| Space | Swim up |
+| Q or Ctrl | Swim down |
+| Shift | Sprint swim; spends fin energy, which replenishes |
+| F | Toggle the mounted torch |
+| E | Collect a nearby item / confirm replacement / extract |
+| 1–5 | Select one of exactly five carried slots |
+| R | Use selected air reserve, sealant, or distraction flare |
+| G | Drop selected item into the cave |
+| Esc | Pause / release the pointer; cancels a pending swap (browser may also pause) |
+| M | Toggle audio |
+
+Pointer lock is requested by Begin / Resume. If the browser refuses it, moving the pointer over the canvas still looks without click-drag. Holding the pointer near either horizontal edge keeps turning continuously through 360°; moving back towards the centre stops continuous turning. Arrow keys and scroll also look. Physical two-finger scroll direction can depend on OS scroll settings; native pointer motion and synthetic scroll input were tested, not a physical trackpad. Pausing exposes the mouse cursor for menu buttons.
+
+## Your first dive
+
+- Follow **turquoise markers** down the entrance tunnel and around the central rock pillar. The relic rests above a plinth in the bone alcove at the far end.
+- You start with five items so that the swap mechanic can be tried immediately. Press **E**, select the slot to replace with **1–5**, then press **E** again. The displaced item remains in the world and can be recovered. There is no extra backpack.
+- Stone and driftwood are spare salvage; replacing either keeps your useful supplies. The mounted torch and worn fins sit outside the five carried slots in this prototype.
+- Carry the relic east toward the **amber markers**, enter the narrow fissure, then follow it north to the extraction pool. Press **E** near the light to win. You must still be carrying the relic; dropping it removes eligibility to extract.
+- Rock blocks the guardian's sight. Its states are patrol, alert, chase, and search. Use the pillar, briefly sprint away, switch off the torch, or deploy a flare and move away. It cannot enter the narrow exit passage.
+- Air lasts four minutes. Use the reserve before it runs out; it restores up to 60 seconds. Sealant repairs 45 suit integrity. A flare distracts for 12 seconds unless you remain very close to the guardian. Dying or running out of air brings up Restart.
+
+## Edit and rebuild
+
+The new portable entry point is **playable/**. From that folder:
+
+```sh
+npm ci
+npm run dev
+npm test
+npm run build
+```
+
+`npm ci` downloads pinned dependencies. `npm run build` type-checks the project and replaces `playable/dist/`. The included production build uses relative asset paths and a tiny local Node server; it does not need the old Cloudflare / Sites hosting stack.
+
+Optional browser suite: install Playwright (`npm install --no-save --package-lock=false playwright@1.62.1`), have desktop Google Chrome installed, run the development server at port 5173, then run `node tests/browser.cjs` in another terminal inside `playable/`. This suite uses an isolated headless Chrome instance and software WebGL. Results go in `test-results/`.
+
+## What was retained
+
+- `source/`: original editable Ancient Seas project, unchanged.
+- `compiled-build/` and `deployment/`: original export, unchanged.
+- `artwork/`: supplied references and all generated concepts, unchanged.
+- `playable/src/legacy/ocean.ts`: reused OceanWorld foundation, including renderer setup, procedural marine creature geometry, animated materials, swimming vectors, and synthesized underwater ambience. Small constructor and caustic-light changes allow the new cave to use it.
+- `docs/DESIGN-HANDOVER.md`: original creative handover.
+- `MANIFEST.json`: original export inventory; its original README is now saved as `docs/ORIGINAL-EXPORT-README.md`.
+- `PROTOTYPE-MANIFEST.json`: historical checksums of the 0.1.1 downloadable archive; Git records later changes, including the 0.1.2 camera update.
+
+New mission rules live in `playable/src/simulation.ts`; cave rendering and input in `CaveWorld.ts`; React HUD/menu in `main.tsx`. Bundled runtime library licences are in `playable/licenses/`.
+
+## Validation and limits
+
+The production build and **14 gameplay tests** passed, including a full route through live AI and collision and continuous camera rotation. Chrome rendered actual WebGL 2 successfully: camera direction, pointer-lock fallback, movement, torch switching, inventory swap, pause, extraction, loss, and restart were checked. See `docs/TEST-REPORT.md` for the initial validation and its limits. The later camera check verified turns beyond 360° in both directions with pointer lock denied, and stopping continuous turning by returning the pointer to the centre.
+
+This is intentionally prototype-quality: one level, one procedural creature, simple grid-derived cave collision and route finding, decorative torch volume, and reusable supplies. No crafting, saving, region selection, mounts, mobile controls, or body-roll squeezing system. The narrow route limits the creature by its navigation region; collision is approximate and not an anatomical simulation. Point lights do not cast physical shadows. Visuals and timing will need human playtesting; native GPU performance, Safari, and a physical trackpad were not manually validated.

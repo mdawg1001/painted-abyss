@@ -1,0 +1,46 @@
+import React,{useEffect,useRef,useState} from 'react';
+import {createRoot} from 'react-dom/client';
+import {CaveWorld,type Snapshot} from './CaveWorld';
+import {ITEMS,EXIT,RELIC,distance,type Item} from './simulation';
+import './style.css';
+function Icon({item}:{item:Item|null}){const paths:Record<Item,React.ReactNode>={stone:<path d="m6 24 6-16 17-3 12 13-6 18-18 2Z M12 8l8 14 15 14M20 22l21-4"/>,wood:<><path d="m7 31 26-23 7 8-26 24Z M14 31l20-18M20 29l4 4"/><path d="m7 31 7 1v8"/></>,flare:<><path d="m17 35 6-18 8 3-6 18Z M26 12l2-7m7 10 6-3M19 9l-3-5"/><path d="m20 27 8 3"/></>,air:<><rect x="15" y="12" width="18" height="29" rx="7"/><path d="M20 12V6h8v6M15 23h18M24 18v15"/></>,bandage:<><rect x="8" y="14" width="32" height="25" rx="4"/><path d="M18 14V8h12v6m-6 7v12m-6-6h12"/></>,relic:<><path d="M37 32c-13 13-33-2-26-16S42 6 39 22 20 35 18 24s13-13 13-3-9 7-8 2"/><path d="m35 34 7 4"/></>};return <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{item?paths[item]:<path opacity=".3" d="M20 24h8m-4-4v8"/>}</svg>;}
+function App(){
+ const host=useRef<HTMLDivElement>(null),engine=useRef<CaveWorld|null>(null);const [snap,setSnap]=useState<Snapshot|null>(null),[error,setError]=useState('');
+ useEffect(()=>{if(!host.current)return;let instance:CaveWorld;try{instance=new CaveWorld(host.current,s=>setSnap({...s}));engine.current=instance;if(import.meta.env.DEV&&new URLSearchParams(location.search).has('test'))(window as any).__abyss=instance;}catch(e){console.error(e);setError('The cave needs WebGL. Enable graphics acceleration in a desktop browser, then reload.');}return()=>{instance?.dispose();engine.current=null;};},[]);
+ const m=snap?.mission,playing=!!snap?.playing,terminal=m?.outcome!=='playing'&&!!m;
+ const target=m?.hasRelic?EXIT:RELIC,d=m?distance(m.position,target):0;
+ const nearest=m?.nearest();const extraction=m&&distance(m.position,EXIT)<4;
+ const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):nearest?`E · Collect ${ITEMS[nearest.item].name}`:'';
+ const bearing=m&&engine.current?Math.atan2(target.x-m.position.x,-(target.z-m.position.z))+engine.current.yaw:0;
+ const air=m?Math.ceil(m.air):240;const time=`${Math.floor(air/60)}:${String(air%60).padStart(2,'0')}`;
+ const predator=m?.predator.state||'patrol';const close=m?distance(m.position,m.predator.position)<23:false;
+ const threat=close?{patrol:'Movement in the dark',alert:'It heard something',chase:'It is hunting you',search:'Searching your last position'}[predator]:'Listen. Watch the shadows.';
+ return <main className={playing?'app playing':'app'}>
+  <div className="viewport" ref={host} aria-label="Three-dimensional underwater cave"/>
+  <div className="vignette"/>
+  <header><div className="brand"><span className="brand-mark">◉</span> PAINTED ABYSS<small>THE DROWNED SHELF</small></div><div className="build-label">FIRST DIVE <span> / </span> 01</div></header>
+  {playing&&m&&<>
+   <section className="mission"><div className="eyebrow">{m.hasRelic?'02 / RETURN TO THE LIGHT':'01 / RECOVER THE RELIC'}</div><h2>{m.hasRelic?'Reach the extraction pool':'Find the ammonite relic'}</h2><p>{m.hasRelic?'Follow amber lights through the east fissure.':'Follow turquoise lights. Keep the pillar between you and it.'}</p><div className="bearing"><span style={{transform:`rotate(${bearing}rad)`}}>↑</span> {Math.round(d)} m <small>direct bearing · follow passages</small></div></section>
+   <section className="vitals"><div><span>AIR REMAINING</span><strong className={air<45?'warning':''}>{time}</strong></div><div className="meter"><i style={{width:`${m.air/240*100}%`}}/></div><div className="suit"><span>SUIT {Math.ceil(m.health)}%</span><span>FIN ENERGY {Math.round(m.stamina)}%</span></div><div className="meter suit-meter"><i style={{width:`${m.health}%`,background:m.health<40?'#f6856c':'#91c4b7'}}/></div><p>{m.torch?'● TORCH ON':'○ TORCH OFF'} <kbd>F</kbd></p></section>
+   <div className={`threat ${close?predator:''}`}><span/> {threat}</div>
+   {snap?.audioNotice&&<div className="audio-notice" role="status">{snap.audioNotice}</div>}
+   <div className="crosshair">·</div>
+   {m.health<40&&<div className="injury"/>}
+   <div className="interaction" role="status">{prompt&&<div className="prompt">{prompt}</div>}{m.elapsed<m.noticeUntil&&<p>{m.notice}</p>}</div>
+   <div className="inventory"><div className="inventory-label">{m.pending!==null?'INVENTORY FULL · SELECT AN ITEM TO LEAVE BEHIND':'CARRIED ITEMS'}<span>5 SLOTS</span></div><div className="slots">{m.inventory.map((item,i)=><div className={`slot ${i===m.selected?'selected':''} ${item==='relic'?'relic':''}`} key={i}><kbd>{i+1}</kbd><Icon item={item}/><span>{item?ITEMS[item].short:'Empty'}</span></div>)}</div><div className="item-note">{m.inventory[m.selected]?ITEMS[m.inventory[m.selected]!].description:'Empty slot · E to collect nearby items.'}</div></div>
+   <footer><span><kbd>W A S D</kbd> swim <kbd>Space / Q</kbd> up / down <kbd>Shift</kbd> sprint</span><span><kbd>1–5</kbd> select <kbd>R</kbd> use <kbd>G</kbd> drop <kbd>Esc</kbd> pause</span></footer>
+   {!snap?.pointerLocked&&<div className="free-look">360° free look · move normally · hold at either edge to keep turning</div>}
+  </>}
+  {!playing&&<div className="menu-backdrop"><section className="menu">
+   <div className="eyebrow">{terminal?m?.outcome==='won'?'EXPEDITION COMPLETE':'DIVE LOST':snap?.started?'DIVE PAUSED':'A SHORT UNDERWATER SURVIVAL PROTOTYPE'}</div>
+   <h1>{terminal?m?.outcome==='won'?<>Back to<br/><em>the light.</em></>:<>The deep<br/><em>keeps its own.</em></>:snap?.started?<>Catch your<br/><em>breath.</em></>:<>Some things<br/><em>should stay buried.</em></>}</h1>
+   <p className="intro">{terminal?m?.reason:snap?.started?'Your dive is paused. Take a moment, then return to the cave.':'One cave. One ancient guardian. Recover the ammonite relic and bring it back to the light.'}</p>
+   {terminal&&<div className="results"><span>{Math.floor((m?.elapsed||0)/60)}m {Math.floor((m?.elapsed||0)%60)}s underwater</span><span>{m?.outcome==='won'?'1 relic secured':'No relic secured'}</span></div>}
+   {(error||snap?.error)?<p className="error" role="alert">{error||snap?.error}</p>:<button className="primary" disabled={!snap} onClick={()=>engine.current?.start()}>{!snap?'Opening the cave…':terminal?'Try another dive':snap.started?'Resume dive':'Begin dive'} <span>↗</span></button>}
+   <div className="menu-actions"><button onClick={()=>{const w=engine.current;if(w){w.setSound(!w.sound);w.publish();}}}>{engine.current?.sound===false?'Sound off':'Sound on'}</button><button onClick={()=>engine.current?.testSound()}>Test sound</button>{snap?.started&&!terminal&&<button onClick={()=>{engine.current?.reset();engine.current?.start();}}>Restart dive</button>}</div>
+   <p className="sound-help" role="status">{snap?.audioNotice||'Test sound plays two clear tones. During the dive, listen for breathing and water.'}</p>
+   <div className="dive-note">2–4 MINUTES <span>·</span> DESKTOP / HEADPHONES <span>·</span> PROTOTYPE 0.1.2 · 360° LOOK</div>
+  </section><aside className="briefing"><div className="eyebrow">BEFORE YOU DESCEND</div><ol><li><b>Follow the turquoise lights.</b><span>Find the relic in the bone alcove, beyond the central pillar.</span></li><li><b>Make room for your discovery.</b><span>Five slots, no backpack. Press E, choose 1–5, then E to swap. The old item drops.</span></li><li><b>Escape through the east fissure.</b><span>Follow amber lights north to the extraction pool. The guardian cannot enter the narrow passage.</span></li></ol><div className="control-grid"><span><kbd>W A S D</kbd> Swim</span><span><kbd>Space / Q</kbd> Up / down</span><span><kbd>Shift</kbd> Sprint</span><span><kbd>F</kbd> Torch</span><span><kbd>E</kbd> Collect / extract</span><span><kbd>R</kbd> Use selected item</span><span><kbd>1–5</kbd> Select slot</span><span><kbd>G</kbd> Drop selected item</span></div><p className="look-note">Move the mouse or trackpad to look — right looks right. No button held. If the browser limits the pointer, hold it at either edge to keep turning through 360°. Arrow keys also look. <kbd>Esc</kbd> pauses; <kbd>M</kbd> mutes.</p><p className="tip">Rock blocks its sight. Torchlight and fast swimming draw attention. Use a flare to distract it, then move away.</p></aside></div>}
+ </main>;
+}
+createRoot(document.getElementById('root')!).render(<App/>);

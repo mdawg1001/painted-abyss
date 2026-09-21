@@ -1,0 +1,35 @@
+{
+  "version": "0.1.1 sound-only",
+  "browser": "153.0.8010.48",
+  "chime": {
+    "rms": 0.05234103559187356,
+    "state": "running"
+  },
+  "ambient": {
+    "rms": 0.043159473248095735,
+    "state": "running"
+  },
+  "muted": {
+    "rms": 0,
+    "state": "running"
+  },
+  "unmuted": {
+    "rms": 0.014596142095695087,
+    "state": "running"
+  },
+  "resumed": {
+    "rms": 0.012809599127949007,
+    "state": "running"
+  },
+  "checks": [
+    "Test sound produces measurable output and then suspends",
+    "Begin dive starts audible-range ambient output",
+    "Mute reduces output to silence",
+    "Unmute restores output",
+    "Pause suspends audio",
+    "Resume restores audio",
+    "Rejected browser audio request is visibly reported"
+  ],
+  "errors": [],
+  "limit": "Measured the real post-master Web Audio signal. Physical speaker/headphone output still requires the user listening."
+}

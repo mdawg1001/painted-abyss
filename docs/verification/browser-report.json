@@ -1,0 +1,31 @@
+{
+  "browser": "153.0.8010.48",
+  "rendering": "Real WebGL 2 renderer using SwiftShader (software GPU)",
+  "checks": [
+    "Begin dive acquires native pointer lock",
+    "Native rightward mouse motion turns camera right without dragging",
+    "Native WASD input moves the player",
+    "F switches torch off and on",
+    "Escape releases pointer and freezes mission time",
+    "E / 2 / E swaps relic into full inventory and drops displaced wood",
+    "Extraction with relic displays win and releases pointer",
+    "Restart restores player, air, health, inventory and objective",
+    "Air depletion displays lose and restart flow",
+    "Denied pointer lock falls back to mouse look without click-drag",
+    "Horizontal trackpad scroll turns right; wheel does not change hotbar",
+    "No browser runtime, shader compilation or HTTP resource errors"
+  ],
+  "renderer": {
+    "calls": 48,
+    "triangles": 58092,
+    "programCount": 15,
+    "webglVersion": "WebGL 2.0 (OpenGL ES 3.0 Chromium)"
+  },
+  "camera": {
+    "yaw": -0.10974884156209931,
+    "x": 0.10952865691645634
+  },
+  "errors": [],
+  "failures": [],
+  "note": "Browser scenarios use test-only position/state setup for encounters and endings. The separate full-route simulation traverses collision and live AI without teleportation. Physical trackpad and native GPU performance are not manually verified."
+}

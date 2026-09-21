@@ -1,0 +1,14 @@
+{
+  "browser": "153.0.8010.48",
+  "errors": [],
+  "checks": [
+    "Production build loads without development dependencies or debug hooks",
+    "Begin dive acquires native pointer lock",
+    "HUD and rendered gameplay appear",
+    "W input accepted",
+    "Escape opens pause menu",
+    "M key mute state is reflected in pause menu",
+    "No HTTP, shader or runtime errors"
+  ],
+  "rendering": "Real WebGL 2 in isolated Chrome using SwiftShader"
+}
