@@ -29,7 +29,7 @@ export class CaveWorld extends OceanWorld {
  fallbackTurn=0;lockDenied=false;lookPointer:{x:number;y:number}|null=null;
  torchLight=new THREE.SpotLight(0xeaf6ff,210,34,.38,.55,1.05);
  torchFill=new THREE.PointLight(0xcfe8ff,4.5,7,1.6);
- beam!:THREE.Mesh;beamHalo!:THREE.Mesh;torchBody!:THREE.Group;
+ beam!:THREE.Mesh;beamHalo!:THREE.Mesh;torchBody!:THREE.Group;torchLensMat!:THREE.MeshStandardMaterial;
  composer!:EffectComposer;bloom!:UnrealBloomPass;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
@@ -91,34 +91,89 @@ export class CaveWorld extends OceanWorld {
   const mesh=new THREE.Mesh(new THREE.CylinderGeometry(topR,botR,len,28,1,true),this.beamMaterial(color,opacity));
   mesh.position.set(x,y,z);mesh.rotation.x=tiltX;mesh.rotation.z=tiltZ;this.scene.add(mesh);return mesh;
  }
+ /** Procedural Diving Behemoth: safety-yellow dive lantern. Local −Z = beam. */
+ buildTorchBody(){
+  const group=new THREE.Group();
+  const yellow=new THREE.MeshStandardMaterial({color:0xf0c20a,metalness:.12,roughness:.42});
+  const yellowDark=new THREE.MeshStandardMaterial({color:0xd4a006,metalness:.1,roughness:.5});
+  const black=new THREE.MeshStandardMaterial({color:0x121416,metalness:.25,roughness:.55});
+  const chrome=new THREE.MeshStandardMaterial({color:0xc8d0d8,metalness:.95,roughness:.18});
+  const reflector=new THREE.MeshStandardMaterial({color:0xe8eef4,metalness:1,roughness:.08});
+  this.torchLensMat=new THREE.MeshStandardMaterial({color:0xf4faff,emissive:0xb8d8f0,emissiveIntensity:1.4,metalness:.05,roughness:.15,transparent:true,opacity:.92});
+  const alongZ=(geo:THREE.BufferGeometry)=>{geo.rotateX(Math.PI/2);return geo;};
+
+  const barrel=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.055,.058,.42,24)),yellow);
+  barrel.position.set(0,0,-.08);group.add(barrel);
+  for(let i=0;i<7;i++){
+   const rib=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.062,.062,.012,20)),yellowDark);
+   rib.position.set(0,0,.04-i*.038);group.add(rib);
+  }
+  const neck=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.07,.055,.06,20)),yellow);
+  neck.position.set(0,0,-.31);group.add(neck);
+
+  const bezel=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.118,.112,.07,28)),black);
+  bezel.position.set(0,0,-.38);group.add(bezel);
+  const bezelRim=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.122,.122,.014,28)),black);
+  bezelRim.position.set(0,0,-.415);group.add(bezelRim);
+  for(let i=0;i<8;i++){
+   const a=(i/8)*Math.PI*2;
+   const screw=new THREE.Mesh(new THREE.CylinderGeometry(.008,.008,.016,6),chrome);
+   screw.rotation.x=Math.PI/2;screw.position.set(Math.cos(a)*.1,Math.sin(a)*.1,-.425);group.add(screw);
+  }
+
+  const cup=new THREE.Mesh(new THREE.SphereGeometry(.095,20,12,0,Math.PI*2,0,Math.PI*.55),reflector);
+  cup.scale.set(1,1,.55);cup.rotation.x=Math.PI;cup.position.set(0,0,-.36);group.add(cup);
+  const lens=new THREE.Mesh(new THREE.CircleGeometry(.088,28),this.torchLensMat);
+  lens.position.set(0,0,-.432);group.add(lens);
+
+  const switchBase=new THREE.Mesh(new THREE.BoxGeometry(.028,.04,.055),yellowDark);
+  switchBase.position.set(.065,.01,-.2);group.add(switchBase);
+  const switchKnob=new THREE.Mesh(new THREE.BoxGeometry(.022,.028,.03),yellow);
+  switchKnob.position.set(.078,.01,-.2);group.add(switchKnob);
+
+  const tail=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.06,.058,.08,20)),black);
+  tail.position.set(0,0,.18);group.add(tail);
+  for(let i=0;i<4;i++){
+   const knurl=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.063,.063,.008,16)),black);
+   knurl.position.set(0,0,.15+i*.018);group.add(knurl);
+  }
+  const tailEnd=new THREE.Mesh(alongZ(new THREE.CylinderGeometry(.052,.055,.02,16)),black);
+  tailEnd.position.set(0,0,.225);group.add(tailEnd);
+
+  const bracketPlate=new THREE.Mesh(new THREE.BoxGeometry(.035,.012,.1),chrome);
+  bracketPlate.position.set(0,.07,-.28);group.add(bracketPlate);
+  const bracketArm=new THREE.Mesh(new THREE.BoxGeometry(.035,.055,.012),chrome);
+  bracketArm.position.set(0,.095,-.235);group.add(bracketArm);
+  for(const z of [-.3,-.26]){
+   const bolt=new THREE.Mesh(new THREE.CylinderGeometry(.006,.006,.014,8),chrome);
+   bolt.rotation.x=Math.PI/2;bolt.position.set(0,.077,z);group.add(bolt);
+  }
+
+  const handlePts=[V(0,.078,-.32),V(0,.155,-.22),V(0,.17,-.05),V(0,.14,.1),V(0,.075,.16)];
+  group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(handlePts),24,.018,10,false),black));
+
+  group.position.set(.44,-.4,-.62);group.rotation.set(.18,-.22,.32);group.scale.setScalar(1.15);
+  return group;
+ }
  buildLights(){
   this.scene.add(this.camera);
-  // Cool-white tactical torch — reference key light
-  this.torchLight.color.set(0xf0f7ff);this.torchLight.intensity=160;this.torchLight.distance=32;
-  this.torchLight.angle=.36;this.torchLight.penumbra=.48;this.torchLight.decay=1.2;
-  this.torchLight.position.set(.32,-.22,-.15);
-  this.torchLight.target.position.set(.12,-.28,-16);
-  this.torchFill.color.set(0xd8e8f4);this.torchFill.intensity=4;this.torchFill.distance=7;
-  this.torchFill.position.set(.2,-.15,-.4);
+  // Spot from the Behemoth lens tip — tighter dive beam
+  this.torchLight.color.set(0xf2f8ff);this.torchLight.intensity=170;this.torchLight.distance=34;
+  this.torchLight.angle=.28;this.torchLight.penumbra=.35;this.torchLight.decay=1.15;
+  this.torchLight.position.set(.4,-.36,-.95);
+  this.torchLight.target.position.set(.22,-.42,-18);
+  this.torchFill.color.set(0xd8e8f4);this.torchFill.intensity=3.5;this.torchFill.distance=6.5;
+  this.torchFill.position.set(.38,-.34,-.75);
   this.camera.add(this.torchLight,this.torchLight.target,this.torchFill);
 
-  // Volumetric torch cones (core + soft halo)
-  const cone=new THREE.CylinderGeometry(.03,4.2,19,32,1,true);cone.rotateX(Math.PI/2);
-  this.beam=new THREE.Mesh(cone,this.beamMaterial(0xd0e8f5,.11));
-  this.beam.position.set(.28,-.26,-9.2);this.camera.add(this.beam);
-  const haloGeo=new THREE.CylinderGeometry(.08,6.2,17,32,1,true);haloGeo.rotateX(Math.PI/2);
-  this.beamHalo=new THREE.Mesh(haloGeo,this.beamMaterial(0xa8cde0,.045));
-  this.beamHalo.position.set(.28,-.26,-8.4);this.camera.add(this.beamHalo);
+  const cone=new THREE.CylinderGeometry(.02,3.4,20,32,1,true);cone.rotateX(Math.PI/2);
+  this.beam=new THREE.Mesh(cone,this.beamMaterial(0xd4eaf8,.1));
+  this.beam.position.set(.4,-.38,-9.5);this.camera.add(this.beam);
+  const haloGeo=new THREE.CylinderGeometry(.05,5.2,18,32,1,true);haloGeo.rotateX(Math.PI/2);
+  this.beamHalo=new THREE.Mesh(haloGeo,this.beamMaterial(0xa8cde0,.038));
+  this.beamHalo.position.set(.4,-.38,-8.6);this.camera.add(this.beamHalo);
 
-  // Visible flashlight body (bottom-right, first-person)
-  this.torchBody=new THREE.Group();
-  const bodyMat=new THREE.MeshStandardMaterial({color:0x1a1e22,metalness:.75,roughness:.35});
-  const lensMat=new THREE.MeshBasicMaterial({color:0xd8eef8});
-  const barrel=new THREE.Mesh(new THREE.CylinderGeometry(.055,.07,.55,12),bodyMat);barrel.rotation.x=Math.PI/2;barrel.position.set(0,0,-.2);
-  const head=new THREE.Mesh(new THREE.CylinderGeometry(.09,.07,.12,12),bodyMat);head.rotation.x=Math.PI/2;head.position.set(0,0,-.52);
-  const lens=new THREE.Mesh(new THREE.CircleGeometry(.065,16),lensMat);lens.position.set(0,0,-.585);
-  this.torchBody.add(barrel,head,lens);
-  this.torchBody.position.set(.38,-.32,-.55);this.torchBody.rotation.set(.12,-.08,.18);
+  this.torchBody=this.buildTorchBody();
   this.camera.add(this.torchBody);
 
   // Soft path markers (dimmer so shafts remain the hero)
@@ -308,16 +363,18 @@ export class CaveWorld extends OceanWorld {
   const torchOn=this.mission.torch;
   this.torchLight.visible=torchOn;this.torchFill.visible=torchOn;this.beam.visible=torchOn;this.beamHalo.visible=torchOn;
   this.torchBody.visible=true;
+  this.torchLensMat.emissiveIntensity=torchOn?1.6:.08;
+  this.torchLensMat.emissive.set(torchOn?0xc8e4ff:0x223038);
   if(torchOn){
    // Depth/aim modulation scaled to the lighting-hud torch baseline (mid swim, level look).
    const torch=torchModulation(this.position.y,this.pitch);
    const mid=torchModulation(3,0);
    const iScale=torch.intensity/mid.intensity,dScale=torch.distance/mid.distance,bScale=torch.beamOpacity/mid.beamOpacity;
-   this.torchLight.intensity=160*iScale;this.torchLight.distance=32*dScale;this.torchLight.decay=1.2+(torch.decay-mid.decay);
+   this.torchLight.intensity=170*iScale;this.torchLight.distance=34*dScale;this.torchLight.decay=1.15+(torch.decay-mid.decay);
    this.torchLight.color.setRGB(torch.r,torch.g,torch.b);
-   this.torchFill.intensity=4*iScale;this.torchFill.color.setRGB(torch.r,torch.g,torch.b);
-   const beamMat=this.beam.material as THREE.ShaderMaterial;beamMat.uniforms.uOpacity.value=.09*bScale;beamMat.uniforms.uColor.value.setRGB(torch.r,torch.g,torch.b);
-   const haloMat=this.beamHalo.material as THREE.ShaderMaterial;haloMat.uniforms.uOpacity.value=.035*bScale;haloMat.uniforms.uColor.value.setRGB(torch.r*.85,torch.g*.9,torch.b);
+   this.torchFill.intensity=3.5*iScale;this.torchFill.color.setRGB(torch.r,torch.g,torch.b);
+   const beamMat=this.beam.material as THREE.ShaderMaterial;beamMat.uniforms.uOpacity.value=.1*bScale;beamMat.uniforms.uColor.value.setRGB(torch.r,torch.g,torch.b);
+   const haloMat=this.beamHalo.material as THREE.ShaderMaterial;haloMat.uniforms.uOpacity.value=.038*bScale;haloMat.uniforms.uColor.value.setRGB(torch.r*.85,torch.g*.9,torch.b);
    (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=torch.particle;
   }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
   // Soft bloom on shafts only — keep torch hotspots from blowing out
