@@ -529,10 +529,9 @@ export class CaveWorld extends OceanWorld {
   const poolFill=new THREE.PointLight(0xa8f0e8,28,16,1.1);poolFill.position.set(32,5,-12);this.scene.add(poolFill);
   this.addShaft(32,5.2,-12,9,.7,2.8,0xd8faf4,.22);
 
-  // Main cavern ceiling shafts — half the previous density
+  // Main cavern ceiling shafts — 7 → 4 total god-rays (~40% fewer); keep exit/entrance/relic
   const cavern:[number,number,number,number,number,number,number][]=[
-   [2,6.2,-52,9,.5,2.4,.16],[6,6,-64,9.5,.55,2.6,.15],
-   [4,6.5,-78,9,.45,2.3,.14],[0,6.4,-96,8,.35,1.8,.1],
+   [6,6,-64,9.5,.55,2.6,.15],
   ];
   for(const [x,y,z,len,top,bot,op] of cavern){
    this.addShaft(x,y,z,len,top,bot,0xb8ebe4,op,(Math.random()-.5)*.12,(Math.random()-.5)*.1);
