@@ -1,6 +1,12 @@
-# Painted Abyss — First Dive · 0.1.8
+# Painted Abyss — First Dive · 0.1.9
 
-The live build version is always shown in the game UI as **BUILD v…** (menu and during the dive). It comes from `playable/package.json`. Agents must bump that version on every playable change — see `.cursor/rules/playable-version.mdc`.
+The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
+
+```sh
+node playable/refresh.mjs
+```
+
+That pulls `main`, stops the old server on port 5173, rebuilds, and serves. Agents must bump `playable/package.json` and commit `playable/dist` on every playable change — see `.cursor/rules/playable-version.mdc`.
 
 Includes a clearly audible inventory select click/snap, quieter first-play tip, sound, and continuous 360° horizontal camera turning. When pointer lock is unavailable, hold the pointer near either edge to keep turning; move it back towards the centre to stop.
 

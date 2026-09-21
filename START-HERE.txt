@@ -3,10 +3,13 @@ PAINTED ABYSS — FIRST DIVE
 Unzip the entire folder. With Node.js 22.13+ installed, open a terminal
 in this folder and run:
 
-    node playable/serve.mjs
+    node playable/refresh.mjs
+
+(Or, if already up to date: node playable/serve.mjs)
 
 Open http://127.0.0.1:5173 in a desktop browser and click Begin dive.
-Confirm the on-screen label says BUILD v0.1.7 (menu and during the dive).
+Confirm the on-screen label says BUILD v0.1.9 · <git-sha>
+(menu and during the dive). After another agent merges, run refresh.mjs again.
 No dependency installation is needed to play the included build.
 
 WASD swim · Space/Q up/down · Shift sprint · mouse/trackpad look

@@ -2,7 +2,7 @@ import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {CaveWorld,type Snapshot} from './CaveWorld';
 import {ITEMS,EXIT,distance,type Item} from './simulation';
-import {APP_VERSION,APP_VERSION_LABEL} from './version';
+import {APP_VERSION,APP_BUILD_LABEL,APP_BUILD_SHA} from './version';
 import './style.css';
 
 function Icon({item}:{item:Item|null}){
@@ -38,7 +38,25 @@ function Compass({yaw}:{yaw:number}){
 
 function App(){
  const host=useRef<HTMLDivElement>(null),engine=useRef<CaveWorld|null>(null);const [snap,setSnap]=useState<Snapshot|null>(null),[error,setError]=useState('');
+ const [staleMsg,setStaleMsg]=useState('');
  useEffect(()=>{if(!host.current)return;let instance:CaveWorld;try{instance=new CaveWorld(host.current,s=>setSnap({...s}));engine.current=instance;if(import.meta.env.DEV&&new URLSearchParams(location.search).has('test'))(window as any).__abyss=instance;}catch(e){console.error(e);setError('The cave needs WebGL. Enable graphics acceleration in a desktop browser, then reload.');}return()=>{instance?.dispose();engine.current=null;};},[]);
+ useEffect(()=>{
+  let alive=true;
+  const check=()=>{
+   fetch('/__build.json',{cache:'no-store'}).then(r=>r.json()).then((info:{packageVersion?:string;distVersion?:string;sha?:string})=>{
+    if(!alive||!info?.packageVersion)return;
+    if(info.packageVersion!==APP_VERSION||(info.sha&&info.sha!==APP_BUILD_SHA)){
+     setStaleMsg(`OUTDATED TAB — server is ${info.packageVersion}${info.sha?` · ${info.sha}`:''}. Hard refresh (Cmd+Shift+R) or run: node playable/refresh.mjs`);
+    }else setStaleMsg('');
+   }).catch(()=>{});
+  };
+  check();
+  const id=window.setInterval(check,4000);
+  const onFocus=()=>check();
+  window.addEventListener('focus',onFocus);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)check();});
+  return()=>{alive=false;window.clearInterval(id);window.removeEventListener('focus',onFocus);};
+ },[]);
  const m=snap?.mission,playing=!!snap?.playing,terminal=m?.outcome!=='playing'&&!!m;
  const nearest=m?.nearest();const extraction=m&&distance(m.position,EXIT)<4;
  const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):nearest?`E · Collect ${ITEMS[nearest.item].name}`:'';
@@ -50,7 +68,8 @@ function App(){
  return <main className={playing?'app playing':'app'}>
   <div className="viewport" ref={host} aria-label="Three-dimensional underwater cave"/>
   <div className="vignette"/>
-  <div className="build-version" aria-label={`Build version ${APP_VERSION}`}>BUILD {APP_VERSION_LABEL}</div>
+  <div className="build-version" aria-label={`Build version ${APP_VERSION}`}>BUILD {APP_BUILD_LABEL}</div>
+  {staleMsg&&<div className="stale-build" role="alert">{staleMsg}</div>}
   {!playing&&<header><div className="brand"><span className="brand-mark">◉</span> PAINTED ABYSS<small>THE DROWNED SHELF</small></div><div className="build-label">FIRST DIVE <span> / </span> {APP_VERSION}</div></header>}
   {playing&&m&&<>
    <section className="objectives" aria-label="Objectives">

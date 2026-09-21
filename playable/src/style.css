@@ -112,7 +112,14 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   padding:4px 10px;border:1px solid rgba(180,210,200,.28);
   background:rgba(2,10,14,.45);
 }
-.app.playing .build-version{bottom:auto;top:14px;left:auto;right:28px;transform:none;letter-spacing:.16em;font-size:13px;border-color:rgba(180,210,200,.35)}
+.app.playing .build-version{bottom:auto;top:14px;left:auto;right:28px;transform:none;letter-spacing:.14em;font-size:12px;border-color:rgba(180,210,200,.35)}
+.stale-build{
+  position:absolute;left:50%;top:52px;transform:translateX(-50%);z-index:40;
+  max-width:min(640px,92vw);padding:10px 14px;pointer-events:none;
+  font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:600;letter-spacing:.06em;
+  color:#1a1008;background:#e8c078;border:1px solid #c9a050;
+  text-align:center;line-height:1.35;
+}
 .depth{
   position:absolute;right:28px;top:48px;pointer-events:none;
   font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:500;
