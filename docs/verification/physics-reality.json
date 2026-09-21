@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-21T20:37:46.402Z",
+  "generatedAt": "2026-09-21T20:23:01.514Z",
   "unitAssumption": "1 world unit ≈ 1 metre (CELL=4 m tiles, playable y ∈ [0.65, 7.1])",
   "measured": {
     "cruiseMs": 2.198,
@@ -13,8 +13,8 @@
     "coastFromCruiseS": 10,
     "staminaSprintWindowS": 5.4,
     "staminaRegenFullS": 5.7,
-    "airBudgetL": 100,
-    "airBudgetMin": 5.555555555555555,
+    "airBudgetL": 27,
+    "airBudgetMin": 1.5,
     "airReserveL": 9,
     "sacCruiseLpm": 18,
     "airIndependentOfDepthAndExertion": false,
@@ -22,8 +22,8 @@
     "gasDrainFloorCruise": 0.4935,
     "gasDrainFloorSprint": 1.0857,
     "gasDrainFloorPanic": 1.43115,
-    "airAfter1sDeepSprint": 98.92,
-    "airAfter1sShallowCruise": 99.68,
+    "airAfter1sDeepSprint": 25.92,
+    "airAfter1sShallowCruise": 26.68,
     "depthBandM": 6.45,
     "startToRelicHorizontalM": 100,
     "cruiseTimeStartToRelicS": 45.5,
@@ -78,12 +78,12 @@
     "gameCruiseOverRealCruiseMin": 8.8,
     "gameCruiseOverRealCruiseMax": 4.4,
     "gameSprintOverHardKickMax": 2.9,
-    "gameAirMinutesOverRealShallowMin": 0.09,
-    "gameAirMinutesOverRealShallowMax": 0.14
+    "gameAirMinutesOverRealShallowMin": 0.03,
+    "gameAirMinutesOverRealShallowMax": 0.04
   },
   "verdicts": {
     "swimSpeed": "GAMEPLAY PACE — force model cruise ~2.2 m/s / sprint ~3.5 m/s (force model retained; closer to old arcade feel).",
-    "gasModel": "SAC × ATA × EFFORT — high-stakes; main 100 L + pony 9 L at 18 L/min cruise SAC; HUD shows litres.",
+    "gasModel": "SAC × ATA × EFFORT — high-stakes; main 27 L + pony 9 L at 18 L/min cruise SAC; HUD shows litres.",
     "buoyancy": "BCD SKILL — Space/Q momentary; [ ] lock idle bias (±0.45); X clears; look-kick Y attenuated.",
     "dragCoast": "QUADRATIC — −k|v|v; short coast after releasing kick.",
     "depthScale": "SHALLOW CAVE — ~6.5 m playable y band; torch murk is stylistic, not optical attenuation law.",

@@ -1,12 +1,5 @@
 # Third-party assets
 
-## FPS arms (WRAD ARMS)
-- Source: https://github.com/wwwriks/wrad-arms
-- Author: wriks
-- License: CC0 1.0 Universal
-- File: `public/assets/arms/arms.glb`
-- Right-hand viewmodel that grips the diving knife. CGTrader’s Gloves Qa zip needs a logged-in download, so this CC0 arm is what ships.
-
 ## Fish Knife (Poly Haven)
 - Source: https://polyhaven.com/a/fish_knife
 - Author: Mateusz Sadek
