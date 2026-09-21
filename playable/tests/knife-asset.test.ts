@@ -13,7 +13,7 @@ const knifeDir=path.join(path.dirname(fileURLToPath(import.meta.url)),'../public
 
 test('knife hold pose thrusts farther than rest along −Z',()=>{
  assert.ok(KNIFE_STAB_Z<KNIFE_HOLD_POS.z);
- assert.ok(KNIFE_HOLD_SCALE>=2.5);
+ assert.ok(KNIFE_HOLD_SCALE>=1.4);
 });
 
 test('knife public assets exist (glTF + square HUD thumb)',()=>{
@@ -29,11 +29,14 @@ test('knife public assets exist (glTF + square HUD thumb)',()=>{
  assert.ok(w>=64);
 });
 
-test('stub knife stays unready until upgrade (no fill lights)',()=>{
+test('stub knife viewmodel includes the glove and hold pose',()=>{
  const g=createKnifeStub();
  assert.equal(g.name,'knifeVisual');
- assert.equal(knifeMeshReady(g),false);
+ assert.equal(knifeMeshReady(g),true);
  assert.equal(g.getObjectByName('knifeFill'),undefined);
+ assert.ok(g.getObjectByName('knifeHand'));
+ assert.ok(g.getObjectByName('knifeGrip'));
+ assert.ok(g.getObjectByName('knifeMesh'));
  poseKnife(g);
  assert.equal(g.scale.x,KNIFE_HOLD_SCALE);
  assert.equal(g.position.x,KNIFE_HOLD_POS.x);
@@ -56,10 +59,8 @@ test('alignKnifeBladeForward puts tip on −Z and pivots on butt',()=>{
  const bladeC=new THREE.Box3().setFromObject(blade).getCenter(new THREE.Vector3());
  const handleC=new THREE.Box3().setFromObject(handle).getCenter(new THREE.Vector3());
  assert.ok(bladeC.z<handleC.z,'blade tip must be forward (−Z) of the grip');
- const box=new THREE.Box3().setFromObject(scene);
- // Butt at ~0, tip further −Z.
- assert.ok(Math.abs(box.max.z)<.03,'butt (hand end) near origin');
- assert.ok(box.min.z<-.05,'tip extends along −Z');
+ assert.ok(Math.abs(handleC.x)<.03&&Math.abs(handleC.y)<.03&&Math.abs(handleC.z)<.03,'grip near origin so the fist can wrap it');
+ assert.ok(bladeC.z<-.02,'tip extends along −Z');
 });
 
 test('prepareKnifeMaterials attaches soft envMap without washing PBR',()=>{
