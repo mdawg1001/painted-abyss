@@ -10,8 +10,8 @@ Measured from `playable/src/CaveWorld.ts` locomotion and `playable/src/simulatio
 
 | System | Implementation | Measured value |
 |---|---|---|
-| Cruise swim | Force kick + quadratic drag | **~1.5 m/s** (`sqrt(4.05/1.8)`) |
-| Sprint swim | Shift while fin energy > 3 | **~2.2 m/s** (`sqrt(8.7/1.8)`) |
+| Cruise swim | Force kick + quadratic drag | **~2.2 m/s** (`sqrt(8.7/1.8)`) |
+| Sprint swim | Shift while fin energy > 3 | **~3.5 m/s** (`sqrt(22.05/1.8)`) |
 | Acceleration | Thrust − k\|v\|v | Terminal speed from thrust vs drag |
 | Coast after release | Quadratic drag to rest | Short coast (sub‑2 m from cruise) |
 | Vertical vs horizontal | Look/strafe kick; Space/Q = BCD | **Buoyancy state −1..+1**, not equal XYZ thrust |
@@ -19,8 +19,8 @@ Measured from `playable/src/CaveWorld.ts` locomotion and `playable/src/simulatio
 | Air | `air −= dt` every frame | **240 s (4 min)** flat; reserve **+60 s** |
 | Air vs depth / effort | None | Sprint at floor == cruise at ceiling (−1 s/s) |
 | Fin energy | −18/s sprint, +17/s otherwise | **~5.4 s** full sprint; **~5.7 s** full regen |
-| Guardian | Patrol 0.9 / alert 0.35 / chase **1.75** m/s | Chase between cruise and sprint |
-| Torch “depth” | `torchModulation` via `hydrostaticDepth` | Stylised murk, not Beer–Lambert optics |
+| Guardian | Patrol 1.3 / alert 0.5 / chase **2.7** m/s | Chase between cruise and sprint |
+| Torch “depth” | Shared Beer–Lambert `torchModulation` (β^D spot + β^B beam) via `hydrostaticDepth` | Coastal-cave murk; mid swim calibrated to soft-spot baseline |
 | HUD `DEPTH` | `round(SURFACE_Y − y)` via `hydrostaticDepth` | **~4 m** at start, **~6 m** at floor — hydrostatic |
 
 Start → relic along −Z is **100 m**. At cruise that is **~36 s** of straight swimming (scripted full route ~89 s with fights and turns).
@@ -41,7 +41,7 @@ Start → relic along −Z is **100 m**. At cruise that is **~36 s** of straight
 ## System-by-system notes
 
 ### Swim speed — gameplay-paced force model
-Cruise **~1.5 m/s** and sprint **~2.2 m/s** come from thrust vs quadratic drag. Faster than real scuba for readable mission timing, but well below the old arcade 2.8 / 4.8 band. Space/Q still drive BCD buoyancy with neutral trim.
+Cruise **~2.2 m/s** and sprint **~3.5 m/s** come from thrust vs quadratic drag. Tuned for readable mission timing while keeping the force model (not the old target-velocity 2.8 / 4.8 lerp). Space/Q still drive BCD buoyancy with neutral trim.
 
 ### Gas / air — time-compressed timer
 Air is still a wall-clock fuse, not a cylinder. Real SAC would also rise with sprinting and with depth; the game spends air at **1 s/s** everywhere. The +60 s reserve is a design pickup, not a pony bottle sized to real litres. Slower swimming means a rehearsed full route needs more than 240 s of air in automation until the SAC step retunes the tank.
@@ -53,7 +53,7 @@ Air is still a wall-clock fuse, not a cylinder. Real SAC would also rise with sp
 `stepSwimVelocity` applies `−k|v|v`. Coast after releasing kick is short.
 
 ### Depth & light — shallow set dressing + hydrostatic gauge
-The collision column is only ~6.5 m. Torch modulation dims toward the floor and warms the beam using the same `hydrostaticDepth` model as the HUD; murk remains readability art, not an optical attenuation law. Fog still shifts with −Z progress into the cavern for atmosphere, separate from hydrostatic depth.
+The collision column is only ~6.5 m. Torch SpotLight and volumetric beam share one Beer–Lambert murk model (`β^D` ≠ `β^B`) keyed off the same `hydrostaticDepth` as the HUD; fog still shifts with −Z progress into the cavern for atmosphere, separate from hydrostatic depth.
 
 The on-screen **DEPTH** readout is now `round(SURFACE_Y − y)` (**~4 m** at start, **0 m** at the ceiling, **~6 m** at the floor). Cavern −Z no longer inflates the gauge. `ata(y)` is exported for upcoming gas/buoyancy work; air consumption is still the flat 4-minute timer.
 
