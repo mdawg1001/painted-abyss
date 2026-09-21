@@ -6,14 +6,14 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {writeFileSync, mkdirSync} from 'node:fs';
-import {Mission,START,RELIC,EXIT,moveBody,distance,CELL,torchModulation} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,moveBody,distance,CELL,torchModulation,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata} from '../src/simulation';
 
 /** Cruise / sprint match CaveWorld animate (not exported constants). */
 const CRUISE=2.8;
 const SPRINT=4.8;
 const VEL_K=4; // velocity.lerp(move, 1-exp(-4*dt))
-/** HUD depth in main.tsx — theatrical, not hydrostatic. */
-const hudDepth=(z:number,y:number)=>Math.max(1,Math.round(10+(-z)*.22+(5-y)*2.4));
+/** HUD depth matches main.tsx — hydrostatic metres below SURFACE_Y. */
+const hudDepth=(y:number)=>Math.round(hydrostaticDepth(y));
 
 /** Recreational scuba / finswim reference ranges (open literature, shallow water). */
 const REAL={
@@ -85,7 +85,7 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  assert.ok(Math.abs(upStep-fwdStep)<1e-9,'vertical and horizontal step size identical — no buoyancy bias');
 
  // Depth band
- const depthBand=7.1-0.65;
+ const depthBand=SURFACE_Y-FLOOR_Y;
  const horiz=Math.abs(RELIC.z-START.z);
  const routeCruise=horiz/CRUISE;
  const routeSprint=horiz/SPRINT;
@@ -99,14 +99,18 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  const torchFloor=torchModulation(0.8,1.2);
  const torchCeil=torchModulation(6.5,-1.2);
 
- // Depth HUD mixes −Z progress and y; playable column is only ~6.5 m
- const hudAtStart=hudDepth(START.z,START.y);
- const hudAtRelic=hudDepth(RELIC.z,RELIC.y);
- const hudFloor=hudDepth(START.z,0.65);
- const hudCeil=hudDepth(START.z,7.1);
- assert.equal(hudAtStart,17);
- assert.ok(hudAtRelic>hudAtStart,'HUD depth rises mainly from cavern −Z, not hydrostatics');
- assert.ok(hudFloor-hudCeil>depthBand,'HUD vertical span exaggerates the real y band');
+ // Depth HUD is hydrostatic — Y only; cavern −Z must not inflate metres
+ const hudAtStart=hudDepth(START.y);
+ const hudAtRelic=hudDepth(RELIC.y);
+ const hudFloor=hudDepth(FLOOR_Y);
+ const hudCeil=hudDepth(SURFACE_Y);
+ assert.equal(hudAtStart,4);
+ assert.equal(hudAtRelic,5);
+ assert.equal(hudCeil,0);
+ assert.equal(hudFloor,Math.round(depthBand));
+ assert.equal(hudDepth(START.y),hudDepth(START.y)); // −Z-independent
+ assert.ok(ata(FLOOR_Y)>ata(SURFACE_Y));
+ assert.ok(Math.abs(hudAtRelic-hudAtStart)<=2,'relic is only ~1 m deeper in Y than start');
 
  const report={
   generatedAt:new Date().toISOString(),
@@ -144,8 +148,10 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    hudDepthAtRelicM:hudAtRelic,
    hudDepthFloorEntranceM:hudFloor,
    hudDepthCeilingEntranceM:hudCeil,
-   hudDepthFormula:'max(1, round(10 + (-z)*0.22 + (5-y)*2.4))',
-   hudDepthIsHydrostatic:false,
+   hudDepthFormula:'round(max(0, SURFACE_Y - y))',
+   hudDepthIsHydrostatic:true,
+   ataAtStart:+ata(START.y).toFixed(3),
+   ataAtFloor:+ata(FLOOR_Y).toFixed(3),
   },
   reality:{
    recreationalCruiseMs:REAL.cruiseMs,
@@ -171,7 +177,7 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    buoyancy:'OMITTED — free 6DOF flight with identical vertical/horizontal thrust; no weight/BCD.',
    dragCoast:'PLAUSIBLE ORDER — ~0.7 m coast from cruise with τ=0.25 s (arcade-responsive).',
    depthScale:'SHALLOW CAVE — ~6.5 m playable y band; torch murk is stylistic, not optical attenuation law.',
-   depthHud:'THEATRICAL — reads ~17 m at start and ~42 m at the relic while collision y spans only ~6.5 m; −Z progress inflates the gauge.',
+   depthHud:'HYDROSTATIC — DEPTH = round(SURFACE_Y − y); start ~4 m, floor ~6 m; −Z no longer fakes metres. ata(y) ready for gas/buoyancy.',
    predatorPacing:'DESIGNED CHASE — chase 3.4 m/s beats cruise 2.8, loses to sprint 4.8 (~5.4 s stamina).',
    overall:'Gameplay-first survival pacing, not a scuba physics simulator.',
   },
