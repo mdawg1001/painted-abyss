@@ -254,8 +254,10 @@ export function torchModulation(depthY:number,pitch:number):TorchModulation{
  return{intensity,distance,decay,beamOpacity,particle,r,g,b,beamR,beamG,beamB,betaDirect,betaBackscatter};
 }
 
-/** Bed boundary layer (m) — fins only resuspend when this close to FLOOR_Y. */
-export const SILT_BED_HEIGHT=1.85;
+/** Bed shear layer (m) — resuspend when low in the column (floor + low swim). */
+export const SILT_BED_HEIGHT=4.2;
+/** Optical cloud height scale (m) — chocolate-milk density falls off toward the surface. */
+export const SILT_CLOUD_HEIGHT=2.2;
 /** Gameplay-compressed settle rates (1/s). Coarse ≫ fine (Stokes order, not hours). */
 export const SILT_SETTLE_COARSE=.62;
 export const SILT_SETTLE_FINE=.14;
@@ -293,7 +295,7 @@ export function siltAt(s:SiltPlume,p:Point){
  const r2=Math.max(.36,s.radius*s.radius);
  const horiz=Math.exp(-(dx*dx+dz*dz)/(2*r2));
  const above=Math.max(0,p.y-FLOOR_Y);
- const scaleY=SILT_BED_HEIGHT*(1.6+s.coarse*1.4+s.fine*2.8);
+ const scaleY=SILT_CLOUD_HEIGHT*(1.6+s.coarse*1.4+s.fine*2.8);
  const vert=Math.exp(-above/Math.max(.4,scaleY));
  return Math.min(1,load*horiz*vert*1.4);
 }

@@ -732,7 +732,8 @@ export class CaveWorld extends OceanWorld {
    moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);
    stepSilt(m.silt,m.position,{x:this.velocity.x,y:this.velocity.y,z:this.velocity.z},sprint,dt);
    const siltOptical=siltAt(m.silt,m.position);
-   if(m.silt.bed>.03)this.emitSiltBurst(Math.min(1,m.silt.bed*dt*36));
+   const siltMass=Math.max(m.silt.bed,siltOptical);
+   if(siltMass>.04)this.emitSiltBurst(Math.min(1,siltMass*dt*40));
    m.update(dt,sprint,siltOptical);this.position.copy(m.position);
    // Presentation-only hover bob when nearly still — never moves mission.position.
    // ~2.6× 0.1.18 amplitudes so the murk drift reads; torch gets extra local sway (mesh+light+beam).
