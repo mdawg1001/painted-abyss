@@ -37,14 +37,14 @@ export function loadCaveRockMaps(loader = new THREE.TextureLoader()): CaveRockMa
       diff: load(rockDiff, true),
       nor: load(rockNor, false),
       arm: load(rockArm, false),
-      scale: 0.14,
+      scale: 0.22,
       key: 'rock_face_03',
     },
     sand: {
       diff: load(sandDiff, true),
       nor: load(sandNor, false),
       arm: load(sandArm, false),
-      scale: 0.2,
+      scale: 0.28,
       key: 'dry_riverbed_rock',
     },
   };
@@ -71,6 +71,7 @@ vec3 triNormalView(sampler2D map,vec3 p,vec3 wn,vec3 b,float s,mat4 viewMatrix){
   vec3 tx=texture2D(map,p.zy*s).xyz*2.-1.;
   vec3 ty=texture2D(map,p.xz*s).xyz*2.-1.;
   vec3 tz=texture2D(map,p.xy*s).xyz*2.-1.;
+  tx.xy*=1.55;ty.xy*=1.55;tz.xy*=1.55;
   tx=vec3(tx.xy+wn.zy,abs(wn.x));
   ty=vec3(ty.xy+wn.xz,abs(wn.y));
   tz=vec3(tz.xy+wn.xy,abs(wn.z));
