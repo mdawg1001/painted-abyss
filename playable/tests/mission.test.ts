@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,updateBuoyancy,stepSwimVelocity,terminalSwimSpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,updateBuoyancy,stepSwimVelocity,terminalSwimSpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL} from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{for(let i=0;i<seconds*60;i++)m.update(1/60);};
 test('hydrostatic depth and ata share one surface plane',()=>{
  assert.equal(hydrostaticDepth(SURFACE_Y),0);
@@ -96,8 +96,40 @@ test('solid central pillar blocks detection and navigation routes around it',()=
 test('all level cells connect, including objective and exit',()=>{const first=[...cells][0],visited=new Set([first]),queue=[first];for(let i=0;i<queue.length;i++){const [c,r]=queue[i].split(',').map(Number);for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]]){const k=`${c+dc},${r+dr}`;if(cells.has(k)&&!visited.has(k)){visited.add(k);queue.push(k);}}}assert.equal(visited.size,cells.size);});
 test('predator transitions patrol → alert → chase → search → patrol',()=>{const m=new Mission();m.predator.position=world(16,19);m.position=world(16,16);advance(m,.2);assert.equal(m.predator.state,'alert');advance(m,2);assert.equal(m.predator.state,'chase');m.position={...START};advance(m,3);assert.equal(m.predator.state,'search');advance(m,8);assert.equal(m.predator.state,'patrol');});
 test('predator cannot see or bite through rock',()=>{const m=new Mission();m.predator.position=world(8,17);m.position=world(13,17);advance(m,.2);assert.equal(m.predator.state,'patrol');assert.equal(m.health,100);});
-test('four bites lose the mission; fresh mission resets every system',()=>{const m=new Mission();m.position=world(16,19);m.predator.position={...m.position};m.predator.state='chase';advance(m,6);assert.equal(m.outcome,'lost');assert.equal(m.health,0);const fresh=new Mission();assert.equal(fresh.health,100);assert.equal(fresh.air,240);assert.equal(fresh.outcome,'playing');assert.equal(fresh.pending,null);assert.equal(fresh.pickups[0].item,'relic');assert.deepEqual(fresh.position,START);});
-test('air loss, reserve, sealant and distraction have tangible effects',()=>{const m=new Mission();m.air=100;m.selected=3;m.use();assert.equal(m.air,160);assert.equal(m.inventory[3],null);assert.equal(m.feedbackKind,'ok');m.health=30;m.selected=4;m.use();assert.equal(m.health,75);m.selected=2;m.use();assert.ok(m.decoy);assert.equal(m.predator.state,'search');advance(m,13);assert.equal(m.decoy,null);m.air=.01;m.update(.05);assert.equal(m.outcome,'lost');});
+test('four bites lose the mission; fresh mission resets every system',()=>{const m=new Mission();m.position=world(16,19);m.predator.position={...m.position};m.predator.state='chase';advance(m,6);assert.equal(m.outcome,'lost');assert.equal(m.health,0);const fresh=new Mission();assert.equal(fresh.health,100);assert.equal(fresh.air,AIR_MAIN_MAX);assert.equal(fresh.bailout,0);assert.equal(fresh.outcome,'playing');assert.equal(fresh.pending,null);assert.equal(fresh.pickups[0].item,'relic');assert.deepEqual(fresh.position,START);});
+test('air loss, pony bailout, sealant and distraction have tangible effects',()=>{
+ const m=new Mission();m.air=100;m.selected=3;m.use();
+ assert.equal(m.air,100);assert.equal(m.bailout,AIR_BAILOUT_MAX);assert.equal(m.inventory[3],null);assert.equal(m.feedbackKind,'ok');
+ m.use();assert.equal(m.feedbackKind,'blocked'); // slot empty
+ m.inventory[3]='air';m.use();assert.equal(m.bailout,AIR_BAILOUT_MAX);assert.equal(m.feedbackKind,'blocked'); // pony already full
+ m.health=30;m.selected=4;m.use();assert.equal(m.health,75);
+ m.selected=2;m.use();assert.ok(m.decoy);assert.equal(m.predator.state,'search');advance(m,13);assert.equal(m.decoy,null);
+ m.air=.01;m.bailout=0;m.update(.05);assert.equal(m.outcome,'lost');
+});
+test('gas drain scales with ATA and sprint; bailout feeds after main',()=>{
+ assert.ok(gasDrainRate(FLOOR_Y,false)>gasDrainRate(SURFACE_Y,false));
+ assert.ok(gasDrainRate(FLOOR_Y,true)>gasDrainRate(FLOOR_Y,false));
+ assert.ok(gasDrainRate(FLOOR_Y,false,true)>gasDrainRate(FLOOR_Y,true));
+ assert.ok(Math.abs(gasDrainRate(SURFACE_Y,false)-1)<1e-9);
+ const deep=new Mission(true);deep.position={...START,y:FLOOR_Y};
+ const shallow=new Mission(true);shallow.position={...START,y:SURFACE_Y};
+ for(let i=0;i<60;i++){deep.update(1/60,true);shallow.update(1/60,false);}
+ assert.ok(deep.air<shallow.air);
+ const m=new Mission(true);m.air=.2;m.bailout=AIR_BAILOUT_MAX;
+ for(let i=0;i<20;i++)m.update(.05,false);
+ assert.equal(m.air,0);assert.ok(m.bailout<AIR_BAILOUT_MAX);assert.equal(m.outcome,'playing');
+ m.bailout=.01;m.update(.2,false);assert.equal(m.outcome,'lost');
+});
+test('guardian bite raises panic gas effort briefly',()=>{
+ const m=new Mission(true);m.position=world(16,19);m.position.y=FLOOR_Y;
+ m.predator.position={...m.position};m.predator.state='chase';m.predator.bite=0;
+ m.update(.05,false);
+ assert.ok(m.gasPanicUntil>m.elapsed);assert.equal(m.health,75);
+ const panic=new Mission(true);panic.position={...START,y:FLOOR_Y};panic.gasPanicUntil=1e9;
+ const calm=new Mission(true);calm.position={...START,y:FLOOR_Y};
+ for(let i=0;i<60;i++){panic.update(1/60,false);calm.update(1/60,false);}
+ assert.ok(panic.air<calm.air);
+});
 test('inventory select/use stay quiet after the one-time first-play tip',()=>{
  const first=new Mission(false);
  assert.match(first.notice,/1–5 select/);
