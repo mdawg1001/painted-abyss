@@ -6,6 +6,7 @@ in this folder and run:
     node playable/serve.mjs
 
 Open http://127.0.0.1:5173 in a desktop browser and click Begin dive.
+Confirm the on-screen label says BUILD v0.1.7 (menu and during the dive).
 No dependency installation is needed to play the included build.
 
 WASD swim · Space/Q up/down · Shift sprint · mouse/trackpad look
