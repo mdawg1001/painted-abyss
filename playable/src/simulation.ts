@@ -31,12 +31,19 @@ export function hydrostaticDepth(y:number){return Math.max(0,SURFACE_Y-y);}
 /** Ambient pressure in atmospheres (≈ 1 + depth_m/10). */
 export function ata(y:number){return 1+hydrostaticDepth(y)/10;}
 
-/** Surface-equivalent main tank (seconds at 1 ATA, cruise effort). High-stakes: ~90 s surface. */
-export const AIR_MAIN_MAX=90;
-/** Separate pony / bailout pool (~⅓ of main). */
-export const AIR_BAILOUT_MAX=30;
-/** Base drain: 1 surface-second of gas per real second at 1 ATA, cruise. */
-export const AIR_BASE_DRAIN=1;
+/** Surface air consumption at cruise (L/min). Sprint/panic multiply via effort. */
+export const SAC_CRUISE_LPM=18;
+/**
+ * Free-gas main tank in litres.
+ * 27 L ≈ 90 s of surface cruise at 18 L/min — same high-stakes fuse as the old second-tank.
+ */
+export const AIR_MAIN_LITRES=27;
+/** Separate pony / bailout pool in litres (~⅓ of main). */
+export const AIR_BAILOUT_LITRES=9;
+/** @deprecated Prefer AIR_MAIN_LITRES — kept as an alias for older call sites. */
+export const AIR_MAIN_MAX=AIR_MAIN_LITRES;
+/** @deprecated Prefer AIR_BAILOUT_LITRES. */
+export const AIR_BAILOUT_MAX=AIR_BAILOUT_LITRES;
 export const AIR_EFFORT_CRUISE=1;
 /** Sprint RMV — hard kick burns gas fast so Shift is a real choice. */
 export const AIR_EFFORT_SPRINT=2.2;
@@ -49,9 +56,9 @@ export function gasEffort(sprinting=false,panic=false){
  if(sprinting)return AIR_EFFORT_SPRINT;
  return AIR_EFFORT_CRUISE;
 }
-/** Surface-equivalent gas seconds consumed per real second (DAN: RMV × ATA × effort). */
+/** Litres consumed per wall-clock second (SAC/60 × ATA × effort). */
 export function gasDrainRate(depthY:number,sprinting=false,panic=false){
- return AIR_BASE_DRAIN*ata(depthY)*gasEffort(sprinting,panic);
+ return (SAC_CRUISE_LPM/60)*ata(depthY)*gasEffort(sprinting,panic);
 }
 
 /** Kick thrust (m/s²) — terminal speed ≈ sqrt(thrust / SWIM_DRAG_K). */
@@ -72,6 +79,10 @@ export const BCD_TRIM_RATE=2.4;
 export const BCD_NEUTRAL_EPS=.04;
 /** Extra vertical linear damp (1/s) when BCD is neutral and you are not finning up/down. */
 export const BCD_SETTLE_DAMP=3.2;
+/** Max player-set idle bias (|buoyancyTrim|). Full ±1 remains momentary Space/Q only. */
+export const BCD_TRIM_BIAS_MAX=.45;
+/** How fast [ ] nudge the locked trim bias (1/s). */
+export const BCD_TRIM_ADJUST_RATE=.9;
 /**
  * Look-pitch finning only contributes this fraction of kick thrust on Y.
  * Horizontal kick stays full; vertical climb is mostly a BCD skill.
@@ -96,6 +107,17 @@ export function updateBuoyancy(buoyancy:number,bcdInput:number,dt:number,trimTar
  return Math.abs(next-trim)<BCD_NEUTRAL_EPS?trim:next;
 }
 /**
+ * Player-set idle bias: hold ] / [ toward ±BCD_TRIM_BIAS_MAX.
+ * Release Space/Q and buoyancy settles onto this bias (non-zero = slow rise/sink).
+ */
+export function updateBuoyancyTrim(trim:number,adjustInput:number,dt:number){
+ const a=Math.max(-1,Math.min(1,adjustInput));
+ if(Math.abs(a)<.01)return Math.max(-BCD_TRIM_BIAS_MAX,Math.min(BCD_TRIM_BIAS_MAX,trim));
+ const target=Math.sign(a)*BCD_TRIM_BIAS_MAX;
+ const next=trim+(target-trim)*(1-Math.exp(-BCD_TRIM_ADJUST_RATE*dt));
+ return Math.max(-BCD_TRIM_BIAS_MAX,Math.min(BCD_TRIM_BIAS_MAX,next));
+}
+/**
  * Force-based swim step: look/strafe kick + BCD buoyancy − k|v|v.
  * `kick` is WASD (look-forward may include a small Y); Space/Q must not be baked into kick.
  */
@@ -112,8 +134,9 @@ export function stepSwimVelocity(velocity:Vec3,kick:Vec3,buoyancy:number,sprint:
   ay+=kick.y*s*SWIM_KICK_VERTICAL_SCALE;
   az=kick.z*s;
  }
- // Neutral BCD + no vertical fin: bleed leftover rise/sink so release actually stops you.
- if(buoy===0&&Math.abs(kick.y)<1e-3)ay+=-velocity.y*BCD_SETTLE_DAMP;
+ // Neutral trim + no vertical fin: bleed leftover rise/sink so release actually stops you.
+ // Non-zero player bias keeps a gentle float/sink — that is intentional.
+ if(Math.abs(buoyancy)<BCD_NEUTRAL_EPS&&Math.abs(kick.y)<1e-3)ay+=-velocity.y*BCD_SETTLE_DAMP;
  const speed=Math.hypot(velocity.x,velocity.y,velocity.z);
  const drag=-SWIM_DRAG_K*speed;
  ax+=velocity.x*drag;ay+=velocity.y*drag;az+=velocity.z*drag;
@@ -133,7 +156,7 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  stone:{name:'Limestone',short:'Stone',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  wood:{name:'Driftwood',short:'Wood',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  flare:{name:'Signal flare',short:'Flare',description:'R · Deploy a 12-second distraction at your position.',hint:'R use · consumed'},
- air:{name:'Pony bottle',short:'Pony',description:'R · Arm a separate bailout cylinder (~30 s at surface). Drains after the main tank.',hint:'R arm bailout · consumed'},
+ air:{name:'Pony bottle',short:'Pony',description:`R · Arm a separate bailout cylinder (~${AIR_BAILOUT_LITRES} L). Drains after the main tank.`,hint:'R arm bailout · consumed'},
  bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
 };
@@ -264,110 +287,6 @@ export function torchModulation(depthY:number,pitch:number):TorchModulation{
  return{intensity,distance,decay,beamOpacity,particle,r,g,b,beamR,beamG,beamB,betaDirect,betaBackscatter};
 }
 
-/** Bed shear layer (m) — resuspend when low in the column (floor + low swim). */
-export const SILT_BED_HEIGHT=4.2;
-/** Optical cloud height scale (m) — chocolate-milk density falls off toward the surface. */
-export const SILT_CLOUD_HEIGHT=2.2;
-/** Gameplay-compressed settle rates (1/s). Coarse ≫ fine (Stokes order, not hours). */
-export const SILT_SETTLE_COARSE=.62;
-export const SILT_SETTLE_FINE=.14;
-/** Peak β^B multiplier in a full whiteout relative to ambient murk betas. */
-export const SILT_STORM_BETA_SCALE=3.6;
-
-/**
- * Two-phase silt plume: coarse puffs clear faster; fine clay hangs.
- * Spatial Gaussian in XZ around the kick site; density falls with height above the bed.
- */
-export type SiltPlume={
- fine:number;
- coarse:number;
- cx:number;
- cz:number;
- radius:number;
- /** Recent bed shear (0..1) — drives storm particle spawn. */
- bed:number;
-};
-
-export function createSiltPlume(at:Point=START):SiltPlume{
- return{fine:0,coarse:0,cx:at.x,cz:at.z,radius:1.4,bed:0};
-}
-
-/** Combined optical load 0..1 (not yet spatialized). */
-export function siltLoad(s:SiltPlume){
- return Math.min(1,s.coarse*.58+s.fine*.72);
-}
-
-/** Local optical density at a world point (0..1). */
-export function siltAt(s:SiltPlume,p:Point){
- const load=siltLoad(s);
- if(load<.002)return 0;
- const dx=p.x-s.cx,dz=p.z-s.cz;
- const r2=Math.max(.36,s.radius*s.radius);
- const horiz=Math.exp(-(dx*dx+dz*dz)/(2*r2));
- const above=Math.max(0,p.y-FLOOR_Y);
- const scaleY=SILT_CLOUD_HEIGHT*(1.6+s.coarse*1.4+s.fine*2.8);
- const vert=Math.exp(-above/Math.max(.4,scaleY));
- return Math.min(1,load*horiz*vert*1.4);
-}
-
-/**
- * Resuspend from bed shear (near-floor kick / downwash / sprint), advect plume center,
- * settle coarse then fine. Deterministic — safe for Mission tests.
- */
-export function stepSilt(s:SiltPlume,pos:Point,vel:Vec3,sprint:boolean,dt:number){
- dt=Math.min(dt,.05);
- const near=Math.max(0,Math.min(1,1-(pos.y-FLOOR_Y)/SILT_BED_HEIGHT));
- const near2=near*near;
- const horiz=Math.hypot(vel.x,vel.z);
- const down=Math.max(0,-vel.y);
- const kick=sprint?1.8:1;
- const shear=near2*(.28*horiz+1.55*down+.1*kick*Math.min(horiz,4))*kick;
- const lift=shear*dt;
- s.coarse=Math.min(1,s.coarse+lift*1.25);
- s.fine=Math.min(1,s.fine+lift*.62);
- s.bed=Math.min(1,s.bed+lift*2.4);
- // Plume tracks the diver hard while on the bed; drifts slowly once you leave it.
- const follow=near2*2.4+(1-near2)*.2;
- const a=1-Math.exp(-follow*dt);
- s.cx+= (pos.x-s.cx)*a;
- s.cz+= (pos.z-s.cz)*a;
- s.radius=Math.min(16,s.radius+lift*9.5);
- const calm=1/(1+horiz*1.15+down*2.2);
- const altitude=1-near;
- const up=Math.max(0,vel.y);
- const settleBoost=calm*(.5+.5*altitude)+up*.4;
- s.coarse=Math.max(0,s.coarse-SILT_SETTLE_COARSE*settleBoost*dt);
- s.fine=Math.max(0,s.fine-SILT_SETTLE_FINE*settleBoost*dt);
- s.bed=Math.max(0,s.bed-2.1*dt);
- s.radius=Math.max(1.3,s.radius-(.4+settleBoost)*dt*(.35+altitude*.65));
-}
-
-/**
- * Fold local silt into the shared torch response: boost β^B (muddy wall), crush range.
- * Beam goes butterscotch/taupe (Dayo Blue Grotto silt stills) — never cyan/white fog.
- */
-export function applySiltToTorch(mod:TorchModulation,silt:number):TorchModulation{
- if(silt<.01)return mod;
- const t=Math.min(1,silt);
- const t2=t*t;
- const scaleB=1+t2*(SILT_STORM_BETA_SCALE-1);
- const scaleD=1+t2*1.85;
- const betaBackscatter={r:mod.betaBackscatter.r*scaleB,g:mod.betaBackscatter.g*scaleB,b:mod.betaBackscatter.b*scaleB};
- const betaDirect={r:mod.betaDirect.r*scaleD,g:mod.betaDirect.g*scaleD,b:mod.betaDirect.b*scaleD};
- const distance=Math.max(2.4,mod.distance*(1-t2*.74));
- const intensity=mod.intensity*(1-t2*.58);
- const decay=mod.decay+t2*.55;
- const beamOpacity=Math.min(.62,mod.beamOpacity*(1+t2*3.6));
- const particle=Math.min(1,mod.particle+.5*t);
- // Muddy cream cone (#C6C4A3 lit / #6B5E52 dense) — warm, desaturated, not additive white.
- const beamR=lerp(mod.beamR,.82,t2*.88);
- const beamG=lerp(mod.beamG,.74,t2*.8);
- const beamB=lerp(mod.beamB,.48,t2*.92);
- const r=lerp(mod.r,.72,t2*.48);
- const g=lerp(mod.g,.63,t2*.44);
- const b=lerp(mod.b,.45,t2*.55);
- return{intensity,distance,decay,beamOpacity,particle,r,g,b,beamR,beamG,beamB,betaDirect,betaBackscatter};
-}
 /**
  * Soft look-stick yaw when pointer lock is unavailable.
  * A center dead zone keeps fine aiming calm; offset past that ramps continuous
@@ -395,12 +314,10 @@ export function writeInventoryTipsSeen(){
  position={...START};health=100;air=AIR_MAIN_MAX;bailout=0;elapsed=0;stamina=100;torch=true;
  /** BCD trim −1 (sink) .. 0 (neutral) .. +1 (float). Driven by Space/Q, not kick speed. */
  buoyancy=0;
- /** Idle drift target for buoyancy (−1..+1). Defaults to neutral; skill play can bias trim later. */
+ /** Idle drift target for buoyancy (−1..+1). Player sets with [ ] / X; Space/Q are momentary. */
  buoyancyTrim=0;
  /** Elevated gas effort until this mission elapsed time (bite / panic). */
  gasPanicUntil=0;
- /** Floor-kick silt plume (fine + coarse). Stepped from CaveWorld with velocity. */
- silt:SiltPlume=createSiltPlume(START);
  inventory:(Item|null)[]=['knife','wood','flare','air','bandage'];selected=0;
  pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},{id:2,item:'flare',position:{x:-20,y:2,z:-56}}];nextId=3;
  pending:number|null=null;outcome:'playing'|'won'|'lost'='playing';reason='';
@@ -517,21 +434,17 @@ export function writeInventoryTipsSeen(){
   if(!this.tipsSeen||this.noticeUntil<=this.elapsed)this.say('It bleeds — and rages.','ok');
   return 'hit';
  }
- update(dt:number,sprinting=false,siltOptical=0){
+ update(dt:number,sprinting=false){
   if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;
   const panic=this.elapsed<this.gasPanicUntil;
   let need=gasDrainRate(this.position.y,sprinting,panic)*dt;
-  // Twin Cave–style stress SAC: thick whiteout raises burn without full bite panic.
-  if(siltOptical>.7)need*=1+.35*(siltOptical-.7)/.3;
   if(this.air>=need){this.air-=need;need=0;}
   else{need-=this.air;this.air=0;this.bailout=Math.max(0,this.bailout-need);need=0;}
   this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?-18:17)*dt));
   if(this.air<=0&&this.bailout<=0){this.outcome='lost';this.reason='Your air ran out. Arm the pony earlier or climb and calm your kick.';return;}
   if(this.pending!==null&&!this.pickups.some(p=>p.id===this.pending&&distance(p.position,this.position)<3.2))this.pending=null;
   const p=this.predator;const d=distance(p.position,this.position);const canSee=visible(p.position,this.position);
-  const siltBlind=Math.max(siltOptical,siltAt(this.silt,p.position));
-  const seeMul=1-siltBlind*.78;
-  const sense=canSee&&(d<4.5*seeMul||d<(this.torch?16:sprinting?13:8)*seeMul);
+  const sense=canSee&&(d<4.5||d<(this.torch?16:sprinting?13:8));
   const safe=!predatorCell(tile(this.position).col,tile(this.position).row);
   p.timer+=dt;p.bite=Math.max(0,p.bite-dt);p.flinch=Math.max(0,p.flinch-dt);p.stabCool=Math.max(0,p.stabCool-dt);
 

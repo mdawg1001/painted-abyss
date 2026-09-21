@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.1.35
+# Painted Abyss — First Dive · 0.1.39
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -52,6 +52,8 @@ Keep the terminal open while playing. Stop it with Ctrl+C. If port 5173 is alrea
 | W / A / S / D | Kick-swim forward / left / back / right (look-relative) |
 | Space | Add positive buoyancy (BCD up) |
 | Q or Ctrl | Add negative buoyancy (BCD down) |
+| [ / ] | Nudge locked idle trim bias toward sink / float |
+| X | Clear trim bias back to neutral |
 | Shift | Sprint kick; spends fin energy, which replenishes |
 | F | Toggle the mounted torch |
 | E | Collect a nearby item / confirm replacement / extract |
@@ -71,7 +73,9 @@ Pointer lock is requested by Begin / Resume. If the browser refuses it, moving t
 - Driftwood is spare salvage; replacing it keeps your useful supplies. Press **1** then **click** to stab the guardian at close range — wounds make it rage harder; at ~85% damage taken it breaks off slow and limping; killing it sinks the corpse with soft floating blood sprites in the water (optional — extract still only needs the relic). Press **1–5** to select a slot, then **R** to use consumables — air, sealant, and flares are consumed. A one-time tip appears on the first dive only; later dives rely on the selected-slot chrome. Selecting the knife puts the Poly Haven fish knife in hand; other slots return the mounted torch as the held FPS object.
 - Carry the relic east toward the **amber markers**, enter the narrow fissure, then follow it north to the extraction pool. Press **E** near the light to win. You must still be carrying the relic; dropping it removes eligibility to extract.
 - Rock blocks the guardian's sight. Its states are patrol, alert, chase, search, damaged, and dead. Use the pillar, briefly sprint away, switch off the torch, deploy a flare, or fight with the knife. It cannot enter the narrow exit passage.
-- Air is a **90 s** surface-equivalent main tank plus a **30 s** pony bailout (R arms the pony). Burn scales with depth (ATA) and sprint/panic effort. Space/Q fill a **BCD trim** (−1..+1); look-pitch finning only adds a little vertical thrust. Sealant repairs 45 suit integrity. A flare distracts for 12 seconds unless you remain very close to the guardian. Dying or running out of air brings up Restart.
+- Air is a short free-gas tank shown in **litres** on the HUD (**27 L** main ≈ 90 s surface cruise at 18 L/min SAC, plus a **9 L** pony). Burn scales with depth (ATA) and sprint/panic effort (R arms the pony). Space/Q fill a **BCD trim** (−1..+1); **[ ]** lock an idle bias and **X** clears it; look-pitch finning only adds a little vertical thrust. Sealant repairs 45 suit integrity. A flare distracts for 12 seconds unless you remain very close to the guardian. Dying or running out of air brings up Restart.
+- **Out of scope for First Dive:** cave currents / surge, a weight-belt inventory model, and real decompression stops or NDL tracking. The short mission stays shallow and theatrical; those systems are deferred.
+
 ## Edit and rebuild
 
 The new portable entry point is **playable/**. From that folder:
@@ -107,4 +111,4 @@ New mission rules live in `playable/src/simulation.ts`; cave rendering and input
 
 The production build and **14 gameplay tests** passed, including a full route through live AI and collision and continuous camera rotation. Chrome rendered actual WebGL 2 successfully: camera direction, pointer-lock fallback, movement, torch switching, inventory swap, pause, extraction, loss, and restart were checked. See `docs/TEST-REPORT.md` for the initial validation and its limits. The later camera check verified turns beyond 360° in both directions with pointer lock denied, and stopping continuous turning by returning the pointer to the centre.
 
-This is intentionally prototype-quality: one level, one procedural creature, simple grid-derived cave collision and route finding, decorative torch volume, and reusable supplies. No crafting, saving, region selection, mounts, mobile controls, or body-roll squeezing system. The narrow route limits the creature by its navigation region; collision is approximate and not an anatomical simulation. Point lights do not cast physical shadows. Visuals and timing will need human playtesting; native GPU performance, Safari, and a physical trackpad were not manually validated.
+This is intentionally prototype-quality: one level, one procedural creature, simple grid-derived cave collision and route finding, decorative torch volume, and reusable supplies. No crafting, saving, region selection, mounts, mobile controls, or body-roll squeezing system. Cave currents / surge, weight-belt loadout, and real deco / NDL are explicitly out of scope for this short mission. The narrow route limits the creature by its navigation region; collision is approximate and not an anatomical simulation. Point lights do not cast physical shadows. Visuals and timing will need human playtesting; native GPU performance, Safari, and a physical trackpad were not manually validated.
