@@ -45,32 +45,38 @@ export function playDiveChime(ctx: AudioContext, master: GainNode) {
   }
 }
 
-/** Clear UI tick when the inventory selection moves to a different slot. */
+/** Short mechanical click/snap when the inventory selection moves to a different slot. */
 export function playInventoryClick(ctx: AudioContext, master: GainNode) {
   const start = ctx.currentTime;
-  // Bright tip so the select reads over dive music and regulator breathing.
-  const tip = ctx.createOscillator();
-  const tipEnv = ctx.createGain();
-  tip.type = 'sine';
-  tip.frequency.value = 2200;
-  tipEnv.gain.setValueAtTime(0, start);
-  tipEnv.gain.linearRampToValueAtTime(.3, start + .002);
-  tipEnv.gain.exponentialRampToValueAtTime(.001, start + .045);
-  tip.connect(tipEnv).connect(master);
-  tip.start(start);
-  tip.stop(start + .05);
-  tip.onended = () => { tip.disconnect(); tipEnv.disconnect(); };
+  // Broadband transient — reads as a click, not a pitched swoop.
+  const duration = .028;
+  const noiseBuf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * duration)), ctx.sampleRate);
+  const samples = noiseBuf.getChannelData(0);
+  for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+  const noise = ctx.createBufferSource();
+  noise.buffer = noiseBuf;
+  const band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.frequency.value = 2800;
+  band.Q.value = 1.1;
+  const noiseEnv = ctx.createGain();
+  noiseEnv.gain.setValueAtTime(.72, start);
+  noiseEnv.gain.exponentialRampToValueAtTime(.001, start + duration);
+  noise.connect(band).connect(noiseEnv).connect(master);
+  noise.start(start);
+  noise.stop(start + duration);
+  noise.onended = () => { noise.disconnect(); band.disconnect(); noiseEnv.disconnect(); };
 
-  const body = ctx.createOscillator();
-  const bodyEnv = ctx.createGain();
-  body.type = 'triangle';
-  body.frequency.setValueAtTime(1400, start);
-  body.frequency.exponentialRampToValueAtTime(720, start + .07);
-  bodyEnv.gain.setValueAtTime(0, start);
-  bodyEnv.gain.linearRampToValueAtTime(.38, start + .004);
-  bodyEnv.gain.exponentialRampToValueAtTime(.001, start + .1);
-  body.connect(bodyEnv).connect(master);
-  body.start(start);
-  body.stop(start + .11);
-  body.onended = () => { body.disconnect(); bodyEnv.disconnect(); };
+  // Fixed-pitch body tick (no frequency ramp — avoids laser/pew character).
+  const snap = ctx.createOscillator();
+  const snapEnv = ctx.createGain();
+  snap.type = 'square';
+  snap.frequency.value = 1650;
+  snapEnv.gain.setValueAtTime(0, start);
+  snapEnv.gain.linearRampToValueAtTime(.28, start + .001);
+  snapEnv.gain.exponentialRampToValueAtTime(.001, start + .018);
+  snap.connect(snapEnv).connect(master);
+  snap.start(start);
+  snap.stop(start + .022);
+  snap.onended = () => { snap.disconnect(); snapEnv.disconnect(); };
 }
