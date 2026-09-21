@@ -13,6 +13,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 /** Public path — must match files under `playable/public/assets/knife/`. */
 export const KNIFE_ASSET_URL='/assets/knife/fish_knife_1k.gltf';
 export const KNIFE_THUMB_URL='/assets/knife/thumb.png';
+/** CC0 FPS viewmodel arms (right hand planted on the knife grip). */
+export const ARMS_ASSET_URL='/assets/arms/arms.glb';
 
 /**
  * Camera-local FPS viewmodel — forearm clips the lower-right, blade
@@ -160,6 +162,44 @@ export function buildKnifeHand():THREE.Group{
  grip.name='knifeGrip';
  hand.add(grip);
  return hand;
+}
+
+/** Right-hand vertex cluster in the CC0 arm mesh, after a +90° X turn (fingers along −Z). */
+const ARM_SCALE=0.09;
+const ARM_HAND={x:5.134,y:2.942,z:-3.527};
+
+/**
+ * Replace the procedural glove with the rigged FPS arms. Grip stays at the
+ * viewmodel origin so the knife handle sits in the right hand.
+ */
+export async function attachFpsArms(root:THREE.Group):Promise<boolean>{
+ try{
+  const gltf=await new GLTFLoader().loadAsync(ARMS_ASSET_URL);
+  const arms=gltf.scene;
+  arms.name='knifeHand';
+  arms.frustumCulled=false;
+  arms.rotation.x=Math.PI/2;
+  arms.scale.setScalar(ARM_SCALE);
+  arms.position.set(-ARM_HAND.x*ARM_SCALE,-ARM_HAND.y*ARM_SCALE,-ARM_HAND.z*ARM_SCALE);
+  arms.traverse(o=>{
+   if(!(o instanceof THREE.Mesh))return;
+   o.frustumCulled=false;o.castShadow=false;o.receiveShadow=false;
+  });
+  const grip=root.getObjectByName('knifeGrip');
+  if(grip){
+   root.add(grip);
+   grip.position.set(0,0,0);
+   grip.rotation.set(0,0,0);
+   grip.scale.set(1,1,1);
+  }
+  const old=root.getObjectByName('knifeHand');
+  if(old&&old!==arms)root.remove(old);
+  root.add(arms);
+  return true;
+ }catch(err){
+  console.warn('FPS arms failed to load; keeping the simple glove.',err);
+  return false;
+ }
 }
 
 function attachKnifeMesh(root:THREE.Group,mesh:THREE.Object3D){
