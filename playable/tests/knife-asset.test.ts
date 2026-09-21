@@ -39,16 +39,16 @@ test('stub knife stays unready until upgrade (no fill lights)',()=>{
  assert.equal(g.position.x,KNIFE_HOLD_POS.x);
 });
 
-test('alignKnifeBladeForward puts tip on −Z and pivots on handle',()=>{
+test('alignKnifeBladeForward puts tip on −Z and pivots on butt',()=>{
  const scene=new THREE.Group();
  const handle=new THREE.Mesh(new THREE.BoxGeometry(.04,.03,.08));
  handle.name='fish_knife_handle';
- handle.position.z=.04;
+ handle.position.set(0,0,.05);
  const blade=new THREE.Mesh(new THREE.BoxGeometry(.03,.01,.14));
  blade.name='fish_knife_blade';
- blade.position.z=-.09;
+ blade.position.set(0,0,-.1);
  scene.add(handle,blade);
- // Intentionally tip on +Z so align must flip.
+ // Start pointing the wrong way (+Z tip).
  scene.rotation.y=Math.PI;
  scene.updateMatrixWorld(true);
  alignKnifeBladeForward(scene);
@@ -56,8 +56,10 @@ test('alignKnifeBladeForward puts tip on −Z and pivots on handle',()=>{
  const bladeC=new THREE.Box3().setFromObject(blade).getCenter(new THREE.Vector3());
  const handleC=new THREE.Box3().setFromObject(handle).getCenter(new THREE.Vector3());
  assert.ok(bladeC.z<handleC.z,'blade tip must be forward (−Z) of the grip');
- // Grip near origin (pivot on handle).
- assert.ok(Math.abs(handleC.x)<.02&&Math.abs(handleC.y)<.02&&Math.abs(handleC.z)<.05);
+ const box=new THREE.Box3().setFromObject(scene);
+ // Butt at ~0, tip further −Z.
+ assert.ok(Math.abs(box.max.z)<.03,'butt (hand end) near origin');
+ assert.ok(box.min.z<-.05,'tip extends along −Z');
 });
 
 test('prepareKnifeMaterials attaches soft envMap without washing PBR',()=>{
