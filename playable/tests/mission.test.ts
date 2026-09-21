@@ -128,17 +128,26 @@ test('cancelled / out of range swap cannot remotely collect objective',()=>{cons
 test('world collision stops walls, floor, roof, and large movement tunnelling',()=>{const p={...START};moveBody(p,400,0,0);assert.ok(p.x<14);assert.ok(fits(p));moveBody(p,0,100,0);assert.ok(p.y<=SURFACE_Y);moveBody(p,0,-200,0);assert.ok(p.y>=FLOOR_Y);const pillar=world(8,17);moveBody(pillar,20,0,0);assert.ok(pillar.x<-10);assert.ok(fits(pillar));});
 test('solid central pillar blocks detection and navigation routes around it',()=>{const a=world(7,17),b=world(15,17);assert.equal(visible(a,b),false);const path=pathBetween(a,b);assert.ok(path.length>0);assert.ok(path.every(p=>fits(p,1.3)));assert.equal(pathBetween(a,EXIT).length,0);});
 test('all level cells connect, including objective and exit',()=>{const first=[...cells][0],visited=new Set([first]),queue=[first];for(let i=0;i<queue.length;i++){const [c,r]=queue[i].split(',').map(Number);for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]]){const k=`${c+dc},${r+dr}`;if(cells.has(k)&&!visited.has(k)){visited.add(k);queue.push(k);}}}assert.equal(visited.size,cells.size);});
-test('player spawn candidates are open approach floor outside the hunting cavern',()=>{
+test('player spawn candidates span distant open-floor regions of the map',()=>{
  const picks=playerSpawnCandidates();
- assert.ok(picks.length>=6);
+ assert.ok(picks.length>=12);
  for(const p of picks){
   assert.ok(fits(p,.48));
   const t={col:Math.round(p.x/4)+11,row:Math.round(-p.z/4)};
   assert.ok(cells.has(`${t.col},${t.row}`));
-  assert.ok(!(t.col>=4&&t.col<=18&&t.row>=12&&t.row<=28),'diver start stays out of hunting cavern');
  }
- assert.equal(PLAYER_SPAWN_CELLS.length>=picks.length,true);
+ assert.equal(PLAYER_SPAWN_CELLS.length,picks.length);
  assert.ok(picks.some(p=>p.x===START.x&&p.z===START.z),'classic START remains a candidate');
+ // Distinct regions: entrance, exit arm, deep north — not one chamber cluster.
+ assert.ok(picks.some(p=>distance(p,START)<5));
+ assert.ok(picks.some(p=>distance(p,EXIT)<16));
+ assert.ok(picks.some(p=>distance(p,RELIC)<40));
+ const depths=picks.map(p=>-p.z);
+ assert.ok(Math.max(...depths)-Math.min(...depths)>80,'spawn Z span should cover most of the cave length');
+ // Prefer regional corners: most pairs should not be neighbouring tiles.
+ let close=0;
+ for(let i=0;i<picks.length;i++)for(let j=i+1;j<picks.length;j++)if(distance(picks[i],picks[j])<12)close++;
+ assert.ok(close<=3,'curated set should avoid a tight same-chamber cluster');
 });
 test('predator spawn candidates are open cavern floor away from the diver start',()=>{
  const picks=predatorSpawnCandidates(START);
@@ -162,7 +171,7 @@ test('each new mission rolls diver and predator spawns with separation',()=>{
   playerKeys.add(`${p.x},${p.z}`);
   assert.ok(playerSpawnCandidates().some(c=>c.x===p.x&&c.z===p.z));
  }
- assert.ok(playerKeys.size>=4,'diver spawn should cover multiple approach cells across dives');
+ assert.ok(playerKeys.size>=8,'diver spawn should cover many distant regions across dives');
  i=0;
  for(let n=0;n<PREDATOR_SPAWN_CELLS.length*2;n++){
   const p=randomPredatorSpawn(rand,START);
@@ -177,6 +186,12 @@ test('each new mission rolls diver and predator spawns with separation',()=>{
   assert.ok(fits(m.predator.position,1.3));
   assert.ok(distance(m.predator.position,m.position)>SPAWN_SEPARATION);
   assert.deepEqual(m.predator.lastKnown,m.predator.position);
+ }
+ // Far-region diver starts still leave the guardian somewhere else that dive.
+ for(let n=0;n<40;n++){
+  const m=new Mission(true);
+  assert.ok(distance(m.predator.position,m.position)>SPAWN_SEPARATION);
+  assert.ok(predatorSpawnCandidates(m.position).length>=1);
  }
 });
 test('predator transitions patrol → alert → chase → search → patrol',()=>{const m=new Mission();m.predator.position=world(16,19);m.position=world(16,16);advance(m,.2);assert.equal(m.predator.state,'alert');advance(m,2);assert.equal(m.predator.state,'chase');m.position={...START};advance(m,3);assert.equal(m.predator.state,'search');advance(m,8);assert.equal(m.predator.state,'patrol');});
