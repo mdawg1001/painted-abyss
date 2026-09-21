@@ -60,41 +60,47 @@ float vnoise(vec3 p){
   return mix(mix(nx00,nx10,f.y),mix(nx01,nx11,f.y),f.z);
 }
 void main(){
-  // Cylinder UV: y≈1 at top (ceiling aperture), y≈0 at floor.
+  // Plane UV: x across shaft radius, y along height (0 floor → 1 ceiling).
   float along=1.-vUv.y;
-  float scatter=exp(-uBeta*along*8.5);
-  // Hot under the opening; soft residual glow toward the floor.
-  float aperture=mix(.22,1.,pow(clamp(vUv.y,0.,1.),.55));
-  // Soft tube wall — feathered radial, not a hard lit shell.
-  float radial=pow(max(0.,sin(vUv.x*3.14159)),1.05);
-  float core=pow(max(0.,1.-abs(vUv.x-.5)*2.15),2.6)*.7;
-  // Particulate scatter scrolling down the column (marine snow in-beam).
-  float n=vnoise(vec3(wPos.xz*.42,wPos.y*.6-uTime*.2));
-  float n2=vnoise(vec3(wPos.xz*1.05+1.7,wPos.y*1.1-uTime*.38));
-  float particulate=.52+.38*n+.22*n2;
-  // Prefer looking across the shaft (Mie-ish); dims when staring up the bore.
+  float scatter=exp(-uBeta*along*7.5);
+  float aperture=mix(.28,1.,pow(clamp(vUv.y,0.,1.),.5));
+  // Soft falloff from axis — filled column, not open tube walls.
+  float radial=1.-smoothstep(.06,.5,abs(vUv.x-.5));
+  radial*=radial;
+  float n=vnoise(vec3(wPos.xz*.4,wPos.y*.55-uTime*.22));
+  float n2=vnoise(vec3(wPos.xz*1.1+1.4,wPos.y*1.05-uTime*.4));
+  float particulate=.4+.48*n+.3*n2;
   vec3 V=normalize(cameraPosition-wPos);
-  float across=mix(.38,1.,pow(1.-abs(V.y),.72));
-  float pulse=.9+sin(wPos.y*.35+uTime*.28+vUv.x*6.28)*.07;
-  float a=(radial*.5+core)*scatter*aperture*particulate*across*pulse*uOpacity;
-  if(a<.0025)discard;
+  float across=mix(.55,1.,pow(1.-abs(V.y),.65));
+  float pulse=.9+sin(wPos.y*.4+uTime*.32)*.08;
+  float a=radial*scatter*aperture*particulate*across*pulse*uOpacity;
+  if(a<.002)discard;
   gl_FragColor=vec4(uColor,a);
 }`;
 /** Soft additive floor caustic pool — 4×4 atlas frames under a shaft. */
 const causticPoolVert=`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
 const causticPoolFrag=`varying vec2 vUv;uniform sampler2D uMap;uniform float uTime;uniform vec3 uColor;uniform float uOpacity;
+float caustic(vec2 p,float t){
+  p+=vec2(sin(p.y*.6+t*.37),cos(p.x*.7+t*.29))*.8;
+  float a=sin(p.x*1.9+p.y*.6+t*.52)+sin(p.y*2.1-p.x*.3-t*.41);
+  float b=sin(p.x*2.6-p.y*.8-t*.32)+sin(p.y*2.5+p.x*.6+t*.38);
+  return pow(1.-abs(sin(a+b)),12.);
+}
 void main(){
-  float mask=smoothstep(1.,.22,length(vUv-.5)*2.);
+  float mask=smoothstep(1.,.15,length(vUv-.5)*2.);
   if(mask<.01)discard;
+  // Procedural network (always visible) + atlas modulation when loaded.
+  float proc=caustic(vUv*6.5,uTime*.9);
   float frame=mod(floor(uTime*11.),16.);
   float col=mod(frame,4.);
   float row=3.-floor(frame/4.);
   vec2 atlasUv=(vUv+vec2(col,row))*.25;
   vec4 tex=texture2D(uMap,atlasUv);
-  float lum=max(tex.a,max(tex.r,max(tex.g,tex.b)));
-  float a=lum*mask*uOpacity;
+  float atlas=max(tex.a,max(tex.r,max(tex.g,tex.b)));
+  float lum=max(proc*.95,atlas*.85);
+  float a=pow(lum,.7)*mask*uOpacity;
   if(a<.01)discard;
-  gl_FragColor=vec4(uColor*mix(vec3(1.),tex.rgb,max(tex.a,.35)),a);
+  gl_FragColor=vec4(uColor*(.55+.45*lum),a);
 }`;
 /** Torch volume: Beer–Lambert scatter along the spot cone (not a flat lit shell). */
 const torchBeamVert=`varying vec2 vUv;varying vec3 vLocal;varying vec3 vView;
@@ -154,6 +160,8 @@ export class CaveWorld extends OceanWorld {
  shakeAmp=0;
  /** Soft additive caustic floor pools under major light shafts. */
  causticPools:THREE.Mesh[]=[];
+ /** One-shot QA teleport from `?shaftShot` / `?torchShot` URL params. */
+ qaShotApplied=false;
  /** Soft blood cloud group (droplets + plume); hidden until hit/kill. */
  bloodGroup:THREE.Group|null=null;
  bloodLayers:BloodLayer[]=[];
@@ -403,61 +411,71 @@ export class CaveWorld extends OceanWorld {
    vertexShader:torchBeamVert,fragmentShader:torchBeamFrag,
   });
  }
- /** Dual-layer soft god-ray + ceiling aperture halo (+ optional floor caustic pool). */
+ /** Soft god-ray from radial vertical planes + ceiling aperture halo (+ optional floor caustic). */
  addShaft(x:number,y:number,z:number,len:number,topR:number,botR:number,color:number,opacity:number,tiltX=0,tiltZ=0,opts?:{caustic?:boolean;causticR?:number}){
   const group=new THREE.Group();
   group.position.set(x,y,z);group.rotation.x=tiltX;group.rotation.z=tiltZ;
-  // Outer haze shell — wider, dimmer.
-  const haze=new THREE.Mesh(
-   new THREE.CylinderGeometry(topR*1.18,botR*1.22,len,28,1,true),
-   this.beamMaterial(color,opacity*.42,.32),
+  const midR=(topR+botR)*.5;
+  const width=Math.max(topR,botR)*2.15;
+  const coreCol=new THREE.Color(color).lerp(new THREE.Color(0xeafdff),.4).getHex();
+  // 6 radial planes ≈ soft filled column from any angle (open cylinders read as hard panels).
+  const planes=6;
+  for(let i=0;i<planes;i++){
+   const ang=(i/planes)*Math.PI;
+   const haze=new THREE.Mesh(
+    new THREE.PlaneGeometry(width*1.15,len),
+    this.beamMaterial(color,opacity*(.22+i%2*.04),.3),
+   );
+   haze.rotation.y=ang;haze.renderOrder=1;haze.frustumCulled=false;
+   const core=new THREE.Mesh(
+    new THREE.PlaneGeometry(width*.55,len),
+    this.beamMaterial(coreCol,opacity*(.28+i%2*.05),.42),
+   );
+   core.rotation.y=ang;core.renderOrder=2;core.frustumCulled=false;
+   group.add(haze,core);
+  }
+  const shell=new THREE.Mesh(
+   new THREE.CylinderGeometry(topR*1.05,botR*1.1,len,24,1,true),
+   this.beamMaterial(color,opacity*.18,.35),
   );
-  haze.renderOrder=1;haze.frustumCulled=false;
-  // Inner core — tighter, brighter cyan-white.
-  const coreCol=new THREE.Color(color).lerp(new THREE.Color(0xeafdff),.45).getHex();
-  const core=new THREE.Mesh(
-   new THREE.CylinderGeometry(topR*.55,botR*.62,len,24,1,true),
-   this.beamMaterial(coreCol,opacity*.9,.45),
-  );
-  core.renderOrder=2;core.frustumCulled=false;
-  // Ceiling aperture disc — additive halo so openings bloom without UnrealBloomPass.
+  shell.renderOrder=0;shell.frustumCulled=false;group.add(shell);
   const discMat=new THREE.MeshBasicMaterial({
-   color:0xe8fff9,transparent:true,opacity:Math.min(.72,opacity*2.4),
+   color:0xe8fff9,transparent:true,opacity:Math.min(.75,opacity*2.5),
    depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,
   });
-  const disc=new THREE.Mesh(new THREE.CircleGeometry(topR*1.45,32),discMat);
+  const disc=new THREE.Mesh(new THREE.CircleGeometry(topR*1.5,32),discMat);
   disc.position.y=len*.5-.02;disc.rotation.x=-Math.PI/2;disc.renderOrder=3;
   const discSoft=new THREE.Mesh(
-   new THREE.CircleGeometry(topR*2.1,32),
+   new THREE.CircleGeometry(topR*2.2,32),
    new THREE.MeshBasicMaterial({
-    color:0xb8f5ec,transparent:true,opacity:Math.min(.35,opacity*1.1),
+    color:0xb8f5ec,transparent:true,opacity:Math.min(.4,opacity*1.2),
     depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,
    }),
   );
   discSoft.position.y=len*.5-.04;discSoft.rotation.x=-Math.PI/2;discSoft.renderOrder=2;
-  group.add(haze,core,discSoft,disc);
+  group.add(discSoft,disc);
   this.scene.add(group);
   if(opts?.caustic!==false&&(opts?.caustic||opacity>=.14)){
-   this.addCausticPool(x,z,opts?.causticR??botR*2.4,opacity);
+   this.addCausticPool(x,z,opts?.causticR??midR*2.6,opacity);
   }
   return group;
  }
- /** Animated atlas caustic projected onto the floor under a shaft. */
+ /** Animated caustic on the visual floor mesh (y≈0 — FLOOR_Y is collision only). */
  addCausticPool(x:number,z:number,radius:number,strength:number){
   const mat=new THREE.ShaderMaterial({
    uniforms:{
     uTime:this.uniforms.uTime,
     uMap:{value:makeCausticFallbackTexture()},
     uColor:{value:new THREE.Color(0xc8fff4)},
-    uOpacity:{value:Math.min(.55,strength*1.6)},
+    uOpacity:{value:Math.min(.95,strength*2.6+.3)},
    },
    transparent:true,depthWrite:false,depthTest:true,side:THREE.DoubleSide,
    blending:THREE.AdditiveBlending,
    vertexShader:causticPoolVert,fragmentShader:causticPoolFrag,
   });
-  const mesh=new THREE.Mesh(new THREE.PlaneGeometry(radius*2,radius*2),mat);
+  const mesh=new THREE.Mesh(new THREE.PlaneGeometry(radius*2.6,radius*2.6),mat);
   mesh.rotation.x=-Math.PI/2;
-  mesh.position.set(x,FLOOR_Y+.05,z);
+  mesh.position.set(x,.08,z);
   mesh.renderOrder=1;mesh.frustumCulled=false;
   this.scene.add(mesh);
   this.causticPools.push(mesh);
@@ -669,7 +687,7 @@ export class CaveWorld extends OceanWorld {
   this.torchBody.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=false;o.receiveShadow=false;}});
 
   const cone=new THREE.CylinderGeometry(.018,3.2,20,28,1,true);cone.rotateX(Math.PI/2);
-  this.beam=new THREE.Mesh(cone,this.torchBeamMaterial(0xd4eaf8,.09));
+  this.beam=new THREE.Mesh(cone,this.torchBeamMaterial(0xd4eaf8,.14));
   this.beam.castShadow=false;this.beam.receiveShadow=false;this.beam.frustumCulled=false;
   // Base length 20 along −Z; tip kept at the lens via position (updated with range each frame).
   this.beam.position.set(0,0,-10.45);
@@ -687,10 +705,10 @@ export class CaveWorld extends OceanWorld {
   const exit=new THREE.Group();exit.position.set(EXIT.x,.65,EXIT.z);
   const ring=new THREE.Mesh(new THREE.TorusGeometry(1.6,.05,8,48),new THREE.MeshBasicMaterial({color:0xb9ffdc}));
   ring.rotation.x=Math.PI/2;exit.add(ring);this.scene.add(exit);
-  const sunlight=new THREE.SpotLight(0xd2f8f4,480,26,.72,.8,1);
+  const sunlight=new THREE.SpotLight(0xd2f8f4,140,26,.72,.9,1);
   sunlight.position.set(32,12,-12);sunlight.target.position.set(32,0,-12);this.scene.add(sunlight,sunlight.target);
-  const poolFill=new THREE.PointLight(0xa8f0e8,34,16,1.1);poolFill.position.set(32,5,-12);this.scene.add(poolFill);
-  this.addShaft(32,5.2,-12,9,.75,2.9,0xe0fdf8,.3,0,0,{caustic:true,causticR:5.2});
+  const poolFill=new THREE.PointLight(0xa8f0e8,16,14,1.15);poolFill.position.set(32,4.5,-12);this.scene.add(poolFill);
+  this.addShaft(32,5.2,-12,9,.75,2.9,0xe0fdf8,.4,0,0,{caustic:true,causticR:5.8});
 
   // Main cavern ceiling shaft
   const cavern:[number,number,number,number,number,number,number][]=[
@@ -883,6 +901,8 @@ export class CaveWorld extends OceanWorld {
   if(!this.mission.tipsSeen)writeInventoryTipsSeen();
   this.playing=true;this.started=true;this.keys.clear();this.clock.getDelta();this.testingAudio=false;if(this.sound)this.enableAudio(true);
   this.lookPointer=null;this.fallbackTurn=0;this.requestLookLock(true);this.publish();
+  this.qaShotApplied=false;
+  this.applyQaShot();
   // QA: `?bloodTest=1` spawns a kill-scale blood cloud ahead of the diver (no combat required).
   if(typeof location!=='undefined'&&new URLSearchParams(location.search).has('bloodTest')){
    window.setTimeout(()=>{
@@ -894,6 +914,37 @@ export class CaveWorld extends OceanWorld {
      z:this.position.z+this.forward.z*2.2,
     },'kill');
    },400);
+  }
+ }
+ /** Teleport helpers for lighting screenshots (`?shaftShot=1` / `?torchShot=1`). */
+ applyQaShot(){
+  if(typeof location==='undefined')return;
+  const q=new URLSearchParams(location.search);
+  const shaft=q.has('shaftShot');
+  const torch=q.has('torchShot');
+  if(!shaft&&!torch)return;
+  const place=()=>{
+   if(!this.alive||!this.playing)return;
+   this.mission.selected=1;
+   this.mission.torch=true;
+   if(shaft){
+    this.position.set(EXIT.x-2.8,3.1,EXIT.z+5.5);
+    this.yaw=this.targetYaw=-.35;
+    this.pitch=this.targetPitch=-.28;
+   }else{
+    this.position.set(32,2.4,-48);
+    this.yaw=this.targetYaw=0;
+    this.pitch=this.targetPitch=-.06;
+   }
+   this.mission.position.x=this.position.x;this.mission.position.y=this.position.y;this.mission.position.z=this.position.z;
+   this.camera.position.copy(this.position);
+   this.velocity.set(0,0,0);
+   this.syncHeldTorch();
+   this.publish();
+  };
+  if(!this.qaShotApplied){
+   this.qaShotApplied=true;
+   [250,600,1200].forEach(ms=>window.setTimeout(place,ms));
   }
  }
  pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
@@ -1019,7 +1070,7 @@ export class CaveWorld extends OceanWorld {
    const sz=beamLen/20;
    this.beam.scale.set(1,1,sz);
    this.beam.position.set(0,0,-(beamLen*.5+.45));
-   beamMat.uniforms.uOpacity.value=torch.beamOpacity*1.35;
+   beamMat.uniforms.uOpacity.value=torch.beamOpacity*1.85;
    beamMat.uniforms.uColor.value.setRGB(torch.beamR,torch.beamG,torch.beamB);
    beamMat.uniforms.uBeta.value=betaB;
    beamMat.uniforms.uBeamLen.value=beamLen;
