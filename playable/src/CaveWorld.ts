@@ -10,6 +10,7 @@ import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
 import { createKnifeVisual, upgradeKnifeVisual, attachFpsArms, applyKnifeEnvMap, poseKnife, knifeMeshReady, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
+import { loadCausticAtlas, makeCausticFallbackTexture } from './causticAsset';
 import { createChestVisual, upgradeChestVisual, syncChestOpen, type ChestVisual } from './chestAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
@@ -38,15 +39,58 @@ void main(){
   gl_FragColor=vec4(col,a);
 }`;
 
-const shaftVert=`varying vec2 vUv;varying vec3 wPos;void main(){vUv=uv;wPos=(modelMatrix*vec4(position,1.)).xyz;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
-const shaftFrag=`varying vec2 vUv;varying vec3 wPos;uniform float uTime;uniform vec3 uColor;uniform float uOpacity;
+/** Ceiling god-ray volume: soft radial density + particulate noise + Beer–Lambert fade from aperture. */
+const shaftVert=`varying vec2 vUv;varying vec3 wPos;
 void main(){
-  float edge=pow(max(0.,sin(vUv.x*3.14159)),2.4);
-  float vertical=pow(sin(vUv.y*3.14159),.55);
-  float pulse=.82+sin(wPos.x*.11+wPos.z*.09+uTime*.19)*.14;
-  float core=pow(max(0.,1.-abs(vUv.x-.5)*2.4),3.2)*.55;
-  float a=(edge*vertical*pulse+core*vertical)*uOpacity;
+  vUv=uv;wPos=(modelMatrix*vec4(position,1.)).xyz;
+  gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);
+}`;
+const shaftFrag=`varying vec2 vUv;varying vec3 wPos;
+uniform float uTime;uniform vec3 uColor;uniform float uOpacity;uniform float uBeta;
+float hash(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
+float vnoise(vec3 p){
+  vec3 i=floor(p);vec3 f=fract(p);f=f*f*(3.-2.*f);
+  float n000=hash(i),n100=hash(i+vec3(1.,0.,0.)),n010=hash(i+vec3(0.,1.,0.)),n110=hash(i+vec3(1.,1.,0.));
+  float n001=hash(i+vec3(0.,0.,1.)),n101=hash(i+vec3(1.,0.,1.)),n011=hash(i+vec3(0.,1.,1.)),n111=hash(i+vec3(1.,1.,1.));
+  float nx00=mix(n000,n100,f.x),nx10=mix(n010,n110,f.x),nx01=mix(n001,n101,f.x),nx11=mix(n011,n111,f.x);
+  return mix(mix(nx00,nx10,f.y),mix(nx01,nx11,f.y),f.z);
+}
+void main(){
+  // Cylinder UV: y≈1 at top (ceiling aperture), y≈0 at floor.
+  float along=1.-vUv.y;
+  float scatter=exp(-uBeta*along*8.5);
+  // Hot under the opening; soft residual glow toward the floor.
+  float aperture=mix(.22,1.,pow(clamp(vUv.y,0.,1.),.55));
+  // Soft tube wall — feathered radial, not a hard lit shell.
+  float radial=pow(max(0.,sin(vUv.x*3.14159)),1.05);
+  float core=pow(max(0.,1.-abs(vUv.x-.5)*2.15),2.6)*.7;
+  // Particulate scatter scrolling down the column (marine snow in-beam).
+  float n=vnoise(vec3(wPos.xz*.42,wPos.y*.6-uTime*.2));
+  float n2=vnoise(vec3(wPos.xz*1.05+1.7,wPos.y*1.1-uTime*.38));
+  float particulate=.52+.38*n+.22*n2;
+  // Prefer looking across the shaft (Mie-ish); dims when staring up the bore.
+  vec3 V=normalize(cameraPosition-wPos);
+  float across=mix(.38,1.,pow(1.-abs(V.y),.72));
+  float pulse=.9+sin(wPos.y*.35+uTime*.28+vUv.x*6.28)*.07;
+  float a=(radial*.5+core)*scatter*aperture*particulate*across*pulse*uOpacity;
+  if(a<.0025)discard;
   gl_FragColor=vec4(uColor,a);
+}`;
+/** Soft additive floor caustic pool — 4×4 atlas frames under a shaft. */
+const causticPoolVert=`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
+const causticPoolFrag=`varying vec2 vUv;uniform sampler2D uMap;uniform float uTime;uniform vec3 uColor;uniform float uOpacity;
+void main(){
+  float mask=smoothstep(1.,.22,length(vUv-.5)*2.);
+  if(mask<.01)discard;
+  float frame=mod(floor(uTime*11.),16.);
+  float col=mod(frame,4.);
+  float row=3.-floor(frame/4.);
+  vec2 atlasUv=(vUv+vec2(col,row))*.25;
+  vec4 tex=texture2D(uMap,atlasUv);
+  float lum=max(tex.a,max(tex.r,max(tex.g,tex.b)));
+  float a=lum*mask*uOpacity;
+  if(a<.01)discard;
+  gl_FragColor=vec4(uColor*mix(vec3(1.),tex.rgb,max(tex.a,.35)),a);
 }`;
 /** Torch volume: Beer–Lambert scatter along the spot cone (not a flat lit shell). */
 const torchBeamVert=`varying vec2 vUv;varying vec3 vLocal;varying vec3 vView;
@@ -57,6 +101,7 @@ void main(){
 }`;
 const torchBeamFrag=`varying vec2 vUv;varying vec3 vLocal;varying vec3 vView;
 uniform float uTime;uniform vec3 uColor;uniform float uOpacity;uniform float uBeta;uniform float uBeamLen;
+float hash(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
 void main(){
   // Cylinder UV: y=1 at tip (+Z), y=0 at far end. along 0→1 tip→far.
   float along=1.-vUv.y;
@@ -64,17 +109,21 @@ void main(){
   // Backscatter column: bright near the lamp, dies with β^B · range (Sea-thru / Beer–Lambert).
   float scatter=exp(-uBeta*dist);
   float tip=smoothstep(0.,.06,along);
-  float endFade=1.-smoothstep(.5,1.,along);
-  // Soft radial core — denser on axis, soft outer edge (reads as spot penumbra, not a solid tube).
+  float endFade=1.-smoothstep(.55,1.,along);
+  // Soft radial core — wider penumbra feather (reads as spot falloff, not a solid tube).
   float axis=length(vLocal.xy);
   float coneR=mix(.02,3.15,along);
-  float radial=1.-smoothstep(coneR*.15,coneR*.92,axis);
-  radial*=radial;
+  float radial=1.-smoothstep(coneR*.1,coneR*.98,axis);
+  radial=pow(radial,1.35);
   // Prefer looking across the shaft (cheap Mie-ish); dims when staring straight down the bore.
   vec3 Vn=normalize(vView);
   float across=1.-pow(abs(Vn.z),.85);
   float pulse=.88+sin(dist*.35+uTime*.55+axis*2.2)*.1;
-  float a=scatter*tip*endFade*radial*across*pulse*uOpacity;
+  // Sparse in-beam marine snow (cone only — not the removed silt system).
+  float cell=hash(floor(vec3(vLocal.xy*48.,dist*3.2)+vec3(0.,0.,uTime*1.8)));
+  float speck=smoothstep(.9,.98,cell)*(1.-along*.55);
+  float particulate=1.+speck*.7;
+  float a=scatter*tip*endFade*radial*across*pulse*particulate*uOpacity;
   if(a<.002)discard;
   gl_FragColor=vec4(uColor,a);
 }`;
@@ -97,6 +146,8 @@ export class CaveWorld extends OceanWorld {
  /** PMREM for Poly Haven metal/wood specular on the held knife. */
  knifeEnvMap:THREE.Texture|null=null;
  shakeAmp=0;
+ /** Soft additive caustic floor pools under major light shafts. */
+ causticPools:THREE.Mesh[]=[];
  /** Soft blood cloud group (droplets + plume); hidden until hit/kill. */
  bloodGroup:THREE.Group|null=null;
  bloodLayers:BloodLayer[]=[];
@@ -118,6 +169,13 @@ export class CaveWorld extends OceanWorld {
   this.scene.add(new THREE.AmbientLight(0x123840,.22));
   const skyFill=new THREE.DirectionalLight(0x7ec8d4,.55);skyFill.position.set(-8,30,-20);this.scene.add(skyFill);
   this.buildCave();this.buildLights();this.buildComposer();
+  loadCausticAtlas().then(tex=>{
+   if(!this.alive)return;
+   for(const pool of this.causticPools){
+    const mat=pool.material as THREE.ShaderMaterial;
+    if(mat.uniforms.uMap)mat.uniforms.uMap.value=tex;
+   }
+  });
   this.guardian=this.ichthyosaur(.9);this.scene.add(this.guardian.group);
   this.guardian.group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
   const eyeMat=new THREE.MeshBasicMaterial({color:0xe0a772});
@@ -308,9 +366,14 @@ export class CaveWorld extends OceanWorld {
   const plinth=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.5,1.2,7),rock);plinth.position.set(RELIC.x,.6,RELIC.z);
   plinth.castShadow=true;plinth.receiveShadow=true;this.scene.add(plinth);
  }
- beamMaterial(color:THREE.ColorRepresentation,opacity:number){
+ beamMaterial(color:THREE.ColorRepresentation,opacity:number,beta=.38){
   return new THREE.ShaderMaterial({
-   uniforms:{uTime:this.uniforms.uTime,uColor:{value:new THREE.Color(color)},uOpacity:{value:opacity}},
+   uniforms:{
+    uTime:this.uniforms.uTime,
+    uColor:{value:new THREE.Color(color)},
+    uOpacity:{value:opacity},
+    uBeta:{value:beta},
+   },
    transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
    vertexShader:shaftVert,fragmentShader:shaftFrag,
   });
@@ -329,9 +392,65 @@ export class CaveWorld extends OceanWorld {
    vertexShader:torchBeamVert,fragmentShader:torchBeamFrag,
   });
  }
- addShaft(x:number,y:number,z:number,len:number,topR:number,botR:number,color:number,opacity:number,tiltX=0,tiltZ=0){
-  const mesh=new THREE.Mesh(new THREE.CylinderGeometry(topR,botR,len,28,1,true),this.beamMaterial(color,opacity));
-  mesh.position.set(x,y,z);mesh.rotation.x=tiltX;mesh.rotation.z=tiltZ;this.scene.add(mesh);return mesh;
+ /** Dual-layer soft god-ray + ceiling aperture halo (+ optional floor caustic pool). */
+ addShaft(x:number,y:number,z:number,len:number,topR:number,botR:number,color:number,opacity:number,tiltX=0,tiltZ=0,opts?:{caustic?:boolean;causticR?:number}){
+  const group=new THREE.Group();
+  group.position.set(x,y,z);group.rotation.x=tiltX;group.rotation.z=tiltZ;
+  // Outer haze shell — wider, dimmer.
+  const haze=new THREE.Mesh(
+   new THREE.CylinderGeometry(topR*1.18,botR*1.22,len,28,1,true),
+   this.beamMaterial(color,opacity*.42,.32),
+  );
+  haze.renderOrder=1;haze.frustumCulled=false;
+  // Inner core — tighter, brighter cyan-white.
+  const coreCol=new THREE.Color(color).lerp(new THREE.Color(0xeafdff),.45).getHex();
+  const core=new THREE.Mesh(
+   new THREE.CylinderGeometry(topR*.55,botR*.62,len,24,1,true),
+   this.beamMaterial(coreCol,opacity*.9,.45),
+  );
+  core.renderOrder=2;core.frustumCulled=false;
+  // Ceiling aperture disc — additive halo so openings bloom without UnrealBloomPass.
+  const discMat=new THREE.MeshBasicMaterial({
+   color:0xe8fff9,transparent:true,opacity:Math.min(.72,opacity*2.4),
+   depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,
+  });
+  const disc=new THREE.Mesh(new THREE.CircleGeometry(topR*1.45,32),discMat);
+  disc.position.y=len*.5-.02;disc.rotation.x=-Math.PI/2;disc.renderOrder=3;
+  const discSoft=new THREE.Mesh(
+   new THREE.CircleGeometry(topR*2.1,32),
+   new THREE.MeshBasicMaterial({
+    color:0xb8f5ec,transparent:true,opacity:Math.min(.35,opacity*1.1),
+    depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,
+   }),
+  );
+  discSoft.position.y=len*.5-.04;discSoft.rotation.x=-Math.PI/2;discSoft.renderOrder=2;
+  group.add(haze,core,discSoft,disc);
+  this.scene.add(group);
+  if(opts?.caustic!==false&&(opts?.caustic||opacity>=.14)){
+   this.addCausticPool(x,z,opts?.causticR??botR*2.4,opacity);
+  }
+  return group;
+ }
+ /** Animated atlas caustic projected onto the floor under a shaft. */
+ addCausticPool(x:number,z:number,radius:number,strength:number){
+  const mat=new THREE.ShaderMaterial({
+   uniforms:{
+    uTime:this.uniforms.uTime,
+    uMap:{value:makeCausticFallbackTexture()},
+    uColor:{value:new THREE.Color(0xc8fff4)},
+    uOpacity:{value:Math.min(.55,strength*1.6)},
+   },
+   transparent:true,depthWrite:false,depthTest:true,side:THREE.DoubleSide,
+   blending:THREE.AdditiveBlending,
+   vertexShader:causticPoolVert,fragmentShader:causticPoolFrag,
+  });
+  const mesh=new THREE.Mesh(new THREE.PlaneGeometry(radius*2,radius*2),mat);
+  mesh.rotation.x=-Math.PI/2;
+  mesh.position.set(x,FLOOR_Y+.05,z);
+  mesh.renderOrder=1;mesh.frustumCulled=false;
+  this.scene.add(mesh);
+  this.causticPools.push(mesh);
+  return mesh;
  }
  /** Procedural Diving Behemoth: battered safety-yellow dive lantern. Local −Z = beam. */
  buildTorchBody(){
@@ -553,32 +672,32 @@ export class CaveWorld extends OceanWorld {
   for(const [x,z] of [[0,-18],[0,-28],[0,-40],[-12,-48],[-22,-60],[-22,-78],[-16,-90],[0,-98],[0,-108]])lamp(x,z,0x5ad4c4);
   for(const [x,z] of [[12,-94],[24,-87],[30,-80],[32,-65],[32,-49],[32,-33],[32,-19]])lamp(x,z,0xe0a858);
 
-  // Extraction pool — one hero god-ray (was a 3-shaft stack)
+  // Extraction pool — hero cenote god-ray + floor caustics
   const exit=new THREE.Group();exit.position.set(EXIT.x,.65,EXIT.z);
   const ring=new THREE.Mesh(new THREE.TorusGeometry(1.6,.05,8,48),new THREE.MeshBasicMaterial({color:0xb9ffdc}));
   ring.rotation.x=Math.PI/2;exit.add(ring);this.scene.add(exit);
-  const sunlight=new THREE.SpotLight(0xd2f8f4,420,24,.72,.8,1);
+  const sunlight=new THREE.SpotLight(0xd2f8f4,480,26,.72,.8,1);
   sunlight.position.set(32,12,-12);sunlight.target.position.set(32,0,-12);this.scene.add(sunlight,sunlight.target);
-  const poolFill=new THREE.PointLight(0xa8f0e8,28,16,1.1);poolFill.position.set(32,5,-12);this.scene.add(poolFill);
-  this.addShaft(32,5.2,-12,9,.7,2.8,0xd8faf4,.22);
+  const poolFill=new THREE.PointLight(0xa8f0e8,34,16,1.1);poolFill.position.set(32,5,-12);this.scene.add(poolFill);
+  this.addShaft(32,5.2,-12,9,.75,2.9,0xe0fdf8,.3,0,0,{caustic:true,causticR:5.2});
 
-  // Main cavern ceiling shafts — 7 → 4 total god-rays (~40% fewer); keep exit/entrance/relic
+  // Main cavern ceiling shaft
   const cavern:[number,number,number,number,number,number,number][]=[
-   [6,6,-64,9.5,.55,2.6,.15],
+   [6,6,-64,9.5,.55,2.6,.18],
   ];
   for(const [x,y,z,len,top,bot,op] of cavern){
-   this.addShaft(x,y,z,len,top,bot,0xb8ebe4,op,(Math.random()-.5)*.12,(Math.random()-.5)*.1);
-   const spot=new THREE.SpotLight(0xb0ece4,55+op*500,15,.5,.85,1.15);
+   this.addShaft(x,y,z,len,top,bot,0xc4f2ea,op,(Math.random()-.5)*.12,(Math.random()-.5)*.1,{caustic:true,causticR:bot*2.6});
+   const spot=new THREE.SpotLight(0xb8f0e8,70+op*520,15,.5,.85,1.15);
    spot.position.set(x,8.2,z);spot.target.position.set(x,0,z);this.scene.add(spot,spot.target);
   }
 
-  // Entrance corridor soft shaft
-  this.addShaft(0,6.3,-22,8,.45,2.2,0xa8e0d8,.1);
-  const entrance=new THREE.SpotLight(0xa8e4dc,70,13,.48,.8,1.1);
+  // Entrance corridor soft shaft (no floor caustic — tight tunnel)
+  this.addShaft(0,6.3,-22,8,.45,2.2,0xb0e8e0,.12,0,0,{caustic:false});
+  const entrance=new THREE.SpotLight(0xa8e4dc,80,13,.48,.8,1.1);
   entrance.position.set(0,8.5,-22);entrance.target.position.set(0,0,-22);this.scene.add(entrance,entrance.target);
 
   // Relic alcove pale shaft
-  this.addShaft(0,5.8,-110,7.5,.3,1.5,0xc4d4b0,.08);
+  this.addShaft(0,5.8,-110,7.5,.3,1.5,0xd0e0c8,.1,0,0,{caustic:false});
  }
  buildComposer(){
   this.composer=new EffectComposer(this.renderer);
