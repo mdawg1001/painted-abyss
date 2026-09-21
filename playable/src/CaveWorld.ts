@@ -5,7 +5,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
-import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, SwimWaterAudio } from './diveAudio';
+import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
 import { loadKnifeVisual } from './knifeAsset';
@@ -57,7 +57,6 @@ void main(){
 export class CaveWorld extends OceanWorld {
  audioNotice='';audioProbe:AnalyserNode|null=null;audioTestTimer=0;
  backgroundMusic:BackgroundMusic|null=null;
- swimWater:SwimWaterAudio|null=null;
  mission=new Mission(readInventoryTipsSeen());ui:(snapshot:Snapshot)=>void;error='';pointerLocked=false;everLocked=false;lastSent=0;
  fallbackTurn=0;lockDenied=false;lookPointer:{x:number;y:number}|null=null;
  torchLight=new THREE.SpotLight(0xeaf6ff,210,34,.38,.55,1.05);
@@ -564,7 +563,6 @@ export class CaveWorld extends OceanWorld {
    const ctx=new Ctx();this.audioContext=ctx;this.master=ctx.createGain();this.master.gain.value=this.sound?.7:0;
    this.audioProbe=buildDiveAudio(ctx,this.master);
    this.backgroundMusic=new BackgroundMusic(ctx,this.master);
-   this.swimWater=new SwimWaterAudio(ctx,this.master);
    ctx.onstatechange=()=>{if(!this.alive)return;if(this.playing&&this.sound&&ctx.state!=='running')this.audioNotice='Sound interrupted. Pause and choose Test sound.';this.publish();};
   }catch{
    this.audioContext?.close().catch(()=>{});this.audioContext=null;this.master=null;
@@ -644,9 +642,9 @@ export class CaveWorld extends OceanWorld {
   this.playing=true;this.started=true;this.keys.clear();this.clock.getDelta();this.testingAudio=false;if(this.sound)this.enableAudio(true);
   this.lookPointer=null;this.fallbackTurn=0;this.requestLookLock(true);this.publish();
  }
- pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);this.swimWater?.update(0,false);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
+ pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
  reset(){
-  this.backgroundMusic?.reset();this.swimWater?.update(0,false);this.mission=new Mission(readInventoryTipsSeen());
+  this.backgroundMusic?.reset();this.mission=new Mission(readInventoryTipsSeen());
   this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
   this.shakeAmp=0;this.knifeFlashUntil=0;if(this.knifeVisual){this.knifeVisual.visible=false;this.knifeVisual.position.set(-.32,-.38,-.55);}
@@ -706,12 +704,11 @@ export class CaveWorld extends OceanWorld {
      this.knifeVisual.visible=true;
     }
    }
-   this.swimWater?.update(speed,this.sound&&this.audioContext?.state==='running');
    this.updateBlood(dt);
    this.updateSiltStorm(dt,siltAt(m.silt,m.position));
 
    if(m.outcome!=='playing')this.pause();
-  }else this.swimWater?.update(0,false);
+  }
   // Atmosphere: cyan-teal murk (reference palette), denser in deep chambers, clears at exit
   const deep=THREE.MathUtils.smoothstep(-this.position.z,35,100);
   const nearExit=1-THREE.MathUtils.smoothstep(distance(this.position,EXIT),4,22);
@@ -771,5 +768,5 @@ export class CaveWorld extends OceanWorld {
   if(this.time-this.lastSent>.05){this.lastSent=this.time;this.publish();}
   this.composer.render();
  }
- dispose(){window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.swimWater?.dispose();this.swimWater=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
+ dispose(){window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
 }
