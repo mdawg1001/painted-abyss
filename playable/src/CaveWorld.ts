@@ -5,10 +5,11 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
-import { buildDiveAudio, playDiveChime, playInventoryClick, SwimWaterAudio } from './diveAudio';
+import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, SwimWaterAudio } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
-import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, stepSwimVelocity } from './simulation';
+import { loadKnifeVisual } from './knifeAsset';
+import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, stepSwimVelocity } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
 
@@ -65,6 +66,9 @@ export class CaveWorld extends OceanWorld {
  torchRestPos=V(.44,-.4,-.62);torchRestRot=new THREE.Euler(.18,-.22,.32);
  composer!:EffectComposer;bloom!:UnrealBloomPass;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
+ /** Brief stab cue only — torch stays the main held FPS object. */
+ knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
+ shakeAmp=0;blood:THREE.Points|null=null;bloodVel:Float32Array|null=null;bloodLife=0;
  rockMaps:CaveRockMaps;
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
   super(host,{onReady:()=>{},onPause:()=>{},onStatus:()=>{},onToggleUI:()=>{},onGlide:()=>{},onError:()=>{}},{deferStart:true});
@@ -101,7 +105,54 @@ export class CaveWorld extends OceanWorld {
   );
   this.decoyMesh=new THREE.Mesh(new THREE.IcosahedronGeometry(.18,1),new THREE.MeshBasicMaterial({color:0xff7040}));
   this.decoyMesh.add(new THREE.PointLight(0xff6831,12,12));this.scene.add(this.decoyMesh);
+  this.buildBlood();
+  loadKnifeVisual().then(mesh=>{
+   if(!this.alive){mesh.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();const m=o.material;if(Array.isArray(m))m.forEach(x=>x.dispose());else m.dispose();}});return;}
+   this.knifeVisual=mesh;this.camera.add(mesh);
+  });
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
+ }
+ /** Floating blood cloud spawned on guardian death (world-space points). */
+ buildBlood(){
+  const n=48;
+  const pos=new Float32Array(n*3);
+  const vel=new Float32Array(n*3);
+  for(let i=0;i<n;i++){pos[i*3]=0;pos[i*3+1]=-40;pos[i*3+2]=0;vel[i*3]=0;vel[i*3+1]=0;vel[i*3+2]=0;}
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  const mat=new THREE.PointsMaterial({color:0x8a1a22,size:.18,transparent:true,opacity:.85,depthWrite:false,sizeAttenuation:true});
+  this.blood=new THREE.Points(geo,mat);this.blood.visible=false;this.bloodVel=vel;this.scene.add(this.blood);
+ }
+ spawnBlood(at:THREE.Vector3| {x:number;y:number;z:number}){
+  if(!this.blood||!this.bloodVel)return;
+  const pos=this.blood.geometry.attributes.position as THREE.BufferAttribute;
+  for(let i=0;i<pos.count;i++){
+   pos.setXYZ(i,at.x+(Math.random()-.5)*.6,at.y+(Math.random()-.5)*.35,at.z+(Math.random()-.5)*.6);
+   this.bloodVel[i*3]=(Math.random()-.5)*.35;
+   this.bloodVel[i*3+1]=.05+Math.random()*.22;
+   this.bloodVel[i*3+2]=(Math.random()-.5)*.35;
+  }
+  pos.needsUpdate=true;this.blood.visible=true;this.bloodLife=14;
+  (this.blood.material as THREE.PointsMaterial).opacity=.9;
+ }
+ updateBlood(dt:number){
+  if(!this.blood||!this.bloodVel||!this.blood.visible)return;
+  this.bloodLife-=dt;
+  const pos=this.blood.geometry.attributes.position as THREE.BufferAttribute;
+  for(let i=0;i<pos.count;i++){
+   let x=pos.getX(i)+this.bloodVel[i*3]*dt;
+   let y=pos.getY(i)+this.bloodVel[i*3+1]*dt;
+   let z=pos.getZ(i)+this.bloodVel[i*3+2]*dt;
+   this.bloodVel[i*3]*=Math.exp(-dt*.4);
+   this.bloodVel[i*3+1]=this.bloodVel[i*3+1]*Math.exp(-dt*.35)+Math.sin(this.time*1.7+i)*.02*dt;
+   this.bloodVel[i*3+2]*=Math.exp(-dt*.4);
+   if(y<FLOOR_Y+.2){y=FLOOR_Y+.2;this.bloodVel[i*3+1]=Math.abs(this.bloodVel[i*3+1])*.3;}
+   pos.setXYZ(i,x,y,z);
+  }
+  pos.needsUpdate=true;
+  const mat=this.blood.material as THREE.PointsMaterial;
+  mat.opacity=Math.max(0,Math.min(.9,this.bloodLife/6));
+  if(this.bloodLife<=0){this.blood.visible=false;mat.opacity=0;}
  }
  buildCave(){
   const {rock:rockMaps,sand:sandMaps,moss:mossMaps}=this.rockMaps;
@@ -417,6 +468,8 @@ export class CaveWorld extends OceanWorld {
    if(!this.playing)return;
    try{canvas.setPointerCapture(e.pointerId);}catch{/* unsupported */}
    if(document.pointerLockElement!==canvas)this.requestLookLock(false);
+   // Primary click while knife selected → stab (torch stays the hero FPS prop).
+   if(e.button===0)this.tryStab();
   }) as EventListener);
   on(document,'pointermove',((e:PointerEvent)=>{if(!this.playing)return;
    const locked=document.pointerLockElement===canvas;
@@ -473,6 +526,40 @@ export class CaveWorld extends OceanWorld {
   if(!ctx||!master||ctx.state!=='running')return;
   playInventoryClick(ctx,master);
  }
+ tryStab(){
+  if(!this.playing||this.mission.outcome!=='playing')return;
+  if(this.mission.inventory[this.mission.selected]!=='knife')return;
+  this.camera.getWorldDirection(this.forward);
+  const result=this.mission.stab({x:this.forward.x,y:this.forward.y,z:this.forward.z});
+  if(result==='blocked'||result==='cooldown'){this.publish();return;}
+  this.flashKnife();
+  this.consumeCombatCue(result==='hit');
+  this.publish();
+ }
+ flashKnife(){
+  if(!this.knifeVisual)return;
+  this.knifeVisual.visible=true;
+  this.knifeFlashUntil=this.time+.28;
+  // Quick thrust along look axis in local space.
+  this.knifeVisual.position.z=-.72;
+ }
+ consumeCombatCue(connected:boolean){
+  const cue=this.mission.combatCue;this.mission.combatCue='';
+  const ctx=this.audioContext,master=this.master;
+  const audible=!!(this.sound&&ctx&&master&&ctx.state==='running');
+  if(cue==='stab-miss'||(cue===''&&!connected)){
+   if(audible)playStabSound(ctx!,master!,false);
+   return;
+  }
+  if(cue==='stab-hit'||cue==='break'||cue==='kill'){
+   if(audible)playStabSound(ctx!,master!,true);
+   this.shakeAmp=Math.max(this.shakeAmp,cue==='kill'?.55:.32);
+   if(cue==='kill'){
+    if(audible)playGuardianDeath(ctx!,master!);
+    this.spawnBlood(this.mission.predator.position);
+   }
+  }
+ }
  testingAudio=false;
  testSound(){
   this.sound=true;this.testingAudio=true;this.enableAudio(true);
@@ -497,6 +584,8 @@ export class CaveWorld extends OceanWorld {
   this.backgroundMusic?.reset();this.swimWater?.update(0,false);this.mission=new Mission(readInventoryTipsSeen());
   this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
+  this.shakeAmp=0;this.knifeFlashUntil=0;if(this.knifeVisual){this.knifeVisual.visible=false;this.knifeVisual.position.set(-.32,-.38,-.55);}
+  if(this.blood){this.blood.visible=false;this.bloodLife=0;}
   this.syncPickups();this.publish();
  }
  animate=()=>{
@@ -524,8 +613,27 @@ export class CaveWorld extends OceanWorld {
    const bobSide=Math.sin(this.time*.65)*.065*bobBlend;
    const bobFwd=Math.cos(this.time*.5)*.065*bobBlend;
    this.camera.position.copy(this.position).addScaledVector(this.upAxis,bobY).addScaledVector(this.right,bobSide).addScaledVector(this.forward,bobFwd);
+   // Light combat shake (decays); applied after bob so it does not fight hover.
+   if(this.shakeAmp>0.001){
+    const s=this.shakeAmp;
+    this.camera.position.addScaledVector(this.right,Math.sin(this.time*48)*s*.04);
+    this.camera.position.addScaledVector(this.upAxis,Math.cos(this.time*37)*s*.03);
+    this.shakeAmp=Math.max(0,this.shakeAmp-dt*2.8);
+   }
    this.applyTorchHover(bobBlend);
+   if(this.knifeVisual){
+    if(this.time>=this.knifeFlashUntil){
+     this.knifeVisual.visible=false;
+     this.knifeVisual.position.set(-.32,-.38,-.55);
+    }else{
+     // Ease thrust back toward rest while still visible.
+     const t=1-Math.max(0,(this.knifeFlashUntil-this.time)/.28);
+     this.knifeVisual.position.z=THREE.MathUtils.lerp(-.72,-.55,t);
+     this.knifeVisual.visible=true;
+    }
+   }
    this.swimWater?.update(speed,this.sound&&this.audioContext?.state==='running');
+   this.updateBlood(dt);
 
    if(m.outcome!=='playing')this.pause();
   }else this.swimWater?.update(0,false);
@@ -568,8 +676,20 @@ export class CaveWorld extends OceanWorld {
   }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
   // Soft bloom on shafts only — keep torch hotspots from blowing out
   this.bloom.strength=torchOn?.2:.14;
-  const p=this.mission.predator;this.guardian.group.position.copy(p.position);const diff=Math.atan2(Math.sin(p.heading-this.guardian.group.rotation.y),Math.cos(p.heading-this.guardian.group.rotation.y));this.guardian.group.rotation.y+=diff*Math.min(1,dt*5);
-  this.guardian.fins.forEach(f=>f.rotation.x=Math.sin(this.time*2+(f.userData.phase||0))*.25*(f.userData.side||1));this.guardian.tail.rotation.y=Math.sin(this.time*3)*.22;
+  const p=this.mission.predator;this.guardian.group.position.copy(p.position);
+  if(p.state==='dead'){
+   // Corpse settles; limp fins, no chase heading lerp.
+   this.guardian.group.rotation.z=THREE.MathUtils.lerp(this.guardian.group.rotation.z,.55,Math.min(1,dt*1.4));
+   this.guardian.fins.forEach(f=>f.rotation.x*=Math.exp(-dt*2));
+   this.guardian.tail.rotation.y*=Math.exp(-dt*2);
+  }else{
+   const diff=Math.atan2(Math.sin(p.heading-this.guardian.group.rotation.y),Math.cos(p.heading-this.guardian.group.rotation.y));
+   this.guardian.group.rotation.y+=diff*Math.min(1,dt*5);
+   this.guardian.group.rotation.z=THREE.MathUtils.lerp(this.guardian.group.rotation.z,p.flinch>0?.35:0,Math.min(1,dt*8));
+   const thrash=p.raged&&p.state==='chase'?1.55:p.state==='damaged'?.55:1;
+   this.guardian.fins.forEach(f=>f.rotation.x=Math.sin(this.time*2*thrash+(f.userData.phase||0))*.25*(f.userData.side||1)*thrash);
+   this.guardian.tail.rotation.y=Math.sin(this.time*3*thrash)*.22*thrash;
+  }
   this.syncPickups();this.decoyMesh.visible=!!this.mission.decoy;if(this.mission.decoy)this.decoyMesh.position.copy(this.mission.decoy.position);
   if(this.time-this.lastSent>.05){this.lastSent=this.time;this.publish();}
   this.composer.render();

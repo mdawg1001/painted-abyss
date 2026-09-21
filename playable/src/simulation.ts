@@ -1,9 +1,25 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
 export type Point={x:number;y:number;z:number};
-export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic';
+export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife';
 export type Pickup={id:number;item:Item;position:Point};
-export type PredatorState='patrol'|'alert'|'chase'|'search';
+export type PredatorState='patrol'|'alert'|'chase'|'search'|'damaged'|'dead';
+export type StabResult='hit'|'miss'|'cooldown'|'blocked';
 export const CELL=4;
+/** Guardian bite reach (m). Knife must stay shorter so stabbing means mutual danger. */
+export const BITE_RANGE=3.2;
+/** Forward melee stab reach (m) — inside bite range. */
+export const KNIFE_RANGE=2.2;
+/** Half-angle of the stab cone (radians) ≈ 50°. */
+export const KNIFE_CONE=.87;
+export const PREDATOR_HP_MAX=100;
+/** Chunk damage per connected stab. Three hits leave ≤15% HP (break-off); fourth kills. */
+export const KNIFE_DAMAGE=30;
+/** Remaining HP at which a living guardian breaks off the chase (85% damage taken). */
+export const PREDATOR_BREAK_HP=PREDATOR_HP_MAX*.15;
+/** Seconds before another stab can apply damage. */
+export const KNIFE_COOLDOWN=.55;
+/** Brief AI interrupt after a wound. */
+export const PREDATOR_FLINCH=.42;
 /** Playable water column: floor → surface (ceiling of `fits`). World Y is metres. */
 export const FLOOR_Y=.65;
 export const SURFACE_Y=7.1;
@@ -49,8 +65,8 @@ export const SWIM_BUOYANCY_ACCEL=4.1;
 export const BCD_FILL_RATE=1.35;
 /** Hands-off return of buoyancy toward neutral (1/s). */
 export const BCD_TRIM_RATE=.55;
-/** Predator band sits between player cruise and sprint. */
-export const PREDATOR_SPEED={chase:2.7,patrol:1.3,alert:.5} as const;
+/** Predator band sits between player cruise and sprint; rage exceeds chase, damaged limps. */
+export const PREDATOR_SPEED={chase:2.7,rage:3.35,patrol:1.3,alert:.5,damaged:.85} as const;
 
 export type Vec3={x:number;y:number;z:number};
 /** Space/Q BCD input (−1..+1). Idle trims toward neutral. */
@@ -82,6 +98,7 @@ export function terminalSwimSpeed(sprint=false){
 }
 
 export const ITEMS:Record<Item,{name:string;short:string;description:string;hint:string}>={
+ knife:{name:'Diving knife',short:'Knife',description:'Click · Close-range stab. Durable — not consumed.',hint:'Click to stab · durable'},
  stone:{name:'Limestone',short:'Stone',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  wood:{name:'Driftwood',short:'Wood',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  flare:{name:'Signal flare',short:'Flare',description:'R · Deploy a 12-second distraction at your position.',hint:'R use · consumed'},
@@ -244,18 +261,23 @@ export class Mission {
  buoyancy=0;
  /** Elevated gas effort until this mission elapsed time (bite / panic). */
  gasPanicUntil=0;
- inventory:(Item|null)[]=['stone','wood','flare','air','bandage'];selected=0;
+ inventory:(Item|null)[]=['knife','wood','flare','air','bandage'];selected=0;
  pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},{id:2,item:'flare',position:{x:-20,y:2,z:-56}}];nextId=3;
  pending:number|null=null;outcome:'playing'|'won'|'lost'='playing';reason='';
  /** First-play inventory guidance only; repeating select/use text is intentionally silent. */
  tipsSeen=false;notice='';noticeUntil=0;feedbackKind:FeedbackKind='';feedbackPulse=0;
- predator={position:world(16,19),state:'patrol' as PredatorState,timer:0,lost:0,lastKnown:world(16,19),waypoint:0,bite:0,heading:0};
+ predator={
+  position:world(16,19),state:'patrol' as PredatorState,timer:0,lost:0,lastKnown:world(16,19),waypoint:0,bite:0,heading:0,
+  hp:PREDATOR_HP_MAX,raged:false,flinch:0,stabCool:0,
+ };
+ /** Latest combat cue for audio / camera (cleared by the renderer when consumed). */
+ combatCue:''|'stab-hit'|'stab-miss'|'flinch'|'break'|'kill'='';
  decoy:{position:Point;until:number}|null=null;
  patrol=[world(16,22),world(6,22),world(6,13),world(16,13)];
  constructor(tipsSeen=false){
   this.tipsSeen=tipsSeen;
   if(!tipsSeen){
-   this.notice='1–5 select a slot · R uses it · usable items are consumed.';
+   this.notice='1–5 select · click stabs with the knife · R uses consumables.';
    this.noticeUntil=8;this.feedbackKind='select';
   }
  }
@@ -282,7 +304,9 @@ export class Mission {
   const old=this.inventory[slot];this.inventory[slot]=pickup.item;this.selected=slot;
   this.pickups=this.pickups.filter(p=>p.id!==pickup.id);if(old)this.pickups.push({id:this.nextId++,item:old,position:{...this.position,y:Math.max(1,this.position.y-.4)}});
   this.pending=null;this.say(pickup.item==='relic'?'Relic recovered! Follow the amber markers to extraction.':`${ITEMS[pickup.item].name} collected.`,'ok');
-  if(pickup.item==='relic'){this.predator.state='alert';this.predator.timer=0;this.predator.lastKnown={...this.position};}
+  if(pickup.item==='relic'&&this.predator.state!=='dead'&&this.predator.state!=='damaged'){
+   this.predator.state='alert';this.predator.timer=0;this.predator.lastKnown={...this.position};
+  }
  }
  drop(){
   const item=this.inventory[this.selected];
@@ -293,6 +317,7 @@ export class Mission {
  use(){
   const item=this.inventory[this.selected];
   if(!item){this.pulse('blocked');return;}
+  if(item==='knife'){this.pulse('blocked');return;}
   if(item==='air'){
    if(this.bailout>=AIR_BAILOUT_MAX){this.pulse('blocked');return;}
    this.bailout=AIR_BAILOUT_MAX;this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
@@ -302,10 +327,55 @@ export class Mission {
    this.health=Math.min(100,this.health+45);this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
   }
   if(item==='flare'){
-   this.decoy={position:{...this.position},until:this.elapsed+12};this.predator.state='search';this.predator.timer=0;this.predator.lastKnown={...this.position};
+   this.decoy={position:{...this.position},until:this.elapsed+12};
+   if(this.predator.state!=='dead'&&this.predator.state!=='damaged'){
+    this.predator.state='search';this.predator.timer=0;this.predator.lastKnown={...this.position};
+   }
    this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
   }
   this.pulse('blocked');
+ }
+ /**
+  * Mouse-click stab while the diving knife is selected.
+  * `look` is a unit-ish camera forward vector in world space (XZ matter most).
+  */
+ stab(look:Point):StabResult{
+  if(this.outcome!=='playing')return 'blocked';
+  if(this.inventory[this.selected]!=='knife')return 'blocked';
+  const p=this.predator;
+  if(p.stabCool>0)return 'cooldown';
+  p.stabCool=KNIFE_COOLDOWN;
+  if(p.state==='dead'){this.combatCue='stab-miss';this.pulse('blocked');return 'miss';}
+  const to={x:p.position.x-this.position.x,y:p.position.y-this.position.y,z:p.position.z-this.position.z};
+  const dist=Math.hypot(to.x,to.y,to.z);
+  const lookLen=Math.hypot(look.x,look.y,look.z)||1;
+  const lx=look.x/lookLen,ly=look.y/lookLen,lz=look.z/lookLen;
+  const toward=dist>1e-6?(to.x*lx+to.y*ly+to.z*lz)/dist:0;
+  const inCone=toward>=Math.cos(KNIFE_CONE);
+  const canReach=dist<=KNIFE_RANGE&&inCone&&visible(this.position,p.position);
+  if(!canReach){this.combatCue='stab-miss';this.pulse('blocked');return 'miss';}
+  p.hp=Math.max(0,p.hp-KNIFE_DAMAGE);
+  p.flinch=PREDATOR_FLINCH;
+  p.bite=Math.max(p.bite,.35);
+  if(p.hp<=0){
+   p.state='dead';p.timer=0;p.raged=false;p.flinch=0;p.bite=999;
+   this.combatCue='kill';
+   this.say('Guardian down.','ok');
+   return 'hit';
+  }
+  if(p.hp<=PREDATOR_BREAK_HP){
+   p.state='damaged';p.timer=0;p.raged=false;p.lost=0;
+   this.combatCue='break';
+   this.say('It breaks off — wounded and slow.','ok');
+   return 'hit';
+  }
+  // Wound below break threshold: rage harder and commit to chase.
+  p.raged=true;
+  if(p.state!=='chase'){p.state='chase';p.timer=0;p.lost=0;}
+  p.lastKnown={...this.position};
+  this.combatCue='stab-hit';
+  if(!this.tipsSeen||this.noticeUntil<=this.elapsed)this.say('It bleeds — and rages.','ok');
+  return 'hit';
  }
  update(dt:number,sprinting=false){
   if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;
@@ -319,8 +389,40 @@ export class Mission {
   const p=this.predator;const d=distance(p.position,this.position);const canSee=visible(p.position,this.position);
   const sense=canSee&&(d<4.5||d<(this.torch?16:sprinting?13:8));
   const safe=!predatorCell(tile(this.position).col,tile(this.position).row);
-  p.timer+=dt;p.bite=Math.max(0,p.bite-dt);
+  p.timer+=dt;p.bite=Math.max(0,p.bite-dt);p.flinch=Math.max(0,p.flinch-dt);p.stabCool=Math.max(0,p.stabCool-dt);
+
+  // Dead: leave the FSM, stop biting, sink toward the cave floor.
+  if(p.state==='dead'){
+   p.bite=999;
+   p.position.y+=(FLOOR_Y+.55-p.position.y)*Math.min(1,dt*1.1);
+   return;
+  }
+
   if(this.decoy&&this.elapsed>=this.decoy.until)this.decoy=null;
+
+  // Damaged: limp-patrol; still dangerous up close but slow and no rage chase.
+  if(p.state==='damaged'){
+   if(p.flinch>0)return;
+   if(this.decoy&&d>4.5){p.lastKnown={...this.decoy.position};}
+   else if(sense&&!safe)p.lastKnown={...this.position};
+   const goal=p.lastKnown;
+   const path=pathBetween(p.position,goal);const target=path[0]||(visible(p.position,goal)&&predatorCell(tile(goal).col,tile(goal).row)?goal:p.position);
+   const dx=target.x-p.position.x,dz=target.z-p.position.z,len=Math.hypot(dx,dz),speed=PREDATOR_SPEED.damaged;
+   if(len>.05){p.heading=Math.atan2(-dz,dx);moveBody(p.position,dx/len*Math.min(len,speed*dt),0,dz/len*Math.min(len,speed*dt),1.3);}
+   p.position.y+=(Math.max(1.2,Math.min(6.2,this.position.y))-p.position.y)*Math.min(1,dt*1.2);
+   if(!safe&&canSee&&distance(p.position,this.position)<BITE_RANGE&&p.bite<=0){
+    this.health=Math.max(0,this.health-18);p.bite=2.2;this.gasPanicUntil=this.elapsed+AIR_PANIC_SECONDS;
+    this.say('Wounded jaws still catch you — get clear.');
+    if(this.health<=0){this.outcome='lost';this.reason='The wounded guardian still finished you. Break sight or finish it with the knife.';}
+   }
+   return;
+  }
+
+  if(p.flinch>0){
+   // Flinch interrupt: freeze locomotion / bites briefly after a wound.
+   return;
+  }
+
   if(this.decoy&&d>4.5){p.state='search';p.timer=0;p.lastKnown={...this.decoy.position};}
   else if(p.state==='patrol'&&sense&&!safe){p.state='alert';p.timer=0;p.lastKnown={...this.position};}
   else if(p.state==='alert'){
@@ -335,10 +437,11 @@ export class Mission {
   const goal=p.state==='patrol'?this.patrol[p.waypoint]:p.lastKnown;
   if(p.state==='patrol'&&distance(p.position,goal)<1.1)p.waypoint=(p.waypoint+1)%this.patrol.length;
   const path=pathBetween(p.position,goal);const target=path[0]||(visible(p.position,goal)&&predatorCell(tile(goal).col,tile(goal).row)?goal:p.position);
-  const dx=target.x-p.position.x,dz=target.z-p.position.z,len=Math.hypot(dx,dz),speed=p.state==='chase'?PREDATOR_SPEED.chase:p.state==='alert'?PREDATOR_SPEED.alert:PREDATOR_SPEED.patrol;
+  const dx=target.x-p.position.x,dz=target.z-p.position.z,len=Math.hypot(dx,dz);
+  const speed=p.state==='chase'?(p.raged?PREDATOR_SPEED.rage:PREDATOR_SPEED.chase):p.state==='alert'?PREDATOR_SPEED.alert:PREDATOR_SPEED.patrol;
   if(len>.05){p.heading=Math.atan2(-dz,dx);moveBody(p.position,dx/len*Math.min(len,speed*dt),0,dz/len*Math.min(len,speed*dt),1.3);}
   p.position.y+=((p.state==='chase'?Math.max(1.2,Math.min(6.2,this.position.y)):3)-p.position.y)*Math.min(1,dt*2);
-  if(p.state==='chase'&&!safe&&canSee&&distance(p.position,this.position)<3.2&&p.bite<=0){
+  if(p.state==='chase'&&!safe&&canSee&&distance(p.position,this.position)<BITE_RANGE&&p.bite<=0){
    this.health=Math.max(0,this.health-25);p.bite=1.7;this.gasPanicUntil=this.elapsed+AIR_PANIC_SECONDS;
    this.say('Suit breached! Sprint to cover or deploy a flare.');
    if(this.health<=0){this.outcome='lost';this.reason='The guardian caught you. Break sight around the central pillar; the narrow exit passage is safe.';}

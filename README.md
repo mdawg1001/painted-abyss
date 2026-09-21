@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.1.24
+# Painted Abyss — First Dive · 0.1.27
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -56,7 +56,8 @@ Keep the terminal open while playing. Stop it with Ctrl+C. If port 5173 is alrea
 | F | Toggle the mounted torch |
 | E | Collect a nearby item / confirm replacement / extract |
 | 1–5 | Select one of exactly five carried slots (plays a short click when the selection changes; muted when sound is off) |
-| R | Use / consume selected air reserve, sealant, or distraction flare (salvage items refuse with a notice) |
+| Click (knife selected) | Stab — short forward melee; range shorter than the guardian's bite |
+| R | Use / consume selected air reserve, sealant, or distraction flare (knife and salvage refuse) |
 | G | Drop selected item into the cave |
 | Esc | Pause / release the pointer; cancels a pending swap (browser may also pause) |
 | M | Toggle audio |
@@ -66,10 +67,10 @@ Pointer lock is requested by Begin / Resume. If the browser refuses it, moving t
 ## Your first dive
 
 - Follow **turquoise markers** down the entrance tunnel and around the central rock pillar. The relic rests above a plinth in the bone alcove at the far end.
-- You start with five items so that the swap mechanic can be tried immediately. Press **E**, select the slot to replace with **1–5**, then press **E** again. The displaced item remains in the world and can be recovered. There is no extra backpack.
-- Stone and driftwood are spare salvage; replacing either keeps your useful supplies. Press **1–5** to select a slot (selected slot is highlighted), then **R** to use — air, sealant, and flares are consumed and clear the slot. A one-time tip appears on the first dive only; later dives rely on the selected-slot chrome. The mounted torch and worn fins sit outside the five carried slots in this prototype.
+- You start with a **diving knife** in slot 1, plus driftwood, flare, pony bottle, and sealant — five slots so the swap mechanic can be tried immediately. Press **E**, select the slot to replace with **1–5**, then press **E** again. The displaced item remains in the world and can be recovered. There is no extra backpack.
+- Driftwood is spare salvage; replacing it keeps your useful supplies. Press **1** then **click** to stab the guardian at close range — wounds make it rage harder; at ~85% damage taken it breaks off slow and limping; killing it sinks the corpse with floating blood (optional — extract still only needs the relic). Press **1–5** to select a slot, then **R** to use consumables — air, sealant, and flares are consumed. A one-time tip appears on the first dive only; later dives rely on the selected-slot chrome. The mounted torch stays the main held FPS object (outside inventory).
 - Carry the relic east toward the **amber markers**, enter the narrow fissure, then follow it north to the extraction pool. Press **E** near the light to win. You must still be carrying the relic; dropping it removes eligibility to extract.
-- Rock blocks the guardian's sight. Its states are patrol, alert, chase, and search. Use the pillar, briefly sprint away, switch off the torch, or deploy a flare and move away. It cannot enter the narrow exit passage.
+- Rock blocks the guardian's sight. Its states are patrol, alert, chase, search, damaged, and dead. Use the pillar, briefly sprint away, switch off the torch, deploy a flare, or fight with the knife. It cannot enter the narrow exit passage.
 - Air lasts four minutes. Use the reserve before it runs out; it restores up to 60 seconds. Sealant repairs 45 suit integrity. A flare distracts for 12 seconds unless you remain very close to the guardian. Dying or running out of air brings up Restart.
 
 ## Edit and rebuild
@@ -97,7 +98,11 @@ Optional browser suite: install Playwright (`npm install --no-save --package-loc
 - `MANIFEST.json`: original export inventory; its original README is now saved as `docs/ORIGINAL-EXPORT-README.md`.
 - `PROTOTYPE-MANIFEST.json`: historical checksums of the 0.1.1 downloadable archive; Git records later changes, including the 0.1.2 camera update.
 
-New mission rules live in `playable/src/simulation.ts`; cave rendering and input in `CaveWorld.ts`; React HUD/menu in `main.tsx`. Bundled runtime library licences are in `playable/licenses/`.
+New mission rules live in `playable/src/simulation.ts`; cave rendering and input in `CaveWorld.ts`; React HUD/menu in `main.tsx`. Bundled runtime library licences are in `playable/licenses/`. Third-party art attribution is in `playable/NOTICE.md`.
+
+## Third-party assets
+
+- **Fish Knife** ([Poly Haven](https://polyhaven.com/a/fish_knife)) by Mateusz Sadek — CC0 1.0. Used as the diving-knife inventory icon and brief stab cue (`playable/public/assets/knife/`). The dive torch remains the main held FPS object.
 
 ## Validation and limits
 
