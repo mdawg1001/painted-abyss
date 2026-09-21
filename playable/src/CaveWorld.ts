@@ -8,7 +8,7 @@ import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
-import { loadKnifeVisual } from './knifeAsset';
+import { createKnifeVisual, upgradeKnifeVisual, poseKnife, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, applySiltToTorch, stepSilt, siltAt, createSiltPlume, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, stepSwimVelocity } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
@@ -65,7 +65,7 @@ export class CaveWorld extends OceanWorld {
  torchRestPos=V(.44,-.4,-.62);torchRestRot=new THREE.Euler(.18,-.22,.32);
  composer!:EffectComposer;bloom!:UnrealBloomPass;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
- /** Brief stab cue only — torch stays the main held FPS object. */
+ /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
  knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
  shakeAmp=0;blood:THREE.Points|null=null;bloodVel:Float32Array|null=null;bloodLife=0;
  /** Floor-kick silt storm (separate from ambient suspended dust). */
@@ -108,9 +108,17 @@ export class CaveWorld extends OceanWorld {
   this.decoyMesh.add(new THREE.PointLight(0xff6831,12,12));this.scene.add(this.decoyMesh);
   this.buildBlood();
   this.buildSiltStorm();
-  loadKnifeVisual().then(mesh=>{
-   if(!this.alive){mesh.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();const m=o.material;if(Array.isArray(m))m.forEach(x=>x.dispose());else m.dispose();}});return;}
-   this.knifeVisual=mesh;this.camera.add(mesh);
+  // Mount knife stub immediately so selecting slot 1 always shows a held prop;
+  // Poly Haven glTF upgrades the mesh when ready.
+  this.knifeVisual=createKnifeVisual();
+  this.camera.add(this.knifeVisual);
+  this.knifeVisual.visible=this.holdingKnife();
+  if(this.holdingKnife())this.setTorchMeshesVisible(false);
+  upgradeKnifeVisual(this.knifeVisual).then(ok=>{
+   if(!this.alive||!this.knifeVisual)return;
+   if(ok)poseKnife(this.knifeVisual);
+   this.knifeVisual.visible=this.holdingKnife();
+   if(this.holdingKnife())this.setTorchMeshesVisible(false);
   });
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
  }
@@ -416,6 +424,26 @@ export class CaveWorld extends OceanWorld {
    this.torchRestRot.z+Math.cos(this.time*.75)*.065*s,
   );
  }
+ holdingKnife(){return this.mission.inventory[this.mission.selected]==='knife';}
+ /** Hide lantern meshes while knife is held; SpotLight stays parented and can stay on. */
+ setTorchMeshesVisible(show:boolean){
+  this.torchBody.traverse(o=>{if(o instanceof THREE.Mesh)o.visible=show;});
+ }
+ /** Knife hand sway — same spirit as torch hover, only while the knife is the held prop. */
+ applyKnifeHover(bobBlend:number){
+  if(!this.knifeVisual)return;
+  const s=bobBlend;
+  this.knifeVisual.position.set(
+   KNIFE_HOLD_POS.x+Math.sin(this.time*.7)*.024*s,
+   KNIFE_HOLD_POS.y+Math.sin(this.time*1.05)*.03*s,
+   KNIFE_HOLD_POS.z+Math.cos(this.time*.55)*.018*s,
+  );
+  this.knifeVisual.rotation.set(
+   KNIFE_HOLD_ROT.x+Math.sin(this.time*.9)*.045*s,
+   KNIFE_HOLD_ROT.y+Math.sin(this.time*.45)*.025*s,
+   KNIFE_HOLD_ROT.z+Math.cos(this.time*.75)*.05*s,
+  );
+ }
  buildLights(){
   this.scene.add(this.camera);
   // Lantern first — spot + volume share its aim so there is only one beam.
@@ -532,7 +560,7 @@ export class CaveWorld extends OceanWorld {
    if(!this.playing)return;
    try{canvas.setPointerCapture(e.pointerId);}catch{/* unsupported */}
    if(document.pointerLockElement!==canvas)this.requestLookLock(false);
-   // Primary click while knife selected → stab (torch stays the hero FPS prop).
+   // Primary click while knife selected → stab (knife is the held FPS prop).
    if(e.button===0)this.tryStab();
   }) as EventListener);
   on(document,'pointermove',((e:PointerEvent)=>{if(!this.playing)return;
@@ -604,7 +632,7 @@ export class CaveWorld extends OceanWorld {
   this.knifeVisual.visible=true;
   this.knifeFlashUntil=this.time+.28;
   // Quick thrust along look axis in local space.
-  this.knifeVisual.position.z=-.72;
+  this.knifeVisual.position.z=KNIFE_STAB_Z;
  }
  consumeCombatCue(connected:boolean){
   const cue=this.mission.combatCue;this.mission.combatCue='';
@@ -647,7 +675,9 @@ export class CaveWorld extends OceanWorld {
   this.backgroundMusic?.reset();this.mission=new Mission(readInventoryTipsSeen());
   this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
-  this.shakeAmp=0;this.knifeFlashUntil=0;if(this.knifeVisual){this.knifeVisual.visible=false;this.knifeVisual.position.set(-.32,-.38,-.55);}
+  this.shakeAmp=0;this.knifeFlashUntil=0;
+  if(this.knifeVisual){poseKnife(this.knifeVisual);this.knifeVisual.visible=this.holdingKnife();}
+  this.setTorchMeshesVisible(!this.holdingKnife());
   if(this.blood){this.blood.visible=false;this.bloodLife=0;}
   this.mission.silt=createSiltPlume(this.mission.position);
   if(this.siltStorm&&this.siltStormLife){
@@ -692,16 +722,23 @@ export class CaveWorld extends OceanWorld {
     this.camera.position.addScaledVector(this.upAxis,Math.cos(this.time*37)*s*.03);
     this.shakeAmp=Math.max(0,this.shakeAmp-dt*2.8);
    }
+   const knifeHeld=this.holdingKnife();
    this.applyTorchHover(bobBlend);
    if(this.knifeVisual){
-    if(this.time>=this.knifeFlashUntil){
-     this.knifeVisual.visible=false;
-     this.knifeVisual.position.set(-.32,-.38,-.55);
-    }else{
-     // Ease thrust back toward rest while still visible.
-     const t=1-Math.max(0,(this.knifeFlashUntil-this.time)/.28);
-     this.knifeVisual.position.z=THREE.MathUtils.lerp(-.72,-.55,t);
+    if(knifeHeld){
      this.knifeVisual.visible=true;
+     if(this.time>=this.knifeFlashUntil){
+      this.applyKnifeHover(bobBlend);
+     }else{
+      // Ease thrust back toward rest while stabbing.
+      const t=1-Math.max(0,(this.knifeFlashUntil-this.time)/.28);
+      this.knifeVisual.position.set(KNIFE_HOLD_POS.x,KNIFE_HOLD_POS.y,THREE.MathUtils.lerp(KNIFE_STAB_Z,KNIFE_HOLD_POS.z,t));
+      this.knifeVisual.rotation.set(KNIFE_HOLD_ROT.x,KNIFE_HOLD_ROT.y,KNIFE_HOLD_ROT.z);
+     }
+    }else{
+     this.knifeVisual.visible=false;
+     this.knifeFlashUntil=0;
+     poseKnife(this.knifeVisual);
     }
    }
    this.updateBlood(dt);
@@ -720,7 +757,14 @@ export class CaveWorld extends OceanWorld {
   (this.scene.background as THREE.Color).copy(fog.color);
   this.uniforms.uTime.value=this.time;
   const torchOn=this.mission.torch;
-  this.torchLight.visible=torchOn;this.beam.visible=torchOn;
+  const knifeHeld=this.holdingKnife();
+  // Knife selected → hide lantern mesh + beam; SpotLight stays on if F torch is on.
+  this.setTorchMeshesVisible(!knifeHeld);
+  if(this.knifeVisual&&!this.playing){
+   this.knifeVisual.visible=knifeHeld;
+   if(knifeHeld)poseKnife(this.knifeVisual);
+  }
+  this.torchLight.visible=torchOn;this.beam.visible=torchOn&&!knifeHeld;
   this.torchBody.visible=true;
   this.torchLensMat.emissiveIntensity=torchOn?1.25:.06;
   this.torchLensMat.emissive.set(torchOn?0xc8e4ff:0x223038);
