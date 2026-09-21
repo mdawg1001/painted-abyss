@@ -2,10 +2,95 @@
 export function buildDiveAudio(ctx: AudioContext, master: GainNode) {
   // Probe after the master gain so mute can be verified as silence.
   // Breathing/regulator loop removed — dive bed is music only.
+  // Movement-linked cave water lives in SwimWaterAudio (not always-on).
   const probe = ctx.createAnalyser();
   probe.fftSize = 2048;
   master.connect(probe).connect(ctx.destination);
   return probe;
+}
+
+/**
+ * Deep-cave water that moves with the diver: brown noise through a tight lowpass,
+ * plus a soft pressure rumble. Gain and brightness scale with swim speed so still
+ * water is nearly silent and sprinting opens a muffled whoosh — never surface splash.
+ */
+export class SwimWaterAudio {
+  private noise: AudioBufferSourceNode;
+  private filter: BiquadFilterNode;
+  private highpass: BiquadFilterNode;
+  private gain: GainNode;
+  private rumble: OscillatorNode;
+  private rumbleGain: GainNode;
+  private disposed = false;
+
+  constructor(private ctx: AudioContext, master: GainNode) {
+    // ~4s of brown noise; looping reads as continuous water pressure, not a loop point.
+    const seconds = 4;
+    const buffer = ctx.createBuffer(1, Math.round(ctx.sampleRate * seconds), ctx.sampleRate);
+    const samples = buffer.getChannelData(0);
+    let brown = 0;
+    for (let i = 0; i < samples.length; i++) {
+      const white = Math.random() * 2 - 1;
+      brown = (brown + .02 * white) / 1.02;
+      samples[i] = brown * 3.5;
+    }
+    this.noise = ctx.createBufferSource();
+    this.noise.buffer = buffer;
+    this.noise.loop = true;
+
+    // Cave muffling: keep everything below ~1 kHz even at full sprint.
+    this.filter = ctx.createBiquadFilter();
+    this.filter.type = 'lowpass';
+    this.filter.frequency.value = 280;
+    this.filter.Q.value = .65;
+
+    this.highpass = ctx.createBiquadFilter();
+    this.highpass.type = 'highpass';
+    this.highpass.frequency.value = 35;
+
+    this.gain = ctx.createGain();
+    this.gain.gain.value = 0;
+
+    this.noise.connect(this.filter).connect(this.highpass).connect(this.gain).connect(master);
+
+    // Sub pressure — felt more than heard on laptop speakers, fills headphones.
+    this.rumble = ctx.createOscillator();
+    this.rumble.type = 'sine';
+    this.rumble.frequency.value = 36;
+    this.rumbleGain = ctx.createGain();
+    this.rumbleGain.gain.value = 0;
+    this.rumble.connect(this.rumbleGain).connect(master);
+
+    this.noise.start();
+    this.rumble.start();
+  }
+
+  /** `speed` is world-units/sec (cruise ≈2.8, sprint ≈4.8). */
+  update(speed: number, active: boolean) {
+    if (this.disposed) return;
+    const t = this.ctx.currentTime;
+    // Dead-zone so tiny post-stop drift does not hiss.
+    const intensity = active ? Math.min(1, Math.max(0, (speed - .18) / 4.4)) : 0;
+    // Squared curve: quiet glide, clear whoosh when pushing hard.
+    const whoosh = intensity * intensity;
+    this.gain.gain.setTargetAtTime(whoosh * .42, t, .09);
+    this.filter.frequency.setTargetAtTime(260 + intensity * 480, t, .14);
+    this.rumbleGain.gain.setTargetAtTime(intensity * .05, t, .12);
+    this.rumble.frequency.setTargetAtTime(30 + intensity * 22, t, .18);
+  }
+
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    try { this.noise.stop(); } catch { /* already stopped */ }
+    try { this.rumble.stop(); } catch { /* already stopped */ }
+    this.noise.disconnect();
+    this.filter.disconnect();
+    this.highpass.disconnect();
+    this.gain.disconnect();
+    this.rumble.disconnect();
+    this.rumbleGain.disconnect();
+  }
 }
 
 export function playDiveChime(ctx: AudioContext, master: GainNode) {
