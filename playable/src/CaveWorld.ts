@@ -1,67 +1,178 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime, playInventoryClick } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
-import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, ITEMS, readInventoryTipsSeen, writeInventoryTipsSeen, type Item } from './simulation';
-export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string};
+import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, readInventoryTipsSeen, writeInventoryTipsSeen } from './simulation';
+export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
-const FREE_LOOK_HINT='360° free look active. Steer left or right of center to keep turning — pointer stays in the dive.';
+
+const shaftVert=`varying vec2 vUv;varying vec3 wPos;void main(){vUv=uv;wPos=(modelMatrix*vec4(position,1.)).xyz;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
+const shaftFrag=`varying vec2 vUv;varying vec3 wPos;uniform float uTime;uniform vec3 uColor;uniform float uOpacity;
+void main(){
+  float edge=pow(max(0.,sin(vUv.x*3.14159)),2.4);
+  float vertical=pow(sin(vUv.y*3.14159),.55);
+  float pulse=.82+sin(wPos.x*.11+wPos.z*.09+uTime*.19)*.14;
+  float core=pow(max(0.,1.-abs(vUv.x-.5)*2.4),3.2)*.55;
+  float a=(edge*vertical*pulse+core*vertical)*uOpacity;
+  gl_FragColor=vec4(uColor,a);
+}`;
+
 export class CaveWorld extends OceanWorld {
  audioNotice='';audioProbe:AnalyserNode|null=null;audioTestTimer=0;
  backgroundMusic:BackgroundMusic|null=null;
  mission=new Mission(readInventoryTipsSeen());ui:(snapshot:Snapshot)=>void;error='';pointerLocked=false;everLocked=false;lastSent=0;
  fallbackTurn=0;lockDenied=false;lookPointer:{x:number;y:number}|null=null;
- torchLight=new THREE.SpotLight(0xd9f9e5,95,29,.48,.7,1.15);beam!:THREE.Mesh;
+ torchLight=new THREE.SpotLight(0xeaf6ff,210,34,.38,.55,1.05);
+ torchFill=new THREE.PointLight(0xcfe8ff,4.5,7,1.6);
+ beam!:THREE.Mesh;beamHalo!:THREE.Mesh;torchBody!:THREE.Group;
+ composer!:EffectComposer;bloom!:UnrealBloomPass;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
   super(host,{onReady:()=>{},onPause:()=>{},onStatus:()=>{},onToggleUI:()=>{},onGlide:()=>{},onError:()=>{}},{deferStart:true});
   this.ui=ui;this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
-  this.scene.background=new THREE.Color(0x031015);this.scene.fog=new THREE.FogExp2(0x031015,.065);
-  this.camera.far=110;this.camera.updateProjectionMatrix();this.renderer.toneMappingExposure=1.25;
-  this.scene.add(new THREE.HemisphereLight(0x5a8692,0x14251f,.32));
-  this.buildCave();this.buildLights();this.guardian=this.ichthyosaur(.9);this.scene.add(this.guardian.group);
+  // Deep teal void — matches reference plates (cyan haze, not pure black)
+  this.scene.background=new THREE.Color(0x041a22);this.scene.fog=new THREE.FogExp2(0x0a2e38,.038);
+  this.camera.far=130;this.camera.fov=64;this.camera.updateProjectionMatrix();
+  this.renderer.toneMappingExposure=1.12;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  // Cool teal ambient fill so rock reads in the murk; shafts/torch still dominate
+  this.scene.add(new THREE.HemisphereLight(0x5a9eae,0x081820,.42));
+  this.scene.add(new THREE.AmbientLight(0x123840,.22));
+  const skyFill=new THREE.DirectionalLight(0x7ec8d4,.55);skyFill.position.set(-8,30,-20);this.scene.add(skyFill);
+  this.buildCave();this.buildLights();this.buildComposer();
+  this.guardian=this.ichthyosaur(.9);this.scene.add(this.guardian.group);
   const eyeMat=new THREE.MeshBasicMaterial({color:0xe0a772});
   for(const side of [-1,1])this.ellipsoid(this.guardian.group,eyeMat,1.8,.27,side*.5,.1,.1,.04);
-  // Retain the original procedural sediment and animated skin/material foundations.
   this.suspendedParticles();const positions=this.particles.geometry.attributes.position;
   for(let i=0;i<positions.count;i++)positions.setXYZ(i,Math.sin(i*78.23)*37,1+(i%71)/10,-(i*13.23)%122);
   this.particles.geometry.computeBoundingSphere();
   const pm=this.particles.material as THREE.ShaderMaterial;
-  pm.uniforms.uTorch={value:1};pm.vertexShader='uniform float uTorch;\n'+pm.vertexShader;
-  pm.vertexShader=pm.vertexShader.replace('a=clamp(1.-length(mv.xyz)/95.,0.,1.)*.33;', 'float cone=1.-smoothstep(.28,.55,length(mv.xy)/max(.1,-mv.z));a=clamp(1.-length(mv.xyz)/23.,0.,1.)*(.025+cone*.38*uTorch);');
+  pm.uniforms.uTorch={value:1};
+  pm.vertexShader='uniform float uTorch;\n'+pm.vertexShader;
+  pm.vertexShader=pm.vertexShader.replace(
+   'gl_PointSize=clamp(38./-mv.z,1.,3.5)*uPixelRatio;gl_Position=projectionMatrix*mv;a=clamp(1.-length(mv.xyz)/95.,0.,1.)*.33;',
+   'float cone=1.-smoothstep(.22,.52,length(mv.xy)/max(.08,-mv.z));gl_PointSize=clamp((28.+cone*42.*uTorch)/-mv.z,1.2,5.5)*uPixelRatio;gl_Position=projectionMatrix*mv;a=clamp(1.-length(mv.xyz)/28.,0.,1.)*(.04+cone*.55*uTorch);'
+  );
+  pm.fragmentShader=pm.fragmentShader.replace(
+   'gl_FragColor=vec4(.65,.87,.79,a*smoothstep(.5,.0,d));',
+   'gl_FragColor=vec4(.78,.92,.96,a*smoothstep(.5,.0,d));'
+  );
   this.decoyMesh=new THREE.Mesh(new THREE.IcosahedronGeometry(.18,1),new THREE.MeshBasicMaterial({color:0xff7040}));
-  this.decoyMesh.add(new THREE.PointLight(0xff6831,9,10));this.scene.add(this.decoyMesh);
+  this.decoyMesh.add(new THREE.PointLight(0xff6831,12,12));this.scene.add(this.decoyMesh);
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
  }
  buildCave(){
-  const floor=this.material(0x747e71,'sand'),rock=this.material(0x587069,'rock'),ceiling=this.material(0x46585b,'rock');
+  const floor=this.material(0x7a8474,'sand',.88,3.4),rock=this.material(0x55666a,'rock',.86,1.6),ceiling=this.material(0x3a4c52,'rock',.9,.6);
   const floors:THREE.BufferGeometry[]=[],roofs:THREE.BufferGeometry[]=[],walls:THREE.BufferGeometry[]=[],details:THREE.BufferGeometry[]=[];
   for(const key of cells){const [c,r]=key.split(',').map(Number),p=world(c,r);
    const fg=new THREE.PlaneGeometry(CELL,CELL,2,2);fg.rotateX(-Math.PI/2);fg.translate(p.x,0,p.z);floors.push(fg);
    if(!(c===19&&r===3)){const cg=fg.clone();cg.rotateZ(Math.PI);cg.translate(p.x*2,8,0);roofs.push(cg);}
    for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]])if(!cells.has(`${c+dc},${r+dr}`)){
     const g=new THREE.BoxGeometry(dc?1:CELL+.05,8.5,dr?1:CELL+.05);g.translate(p.x+dc*2.5,4,p.z-dr*2.5);walls.push(g);
-    // Rock relief extends into solid wall, leaving a consistent navigable interior.
     for(let n=0;n<3;n++){const stone=new THREE.IcosahedronGeometry(1,1);stone.scale(dc?.7:1.7,1.3+(n%2)*.5,dr?.7:1.7);stone.translate(p.x+dc*2.45,1.3+n*2.5,p.z-dr*2.45);details.push(stone);}
    }
   }
   for(const [geos,mat] of [[floors,floor],[roofs,ceiling],[walls,rock],[details,rock]] as const){const merged=mergeGeometries(geos);if(merged)this.scene.add(new THREE.Mesh(merged,mat));geos.forEach(g=>g.dispose());}
-  // Broken ribs at the relic: reuse the existing tube helper.
-  const bone=this.material(0x9f9a7a,'rock');for(let i=0;i<6;i++)for(const s of [-1,1])this.scene.add(this.tube([V(-3+i*.75,.25,-113),V(-3+i*.75,1.3,-113+s*1.2),V(-3+i*.75,.3,-113+s*2.2)],[.12,.09,.025],bone,12,5));
-  // A weathered stone plinth under the objective.
+  const bone=this.material(0x9f9a7a,'rock',.82,1.5);for(let i=0;i<6;i++)for(const s of [-1,1])this.scene.add(this.tube([V(-3+i*.75,.25,-113),V(-3+i*.75,1.3,-113+s*1.2),V(-3+i*.75,.3,-113+s*2.2)],[.12,.09,.025],bone,12,5));
   const plinth=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.5,1.2,7),rock);plinth.position.set(RELIC.x,.6,RELIC.z);this.scene.add(plinth);
  }
+ beamMaterial(color:THREE.ColorRepresentation,opacity:number){
+  return new THREE.ShaderMaterial({
+   uniforms:{uTime:this.uniforms.uTime,uColor:{value:new THREE.Color(color)},uOpacity:{value:opacity}},
+   transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
+   vertexShader:shaftVert,fragmentShader:shaftFrag,
+  });
+ }
+ addShaft(x:number,y:number,z:number,len:number,topR:number,botR:number,color:number,opacity:number,tiltX=0,tiltZ=0){
+  const mesh=new THREE.Mesh(new THREE.CylinderGeometry(topR,botR,len,28,1,true),this.beamMaterial(color,opacity));
+  mesh.position.set(x,y,z);mesh.rotation.x=tiltX;mesh.rotation.z=tiltZ;this.scene.add(mesh);return mesh;
+ }
  buildLights(){
-  this.scene.add(this.camera);this.torchLight.position.set(.25,-.15,-.2);this.torchLight.target.position.set(0,0,-15);this.camera.add(this.torchLight,this.torchLight.target);
-  const cone=new THREE.CylinderGeometry(.025,4.8,17,24,1,true);cone.rotateX(Math.PI/2);
-  this.beam=new THREE.Mesh(cone,new THREE.MeshBasicMaterial({color:0x8ac9ac,transparent:true,opacity:.012,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}));this.beam.position.set(.2,-.18,-8.6);this.camera.add(this.beam);
-  const lamp=(x:number,z:number,color:number)=>{const mesh=new THREE.Mesh(new THREE.SphereGeometry(.12,8,6),new THREE.MeshBasicMaterial({color}));mesh.position.set(x,.75,z);mesh.add(new THREE.PointLight(color,1.4,6,1.3));this.scene.add(mesh);};
-  for(const [x,z] of [[0,-18],[0,-28],[0,-40],[-12,-48],[-22,-60],[-22,-78],[-16,-90],[0,-98],[0,-108]])lamp(x,z,0x6ae4cf);
-  for(const [x,z] of [[12,-94],[24,-87],[30,-80],[32,-65],[32,-49],[32,-33],[32,-19]])lamp(x,z,0xf3b762);
-  const exit=new THREE.Group();exit.position.set(EXIT.x,.65,EXIT.z);const ring=new THREE.Mesh(new THREE.TorusGeometry(1.6,.05,8,48),new THREE.MeshBasicMaterial({color:0xb9ffdc}));ring.rotation.x=Math.PI/2;exit.add(ring);this.scene.add(exit);
-  const sunlight=new THREE.SpotLight(0x9be3de,120,18,.65,1,1);sunlight.position.set(32,11,-12);sunlight.target.position.set(32,0,-12);this.scene.add(sunlight,sunlight.target);
-  const shaft=new THREE.Mesh(new THREE.CylinderGeometry(.9,2.6,8,24,1,true),new THREE.MeshBasicMaterial({color:0x9ce1d4,transparent:true,opacity:.065,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending}));shaft.position.set(32,4,-12);this.scene.add(shaft);
+  this.scene.add(this.camera);
+  // Cool-white tactical torch — reference key light
+  this.torchLight.color.set(0xf0f7ff);this.torchLight.intensity=260;this.torchLight.distance=36;
+  this.torchLight.angle=.34;this.torchLight.penumbra=.42;this.torchLight.decay=1.1;
+  this.torchLight.position.set(.32,-.22,-.15);
+  this.torchLight.target.position.set(.12,-.28,-16);
+  this.torchFill.color.set(0xd8e8f4);this.torchFill.intensity=7;this.torchFill.distance=8;
+  this.torchFill.position.set(.2,-.15,-.4);
+  this.camera.add(this.torchLight,this.torchLight.target,this.torchFill);
+
+  // Volumetric torch cones (core + soft halo)
+  const cone=new THREE.CylinderGeometry(.03,4.2,19,32,1,true);cone.rotateX(Math.PI/2);
+  this.beam=new THREE.Mesh(cone,this.beamMaterial(0xd0e8f5,.11));
+  this.beam.position.set(.28,-.26,-9.2);this.camera.add(this.beam);
+  const haloGeo=new THREE.CylinderGeometry(.08,6.2,17,32,1,true);haloGeo.rotateX(Math.PI/2);
+  this.beamHalo=new THREE.Mesh(haloGeo,this.beamMaterial(0xa8cde0,.045));
+  this.beamHalo.position.set(.28,-.26,-8.4);this.camera.add(this.beamHalo);
+
+  // Visible flashlight body (bottom-right, first-person)
+  this.torchBody=new THREE.Group();
+  const bodyMat=new THREE.MeshStandardMaterial({color:0x1a1e22,metalness:.75,roughness:.35});
+  const lensMat=new THREE.MeshBasicMaterial({color:0xd8eef8});
+  const barrel=new THREE.Mesh(new THREE.CylinderGeometry(.055,.07,.55,12),bodyMat);barrel.rotation.x=Math.PI/2;barrel.position.set(0,0,-.2);
+  const head=new THREE.Mesh(new THREE.CylinderGeometry(.09,.07,.12,12),bodyMat);head.rotation.x=Math.PI/2;head.position.set(0,0,-.52);
+  const lens=new THREE.Mesh(new THREE.CircleGeometry(.065,16),lensMat);lens.position.set(0,0,-.585);
+  this.torchBody.add(barrel,head,lens);
+  this.torchBody.position.set(.38,-.32,-.55);this.torchBody.rotation.set(.12,-.08,.18);
+  this.camera.add(this.torchBody);
+
+  // Soft path markers (dimmer so shafts remain the hero)
+  const lamp=(x:number,z:number,color:number)=>{
+   const mesh=new THREE.Mesh(new THREE.SphereGeometry(.1,8,6),new THREE.MeshBasicMaterial({color}));
+   mesh.position.set(x,.55,z);mesh.add(new THREE.PointLight(color,.85,5.5,1.5));this.scene.add(mesh);
+  };
+  for(const [x,z] of [[0,-18],[0,-28],[0,-40],[-12,-48],[-22,-60],[-22,-78],[-16,-90],[0,-98],[0,-108]])lamp(x,z,0x5ad4c4);
+  for(const [x,z] of [[12,-94],[24,-87],[30,-80],[32,-65],[32,-49],[32,-33],[32,-19]])lamp(x,z,0xe0a858);
+
+  // Extraction pool — hard god-ray volume matching reference grotto light
+  const exit=new THREE.Group();exit.position.set(EXIT.x,.65,EXIT.z);
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(1.6,.05,8,48),new THREE.MeshBasicMaterial({color:0xb9ffdc}));
+  ring.rotation.x=Math.PI/2;exit.add(ring);this.scene.add(exit);
+  const sunlight=new THREE.SpotLight(0xd2f8f4,420,24,.72,.8,1);
+  sunlight.position.set(32,12,-12);sunlight.target.position.set(32,0,-12);this.scene.add(sunlight,sunlight.target);
+  const poolFill=new THREE.PointLight(0xa8f0e8,28,16,1.1);poolFill.position.set(32,5,-12);this.scene.add(poolFill);
+  this.addShaft(32,5.2,-12,9,.7,2.8,0xd8faf4,.22);
+  this.addShaft(31.2,5.5,-11.2,8.5,.4,1.8,0xc0f2ea,.14,.08,-.05);
+  this.addShaft(33,5,-12.8,8.2,.35,1.6,0xc8f4ee,.12,-.06,.07);
+
+  // Main cavern ceiling shafts — reference chamber god rays
+  const cavern:[number,number,number,number,number,number,number][]=[
+   [2,6.2,-52,9,.5,2.4,.16],[ -3,6.4,-58,8.5,.4,2.1,.13],[6,6,-64,9.5,.55,2.6,.15],
+   [-8,6.3,-72,8,.35,1.9,.11],[4,6.5,-78,9,.45,2.3,.14],[-2,6.1,-86,8.5,.4,2.0,.12],
+   [0,6.4,-96,8,.35,1.8,.1],[10,6.2,-70,7.5,.3,1.6,.09],
+  ];
+  for(const [x,y,z,len,top,bot,op] of cavern){
+   this.addShaft(x,y,z,len,top,bot,0xb8ebe4,op,(Math.random()-.5)*.12,(Math.random()-.5)*.1);
+   const spot=new THREE.SpotLight(0xb0ece4,55+op*500,15,.5,.85,1.15);
+   spot.position.set(x,8.2,z);spot.target.position.set(x,0,z);this.scene.add(spot,spot.target);
+  }
+
+  // Entrance corridor soft shaft
+  this.addShaft(0,6.3,-22,8,.45,2.2,0xa8e0d8,.1);
+  const entrance=new THREE.SpotLight(0xa8e4dc,70,13,.48,.8,1.1);
+  entrance.position.set(0,8.5,-22);entrance.target.position.set(0,0,-22);this.scene.add(entrance,entrance.target);
+
+  // Relic alcove pale shaft
+  this.addShaft(0,5.8,-110,7.5,.3,1.5,0xc4d4b0,.08);
+ }
+ buildComposer(){
+  const w=this.host.clientWidth,h=this.host.clientHeight;
+  this.composer=new EffectComposer(this.renderer);
+  this.composer.addPass(new RenderPass(this.scene,this.camera));
+  this.bloom=new UnrealBloomPass(new THREE.Vector2(w,h),.42,.55,.82);
+  this.composer.addPass(this.bloom);
+  this.composer.addPass(new OutputPass());
+ }
+ resize(){
+  if(!this.alive)return;
+  const w=this.host.clientWidth,h=this.host.clientHeight;
+  this.camera.aspect=w/h;this.camera.updateProjectionMatrix();
+  this.renderer.setSize(w,h);this.composer?.setSize(w,h);this.bloom?.resolution.set(w,h);
  }
  syncPickups(){
   for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);group.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
@@ -71,7 +182,7 @@ export class CaveWorld extends OceanWorld {
    }group.position.set(p.position.x,p.position.y+Math.sin(this.time*1.7+p.id)*.12,p.position.z);group.rotation.y=this.time*.45;
   }
  }
- publish(){this.ui({mission:this.mission,playing:this.playing,started:this.started,pointerLocked:this.pointerLocked,error:this.error,audioNotice:this.audioNotice});}
+ publish(){this.ui({mission:this.mission,playing:this.playing,started:this.started,pointerLocked:this.pointerLocked,error:this.error,audioNotice:this.audioNotice,yaw:this.yaw});}
  bind(){
   const on=(target:EventTarget,type:string,fn:EventListener,options?:AddEventListenerOptions)=>{target.addEventListener(type,fn,options);this.listeners.push(()=>target.removeEventListener(type,fn,options));};
   on(window,'keydown',((e:KeyboardEvent)=>{
@@ -92,13 +203,10 @@ export class CaveWorld extends OceanWorld {
   const canvas=this.renderer.domElement;
   on(canvas,'pointerdown',((e:PointerEvent)=>{
    if(!this.playing)return;
-   // Capture keeps look events on the canvas while the button is held; also retry lock.
    try{canvas.setPointerCapture(e.pointerId);}catch{/* unsupported */}
    if(document.pointerLockElement!==canvas)this.requestLookLock(false);
   }) as EventListener);
   on(document,'pointermove',((e:PointerEvent)=>{if(!this.playing)return;
-   // Pointer lock: relative motion. Unlocked: soft look-stick yaw inside the canvas,
-   // without stacking raw movementX on continuous turn (that combination felt shaky).
    const locked=document.pointerLockElement===canvas;
    if(locked){this.lookPointer=null;this.fallbackTurn=0;const delta=lookDelta(this.targetYaw,this.targetPitch,e.movementX,e.movementY);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;return;}
    const bounds=canvas.getBoundingClientRect();
@@ -109,15 +217,14 @@ export class CaveWorld extends OceanWorld {
    const delta=lookDelta(this.targetYaw,this.targetPitch,mx,e.movementY);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;
   }) as EventListener);
   on(window,'mouseout',((e:MouseEvent)=>{if(!e.relatedTarget){this.lookPointer=null;this.fallbackTurn=0;}}) as EventListener);
-  // Reserve wheel/trackpad scroll for looking, never inventory selection.
   on(canvas,'wheel',((e:WheelEvent)=>{if(!this.playing)return;e.preventDefault();const scale=e.deltaMode===1?16:e.deltaMode===2?200:1;const delta=lookDelta(this.targetYaw,this.targetPitch,e.deltaX*scale,e.deltaY*scale);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;}) as EventListener,{passive:false});
   on(document,'pointerlockchange',(()=>{const was=this.pointerLocked;this.pointerLocked=document.pointerLockElement===canvas;if(this.pointerLocked){this.everLocked=true;this.lockDenied=false;this.lookPointer=null;this.fallbackTurn=0;}if(was&&!this.pointerLocked)this.pause();this.publish();}) as EventListener);
-  on(document,'pointerlockerror',(()=>{this.lockDenied=true;this.mission.say(FREE_LOOK_HINT);this.publish();}) as EventListener);
+  on(document,'pointerlockerror',(()=>{this.lockDenied=true;this.mission.say('360° free look active. Steer left or right of center to keep turning — pointer stays in the dive.');this.publish();}) as EventListener);
   on(canvas,'webglcontextlost',((e:Event)=>{e.preventDefault();this.error='The graphics connection was lost. Reload the page to restart the dive.';this.pause();this.publish();}) as EventListener);
  }
  requestLookLock(announce=true){
   if(!this.playing||document.pointerLockElement===this.renderer.domElement)return;
-  const fail=()=>{this.lockDenied=true;if(announce){this.mission.say(FREE_LOOK_HINT);this.publish();}};
+  const fail=()=>{this.lockDenied=true;if(announce){this.mission.say('360° free look active. Steer left or right of center to keep turning — pointer stays in the dive.');this.publish();}};
   try{const result=this.renderer.domElement.requestPointerLock?.();result?.catch(fail);}catch{fail();}
  }
  initAudio(){
@@ -193,15 +300,36 @@ export class CaveWorld extends OceanWorld {
    moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);m.update(dt,sprint);this.position.copy(m.position);this.camera.position.copy(this.position);
    if(m.outcome!=='playing')this.pause();
   }
-  const blue=THREE.MathUtils.smoothstep(-this.position.z,40,58);
-  const fog=this.scene.fog as THREE.FogExp2;fog.color.set(0x041913).lerp(new THREE.Color(0x030c1b),blue);(this.scene.background as THREE.Color).copy(fog.color);
-  this.uniforms.uTime.value=this.time;this.torchLight.visible=this.mission.torch;this.beam.visible=this.mission.torch;
-  (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=this.mission.torch?1:0;
+  // Atmosphere: cyan-teal murk (reference palette), denser in deep chambers, clears at exit
+  const deep=THREE.MathUtils.smoothstep(-this.position.z,35,100);
+  const nearExit=1-THREE.MathUtils.smoothstep(distance(this.position,EXIT),4,22);
+  const fog=this.scene.fog as THREE.FogExp2;
+  fog.color.set(0x0c3540).lerp(new THREE.Color(0x062430),deep).lerp(new THREE.Color(0x1a5a62),nearExit*.65);
+  fog.density=.032+.022*deep-.014*nearExit;
+  (this.scene.background as THREE.Color).copy(fog.color);
+  this.uniforms.uTime.value=this.time;
+  const torchOn=this.mission.torch;
+  this.torchLight.visible=torchOn;this.torchFill.visible=torchOn;this.beam.visible=torchOn;this.beamHalo.visible=torchOn;
+  this.torchBody.visible=true;
+  if(torchOn){
+   // Depth/aim modulation scaled to the lighting-hud torch baseline (mid swim, level look).
+   const torch=torchModulation(this.position.y,this.pitch);
+   const mid=torchModulation(3,0);
+   const iScale=torch.intensity/mid.intensity,dScale=torch.distance/mid.distance,bScale=torch.beamOpacity/mid.beamOpacity;
+   this.torchLight.intensity=260*iScale;this.torchLight.distance=36*dScale;this.torchLight.decay=1.1+(torch.decay-mid.decay);
+   this.torchLight.color.setRGB(torch.r,torch.g,torch.b);
+   this.torchFill.intensity=7*iScale;this.torchFill.color.setRGB(torch.r,torch.g,torch.b);
+   const beamMat=this.beam.material as THREE.ShaderMaterial;beamMat.uniforms.uOpacity.value=.11*bScale;beamMat.uniforms.uColor.value.setRGB(torch.r,torch.g,torch.b);
+   const haloMat=this.beamHalo.material as THREE.ShaderMaterial;haloMat.uniforms.uOpacity.value=.045*bScale;haloMat.uniforms.uColor.value.setRGB(torch.r*.85,torch.g*.9,torch.b);
+   (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=torch.particle;
+  }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
+  // Bloom lifts shaft cores and torch hotspot without washing the HUD
+  this.bloom.strength=torchOn?.48:.36;
   const p=this.mission.predator;this.guardian.group.position.copy(p.position);const diff=Math.atan2(Math.sin(p.heading-this.guardian.group.rotation.y),Math.cos(p.heading-this.guardian.group.rotation.y));this.guardian.group.rotation.y+=diff*Math.min(1,dt*5);
   this.guardian.fins.forEach(f=>f.rotation.x=Math.sin(this.time*2+(f.userData.phase||0))*.25*(f.userData.side||1));this.guardian.tail.rotation.y=Math.sin(this.time*3)*.22;
   this.syncPickups();this.decoyMesh.visible=!!this.mission.decoy;if(this.mission.decoy)this.decoyMesh.position.copy(this.mission.decoy.position);
-  if(this.time-this.lastSent>.1){this.lastSent=this.time;this.publish();}
-  this.renderer.render(this.scene,this.camera);
+  if(this.time-this.lastSent>.05){this.lastSent=this.time;this.publish();}
+  this.composer.render();
  }
- dispose(){window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();super.dispose();}
+ dispose(){window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
 }

@@ -47,6 +47,27 @@ export function pathBetween(a:Point,b:Point){
 export const lookDelta=(yaw:number,pitch:number,dx:number,dy:number)=>({yaw:yaw-dx*.0021,pitch:Math.max(-1.4,Math.min(1.4,pitch-dy*.0021))});
 /** Frame-rate-independent multiplier for unlocked continuous yaw (paired with lookDelta). */
 export const FREE_LOOK_RATE=1.45;
+export type TorchModulation={intensity:number;distance:number;decay:number;beamOpacity:number;particle:number;r:number;g:number;b:number};
+/**
+ * Underwater torch response from swim height and look pitch (Three.js YXZ: +pitch looks down).
+ * Deeper / floor-aimed → dimmer, shorter, muddier. Shallower / ceiling-aimed → brighter, cooler.
+ */
+export function torchModulation(depthY:number,pitch:number):TorchModulation{
+ const clarity=Math.max(0,Math.min(1,(depthY-.65)/(7.1-.65)));
+ const aimUp=Math.max(-1,Math.min(1,-pitch/1.4));
+ const murk=1-clarity;
+ const floorBias=Math.max(0,-aimUp);
+ const ceilingBias=Math.max(0,aimUp);
+ const intensity=(48+clarity*62)*(1+aimUp*.18);
+ const distance=(15+clarity*19)*(1+aimUp*.12-floorBias*.08);
+ const decay=1.05+murk*.5+floorBias*.18-ceilingBias*.06;
+ const beamOpacity=(.006+clarity*.022)*(1+aimUp*.28);
+ const particle=.35+clarity*.55+aimUp*.12;
+ const r=(.55+clarity*.3-floorBias*.12+ceilingBias*.05);
+ const g=(.62+clarity*.28-floorBias*.05);
+ const b=(.48+clarity*.42-floorBias*.18+ceilingBias*.12);
+ return{intensity,distance,decay,beamOpacity:Math.max(.004,beamOpacity),particle:Math.max(0,Math.min(1,particle)),r,g,b};
+}
 /**
  * Soft look-stick yaw when pointer lock is unavailable.
  * A center dead zone keeps fine aiming calm; offset past that ramps continuous
