@@ -2,11 +2,13 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime } from './diveAudio';
+import { BackgroundMusic } from './backgroundMusic';
 import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, ITEMS, type Item } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
 export class CaveWorld extends OceanWorld {
  audioNotice='';audioProbe:AnalyserNode|null=null;audioTestTimer=0;
+ backgroundMusic:BackgroundMusic|null=null;
  mission=new Mission();ui:(snapshot:Snapshot)=>void;error='';pointerLocked=false;everLocked=false;lastSent=0;
  fallbackTurn=0;
  torchLight=new THREE.SpotLight(0xd9f9e5,95,29,.48,.7,1.15);beam!:THREE.Mesh;
@@ -105,6 +107,7 @@ export class CaveWorld extends OceanWorld {
    const Ctx=window.AudioContext||(window as unknown as {webkitAudioContext:typeof AudioContext}).webkitAudioContext;
    const ctx=new Ctx();this.audioContext=ctx;this.master=ctx.createGain();this.master.gain.value=this.sound?.7:0;
    this.audioProbe=buildDiveAudio(ctx,this.master);
+   this.backgroundMusic=new BackgroundMusic(ctx,this.master);
    ctx.onstatechange=()=>{if(!this.alive)return;if(this.playing&&this.sound&&ctx.state!=='running')this.audioNotice='Sound interrupted. Pause and choose Test sound.';this.publish();};
   }catch{
    this.audioContext?.close().catch(()=>{});this.audioContext=null;this.master=null;
@@ -120,7 +123,9 @@ export class CaveWorld extends OceanWorld {
    if(!this.alive)return;
    if(!this.playing&&!this.testingAudio){ctx.suspend().catch(()=>{});return;}
    if(ctx.state!=='running'){this.audioNotice='Sound is blocked. Pause and choose Test sound.';this.publish();return;}
-   this.audioNotice='';if(chime&&this.sound&&(this.playing||this.testingAudio))playDiveChime(ctx,master);this.publish();
+   this.audioNotice='';if(chime&&this.sound&&(this.playing||this.testingAudio))playDiveChime(ctx,master);
+   if(this.playing)this.backgroundMusic?.start().catch(()=>{if(this.alive){this.audioNotice='Background music could not load. Pause and resume to retry.';this.publish();}});
+   this.publish();
   }).catch(()=>{if(this.alive){this.audioNotice='Sound is blocked. Pause and choose Test sound.';this.publish();}});
  }
  testingAudio=false;
@@ -142,7 +147,7 @@ export class CaveWorld extends OceanWorld {
   this.publish();
  }
  pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
- reset(){this.mission=new Mission();this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.fallbackTurn=0;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();this.syncPickups();this.publish();}
+ reset(){this.backgroundMusic?.reset();this.mission=new Mission();this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.fallbackTurn=0;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();this.syncPickups();this.publish();}
  animate=()=>{
   if(!this.alive)return;this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);
   if(this.playing){this.time+=dt;const m=this.mission;
@@ -167,5 +172,5 @@ export class CaveWorld extends OceanWorld {
   if(this.time-this.lastSent>.1){this.lastSent=this.time;this.publish();}
   this.renderer.render(this.scene,this.camera);
  }
- dispose(){window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.pause();super.dispose();}
+ dispose(){window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();super.dispose();}
 }
