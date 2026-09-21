@@ -11,7 +11,7 @@ export class CaveWorld extends OceanWorld {
  audioNotice='';audioProbe:AnalyserNode|null=null;audioTestTimer=0;
  backgroundMusic:BackgroundMusic|null=null;
  mission=new Mission();ui:(snapshot:Snapshot)=>void;error='';pointerLocked=false;everLocked=false;lastSent=0;
- fallbackTurn=0;lockDenied=false;
+ fallbackTurn=0;lockDenied=false;lookPointer:{x:number;y:number}|null=null;
  torchLight=new THREE.SpotLight(0xd9f9e5,95,29,.48,.7,1.15);beam!:THREE.Mesh;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
@@ -97,18 +97,18 @@ export class CaveWorld extends OceanWorld {
    // Pointer lock: relative motion. Unlocked: soft look-stick yaw inside the canvas,
    // without stacking raw movementX on continuous turn (that combination felt shaky).
    const locked=document.pointerLockElement===canvas;
-   if(locked){this.fallbackTurn=0;const delta=lookDelta(this.targetYaw,this.targetPitch,e.movementX,e.movementY);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;return;}
+   if(locked){this.lookPointer=null;this.fallbackTurn=0;const delta=lookDelta(this.targetYaw,this.targetPitch,e.movementX,e.movementY);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;return;}
    const bounds=canvas.getBoundingClientRect();
-   if(e.clientX<bounds.left||e.clientX>bounds.right||e.clientY<bounds.top||e.clientY>bounds.bottom){this.fallbackTurn=0;return;}
+   if(e.clientX<bounds.left||e.clientX>bounds.right||e.clientY<bounds.top||e.clientY>bounds.bottom){this.lookPointer=null;this.fallbackTurn=0;return;}
+   this.lookPointer={x:e.clientX,y:e.clientY};
    this.fallbackTurn=edgeTurn(e.clientX,bounds.left,bounds.width);
    const mx=this.fallbackTurn!==0?0:e.movementX;
    const delta=lookDelta(this.targetYaw,this.targetPitch,mx,e.movementY);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;
   }) as EventListener);
-  on(canvas,'pointerleave',(()=>{if(!this.pointerLocked)this.fallbackTurn=0;}) as EventListener);
-  on(window,'mouseout',((e:MouseEvent)=>{if(!e.relatedTarget)this.fallbackTurn=0;}) as EventListener);
+  on(window,'mouseout',((e:MouseEvent)=>{if(!e.relatedTarget){this.lookPointer=null;this.fallbackTurn=0;}}) as EventListener);
   // Reserve wheel/trackpad scroll for looking, never inventory selection.
   on(canvas,'wheel',((e:WheelEvent)=>{if(!this.playing)return;e.preventDefault();const scale=e.deltaMode===1?16:e.deltaMode===2?200:1;const delta=lookDelta(this.targetYaw,this.targetPitch,e.deltaX*scale,e.deltaY*scale);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;}) as EventListener,{passive:false});
-  on(document,'pointerlockchange',(()=>{const was=this.pointerLocked;this.pointerLocked=document.pointerLockElement===canvas;if(this.pointerLocked){this.everLocked=true;this.lockDenied=false;this.fallbackTurn=0;}if(was&&!this.pointerLocked)this.pause();this.publish();}) as EventListener);
+  on(document,'pointerlockchange',(()=>{const was=this.pointerLocked;this.pointerLocked=document.pointerLockElement===canvas;if(this.pointerLocked){this.everLocked=true;this.lockDenied=false;this.lookPointer=null;this.fallbackTurn=0;}if(was&&!this.pointerLocked)this.pause();this.publish();}) as EventListener);
   on(document,'pointerlockerror',(()=>{this.lockDenied=true;this.mission.say(FREE_LOOK_HINT);this.publish();}) as EventListener);
   on(canvas,'webglcontextlost',((e:Event)=>{e.preventDefault();this.error='The graphics connection was lost. Reload the page to restart the dive.';this.pause();this.publish();}) as EventListener);
  }
@@ -158,14 +158,16 @@ export class CaveWorld extends OceanWorld {
  }
  start(){
   if(this.mission.outcome!=='playing')this.reset();this.playing=true;this.started=true;this.keys.clear();this.clock.getDelta();this.testingAudio=false;if(this.sound)this.enableAudio(true);
-  this.fallbackTurn=0;this.requestLookLock(true);this.publish();
+  this.lookPointer=null;this.fallbackTurn=0;this.requestLookLock(true);this.publish();
  }
- pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
- reset(){this.backgroundMusic?.reset();this.mission=new Mission();this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();this.syncPickups();this.publish();}
+ pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
+ reset(){this.backgroundMusic?.reset();this.mission=new Mission();this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();this.syncPickups();this.publish();}
  animate=()=>{
   if(!this.alive)return;this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);
   if(this.playing){this.time+=dt;const m=this.mission;
    const pressed=(...keys:string[])=>keys.some(k=>this.keys.has(k))?1:0;
+   if(!this.pointerLocked&&this.lookPointer){const bounds=this.renderer.domElement.getBoundingClientRect();this.fallbackTurn=edgeTurn(this.lookPointer.x,bounds.left,bounds.width);}
+   else if(!this.pointerLocked&&!this.lookPointer)this.fallbackTurn=0;
    const horizontalLook=pressed('ArrowRight')-pressed('ArrowLeft')+(!this.pointerLocked?this.fallbackTurn*FREE_LOOK_RATE:0);
    const delta=lookDelta(this.targetYaw,this.targetPitch,horizontalLook*dt*650,(pressed('ArrowDown')-pressed('ArrowUp'))*dt*650);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;
    this.yaw=THREE.MathUtils.lerp(this.yaw,this.targetYaw,1-Math.exp(-16*dt));this.pitch=THREE.MathUtils.lerp(this.pitch,this.targetPitch,1-Math.exp(-16*dt));this.camera.rotation.set(this.pitch,this.yaw,0);
