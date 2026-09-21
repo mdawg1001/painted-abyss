@@ -18,10 +18,10 @@ export const KNIFE_THUMB_URL='/assets/knife/thumb.png';
  * Camera-local FPS viewmodel — forearm clips the lower-right, blade
  * diagonal toward screen center (CS-style right-hand grip).
  */
-export const KNIFE_HOLD_POS={x:.46,y:-.38,z:-.38} as const;
-export const KNIFE_HOLD_ROT={x:-.42,y:.72,z:.22} as const;
-export const KNIFE_HOLD_SCALE=1.85;
-export const KNIFE_STAB_Z=-.62;
+export const KNIFE_HOLD_POS={x:.28,y:-.16,z:-.5} as const;
+export const KNIFE_HOLD_ROT={x:-.2,y:.55,z:.12} as const;
+export const KNIFE_HOLD_SCALE=2;
+export const KNIFE_STAB_Z=-.72;
 
 const stubMetal=()=>new THREE.MeshStandardMaterial({
  color:0x6a7078,metalness:.55,roughness:.55,envMapIntensity:.35,
@@ -189,11 +189,14 @@ function createKnifeMeshStub():THREE.Group{
 export function createKnifeStub():THREE.Group{
  const g=new THREE.Group();
  g.name='knifeVisual';
+ g.frustumCulled=false;
  g.add(buildKnifeHand());
  attachKnifeMesh(g,createKnifeMeshStub());
  poseKnife(g);
+ // Show the glove immediately. The old pose sat below the frame, so waiting
+ // on glTF left an empty hand. Poly Haven mesh swaps in when it loads.
  g.visible=false;
- g.userData.knifeReady=false;
+ g.userData.knifeReady=true;
  return g;
 }
 
