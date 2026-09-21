@@ -12,6 +12,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
 import { loadCausticAtlas, makeCausticFallbackTexture } from './causticAsset';
 import { createChestVisual, upgradeChestVisual, syncChestOpen, type ChestVisual } from './chestAsset';
+import { createScrollVisual, syncScrollPresent, type ScrollVisual } from './scrollAsset';
 import {
  createLifebuoyVisual, upgradeLifebuoyVisual,
  LIFEBUOY_POS, LIFEBUOY_YAW, type LifebuoyVisual,
@@ -145,6 +146,8 @@ export class CaveWorld extends OceanWorld {
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  /** World crates / suitcase (Poly Haven) keyed by mission chest id. */
  chestVisuals=new Map<number,ChestVisual>();
+ /** Chart-scrap scrolls nested in each crate (visible until taken). */
+ scrollVisuals=new Map<number,ScrollVisual>();
  /** Decorative Poly Haven life ring on the start-chamber floor. */
  lifebuoyVisual:LifebuoyVisual|null=null;
  /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
@@ -240,8 +243,11 @@ export class CaveWorld extends OceanWorld {
    const visual=createChestVisual(chest.kind);
    visual.root.position.set(chest.position.x,chest.position.y,chest.position.z);
    visual.root.rotation.y=chest.yaw;
+   const scroll=createScrollVisual();
+   visual.root.add(scroll.root);
    this.scene.add(visual.root);
    this.chestVisuals.set(chest.id,visual);
+   this.scrollVisuals.set(chest.id,scroll);
    upgradeChestVisual(visual).then(()=>{
     if(!this.alive)return;
     // Re-assert closed pose after swap in case open was toggled during load.
@@ -256,6 +262,11 @@ export class CaveWorld extends OceanWorld {
    visual.root.position.set(chest.position.x,chest.position.y,chest.position.z);
    visual.root.rotation.y=chest.yaw;
    syncChestOpen(visual,chest.open,dt);
+   const scroll=this.scrollVisuals.get(chest.id);
+   if(scroll){
+    const want=chest.open&&!this.mission.hasMapFragment(chest.fragment);
+    syncScrollPresent(scroll,want,dt,chest.kind);
+   }
   }
  }
  /** Soft blood Points (shader discs × Kenney maps — never square sprites). */

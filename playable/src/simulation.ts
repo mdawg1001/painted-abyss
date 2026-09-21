@@ -423,14 +423,20 @@ export function writeInventoryTipsSeen(){
   const pickup=this.pending===null?this.nearest():this.pickups.find(p=>p.id===this.pending);
   // Prefer a closed chest when it is at least as close as the nearest pickup.
   if(chest&&!chest.open&&(!pickup||distance(chest.position,this.position)<=distance(pickup.position,this.position)+.15)){
+   // First E only opens — the chart scrap stays visible inside until taken.
    chest.open=true;
+   this.say(`Opened the ${CHEST_LABEL[chest.kind]}. A chart scrap rests inside.`,'ok');
+   return;
+  }
+  // Second E: take the physical scroll from an open crate.
+  if(chest?.open&&!this.hasMapFragment(chest.fragment)&&(!pickup||distance(chest.position,this.position)<=distance(pickup.position,this.position)+.15)){
    const got=this.collectMapFragment(chest.fragment);
    if(got){
     const n=this.mapFragmentCount;
     const label=MAP_FRAGMENT_LABEL[chest.fragment];
     if(this.mapComplete)this.say(`Map complete — ${label} fitted. Tab opens the chart; exits are marked.`,'ok');
     else this.say(`Map fragment (${n}/3): ${label}. Tab reviews the chart.`,'ok');
-   }else this.say(`Opened the ${CHEST_LABEL[chest.kind]}. Already have this scrap.`,'ok');
+   }
    return;
   }
   if(chest?.open&&!pickup){this.say(`The ${CHEST_LABEL[chest.kind]} is empty.`,'blocked');return;}
