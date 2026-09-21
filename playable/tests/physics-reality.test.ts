@@ -94,8 +94,11 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  const cruiseVsRealMax=CRUISE/REAL.cruiseMs[1];
  const sprintVsHard=SPRINT/REAL.hardKickMs[1];
 
+ // Torch: shared Beer–Lambert murk (SpotLight direct β^D + volume backscatter β^B)
  const torchFloor=torchModulation(0.8,1.2);
  const torchCeil=torchModulation(6.5,-1.2);
+ assert.ok(torchFloor.intensity<torchCeil.intensity);
+ assert.ok(torchFloor.betaDirect.r>torchCeil.betaDirect.r);
 
  const hudAtStart=hudDepth(START.y);
  const hudAtRelic=hudDepth(RELIC.y);

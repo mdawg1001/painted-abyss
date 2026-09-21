@@ -235,8 +235,11 @@ export class CaveWorld extends OceanWorld {
   this.camera.add(this.torchBody);
 
   // Soft spot wash — high penumbra so walls get light without a hard white disk.
-  this.torchLight.color.set(0xf2f8ff);this.torchLight.intensity=85;this.torchLight.distance=34;
-  this.torchLight.angle=.32;this.torchLight.penumbra=.95;this.torchLight.decay=1.15;
+  // Intensity/distance/decay/color are overwritten each frame from torchModulation (shared β).
+  const torch0=torchModulation(3,0);
+  this.torchLight.color.setRGB(torch0.r,torch0.g,torch0.b);
+  this.torchLight.intensity=torch0.intensity;this.torchLight.distance=torch0.distance;
+  this.torchLight.angle=.32;this.torchLight.penumbra=.95;this.torchLight.decay=torch0.decay;
   // Lens tip in lantern local space (body aims −Z).
   this.torchLight.position.set(0,0,-.45);
   this.torchLight.target.position.set(0,0,-22);
@@ -441,13 +444,13 @@ export class CaveWorld extends OceanWorld {
   this.torchLensMat.emissiveIntensity=torchOn?1.25:.06;
   this.torchLensMat.emissive.set(torchOn?0xc8e4ff:0x223038);
   if(torchOn){
-   // Depth/aim modulation scaled to the lighting-hud torch baseline (mid swim, level look).
+   // Shared Beer–Lambert murk: SpotLight = direct β^D, volume cone = backscatter β^B.
    const torch=torchModulation(this.position.y,this.pitch);
-   const mid=torchModulation(3,0);
-   const iScale=torch.intensity/mid.intensity,dScale=torch.distance/mid.distance,bScale=torch.beamOpacity/mid.beamOpacity;
-   this.torchLight.intensity=85*iScale;this.torchLight.distance=34*dScale;this.torchLight.decay=1.15+(torch.decay-mid.decay);
+   this.torchLight.intensity=torch.intensity;this.torchLight.distance=torch.distance;this.torchLight.decay=torch.decay;
    this.torchLight.color.setRGB(torch.r,torch.g,torch.b);
-   const beamMat=this.beam.material as THREE.ShaderMaterial;beamMat.uniforms.uOpacity.value=.09*bScale;beamMat.uniforms.uColor.value.setRGB(torch.r,torch.g,torch.b);
+   const beamMat=this.beam.material as THREE.ShaderMaterial;
+   beamMat.uniforms.uOpacity.value=torch.beamOpacity;
+   beamMat.uniforms.uColor.value.setRGB(torch.beamR,torch.beamG,torch.beamB);
    // No camera-forward particle cone — that was a second beam fighting the lantern aim.
    (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
   }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;

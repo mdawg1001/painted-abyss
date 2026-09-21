@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,updateBuoyancy,stepSwimVelocity,terminalSwimSpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,updateBuoyancy,stepSwimVelocity,terminalSwimSpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL} from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{for(let i=0;i<seconds*60;i++)m.update(1/60);};
 test('hydrostatic depth and ata share one surface plane',()=>{
  assert.equal(hydrostaticDepth(SURFACE_Y),0);
@@ -54,6 +54,28 @@ test('torch modulation dims and muddies with depth and floor aim',()=>{
  assert.ok(deepDown.particle<shallowUp.particle);
  const column=SURFACE_Y-FLOOR_Y;
  assert.ok((1-hydrostaticDepth(6.5)/column)>(1-hydrostaticDepth(.8)/column));
+});
+test('torch SpotLight and beam share Beer–Lambert murk (direct ≠ backscatter)',()=>{
+ const mid=torchModulation(3,0);
+ assert.ok(Math.abs(mid.intensity-TORCH_BASELINE.intensity)<1e-6);
+ assert.ok(Math.abs(mid.distance-TORCH_BASELINE.distance)<1e-6);
+ assert.ok(Math.abs(mid.decay-TORCH_BASELINE.decay)<1e-6);
+ assert.ok(Math.abs(mid.beamOpacity-TORCH_BASELINE.beamOpacity)<1e-6);
+ // Sea-thru: β^D ≠ β^B; red dies first on the direct path.
+ assert.ok(mid.betaDirect.r!==mid.betaBackscatter.r);
+ assert.ok(mid.betaDirect.r>mid.betaDirect.b);
+ const deep=torchModulation(.8,1.2);
+ const shallow=torchModulation(6.5,-1.2);
+ assert.ok(deep.betaDirect.r>shallow.betaDirect.r);
+ assert.ok(deep.betaBackscatter.b>shallow.betaBackscatter.b);
+ // Same murk drives both channels; beam tint is separate from direct tint.
+ assert.ok(deep.beamB!==deep.b||deep.beamR!==deep.r);
+ const clear=torchBetas(0).direct;
+ const murky=torchBetas(1).direct;
+ const tClear=beerLambertTransmit(clear,5);
+ const tMurky=beerLambertTransmit(murky,5);
+ assert.ok(tClear.r>tMurky.r&&tClear.b>tMurky.b);
+ assert.ok(tClear.r<tClear.b&&tMurky.r<tMurky.b); // red attenuates faster than blue
 });
 test('camera movement right produces positive world X with real Three camera',()=>{const d=lookDelta(0,0,100,0);const c=new THREE.PerspectiveCamera();c.rotation.order='YXZ';c.rotation.set(d.pitch,d.yaw,0);const forward=c.getWorldDirection(new THREE.Vector3());assert.ok(forward.x>0);assert.ok(lookDelta(0,0,-100,0).yaw>0);assert.equal(lookDelta(0,0,0,99999).pitch,-1.4);});
 test('unlocked free look supports continuous 360-degree rotation without pressing the OS edge',()=>{
