@@ -53,7 +53,7 @@ export class OceanWorld {
     const gain=Math.max(0,causticGain);
     const usePbr=!!maps&&(detail==='rock'||detail==='sand');
     const useMoss=usePbr&&!!mossMaps;
-    const mossAmount=detail==='rock'?'0.95':detail==='sand'?'0.42':'0.';
+    const mossAmount=detail==='rock'?'1.35':detail==='sand'?'0.7':'0.';
     m.onBeforeCompile=shader=>{
       shader.uniforms.uTime=this.uniforms.uTime;
       shader.vertexShader='varying vec3 vOceanWorld; varying vec3 vOceanLocal; varying vec3 vOceanWNormal;\n'+shader.vertexShader;
@@ -96,11 +96,11 @@ export class OceanWorld {
           vec3 mossAlb=triAlbedo(uMossDiff,vOceanWorld,b,uMossScale);
           vec3 mossArm=triArm(uMossArm,vOceanWorld,b,uMossScale);
           float moss=mossCoverage(vOceanWorld,wn,arm.r,${mossAmount});
-          // Keep moss a bit greener/wetter in the murk
-          mossAlb=mix(mossAlb,mossAlb*vec3(.72,1.05,.78),.35);
-          mossAlb*=mix(1.,.72,wet*.65);
+          // Push moss toward saturated wet green so it reads in teal murk
+          mossAlb=mix(mossAlb,vec3(.18,.42,.16),.55);
+          mossAlb*=mix(1.,.78,wet*.5);
           albedo=mix(albedo,mossAlb,moss);
-          arm=mix(arm,mossArm,moss*.85);
+          arm=mix(arm,mossArm,moss*.9);
           `:''}
           diffuseColor.rgb*=albedo*mix(.62,1.,arm.r);
         }`;

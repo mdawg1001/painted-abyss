@@ -88,15 +88,19 @@ vec3 triNormalView(sampler2D map,vec3 p,vec3 wn,vec3 b,float s,mat4 viewMatrix){
   vec3 n=normalize(tx.zyx*b.x+ty.xzy*b.y+tz.xyz*b.z);
   return normalize((viewMatrix*vec4(n,0.)).xyz);
 }
-// Patchy moss: crevices + near-floor + ledge tops.
+// Patchy moss: crevices + near-floor + ledge tops + wall streaks.
 float mossCoverage(vec3 p,vec3 wn,float ao,float amount){
-  float patch=valueNoise(p.xz*.28+p.y*.18);
-  float patch2=valueNoise(p.xy*.17+p.z*.23);
-  float clumps=smoothstep(.28,.76,patch*.62+patch2*.48);
-  float nearFloor=1.-smoothstep(.35,5.4,p.y);
-  float ledge=smoothstep(-.2,.7,wn.y);
-  float crevice=pow(clamp(1.-ao,0.,1.),1.35);
-  float m=clumps*(.3+.45*nearFloor+.3*ledge)+crevice*.4;
+  float patch=valueNoise(p.xz*.22+p.y*.14);
+  float patch2=valueNoise(p.xy*.14+p.z*.19);
+  float streaks=valueNoise(vec2(p.y*1.1+p.x*.08,p.z*.35));
+  float clumps=smoothstep(.18,.62,patch*.55+patch2*.45);
+  float nearFloor=1.-smoothstep(.2,4.8,p.y);
+  float ledge=smoothstep(-.35,.55,wn.y);
+  float wall=smoothstep(.15,.85,1.-abs(wn.y));
+  float crevice=pow(clamp(1.-ao,0.,1.),1.1);
+  float m=clumps*(.45+.4*nearFloor+.35*ledge+.25*wall)
+         +crevice*.55
+         +smoothstep(.4,.85,streaks)*wall*.35;
   return clamp(m*amount,0.,1.);
 }
 `;
