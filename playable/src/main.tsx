@@ -1,34 +1,80 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {CaveWorld,type Snapshot} from './CaveWorld';
-import {ITEMS,EXIT,RELIC,distance,type Item} from './simulation';
+import {ITEMS,EXIT,distance,type Item} from './simulation';
 import './style.css';
-function Icon({item}:{item:Item|null}){const paths:Record<Item,React.ReactNode>={stone:<path d="m6 24 6-16 17-3 12 13-6 18-18 2Z M12 8l8 14 15 14M20 22l21-4"/>,wood:<><path d="m7 31 26-23 7 8-26 24Z M14 31l20-18M20 29l4 4"/><path d="m7 31 7 1v8"/></>,flare:<><path d="m17 35 6-18 8 3-6 18Z M26 12l2-7m7 10 6-3M19 9l-3-5"/><path d="m20 27 8 3"/></>,air:<><rect x="15" y="12" width="18" height="29" rx="7"/><path d="M20 12V6h8v6M15 23h18M24 18v15"/></>,bandage:<><rect x="8" y="14" width="32" height="25" rx="4"/><path d="M18 14V8h12v6m-6 7v12m-6-6h12"/></>,relic:<><path d="M37 32c-13 13-33-2-26-16S42 6 39 22 20 35 18 24s13-13 13-3-9 7-8 2"/><path d="m35 34 7 4"/></>};return <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{item?paths[item]:<path opacity=".3" d="M20 24h8m-4-4v8"/>}</svg>;}
+
+function Icon({item}:{item:Item|null}){
+ const paths:Record<Item,React.ReactNode>={
+  stone:<path fill="currentColor" opacity=".92" d="M10 30c2-10 8-16 14-18 7-2 14 2 16 10 2 9-3 18-12 20-8 2-16-2-18-12z"/>,
+  wood:<><path fill="currentColor" opacity=".85" d="M8 34 30 8l8 7L16 40z"/><path fill="none" stroke="currentColor" strokeWidth="1.6" d="m14 32 16-14M20 34l6 4"/></>,
+  flare:<><path fill="#ff3b2f" d="M19 38 24 14l7 2.5L26 40z"/><path fill="#ff8a4a" d="M24 14c1-4 3-8 4-9 2 3 5 6 6 8-3 1-7 1-10 1z"/><path fill="#ffe08a" opacity=".9" d="M26 8c0-3 1.5-6 2-7 .8 2 2 4 3 5.5-1.5.4-3.5.6-5 1.5z"/></>,
+  air:<><rect x="16" y="11" width="16" height="28" rx="6" fill="currentColor" opacity=".9"/><rect x="20" y="5" width="8" height="7" rx="2" fill="currentColor"/><path fill="none" stroke="#0a1620" strokeWidth="1.4" d="M16 22h16M24 16v14"/></>,
+  bandage:<><rect x="9" y="15" width="30" height="22" rx="3" fill="currentColor" opacity=".88"/><path fill="#0a1620" opacity=".35" d="M20 15V9h8v6m-4 8v10m-6-5h12"/></>,
+  relic:<><path fill="#c4923a" d="M24 8c8 0 14 5 14 12 0 9-8 16-16 16S6 28 6 20 12 8 24 8z"/><path fill="none" stroke="#5c3510" strokeWidth="2" d="M30 28c-8 8-18 2-16-6s12-10 14-2-6 8-6 2"/><path fill="#e8c078" d="M28 18c2 1 3 4 2 6-2 1-4 0-5-2 0-2 1-4 3-4z"/></>,
+ };
+ return <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">{item?paths[item]:null}</svg>;
+}
+
+function Compass({yaw}:{yaw:number}){
+ const heading=(((-yaw*180)/Math.PI)%360+360)%360;
+ const marks: {deg:number;x:number;label:string;major:boolean}[]=[];
+ for(let deg=0;deg<360;deg+=15){
+  let offset=((deg-heading+540)%360)-180;
+  if(Math.abs(offset)>58)continue;
+  const label=deg===0?'N':deg===90?'E':deg===180?'S':deg===270?'W':'';
+  marks.push({deg,x:offset,label,major:deg%90===0});
+ }
+ return <div className="compass" aria-hidden="true">
+  <div className="compass-needle"/>
+  <div className="compass-track">
+   {marks.map(m=><div key={m.deg} className={`compass-mark ${m.major?'major':''}`} style={{transform:`translateX(${m.x*4.2}px)`}}>
+    <i/>{m.label&&<span>{m.label}</span>}
+   </div>)}
+  </div>
+ </div>;
+}
+
 function App(){
  const host=useRef<HTMLDivElement>(null),engine=useRef<CaveWorld|null>(null);const [snap,setSnap]=useState<Snapshot|null>(null),[error,setError]=useState('');
  useEffect(()=>{if(!host.current)return;let instance:CaveWorld;try{instance=new CaveWorld(host.current,s=>setSnap({...s}));engine.current=instance;if(import.meta.env.DEV&&new URLSearchParams(location.search).has('test'))(window as any).__abyss=instance;}catch(e){console.error(e);setError('The cave needs WebGL. Enable graphics acceleration in a desktop browser, then reload.');}return()=>{instance?.dispose();engine.current=null;};},[]);
  const m=snap?.mission,playing=!!snap?.playing,terminal=m?.outcome!=='playing'&&!!m;
- const target=m?.hasRelic?EXIT:RELIC,d=m?distance(m.position,target):0;
  const nearest=m?.nearest();const extraction=m&&distance(m.position,EXIT)<4;
  const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):nearest?`E · Collect ${ITEMS[nearest.item].name}`:'';
- const bearing=m&&engine.current?Math.atan2(target.x-m.position.x,-(target.z-m.position.z))+engine.current.yaw:0;
- const air=m?Math.ceil(m.air):240;const time=`${Math.floor(air/60)}:${String(air%60).padStart(2,'0')}`;
+ const yaw=snap?.yaw??0;
+ const air=m?Math.ceil(m.air):240;const time=`${String(Math.floor(air/60)).padStart(2,'0')}:${String(air%60).padStart(2,'0')}`;
+ const depth=m?Math.max(1,Math.round(10+(-m.position.z)*.22+(5-m.position.y)*2.4)):0;
  const predator=m?.predator.state||'patrol';const close=m?distance(m.position,m.predator.position)<23:false;
- const threat=close?{patrol:'Movement in the dark',alert:'It heard something',chase:'It is hunting you',search:'Searching your last position'}[predator]:'Listen. Watch the shadows.';
+ const threat=close?{patrol:'Movement in the dark',alert:'It heard something',chase:'It is hunting you',search:'Searching your last position'}[predator]:'';
  return <main className={playing?'app playing':'app'}>
   <div className="viewport" ref={host} aria-label="Three-dimensional underwater cave"/>
   <div className="vignette"/>
-  <header><div className="brand"><span className="brand-mark">◉</span> PAINTED ABYSS<small>THE DROWNED SHELF</small></div><div className="build-label">FIRST DIVE <span> / </span> 01</div></header>
+  {!playing&&<header><div className="brand"><span className="brand-mark">◉</span> PAINTED ABYSS<small>THE DROWNED SHELF</small></div><div className="build-label">FIRST DIVE <span> / </span> 01</div></header>}
   {playing&&m&&<>
-   <section className="mission"><div className="eyebrow">{m.hasRelic?'02 / RETURN TO THE LIGHT':'01 / RECOVER THE RELIC'}</div><h2>{m.hasRelic?'Reach the extraction pool':'Find the ammonite relic'}</h2><p>{m.hasRelic?'Follow amber lights through the east fissure.':'Follow turquoise lights. Keep the pillar between you and it.'}</p><div className="bearing"><span style={{transform:`rotate(${bearing}rad)`}}>↑</span> {Math.round(d)} m <small>direct bearing · follow passages</small></div></section>
-   <section className="vitals"><div><span>AIR REMAINING</span><strong className={air<45?'warning':''}>{time}</strong></div><div className="meter"><i style={{width:`${m.air/240*100}%`}}/></div><div className="suit"><span>SUIT {Math.ceil(m.health)}%</span><span>FIN ENERGY {Math.round(m.stamina)}%</span></div><div className="meter suit-meter"><i style={{width:`${m.health}%`,background:m.health<40?'#f6856c':'#91c4b7'}}/></div><p>{m.torch?'● TORCH ON':'○ TORCH OFF'} <kbd>F</kbd></p></section>
-   <div className={`threat ${close?predator:''}`}><span/> {threat}</div>
+   <section className="objectives" aria-label="Objectives">
+    <div className={`obj ${m.hasRelic?'done':''}`}><span className="obj-icon diamond"/>{m.hasRelic?'Carry the ammonite relic':'Recover the ammonite relic'}</div>
+    <div className="obj"><span className="obj-icon circle"/>Reach the extraction pool</div>
+   </section>
+   <Compass yaw={yaw}/>
+   <div className="depth">DEPTH {depth} m</div>
+   <section className="vitals" aria-label="Vitals">
+    <div className="vital"><div className="vital-row"><span>AIR</span><strong className={air<45?'warning':''}>{time}</strong></div><div className="meter air"><i style={{width:`${m.air/240*100}%`}}/></div></div>
+    <div className="vital"><div className="vital-row"><span>SUIT</span><strong className={m.health<40?'warning':''}>{Math.ceil(m.health)}</strong></div><div className="meter suit"><i style={{width:`${m.health}%`}}/></div></div>
+    <div className="vital"><div className="vital-row"><span>FINS</span><strong>{Math.round(m.stamina)}</strong></div><div className="meter fins"><i style={{width:`${m.stamina}%`}}/></div></div>
+   </section>
+   {threat&&<div className={`threat ${predator}`} role="status">{threat}</div>}
    {snap?.audioNotice&&<div className="audio-notice" role="status">{snap.audioNotice}</div>}
-   <div className="crosshair">·</div>
    {m.health<40&&<div className="injury"/>}
    <div className="interaction" role="status">{prompt&&<div className="prompt">{prompt}</div>}{m.elapsed<m.noticeUntil&&<p>{m.notice}</p>}</div>
-   <div className="inventory"><div className="inventory-label">{m.pending!==null?'INVENTORY FULL · SELECT AN ITEM TO LEAVE BEHIND':'CARRIED ITEMS'}<span>5 SLOTS</span></div><div className="slots">{m.inventory.map((item,i)=><div className={`slot ${i===m.selected?'selected':''} ${item==='relic'?'relic':''}`} key={i}><kbd>{i+1}</kbd><Icon item={item}/><span>{item?ITEMS[item].short:'Empty'}</span></div>)}</div><div className="item-note">{m.inventory[m.selected]?ITEMS[m.inventory[m.selected]!].description:'Empty slot · E to collect nearby items.'}</div></div>
-   <footer><span><kbd>W A S D</kbd> swim <kbd>Space / Q</kbd> up / down <kbd>Shift</kbd> sprint</span><span><kbd>1–5</kbd> select <kbd>R</kbd> use <kbd>G</kbd> drop <kbd>Esc</kbd> pause</span></footer>
+   <div className="inventory" aria-label="Inventory">
+    <div className="slots">{m.inventory.map((item,i)=><div className={`slot ${i===m.selected?'selected':''} ${item==='relic'?'relic':''} ${item==='flare'?'flare':''}`} key={i}><kbd>{i+1}</kbd><Icon item={item}/></div>)}</div>
+   </div>
+   <aside className="keybinds" aria-hidden="true">
+    <div><kbd>F</kbd><span>Torch</span></div>
+    <div><kbd>E</kbd><span>Interact</span></div>
+    <div><kbd>R</kbd><span>Use</span></div>
+    <div><kbd>G</kbd><span>Drop</span></div>
+   </aside>
    {!snap?.pointerLocked&&<div className="free-look">360° free look · move to look · hold left or right of center to keep turning</div>}
   </>}
   {!playing&&<div className="menu-backdrop"><section className="menu">
@@ -39,7 +85,7 @@ function App(){
    {(error||snap?.error)?<p className="error" role="alert">{error||snap?.error}</p>:<button className="primary" disabled={!snap} onClick={()=>engine.current?.start()}>{!snap?'Opening the cave…':terminal?'Try another dive':snap.started?'Resume dive':'Begin dive'} <span>↗</span></button>}
    <div className="menu-actions"><button onClick={()=>{const w=engine.current;if(w){w.setSound(!w.sound);w.publish();}}}>{engine.current?.sound===false?'Sound off':'Sound on'}</button><button onClick={()=>engine.current?.testSound()}>Test sound</button>{snap?.started&&!terminal&&<button onClick={()=>{engine.current?.reset();engine.current?.start();}}>Restart dive</button>}</div>
    <p className="sound-help" role="status">{snap?.audioNotice||'Test sound plays two clear tones. During the dive, hear your music and regulator breathing.'}</p>
-   <div className="dive-note">2–4 MINUTES <span>·</span> DESKTOP / HEADPHONES <span>·</span> PROTOTYPE 0.1.3 · CALMER LOOK</div>
+   <div className="dive-note">2–4 MINUTES <span>·</span> DESKTOP / HEADPHONES <span>·</span> PROTOTYPE 0.1.4 · REFERENCE LIGHTING</div>
    </section><aside className="briefing"><div className="eyebrow">BEFORE YOU DESCEND</div><ol><li><b>Follow the turquoise lights.</b><span>Find the relic in the bone alcove, beyond the central pillar.</span></li><li><b>Make room for your discovery.</b><span>Five slots, no backpack. Press E, choose 1–5, then E to swap. The old item drops.</span></li><li><b>Escape through the east fissure.</b><span>Follow amber lights north to the extraction pool. The guardian cannot enter the narrow passage.</span></li></ol><div className="control-grid"><span><kbd>W A S D</kbd> Swim</span><span><kbd>Space / Q</kbd> Up / down</span><span><kbd>Shift</kbd> Sprint</span><span><kbd>F</kbd> Torch</span><span><kbd>E</kbd> Collect / extract</span><span><kbd>R</kbd> Use selected item</span><span><kbd>1–5</kbd> Select slot</span><span><kbd>G</kbd> Drop selected item</span></div><p className="look-note">Move the mouse or trackpad to look — right looks right. No button held. If the browser limits the pointer, hold left or right of center to keep turning through 360° without leaving the dive window. Arrow keys also look. <kbd>Esc</kbd> pauses; <kbd>M</kbd> mutes.</p><p className="tip">Rock blocks its sight. Torchlight and fast swimming draw attention. Use a flare to distract it, then move away.</p></aside></div>}
  </main>;
 }
