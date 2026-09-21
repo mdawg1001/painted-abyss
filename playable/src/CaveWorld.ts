@@ -7,7 +7,7 @@ import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
-import { createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, knifeMeshReady, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
+import { createKnifeVisual, upgradeKnifeVisual, attachFpsArms, applyKnifeEnvMap, poseKnife, knifeMeshReady, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
 import { createChestVisual, upgradeChestVisual, syncChestOpen, type ChestVisual } from './chestAsset';
@@ -156,6 +156,11 @@ export class CaveWorld extends OceanWorld {
    poseKnife(this.knifeVisual);
    this.knifeVisual.visible=this.holdingKnife();
    this.syncHeldTorch();
+  });
+  attachFpsArms(this.knifeVisual).then(ok=>{
+   if(!this.alive||!this.knifeVisual||!ok)return;
+   poseKnife(this.knifeVisual);
+   this.knifeVisual.visible=this.holdingKnife();
   });
   this.mountChests();
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
