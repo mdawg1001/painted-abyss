@@ -9,7 +9,7 @@ import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playG
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
 import { loadKnifeVisual } from './knifeAsset';
-import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, stepSwimVelocity } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, applySiltToTorch, stepSilt, siltAt, createSiltPlume, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, stepSwimVelocity } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
 
@@ -69,6 +69,8 @@ export class CaveWorld extends OceanWorld {
  /** Brief stab cue only — torch stays the main held FPS object. */
  knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
  shakeAmp=0;blood:THREE.Points|null=null;bloodVel:Float32Array|null=null;bloodLife=0;
+ /** Floor-kick silt storm (separate from ambient suspended dust). */
+ siltStorm:THREE.Points|null=null;siltStormVel:Float32Array|null=null;siltStormLife:Float32Array|null=null;
  rockMaps:CaveRockMaps;
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
   super(host,{onReady:()=>{},onPause:()=>{},onStatus:()=>{},onToggleUI:()=>{},onGlide:()=>{},onError:()=>{}},{deferStart:true});
@@ -106,6 +108,7 @@ export class CaveWorld extends OceanWorld {
   this.decoyMesh=new THREE.Mesh(new THREE.IcosahedronGeometry(.18,1),new THREE.MeshBasicMaterial({color:0xff7040}));
   this.decoyMesh.add(new THREE.PointLight(0xff6831,12,12));this.scene.add(this.decoyMesh);
   this.buildBlood();
+  this.buildSiltStorm();
   loadKnifeVisual().then(mesh=>{
    if(!this.alive){mesh.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();const m=o.material;if(Array.isArray(m))m.forEach(x=>x.dispose());else m.dispose();}});return;}
    this.knifeVisual=mesh;this.camera.add(mesh);
@@ -153,6 +156,68 @@ export class CaveWorld extends OceanWorld {
   const mat=this.blood.material as THREE.PointsMaterial;
   mat.opacity=Math.max(0,Math.min(.9,this.bloodLife/6));
   if(this.bloodLife<=0){this.blood.visible=false;mat.opacity=0;}
+ }
+ /** Dense silt motes spawned by bed shear — settle with gravity, not ambient dust. */
+ buildSiltStorm(){
+  const n=420;
+  const pos=new Float32Array(n*3);
+  const vel=new Float32Array(n*3);
+  const life=new Float32Array(n);
+  for(let i=0;i<n;i++){pos[i*3]=0;pos[i*3+1]=-80;pos[i*3+2]=0;life[i]=0;}
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  const mat=new THREE.PointsMaterial({
+   color:0xc8d8e0,size:.11,transparent:true,opacity:0,depthWrite:false,sizeAttenuation:true,
+   blending:THREE.AdditiveBlending,
+  });
+  this.siltStorm=new THREE.Points(geo,mat);this.siltStorm.visible=false;
+  this.siltStormVel=vel;this.siltStormLife=life;this.scene.add(this.siltStorm);
+ }
+ /** Inject a burst of silt particles at the diver's feet when the bed is kicked. */
+ emitSiltBurst(intensity:number){
+  if(!this.siltStorm||!this.siltStormVel||!this.siltStormLife||intensity<.04)return;
+  const pos=this.siltStorm.geometry.attributes.position as THREE.BufferAttribute;
+  const n=pos.count;
+  const count=Math.min(28,Math.max(1,Math.floor(2+intensity*36)));
+  const p=this.mission.position;
+  let spawned=0;
+  for(let i=0;i<n&&spawned<count;i++){
+   if(this.siltStormLife[i]>.15)continue;
+   const ang=Math.random()*Math.PI*2;
+   const rad=Math.random()*1.1;
+   pos.setXYZ(i,p.x+Math.cos(ang)*rad,FLOOR_Y+.08+Math.random()*.35,p.z+Math.sin(ang)*rad);
+   this.siltStormVel[i*3]=(Math.random()-.5)*(.4+intensity*.9);
+   this.siltStormVel[i*3+1]=.35+Math.random()*(.9+intensity*1.4);
+   this.siltStormVel[i*3+2]=(Math.random()-.5)*(.4+intensity*.9);
+   this.siltStormLife[i]=1.8+Math.random()*3.2+intensity*2.5;
+   spawned++;
+  }
+  pos.needsUpdate=true;
+  this.siltStorm.visible=true;
+ }
+ updateSiltStorm(dt:number,optical:number){
+  if(!this.siltStorm||!this.siltStormVel||!this.siltStormLife)return;
+  const pos=this.siltStorm.geometry.attributes.position as THREE.BufferAttribute;
+  let alive=0;
+  for(let i=0;i<pos.count;i++){
+   if(this.siltStormLife[i]<=0)continue;
+   this.siltStormLife[i]-=dt;
+   // Coarse-ish fall after initial loft (gameplay Stokes, not hours).
+   this.siltStormVel[i*3+1]-=2.8*dt;
+   this.siltStormVel[i*3]*=Math.exp(-dt*.55);
+   this.siltStormVel[i*3+2]*=Math.exp(-dt*.55);
+   let x=pos.getX(i)+this.siltStormVel[i*3]*dt;
+   let y=pos.getY(i)+this.siltStormVel[i*3+1]*dt;
+   let z=pos.getZ(i)+this.siltStormVel[i*3+2]*dt;
+   if(y<FLOOR_Y+.05){y=FLOOR_Y+.05;this.siltStormVel[i*3+1]=0;this.siltStormLife[i]*=Math.exp(-dt*2.5);}
+   pos.setXYZ(i,x,y,z);
+   if(this.siltStormLife[i]>0)alive++;
+  }
+  pos.needsUpdate=true;
+  const mat=this.siltStorm.material as THREE.PointsMaterial;
+  mat.opacity=Math.min(.95,.12+optical*.85);
+  mat.size=.07+optical*.16;
+  this.siltStorm.visible=alive>0||optical>.05;
  }
  buildCave(){
   const {rock:rockMaps,sand:sandMaps,moss:mossMaps}=this.rockMaps;
@@ -586,6 +651,11 @@ export class CaveWorld extends OceanWorld {
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
   this.shakeAmp=0;this.knifeFlashUntil=0;if(this.knifeVisual){this.knifeVisual.visible=false;this.knifeVisual.position.set(-.32,-.38,-.55);}
   if(this.blood){this.blood.visible=false;this.bloodLife=0;}
+  this.mission.silt=createSiltPlume(this.mission.position);
+  if(this.siltStorm&&this.siltStormLife){
+   for(let i=0;i<this.siltStormLife.length;i++)this.siltStormLife[i]=0;
+   this.siltStorm.visible=false;(this.siltStorm.material as THREE.PointsMaterial).opacity=0;
+  }
   this.syncPickups();this.publish();
  }
  animate=()=>{
@@ -604,7 +674,11 @@ export class CaveWorld extends OceanWorld {
    m.buoyancy=updateBuoyancy(m.buoyancy,bcd,dt);
    const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.01;
    stepSwimVelocity(this.velocity,this.move,m.buoyancy,sprint,dt);
-   moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);m.update(dt,sprint);this.position.copy(m.position);
+   moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);
+   stepSilt(m.silt,m.position,{x:this.velocity.x,y:this.velocity.y,z:this.velocity.z},sprint,dt);
+   const siltOptical=siltAt(m.silt,m.position);
+   if(m.silt.bed>.05)this.emitSiltBurst(Math.min(1,m.silt.bed*dt*24));
+   m.update(dt,sprint,siltOptical);this.position.copy(m.position);
    // Presentation-only hover bob when nearly still — never moves mission.position.
    // ~2.6× 0.1.18 amplitudes so the murk drift reads; torch gets extra local sway (mesh+light+beam).
    const speed=this.velocity.length();
@@ -634,15 +708,18 @@ export class CaveWorld extends OceanWorld {
    }
    this.swimWater?.update(speed,this.sound&&this.audioContext?.state==='running');
    this.updateBlood(dt);
+   this.updateSiltStorm(dt,siltAt(m.silt,m.position));
 
    if(m.outcome!=='playing')this.pause();
   }else this.swimWater?.update(0,false);
   // Atmosphere: cyan-teal murk (reference palette), denser in deep chambers, clears at exit
   const deep=THREE.MathUtils.smoothstep(-this.position.z,35,100);
   const nearExit=1-THREE.MathUtils.smoothstep(distance(this.position,EXIT),4,22);
+  const siltFog=this.playing?siltAt(this.mission.silt,this.mission.position):0;
   const fog=this.scene.fog as THREE.FogExp2;
-  fog.color.set(0x0c3540).lerp(new THREE.Color(0x062430),deep).lerp(new THREE.Color(0x1a5a62),nearExit*.65);
-  fog.density=.032+.022*deep-.014*nearExit;
+  fog.color.set(0x0c3540).lerp(new THREE.Color(0x062430),deep).lerp(new THREE.Color(0x1a5a62),nearExit*.65)
+   .lerp(new THREE.Color(0xb8c8d0),siltFog*.55);
+  fog.density=.032+.022*deep-.014*nearExit+siltFog*.085;
   (this.scene.background as THREE.Color).copy(fog.color);
   this.uniforms.uTime.value=this.time;
   const torchOn=this.mission.torch;
@@ -651,8 +728,8 @@ export class CaveWorld extends OceanWorld {
   this.torchLensMat.emissiveIntensity=torchOn?1.25:.06;
   this.torchLensMat.emissive.set(torchOn?0xc8e4ff:0x223038);
   if(torchOn){
-   // Shared Beer–Lambert murk: SpotLight = direct β^D, volume cone = backscatter β^B.
-   const torch=torchModulation(this.position.y,this.pitch);
+   // Shared Beer–Lambert murk + local silt storm on β^B / range.
+   const torch=applySiltToTorch(torchModulation(this.position.y,this.pitch),siltFog);
    this.torchLight.intensity=torch.intensity;this.torchLight.distance=torch.distance;this.torchLight.decay=torch.decay;
    this.torchLight.color.setRGB(torch.r,torch.g,torch.b);
    // Keep shadow frustum matched to the attenuated range (avoids wasted Safari fill).
@@ -674,8 +751,8 @@ export class CaveWorld extends OceanWorld {
    // No camera-forward particle cone — that was a second beam fighting the lantern aim.
    (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
   }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
-  // Soft bloom on shafts only — keep torch hotspots from blowing out
-  this.bloom.strength=torchOn?.2:.14;
+  // Soft bloom on shafts only — keep torch hotspots from blowing out; silt whiteout blooms harder
+  this.bloom.strength=(torchOn?.2:.14)+siltFog*.35;
   const p=this.mission.predator;this.guardian.group.position.copy(p.position);
   if(p.state==='dead'){
    // Corpse settles; limp fins, no chase heading lerp.
