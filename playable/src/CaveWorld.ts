@@ -83,7 +83,7 @@ export class CaveWorld extends OceanWorld {
   this.scene.add(this.sconceGroup);
   // Greedy spacing keeps the sconces spread along the walls instead of clustering per cell corner.
   const chosen:{x:number;z:number;yaw:number}[]=[];
-  for(const m of this.wallMounts()){if(chosen.every(k=>Math.hypot(k.x-m.x,k.z-m.z)>11)){chosen.push(m);}if(chosen.length>=18)break;}
+  for(const m of this.wallMounts()){if(chosen.every(k=>Math.hypot(k.x-m.x,k.z-m.z)>14)){chosen.push(m);}if(chosen.length>=26)break;}
   const MOUNT_Y=4.4;
   new GLTFLoader().load(sconceUrl,gltf=>{
    if(!this.alive){return;}
