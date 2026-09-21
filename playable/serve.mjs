@@ -11,7 +11,7 @@ const require=createRequire(import.meta.url);
 const playableDir=fileURLToPath(new URL('./', import.meta.url));
 const root=fileURLToPath(new URL('./dist/', import.meta.url));
 const port=Number(process.env.PORT||5173);
-const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.svg':'image/svg+xml','.mp3':'audio/mpeg','.json':'application/json'};
+const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.svg':'image/svg+xml','.mp3':'audio/mpeg','.json':'application/json','.gltf':'model/gltf+json','.glb':'model/gltf-binary','.bin':'application/octet-stream'};
 let rebuildLock=Promise.resolve();
 
 async function readJson(file){
