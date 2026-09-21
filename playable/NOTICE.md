@@ -34,3 +34,10 @@
 - License: CC0 1.0 Universal (public domain dedication) — https://creativecommons.org/publicdomain/zero/1.0/
 - Files: `public/assets/blood/soft_circle.png` (circle_05), `soft_smoke.png` (smoke_03), `soft_glow.png` (circle_01) — resized 128² RGBA
 - Used as soft alpha maps for underwater blood Points when the guardian is stabbed or killed (tinted deep red in engine).
+
+## Water caustics (OpenGameArt)
+- Source: https://opengameart.org/content/water-caustics-effect-small
+- Author: leeor_net
+- License: CC0 1.0 Universal (public domain dedication)
+- File: `public/assets/caustics/caustics_atlas.png` — 1024² RGBA, 16 frames in a 4×4 grid
+- Used as soft additive floor pools under ceiling light shafts (extraction + cavern).
