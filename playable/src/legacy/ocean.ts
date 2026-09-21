@@ -47,8 +47,9 @@ export class OceanWorld {
     this.animate();requestAnimationFrame(()=>hooks.onReady());
   }
 
-  material(color:THREE.ColorRepresentation,detail:'rock'|'skin'|'sand'|'plain'='plain',roughness=.82){
+  material(color:THREE.ColorRepresentation,detail:'rock'|'skin'|'sand'|'plain'='plain',roughness=.82,causticGain=1){
     const m=new THREE.MeshStandardMaterial({color,roughness,metalness:detail==='skin'?.05:0});
+    const gain=Math.max(0,causticGain);
     m.onBeforeCompile=shader=>{
       shader.uniforms.uTime=this.uniforms.uTime;
       shader.vertexShader='varying vec3 vOceanWorld; varying vec3 vOceanLocal;\n'+shader.vertexShader;
@@ -65,9 +66,9 @@ export class OceanWorld {
       if(detail==='rock')detailCode=`float n=valueNoise(vOceanWorld.xz*1.7+vOceanWorld.y*.8);float layer=sin(vOceanWorld.y*5.+valueNoise(vOceanWorld.xz)*3.);diffuseColor.rgb*=.67+n*.5+layer*.075;diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.12,.22,.16),smoothstep(.57,.84,n)*.6);`;
       if(detail==='skin')detailCode=`float blot=valueNoise(vOceanLocal.xz*5.+vOceanLocal.y*2.);float fine=valueNoise(vOceanLocal.xy*48.);float bands=sin(vOceanLocal.x*5.5+vOceanLocal.z*3.+blot*4.);diffuseColor.rgb*=.6+blot*.5+fine*.15;diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*.42,smoothstep(.5,.9,bands)*.45);diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.54,.62,.49),(1.-smoothstep(-.75,.0,vOceanLocal.y))*.65);`;
       shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>\n${detailCode}`);
-      shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=max(0.,normal.y)*.8+.15;outgoingLight+=vec3(.31,.62,.48)*ca*sunward*.035;\n#include <opaque_fragment>`);
+      shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.055*gain).toFixed(4)};\n#include <opaque_fragment>`);
     };
-    m.customProgramCacheKey=()=>detail;
+    m.customProgramCacheKey=()=>`${detail}:${gain.toFixed(2)}`;
     return m;
   }
 
