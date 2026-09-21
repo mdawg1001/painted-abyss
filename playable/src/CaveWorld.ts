@@ -184,7 +184,7 @@ export class CaveWorld extends OceanWorld {
   for(const [x,z] of [[0,-18],[0,-28],[0,-40],[-12,-48],[-22,-60],[-22,-78],[-16,-90],[0,-98],[0,-108]])lamp(x,z,0x5ad4c4);
   for(const [x,z] of [[12,-94],[24,-87],[30,-80],[32,-65],[32,-49],[32,-33],[32,-19]])lamp(x,z,0xe0a858);
 
-  // Extraction pool — hard god-ray volume matching reference grotto light
+  // Extraction pool — one hero god-ray (was a 3-shaft stack)
   const exit=new THREE.Group();exit.position.set(EXIT.x,.65,EXIT.z);
   const ring=new THREE.Mesh(new THREE.TorusGeometry(1.6,.05,8,48),new THREE.MeshBasicMaterial({color:0xb9ffdc}));
   ring.rotation.x=Math.PI/2;exit.add(ring);this.scene.add(exit);
@@ -192,14 +192,11 @@ export class CaveWorld extends OceanWorld {
   sunlight.position.set(32,12,-12);sunlight.target.position.set(32,0,-12);this.scene.add(sunlight,sunlight.target);
   const poolFill=new THREE.PointLight(0xa8f0e8,28,16,1.1);poolFill.position.set(32,5,-12);this.scene.add(poolFill);
   this.addShaft(32,5.2,-12,9,.7,2.8,0xd8faf4,.22);
-  this.addShaft(31.2,5.5,-11.2,8.5,.4,1.8,0xc0f2ea,.14,.08,-.05);
-  this.addShaft(33,5,-12.8,8.2,.35,1.6,0xc8f4ee,.12,-.06,.07);
 
-  // Main cavern ceiling shafts — reference chamber god rays
+  // Main cavern ceiling shafts — half the previous density
   const cavern:[number,number,number,number,number,number,number][]=[
-   [2,6.2,-52,9,.5,2.4,.16],[ -3,6.4,-58,8.5,.4,2.1,.13],[6,6,-64,9.5,.55,2.6,.15],
-   [-8,6.3,-72,8,.35,1.9,.11],[4,6.5,-78,9,.45,2.3,.14],[-2,6.1,-86,8.5,.4,2.0,.12],
-   [0,6.4,-96,8,.35,1.8,.1],[10,6.2,-70,7.5,.3,1.6,.09],
+   [2,6.2,-52,9,.5,2.4,.16],[6,6,-64,9.5,.55,2.6,.15],
+   [4,6.5,-78,9,.45,2.3,.14],[0,6.4,-96,8,.35,1.8,.1],
   ];
   for(const [x,y,z,len,top,bot,op] of cavern){
    this.addShaft(x,y,z,len,top,bot,0xb8ebe4,op,(Math.random()-.5)*.12,(Math.random()-.5)*.1);
