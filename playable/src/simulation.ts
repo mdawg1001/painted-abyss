@@ -100,28 +100,97 @@ export const LOOK_SENSITIVITY=.003;
 export const lookDelta=(yaw:number,pitch:number,dx:number,dy:number)=>({yaw:yaw-dx*LOOK_SENSITIVITY,pitch:Math.max(-1.4,Math.min(1.4,pitch-dy*LOOK_SENSITIVITY))});
 /** Frame-rate-independent multiplier for unlocked continuous yaw (paired with lookDelta). */
 export const FREE_LOOK_RATE=1.45;
-export type TorchModulation={intensity:number;distance:number;decay:number;beamOpacity:number;particle:number;r:number;g:number;b:number};
+export type Rgb={r:number;g:number;b:number};
+export type TorchModulation={
+ intensity:number;distance:number;decay:number;beamOpacity:number;particle:number;
+ /** Direct-path lamp tint (SpotLight / wall wash). */
+ r:number;g:number;b:number;
+ /** Backscatter haze tint (volumetric beam). Teal-biased vs direct. */
+ beamR:number;beamG:number;beamB:number;
+ /** Beer–Lambert coefficients (1/m). Direct ≠ backscatter (Sea-thru). */
+ betaDirect:Rgb;betaBackscatter:Rgb;
+};
+/** Mid-swim, level-look render baseline (soft SpotLight · 0.1.17). */
+export const TORCH_BASELINE={intensity:85,distance:34,decay:1.15,beamOpacity:.09} as const;
 /**
- * Underwater torch response from swim height and look pitch (Three.js YXZ: +pitch looks down).
- * Deeper / floor-aimed → dimmer, shorter, muddier. Shallower / ceiling-aimed → brighter, cooler.
- * Clarity uses hydrostatic depth so torch, HUD, and future gas share one depth model.
+ * Coastal-cave water betas (1/m), clear → murky. Red dies first on the direct path;
+ * backscatter leans cyan-teal (Sea-thru β^D ≠ β^B; Jerlov coastal murk order of magnitude).
  */
-export function torchModulation(depthY:number,pitch:number):TorchModulation{
+const BETA_CLEAR_D:Rgb={r:.18,g:.11,b:.08};
+const BETA_MURK_D:Rgb={r:.62,g:.38,b:.28};
+const BETA_CLEAR_B:Rgb={r:.06,g:.08,b:.1};
+const BETA_MURK_B:Rgb={r:.2,g:.3,b:.4};
+const lerp=(a:number,b:number,t:number)=>a+(b-a)*t;
+const lerpRgb=(a:Rgb,b:Rgb,t:number):Rgb=>({r:lerp(a.r,b.r,t),g:lerp(a.g,b.g,t),b:lerp(a.b,b.b,t)});
+const meanRgb=(c:Rgb)=>(c.r+c.g+c.b)/3;
+/** Effective murk 0..1 from swim height and look pitch (Three.js YXZ: +pitch looks down). */
+export function torchMurk(depthY:number,pitch:number){
  const column=SURFACE_Y-FLOOR_Y;
  const clarity=Math.max(0,Math.min(1,1-hydrostaticDepth(depthY)/column));
  const aimUp=Math.max(-1,Math.min(1,-pitch/1.4));
- const murk=1-clarity;
  const floorBias=Math.max(0,-aimUp);
  const ceilingBias=Math.max(0,aimUp);
- const intensity=(48+clarity*62)*(1+aimUp*.18);
- const distance=(15+clarity*19)*(1+aimUp*.12-floorBias*.08);
- const decay=1.05+murk*.5+floorBias*.18-ceilingBias*.06;
- const beamOpacity=(.006+clarity*.022)*(1+aimUp*.28);
- const particle=.35+clarity*.55+aimUp*.12;
- const r=(.55+clarity*.3-floorBias*.12+ceilingBias*.05);
- const g=(.62+clarity*.28-floorBias*.05);
- const b=(.48+clarity*.42-floorBias*.18+ceilingBias*.12);
- return{intensity,distance,decay,beamOpacity:Math.max(.004,beamOpacity),particle:Math.max(0,Math.min(1,particle)),r,g,b};
+ const murkEff=Math.max(0,Math.min(1,(1-clarity)+floorBias*.22-ceilingBias*.12));
+ return{clarity,aimUp,floorBias,ceilingBias,murkEff};
+}
+/** Direct + backscatter betas for the current murk (shared by SpotLight and volume beam). */
+export function torchBetas(murkEff:number){
+ return{
+  direct:lerpRgb(BETA_CLEAR_D,BETA_MURK_D,murkEff),
+  backscatter:lerpRgb(BETA_CLEAR_B,BETA_MURK_B,murkEff),
+ };
+}
+/** Range (m) where direct transmission drops to ~5%. */
+export function beerLambertRange(beta:Rgb,transmission=.05){
+ return -Math.log(transmission)/Math.max(1e-4,meanRgb(beta));
+}
+/** Channel transmission through path length z (Beer–Lambert). */
+export function beerLambertTransmit(beta:Rgb,z:number):Rgb{
+ return{r:Math.exp(-beta.r*z),g:Math.exp(-beta.g*z),b:Math.exp(-beta.b*z)};
+}
+/**
+ * Shared underwater torch response: one murk model drives SpotLight (direct) and
+ * volumetric beam (backscatter). Outputs are absolute render params calibrated to
+ * TORCH_BASELINE at mid swim / level look (y=3, pitch=0).
+ */
+export function torchModulation(depthY:number,pitch:number):TorchModulation{
+ const {clarity,aimUp,floorBias,ceilingBias,murkEff}=torchMurk(depthY,pitch);
+ const {direct:betaDirect,backscatter:betaBackscatter}=torchBetas(murkEff);
+ const mid=torchMurk(3,0);
+ const midBetas=torchBetas(mid.murkEff);
+ const rangeM=beerLambertRange(betaDirect)*(1+aimUp*.1-floorBias*.06);
+ const midRange=beerLambertRange(midBetas.direct);
+ // Cap clear-water stretch so cave chambers stay dive-torch scale (~tens of metres).
+ const distance=Math.min(52,TORCH_BASELINE.distance*(rangeM/midRange));
+ const near=beerLambertTransmit(betaDirect,.8);
+ const midNear=beerLambertTransmit(midBetas.direct,.8);
+ const nearEnergy=(near.r+near.g+near.b)/3;
+ const midEnergy=(midNear.r+midNear.g+midNear.b)/3;
+ // Floor-aim / murk also pulls peak intensity down (shared with β^D); mid-normalized.
+ const murkDim=(1-murkEff*.18)/(1-mid.murkEff*.18);
+ const intensity=TORCH_BASELINE.intensity*(nearEnergy/midEnergy)*(1+aimUp*.16)*murkDim;
+ const decay=TORCH_BASELINE.decay+.55*(meanRgb(betaDirect)-meanRgb(midBetas.direct));
+ const tintPath=Math.min(distance*.35,8);
+ const tint=beerLambertTransmit(betaDirect,tintPath);
+ const tintMax=Math.max(tint.r,tint.g,tint.b,1e-4);
+ // Relative spectral transmit, then murk pulls toward muddy amber (keeps deep.b < shallow.b).
+ let r=tint.r/tintMax,g=tint.g/tintMax,b=tint.b/tintMax;
+ r=lerp(r,.62,murkEff*.5);g=lerp(g,.55,murkEff*.35);b=lerp(b,.4,murkEff*.55);
+ r=Math.max(0,Math.min(1,r));g=Math.max(0,Math.min(1,g));b=Math.max(0,Math.min(1,b));
+ const beamLen=Math.min(12,distance*.55);
+ const midBeamLen=Math.min(12,TORCH_BASELINE.distance*.55);
+ const scatter=1-Math.exp(-meanRgb(betaBackscatter)*beamLen);
+ const midScatter=1-Math.exp(-meanRgb(midBetas.backscatter)*midBeamLen);
+ const clarityFactor=.72+clarity*.45;
+ const midClarityFactor=.72+mid.clarity*.45;
+ const beamOpacity=Math.max(.004,TORCH_BASELINE.beamOpacity*(scatter/Math.max(1e-4,midScatter))*(clarityFactor/midClarityFactor)*(1+aimUp*.22));
+ const haze=beerLambertTransmit(betaBackscatter,beamLen*.4);
+ const hazeMax=Math.max(haze.r,haze.g,haze.b,1e-4);
+ const beamR=Math.max(0,Math.min(1,.42+.35*(1-haze.r/hazeMax)+ceilingBias*.04));
+ const beamG=Math.max(0,Math.min(1,.55+.3*(1-haze.g/hazeMax)));
+ const beamB=Math.max(0,Math.min(1,.48+.42*(haze.b/hazeMax)+ceilingBias*.08-floorBias*.12));
+ const particle=Math.max(0,Math.min(1,.35+clarity*.55+aimUp*.12));
+ return{intensity,distance,decay,beamOpacity,particle,r,g,b,beamR,beamG,beamB,betaDirect,betaBackscatter};
 }
 /**
  * Soft look-stick yaw when pointer lock is unavailable.
