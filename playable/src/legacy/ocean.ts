@@ -96,9 +96,11 @@ export class OceanWorld {
           vec3 mossAlb=triAlbedo(uMossDiff,vOceanWorld,b,uMossScale);
           vec3 mossArm=triArm(uMossArm,vOceanWorld,b,uMossScale);
           float moss=mossCoverage(vOceanWorld,wn,arm.r,${mossAmount});
+          // Ensure visible patches even on mid walls
+          moss=max(moss,${detail==='rock'?'0.55':'0.25'});
           // Push moss toward saturated wet green so it reads in teal murk
-          mossAlb=mix(mossAlb,vec3(.18,.42,.16),.55);
-          mossAlb*=mix(1.,.78,wet*.5);
+          mossAlb=mix(mossAlb,vec3(.12,.55,.14),.7);
+          mossAlb*=mix(1.,.82,wet*.4);
           albedo=mix(albedo,mossAlb,moss);
           arm=mix(arm,mossArm,moss*.9);
           `:''}
