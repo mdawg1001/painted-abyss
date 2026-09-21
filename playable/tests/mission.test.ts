@@ -35,5 +35,21 @@ test('all level cells connect, including objective and exit',()=>{const first=[.
 test('predator transitions patrol → alert → chase → search → patrol',()=>{const m=new Mission();m.predator.position=world(16,19);m.position=world(16,16);advance(m,.2);assert.equal(m.predator.state,'alert');advance(m,2);assert.equal(m.predator.state,'chase');m.position={...START};advance(m,3);assert.equal(m.predator.state,'search');advance(m,8);assert.equal(m.predator.state,'patrol');});
 test('predator cannot see or bite through rock',()=>{const m=new Mission();m.predator.position=world(8,17);m.position=world(13,17);advance(m,.2);assert.equal(m.predator.state,'patrol');assert.equal(m.health,100);});
 test('four bites lose the mission; fresh mission resets every system',()=>{const m=new Mission();m.position=world(16,19);m.predator.position={...m.position};m.predator.state='chase';advance(m,6);assert.equal(m.outcome,'lost');assert.equal(m.health,0);const fresh=new Mission();assert.equal(fresh.health,100);assert.equal(fresh.air,240);assert.equal(fresh.outcome,'playing');assert.equal(fresh.pending,null);assert.equal(fresh.pickups[0].item,'relic');assert.deepEqual(fresh.position,START);});
-test('air loss, reserve, sealant and distraction have tangible effects',()=>{const m=new Mission();m.air=100;m.selected=3;m.use();assert.equal(m.air,160);assert.equal(m.inventory[3],null);m.health=30;m.selected=4;m.use();assert.equal(m.health,75);m.selected=2;m.use();assert.ok(m.decoy);assert.equal(m.predator.state,'search');advance(m,13);assert.equal(m.decoy,null);m.air=.01;m.update(.05);assert.equal(m.outcome,'lost');});
+test('air loss, reserve, sealant and distraction have tangible effects',()=>{const m=new Mission();m.air=100;m.selected=3;m.use();assert.equal(m.air,160);assert.equal(m.inventory[3],null);assert.equal(m.feedbackKind,'ok');m.health=30;m.selected=4;m.use();assert.equal(m.health,75);m.selected=2;m.use();assert.ok(m.decoy);assert.equal(m.predator.state,'search');advance(m,13);assert.equal(m.decoy,null);m.air=.01;m.update(.05);assert.equal(m.outcome,'lost');});
+test('inventory select/use stay quiet after the one-time first-play tip',()=>{
+ const first=new Mission(false);
+ assert.match(first.notice,/1–5 select/);
+ assert.equal(first.tipsSeen,false);
+ const opening=first.notice;
+ assert.equal(first.select(2),true);assert.equal(first.selected,2);assert.equal(first.feedbackKind,'select');assert.equal(first.notice,opening);
+ assert.equal(first.select(2),false);
+ first.use();assert.equal(first.inventory[2],null);assert.equal(first.feedbackKind,'ok');assert.equal(first.notice,opening);
+ first.select(0);first.use();assert.equal(first.inventory[0],'stone');assert.equal(first.feedbackKind,'blocked');assert.equal(first.notice,opening);
+ const quiet=new Mission(true);
+ assert.equal(quiet.notice,'');assert.equal(quiet.noticeUntil,0);
+ quiet.select(3);assert.equal(quiet.feedbackKind,'select');assert.equal(quiet.notice,'');
+ quiet.air=100;quiet.use();assert.equal(quiet.inventory[3],null);assert.equal(quiet.feedbackKind,'ok');assert.equal(quiet.notice,'');
+ quiet.inventory[1]=null;quiet.select(1);quiet.use();assert.equal(quiet.feedbackKind,'blocked');
+ quiet.drop();assert.equal(quiet.feedbackKind,'blocked');
+});
 test('safe narrow passage prevents bites and leaves an escape route',()=>{const m=new Mission();m.position=world(19,20);m.predator.position=world(18,20);m.predator.state='chase';m.predator.lastKnown={...m.position};advance(m,3);assert.equal(m.health,100);assert.equal(m.predator.state,'search');assert.ok(m.predator.position.x<30);});

@@ -5,9 +5,9 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
-import { buildDiveAudio, playDiveChime } from './diveAudio';
+import { buildDiveAudio, playDiveChime, playInventoryClick } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
-import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, readInventoryTipsSeen, writeInventoryTipsSeen } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
 
@@ -25,7 +25,7 @@ void main(){
 export class CaveWorld extends OceanWorld {
  audioNotice='';audioProbe:AnalyserNode|null=null;audioTestTimer=0;
  backgroundMusic:BackgroundMusic|null=null;
- mission=new Mission();ui:(snapshot:Snapshot)=>void;error='';pointerLocked=false;everLocked=false;lastSent=0;
+ mission=new Mission(readInventoryTipsSeen());ui:(snapshot:Snapshot)=>void;error='';pointerLocked=false;everLocked=false;lastSent=0;
  fallbackTurn=0;lockDenied=false;lookPointer:{x:number;y:number}|null=null;
  torchLight=new THREE.SpotLight(0xeaf6ff,210,34,.38,.55,1.05);
  torchFill=new THREE.PointLight(0xcfe8ff,4.5,7,1.6);
@@ -190,7 +190,10 @@ export class CaveWorld extends OceanWorld {
    if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Tab'].includes(e.code))e.preventDefault();
    this.keys.add(e.code);if(e.repeat)return;
    if(e.code==='Escape'){if(this.mission.pending!==null){this.mission.pending=null;this.publish();}else this.pause();}
-   if(/^Digit[1-5]$/.test(e.code))this.mission.selected=Number(e.code.slice(-1))-1;
+   // Inventory keys bind on window (not the canvas), so select/use/drop work without canvas focus.
+   if(/^Digit[1-5]$/.test(e.code)){
+    if(this.mission.select(Number(e.code.slice(-1))-1))this.playSelectClick();
+   }
    if(e.code==='KeyE')this.mission.interact();if(e.code==='KeyF')this.mission.torch=!this.mission.torch;
    if(e.code==='KeyR')this.mission.use();if(e.code==='KeyG')this.mission.drop();if(e.code==='KeyM')this.setSound(!this.sound);
    this.publish();
@@ -251,6 +254,12 @@ export class CaveWorld extends OceanWorld {
    this.publish();
   }).catch(()=>{if(this.alive){this.audioNotice='Sound is blocked. Pause and choose Test sound.';this.publish();}});
  }
+ playSelectClick(){
+  if(!this.playing||!this.sound)return;
+  const ctx=this.audioContext,master=this.master;
+  if(!ctx||!master||ctx.state!=='running')return;
+  playInventoryClick(ctx,master);
+ }
  testingAudio=false;
  testSound(){
   this.sound=true;this.testingAudio=true;this.enableAudio(true);
@@ -264,11 +273,17 @@ export class CaveWorld extends OceanWorld {
   this.publish();
  }
  start(){
-  if(this.mission.outcome!=='playing')this.reset();this.playing=true;this.started=true;this.keys.clear();this.clock.getDelta();this.testingAudio=false;if(this.sound)this.enableAudio(true);
+  if(this.mission.outcome!=='playing')this.reset();
+  // One-time tip is already on this mission when tipsSeen is false; persist so the next launch stays quiet.
+  if(!this.mission.tipsSeen)writeInventoryTipsSeen();
+  this.playing=true;this.started=true;this.keys.clear();this.clock.getDelta();this.testingAudio=false;if(this.sound)this.enableAudio(true);
   this.lookPointer=null;this.fallbackTurn=0;this.requestLookLock(true);this.publish();
  }
  pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
- reset(){this.backgroundMusic?.reset();this.mission=new Mission();this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();this.syncPickups();this.publish();}
+ reset(){
+  this.backgroundMusic?.reset();this.mission=new Mission(readInventoryTipsSeen());
+  this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();this.syncPickups();this.publish();
+ }
  animate=()=>{
   if(!this.alive)return;this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);
   if(this.playing){this.time+=dt;const m=this.mission;

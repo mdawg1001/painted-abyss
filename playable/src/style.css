@@ -159,10 +159,20 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 }
 .slot svg{width:34px;height:34px;margin-top:4px}
 .slot.selected{
-  border-color:rgba(242,247,248,.65);
-  background:rgba(18,36,42,.72);
-  box-shadow:inset 0 0 0 1px rgba(242,247,248,.2),0 0 12px rgba(120,200,210,.15);
+  border-color:rgba(226,200,136,.85);
+  background:rgba(28,48,42,.82);
+  box-shadow:inset 0 0 0 1px rgba(226,200,136,.35),0 0 14px rgba(200,180,100,.2);
+  transform:translateY(-2px);
 }
+.slot .slot-mark{
+  position:absolute;bottom:3px;font-size:7px;font-style:normal;color:#e2c888;line-height:1;
+}
+.slot.pulse-select{animation:slot-select .4s ease-out}
+.slot.pulse-ok{animation:slot-ok .5s ease-out}
+.slot.pulse-blocked{animation:slot-blocked .35s ease-out}
+@keyframes slot-select{0%{box-shadow:inset 0 0 0 1px rgba(226,200,136,.1),0 0 0 rgba(200,180,100,0)}45%{box-shadow:inset 0 0 0 1px rgba(226,200,136,.5),0 0 16px rgba(200,180,100,.35)}100%{box-shadow:inset 0 0 0 1px rgba(226,200,136,.35),0 0 14px rgba(200,180,100,.2)}}
+@keyframes slot-ok{0%,100%{filter:none}40%{filter:brightness(1.25)}}
+@keyframes slot-blocked{0%,100%{transform:translateY(-2px)}35%{transform:translateY(-2px) translateX(-2px)}70%{transform:translateY(-2px) translateX(2px)}}
 .slot.relic{color:#e2b963}
 .slot.flare{color:#ff6b4a}
 
@@ -203,10 +213,14 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   border:1px solid rgba(199,177,123,.4);padding:12px 20px;
   letter-spacing:.02em;
 }
-.interaction p{
+.interaction p,.interaction .notice{
   font-size:12px;color:#d2cdb6;line-height:1.5;
-  text-shadow:0 2px 5px black;margin-top:10px;
+  text-shadow:0 2px 5px black;margin:10px auto 0;max-width:480px;
+  padding:8px 14px;background:rgba(4,16,22,.72);border:1px solid rgba(154,138,92,.35);
 }
+.interaction .notice.select{border-color:rgba(209,183,116,.55);color:#f0e4c0}
+.interaction .notice.ok{border-color:rgba(143,191,164,.5);color:#d7f0df}
+.interaction .notice.blocked{border-color:rgba(201,137,110,.5);color:#f0d2c4}
 .free-look{
   position:absolute;top:64px;left:50%;transform:translateX(-50%);
   font-size:11px;color:#ccb888;pointer-events:none;letter-spacing:.04em;
