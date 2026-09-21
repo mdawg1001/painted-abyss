@@ -1,0 +1,73 @@
+{
+  "generatedAt": "2026-09-21T09:30:18.930Z",
+  "unitAssumption": "1 world unit ≈ 1 metre (CELL=4 m tiles, playable y ∈ [0.65, 7.1])",
+  "measured": {
+    "cruiseMs": 2.8,
+    "sprintMs": 4.8,
+    "cruiseKmh": 10.08,
+    "sprintKmh": 17.28,
+    "velocityTimeConstantS": 0.25,
+    "timeTo95pctTargetS": 0.749,
+    "coastFromCruiseM": 0.675,
+    "coastFromCruiseS": 1.417,
+    "staminaSprintWindowS": 5.4,
+    "staminaRegenFullS": 5.7,
+    "airBudgetS": 240,
+    "airBudgetMin": 4,
+    "airReserveS": 60,
+    "airIndependentOfDepthAndExertion": true,
+    "depthBandM": 6.45,
+    "startToRelicHorizontalM": 100,
+    "cruiseTimeStartToRelicS": 35.7,
+    "sprintTimeStartToRelicS": 20.8,
+    "equalVerticalHorizontalThrust": true,
+    "gravityOrBuoyancyForce": false,
+    "predatorChaseMs": 3.4,
+    "predatorPatrolMs": 1.8,
+    "playerCanOutSprintChase": true,
+    "playerCruiseSlowerThanChase": true,
+    "torchIntensityFloorAim": 41.81368770764119,
+    "torchIntensityCeilingAim": 120.31415282392028,
+    "cellSizeM": 4,
+    "exitDistanceFromStartM": 32
+  },
+  "reality": {
+    "recreationalCruiseMs": [
+      0.25,
+      0.5
+    ],
+    "hardKickMs": [
+      0.8,
+      1.2
+    ],
+    "competitiveBurstMs": [
+      2,
+      3
+    ],
+    "shallowTankMinutes": [
+      40,
+      60
+    ],
+    "notes": [
+      "Ambient pressure ≈ 1 + depth_m/10 ATA; gas use scales roughly with ATA.",
+      "Neutral buoyancy + BCD control dominate vertical motion; divers do not fly with equal XYZ thrust.",
+      "Water drag is roughly quadratic; free coast after stopping kick is short."
+    ]
+  },
+  "ratios": {
+    "gameCruiseOverRealCruiseMin": 11.2,
+    "gameCruiseOverRealCruiseMax": 5.6,
+    "gameSprintOverHardKickMax": 4,
+    "gameAirMinutesOverRealShallowMin": 0.07,
+    "gameAirMinutesOverRealShallowMax": 0.1
+  },
+  "verdicts": {
+    "swimSpeed": "ARCADE — cruise ~6–11× recreational finning; sprint exceeds elite finswim.",
+    "gasModel": "COMPRESSED — 4 min flat timer; no depth/exertion scaling (Boyle / SAC omitted).",
+    "buoyancy": "OMITTED — free 6DOF flight with identical vertical/horizontal thrust; no weight/BCD.",
+    "dragCoast": "PLAUSIBLE ORDER — ~0.7 m coast from cruise with τ=0.25 s (arcade-responsive).",
+    "depthScale": "SHALLOW CAVE — ~6.5 m water column; torch murk is stylistic, not optical attenuation law.",
+    "predatorPacing": "DESIGNED CHASE — chase 3.4 m/s beats cruise 2.8, loses to sprint 4.8 (~5.6 s stamina).",
+    "overall": "Gameplay-first survival pacing, not a scuba physics simulator."
+  }
+}
