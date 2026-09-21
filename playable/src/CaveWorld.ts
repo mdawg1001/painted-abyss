@@ -3,7 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
-import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, ITEMS, type Item } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, ITEMS, type Item } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
 const FREE_LOOK_HINT='360° free look active. Steer left or right of center to keep turning — pointer stays in the dive.';
@@ -180,8 +180,15 @@ export class CaveWorld extends OceanWorld {
   }
   const blue=THREE.MathUtils.smoothstep(-this.position.z,40,58);
   const fog=this.scene.fog as THREE.FogExp2;fog.color.set(0x041913).lerp(new THREE.Color(0x030c1b),blue);(this.scene.background as THREE.Color).copy(fog.color);
-  this.uniforms.uTime.value=this.time;this.torchLight.visible=this.mission.torch;this.beam.visible=this.mission.torch;
-  (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=this.mission.torch?1:0;
+  this.uniforms.uTime.value=this.time;
+  const torchOn=this.mission.torch;this.torchLight.visible=torchOn;this.beam.visible=torchOn;
+  if(torchOn){
+   const torch=torchModulation(this.position.y,this.pitch);
+   this.torchLight.intensity=torch.intensity;this.torchLight.distance=torch.distance;this.torchLight.decay=torch.decay;
+   this.torchLight.color.setRGB(torch.r,torch.g,torch.b);
+   const beamMat=this.beam.material as THREE.MeshBasicMaterial;beamMat.opacity=torch.beamOpacity;beamMat.color.setRGB(torch.r,torch.g,torch.b);
+   (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=torch.particle;
+  }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
   const p=this.mission.predator;this.guardian.group.position.copy(p.position);const diff=Math.atan2(Math.sin(p.heading-this.guardian.group.rotation.y),Math.cos(p.heading-this.guardian.group.rotation.y));this.guardian.group.rotation.y+=diff*Math.min(1,dt*5);
   this.guardian.fins.forEach(f=>f.rotation.x=Math.sin(this.time*2+(f.userData.phase||0))*.25*(f.userData.side||1));this.guardian.tail.rotation.y=Math.sin(this.time*3)*.22;
   this.syncPickups();this.decoyMesh.visible=!!this.mission.decoy;if(this.mission.decoy)this.decoyMesh.position.copy(this.mission.decoy.position);
