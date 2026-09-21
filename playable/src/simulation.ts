@@ -5,7 +5,9 @@ export type Pickup={id:number;item:Item;position:Point};
 export type PredatorState='patrol'|'alert'|'chase'|'search'|'damaged'|'dead';
 export type StabResult='hit'|'miss'|'cooldown'|'blocked';
 export type ChestKind='military'|'plastic'|'suitcase';
-export type Chest={id:number;kind:ChestKind;position:Point;yaw:number;open:boolean};
+/** Which torn map region a chest yields. */
+export type MapFragmentId='west'|'east'|'deep';
+export type Chest={id:number;kind:ChestKind;position:Point;yaw:number;open:boolean;fragment:MapFragmentId};
 export const CELL=4;
 /** Guardian bite reach (m). Knife must stay shorter so stabbing means mutual danger. */
 export const BITE_RANGE=3.2;
@@ -28,20 +30,26 @@ export const SURFACE_Y=7.1;
 export const START:Point={x:0,y:3,z:-12};
 export const RELIC:Point={x:0,y:2,z:-112};
 export const EXIT:Point={x:32,y:3,z:-12};
-/** Floor-sitting interactables — three Poly Haven chest types (map contents later). */
+/** Floor-sitting interactables — each chest hides one map fragment. */
 export const CHEST_LABEL:Record<ChestKind,string>={
  military:'military crate',
  plastic:'plastic crate',
  suitcase:'vintage suitcase',
 };
+export const MAP_FRAGMENT_LABEL:Record<MapFragmentId,string>={
+ west:'west cavern',
+ east:'east shelf',
+ deep:'bone alcove',
+};
+export const MAP_FRAGMENT_ORDER:MapFragmentId[]=['west','east','deep'];
 export function createDiveChests():Chest[]{
  return [
-  // West shelf of the main cavern — wooden ammo crate (offset from the spare flare pickup).
-  {id:1,kind:'military',position:{x:-22,y:FLOOR_Y,z:-52},yaw:.35,open:false},
-  // East shelf opposite — plastic utility crate.
-  {id:2,kind:'plastic',position:{x:20,y:FLOOR_Y,z:-60},yaw:-.9,open:false},
-  // Near the bone alcove approach — suitcase on an open floor tile.
-  {id:3,kind:'suitcase',position:{x:12,y:FLOOR_Y,z:-104},yaw:2.4,open:false},
+  // West shelf — west cavern fragment.
+  {id:1,kind:'military',position:{x:-22,y:FLOOR_Y,z:-52},yaw:.35,open:false,fragment:'west'},
+  // East shelf — east approach / exit arm fragment.
+  {id:2,kind:'plastic',position:{x:20,y:FLOOR_Y,z:-60},yaw:-.9,open:false,fragment:'east'},
+  // Near bone alcove — deep north fragment.
+  {id:3,kind:'suitcase',position:{x:12,y:FLOOR_Y,z:-104},yaw:2.4,open:false,fragment:'deep'},
  ];
 }
 /** Metres below the surface plane. Shared by HUD, gas, buoyancy, and torch. */
@@ -355,6 +363,10 @@ export function writeInventoryTipsSeen(){
  inventory:(Item|null)[]=['knife','wood','flare','air','bandage'];selected=0;
  pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},{id:2,item:'flare',position:{x:-20,y:2,z:-56}}];nextId=3;
  chests:Chest[]=createDiveChests();
+ /** Collected cave-chart scraps (from opened chests). */
+ mapFragments:MapFragmentId[]=[];
+ /** Dive HUD chart overlay (Tab). */
+ mapOpen=false;
  pending:number|null=null;outcome:'playing'|'won'|'lost'='playing';reason='';
  /** First-play inventory guidance only; repeating select/use text is intentionally silent. */
  tipsSeen=false;notice='';noticeUntil=0;feedbackKind:FeedbackKind='';feedbackPulse=0;
@@ -374,6 +386,19 @@ export function writeInventoryTipsSeen(){
   }
  }
  get hasRelic(){return this.inventory.includes('relic');}
+ get mapComplete(){return MAP_FRAGMENT_ORDER.every(id=>this.mapFragments.includes(id));}
+ get mapFragmentCount(){return this.mapFragments.length;}
+ hasMapFragment(id:MapFragmentId){return this.mapFragments.includes(id);}
+ toggleMap(){
+  if(this.outcome!=='playing')return false;
+  this.mapOpen=!this.mapOpen;
+  return true;
+ }
+ collectMapFragment(id:MapFragmentId){
+  if(this.mapFragments.includes(id))return false;
+  this.mapFragments=[...this.mapFragments,id];
+  return true;
+ }
  say(message:string,kind:FeedbackKind=''){this.notice=message;this.noticeUntil=this.elapsed+4.5;this.feedbackKind=kind;this.feedbackPulse++;}
  /** Slot chrome without center text — used after the one-time first-play tip. */
  pulse(kind:FeedbackKind=''){this.feedbackKind=kind;this.feedbackPulse++;}
@@ -399,7 +424,13 @@ export function writeInventoryTipsSeen(){
   // Prefer a closed chest when it is at least as close as the nearest pickup.
   if(chest&&!chest.open&&(!pickup||distance(chest.position,this.position)<=distance(pickup.position,this.position)+.15)){
    chest.open=true;
-   this.say(`Opened the ${CHEST_LABEL[chest.kind]}. Empty — for now.`,'ok');
+   const got=this.collectMapFragment(chest.fragment);
+   if(got){
+    const n=this.mapFragmentCount;
+    const label=MAP_FRAGMENT_LABEL[chest.fragment];
+    if(this.mapComplete)this.say(`Map complete — ${label} fitted. Tab opens the chart; exits are marked.`,'ok');
+    else this.say(`Map fragment (${n}/3): ${label}. Tab reviews the chart.`,'ok');
+   }else this.say(`Opened the ${CHEST_LABEL[chest.kind]}. Already have this scrap.`,'ok');
    return;
   }
   if(chest?.open&&!pickup){this.say(`The ${CHEST_LABEL[chest.kind]} is empty.`,'blocked');return;}

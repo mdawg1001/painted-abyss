@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,PREDATOR_HP_MAX,PREDATOR_BREAK_HP,createDiveChests,CHEST_LABEL,torchShouldShine,holdingTorchItem,occupiesFpsHand} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,PREDATOR_HP_MAX,PREDATOR_BREAK_HP,createDiveChests,CHEST_LABEL,MAP_FRAGMENT_ORDER,MAP_FRAGMENT_LABEL,torchShouldShine,holdingTorchItem,occupiesFpsHand} from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{for(let i=0;i<seconds*60;i++)m.update(1/60);};
 test('hydrostatic depth and ata share one surface plane',()=>{
  assert.equal(hydrostaticDepth(SURFACE_Y),0);
@@ -274,20 +274,48 @@ test('three distinct Poly Haven chests sit in the cavern and open with E',()=>{
  const chests=createDiveChests();
  assert.equal(chests.length,3);
  assert.deepEqual(chests.map(c=>c.kind).sort(),['military','plastic','suitcase']);
+ assert.deepEqual(chests.map(c=>c.fragment).sort(),['deep','east','west']);
  assert.ok(chests.every(c=>!c.open&&Number.isFinite(c.yaw)));
  const m=new Mission(true);
  assert.equal(m.chests.length,3);
+ assert.equal(m.mapFragmentCount,0);
+ assert.equal(m.mapComplete,false);
  const target=m.chests.find(c=>c.kind==='military')!;
  m.position={x:target.position.x,y:3,z:target.position.z};
  assert.equal(m.nearestChest()?.id,target.id);
  m.interact();
  assert.equal(target.open,true);
- assert.match(m.notice,/military crate/i);
- assert.match(m.notice,/Empty/i);
+ assert.equal(m.mapFragmentCount,1);
+ assert.ok(m.hasMapFragment('west'));
+ assert.match(m.notice,/Map fragment \(1\/3\).*west cavern/i);
+ assert.match(m.notice,/Tab/i);
  m.interact();
  assert.match(m.notice,/empty/i);
- // Restart restores closed chests.
+ // Restart restores closed chests and clears scraps.
  const fresh=new Mission(true);
  assert.ok(fresh.chests.every(c=>!c.open));
+ assert.equal(fresh.mapFragmentCount,0);
  assert.equal(CHEST_LABEL.suitcase,'vintage suitcase');
+});
+test('opening all three crates fits the cave chart and Tab toggles the overlay',()=>{
+ const m=new Mission(true);
+ assert.equal(m.mapOpen,false);
+ assert.ok(m.toggleMap());
+ assert.equal(m.mapOpen,true);
+ assert.ok(m.toggleMap());
+ assert.equal(m.mapOpen,false);
+ for(const id of MAP_FRAGMENT_ORDER){
+  const chest=m.chests.find(c=>c.fragment===id)!;
+  m.position={x:chest.position.x,y:3,z:chest.position.z};
+  m.interact();
+  assert.equal(chest.open,true);
+  assert.ok(m.hasMapFragment(id));
+ }
+ assert.equal(m.mapFragmentCount,3);
+ assert.equal(m.mapComplete,true);
+ assert.match(m.notice,/Map complete/i);
+ assert.equal(MAP_FRAGMENT_LABEL.east,'east shelf');
+ // Duplicate scrap is ignored.
+ assert.equal(m.collectMapFragment('west'),false);
+ assert.equal(m.mapFragmentCount,3);
 });
