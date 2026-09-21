@@ -115,15 +115,12 @@ export class CaveWorld extends OceanWorld {
   this.camera.add(this.knifeVisual);
   this.knifeVisual.visible=this.holdingKnife();
   if(this.holdingKnife())this.setTorchMeshesVisible(false);
-  const w=window as Window&{__knifeLoad?:string};
-  w.__knifeLoad='pending';
   upgradeKnifeVisual(this.knifeVisual).then(ok=>{
-   if(!this.alive||!this.knifeVisual){w.__knifeLoad='disposed';return;}
+   if(!this.alive||!this.knifeVisual)return;
    if(ok)poseKnife(this.knifeVisual);
    this.knifeVisual.visible=this.holdingKnife();
    if(this.holdingKnife())this.setTorchMeshesVisible(false);
-   w.__knifeLoad=ok?'ok':'fail';
-  }).catch(err=>{w.__knifeLoad='error:'+String(err);});
+  });
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
  }
  /** Floating blood cloud spawned on guardian death (world-space points). */
