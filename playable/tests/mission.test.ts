@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,PREDATOR_HP_MAX,PREDATOR_BREAK_HP} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,PREDATOR_HP_MAX,PREDATOR_BREAK_HP,torchShouldShine,holdingTorchItem,occupiesFpsHand} from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{for(let i=0;i<seconds*60;i++)m.update(1/60);};
 test('hydrostatic depth and ata share one surface plane',()=>{
  assert.equal(hydrostaticDepth(SURFACE_Y),0);
@@ -200,6 +200,35 @@ test('inventory select/use stay quiet after the one-time first-play tip',()=>{
  quiet.air=100;quiet.use();assert.equal(quiet.inventory[3],null);assert.equal(quiet.feedbackKind,'ok');assert.equal(quiet.notice,'');
  quiet.inventory[1]=null;quiet.select(1);quiet.use();assert.equal(quiet.feedbackKind,'blocked');
  quiet.drop();assert.equal(quiet.feedbackKind,'blocked');
+});
+test('torch shine follows the held prop, not merely the F flag',()=>{
+ assert.equal(occupiesFpsHand('knife'),true);
+ assert.equal(occupiesFpsHand('wood'),false);
+ assert.equal(occupiesFpsHand(null),false);
+ assert.equal(holdingTorchItem('knife'),false);
+ assert.equal(holdingTorchItem('wood'),true);
+ assert.equal(holdingTorchItem('flare'),true);
+ assert.equal(holdingTorchItem('air'),true);
+ assert.equal(holdingTorchItem('bandage'),true);
+ assert.equal(holdingTorchItem('relic'),true);
+ assert.equal(holdingTorchItem(null),true);
+ // F on + torch in hand → shine.
+ assert.equal(torchShouldShine(true,'wood'),true);
+ assert.equal(torchShouldShine(true,null),true);
+ // Knife (or any hand-prop) out → no beam, no SpotLight, no lens glow.
+ assert.equal(torchShouldShine(true,'knife'),false);
+ // F off → dark even with torch in hand.
+ assert.equal(torchShouldShine(false,'wood'),false);
+ assert.equal(torchShouldShine(false,'knife'),false);
+ const m=new Mission(true);
+ assert.equal(m.inventory[m.selected],'knife');
+ assert.equal(m.torch,true);
+ assert.equal(torchShouldShine(m.torch,m.inventory[m.selected]),false);
+ m.select(1);
+ assert.equal(m.inventory[m.selected],'wood');
+ assert.equal(torchShouldShine(m.torch,m.inventory[m.selected]),true);
+ m.torch=false;
+ assert.equal(torchShouldShine(m.torch,m.inventory[m.selected]),false);
 });
 test('diving knife starts in slot 1 and stabs apply damage with cooldown',()=>{
  const m=new Mission(true);
