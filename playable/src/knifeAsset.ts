@@ -86,7 +86,10 @@ export function poseKnife(g:THREE.Group){
  */
 export async function upgradeKnifeVisual(root:THREE.Group):Promise<boolean>{
  try{
-  const gltf=await new GLTFLoader().loadAsync(KNIFE_ASSET_URL);
+  const loader=new GLTFLoader();
+  // Explicit base so relative bin/texture URIs resolve under /assets/knife/.
+  loader.setPath('/assets/knife/');
+  const gltf=await loader.loadAsync('fish_knife_1k.gltf');
   const scene=gltf.scene;
   litKnifeMaterials(scene);
   // Center on handle/blade for camera attach.
