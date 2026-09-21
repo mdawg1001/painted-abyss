@@ -19,9 +19,9 @@ export const KNIFE_THUMB_URL='/assets/knife/thumb.png';
  * Camera-local pose. Grip sits in the lower-right corner; the tip angles
  * inward toward screen center. Tuned for fov 64 so the blade stays on screen.
  */
-export const KNIFE_HOLD_POS={x:.34,y:-.24,z:-.58} as const;
+export const KNIFE_HOLD_POS={x:.28,y:-.22,z:-.6} as const;
 export const KNIFE_HOLD_ROT={x:-.2,y:.55,z:.12} as const;
-export const KNIFE_HOLD_SCALE=1.65;
+export const KNIFE_HOLD_SCALE=1.5;
 export const KNIFE_STAB_Z=-.82;
 
 const stubMetal=()=>new THREE.MeshStandardMaterial({
