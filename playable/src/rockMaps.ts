@@ -5,6 +5,9 @@ import rockArm from './assets/rocks/rock_face_03/arm.jpg?url';
 import sandDiff from './assets/rocks/dry_riverbed_rock/diff.jpg?url';
 import sandNor from './assets/rocks/dry_riverbed_rock/nor.jpg?url';
 import sandArm from './assets/rocks/dry_riverbed_rock/arm.jpg?url';
+import mossDiff from './assets/rocks/mossy_rock/diff.jpg?url';
+import mossNor from './assets/rocks/mossy_rock/nor.jpg?url';
+import mossArm from './assets/rocks/mossy_rock/arm.jpg?url';
 
 /** Packed Poly Haven PBR set: albedo + OpenGL normal + ARM (AO/Rough/Metal). */
 export type PbrMaps = {
@@ -16,7 +19,7 @@ export type PbrMaps = {
   key: string;
 };
 
-export type CaveRockMaps = { rock: PbrMaps; sand: PbrMaps };
+export type CaveRockMaps = { rock: PbrMaps; sand: PbrMaps; moss: PbrMaps };
 
 function configure(tex: THREE.Texture, colorMap: boolean) {
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -29,7 +32,7 @@ function configure(tex: THREE.Texture, colorMap: boolean) {
   return tex;
 }
 
-/** Load cave rock/floor maps (TextureLoader returns immediately; images fill in async). */
+/** Load cave rock/floor/moss maps (TextureLoader returns immediately; images fill in async). */
 export function loadCaveRockMaps(loader = new THREE.TextureLoader()): CaveRockMaps {
   const load = (url: string, colorMap: boolean) => configure(loader.load(url), colorMap);
   return {
@@ -46,6 +49,13 @@ export function loadCaveRockMaps(loader = new THREE.TextureLoader()): CaveRockMa
       arm: load(sandArm, false),
       scale: 0.28,
       key: 'dry_riverbed_rock',
+    },
+    moss: {
+      diff: load(mossDiff, true),
+      nor: load(mossNor, false),
+      arm: load(mossArm, false),
+      scale: 0.26,
+      key: 'mossy_rock',
     },
   };
 }
@@ -77,5 +87,22 @@ vec3 triNormalView(sampler2D map,vec3 p,vec3 wn,vec3 b,float s,mat4 viewMatrix){
   tz=vec3(tz.xy+wn.xy,abs(wn.z));
   vec3 n=normalize(tx.zyx*b.x+ty.xzy*b.y+tz.xyz*b.z);
   return normalize((viewMatrix*vec4(n,0.)).xyz);
+}
+// Patchy moss: crevices + near-floor + ledge tops + wall streaks.
+float mossCoverage(vec3 p,vec3 wn,float ao,float amount){
+  float blob=valueNoise(p.xz*.22+p.y*.14);
+  float blob2=valueNoise(p.xy*.14+p.z*.19);
+  float streaks=valueNoise(vec2(p.y*1.1+p.x*.08,p.z*.35));
+  float clumps=smoothstep(.18,.62,blob*.55+blob2*.45);
+  float nearFloor=1.-smoothstep(.2,4.8,p.y);
+  float ledge=smoothstep(-.35,.55,wn.y);
+  float wall=smoothstep(.15,.85,1.-abs(wn.y));
+  float crevice=pow(clamp(1.-ao,0.,1.),1.1);
+  float m=clumps*(.45+.4*nearFloor+.35*ledge+.25*wall)
+         +crevice*.55
+         +smoothstep(.4,.85,streaks)*wall*.35;
+  float cov=clamp(m*amount,0.,1.);
+  // Floor of coverage so moss always reads on rock surfaces
+  return max(cov,smoothstep(.4,1.2,amount)*.5);
 }
 `;

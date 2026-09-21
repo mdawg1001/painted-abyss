@@ -104,11 +104,11 @@ export class CaveWorld extends OceanWorld {
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
  }
  buildCave(){
-  const {rock:rockMaps,sand:sandMaps}=this.rockMaps;
+  const {rock:rockMaps,sand:sandMaps,moss:mossMaps}=this.rockMaps;
   // Near-white tints so Poly Haven albedo dominates; ceiling kept cooler/darker
-  const floor=this.material(0xc9c4b8,'sand',.88,3.4,sandMaps);
-  const rock=this.material(0xb4c0c4,'rock',.86,1.6,rockMaps);
-  const ceiling=this.material(0x6a7882,'rock',.9,.6,rockMaps);
+  const floor=this.material(0xc9c4b8,'sand',.88,3.4,sandMaps,mossMaps);
+  const rock=this.material(0xb4c0c4,'rock',.86,1.6,rockMaps,mossMaps);
+  const ceiling=this.material(0x6a7882,'rock',.9,.6,rockMaps,mossMaps);
   const floors:THREE.BufferGeometry[]=[],roofs:THREE.BufferGeometry[]=[],walls:THREE.BufferGeometry[]=[],details:THREE.BufferGeometry[]=[];
   for(const key of cells){const [c,r]=key.split(',').map(Number),p=world(c,r);
    const fg=new THREE.PlaneGeometry(CELL,CELL,2,2);fg.rotateX(-Math.PI/2);fg.translate(p.x,0,p.z);floors.push(fg);
@@ -123,7 +123,7 @@ export class CaveWorld extends OceanWorld {
    const mesh=new THREE.Mesh(merged,mat);mesh.castShadow=true;mesh.receiveShadow=true;this.scene.add(mesh);
    geos.forEach(g=>g.dispose());
   }
-  const bone=this.material(0xc8c0a8,'rock',.82,1.5,rockMaps);for(let i=0;i<6;i++)for(const s of [-1,1]){
+  const bone=this.material(0xc8c0a8,'rock',.82,1.5,rockMaps,mossMaps);for(let i=0;i<6;i++)for(const s of [-1,1]){
    const rib=this.tube([V(-3+i*.75,.25,-113),V(-3+i*.75,1.3,-113+s*1.2),V(-3+i*.75,.3,-113+s*2.2)],[.12,.09,.025],bone,12,5);
    rib.castShadow=true;rib.receiveShadow=true;this.scene.add(rib);
   }
