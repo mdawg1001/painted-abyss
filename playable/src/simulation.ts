@@ -16,18 +16,18 @@ export function hydrostaticDepth(y:number){return Math.max(0,SURFACE_Y-y);}
 export function ata(y:number){return 1+hydrostaticDepth(y)/10;}
 
 /** Kick thrust (m/s²) — terminal speed ≈ sqrt(thrust / SWIM_DRAG_K). */
-export const SWIM_THRUST_CRUISE=4.05;
-export const SWIM_THRUST_SPRINT=8.7;
-/** Quadratic drag coefficient; cruise ≈1.5 m/s, sprint ≈2.2 m/s with thrusts above. */
+export const SWIM_THRUST_CRUISE=8.7;
+export const SWIM_THRUST_SPRINT=22.05;
+/** Quadratic drag coefficient; cruise ≈2.2 m/s, sprint ≈3.5 m/s with thrusts above. */
 export const SWIM_DRAG_K=1.8;
 /** Vertical accel at full BCD (|buoyancy| = 1). */
-export const SWIM_BUOYANCY_ACCEL=2.8;
+export const SWIM_BUOYANCY_ACCEL=4.1;
 /** How fast Space/Q fills buoyancy toward ±1 (1/s exponential approach). */
 export const BCD_FILL_RATE=1.35;
 /** Hands-off return of buoyancy toward neutral (1/s). */
 export const BCD_TRIM_RATE=.55;
 /** Predator band sits between player cruise and sprint. */
-export const PREDATOR_SPEED={chase:1.75,patrol:.9,alert:.35} as const;
+export const PREDATOR_SPEED={chase:2.7,patrol:1.3,alert:.5} as const;
 
 export type Vec3={x:number;y:number;z:number};
 /** Space/Q BCD input (−1..+1). Idle trims toward neutral. */

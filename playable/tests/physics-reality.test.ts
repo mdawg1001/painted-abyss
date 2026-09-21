@@ -51,8 +51,8 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  const sprintSteady=integrateKick(true,5);
  assert.ok(cruiseSteady.finalSpeed>CRUISE*.95);
  assert.ok(sprintSteady.finalSpeed>SPRINT*.95);
- assert.ok(CRUISE>=1.35&&CRUISE<=1.65);
- assert.ok(SPRINT>=2.0&&SPRINT<=2.4);
+ assert.ok(CRUISE>=2.0&&CRUISE<=2.4);
+ assert.ok(SPRINT>=3.2&&SPRINT<=3.8);
 
  const coast=coastFrom(CRUISE);
 
@@ -172,7 +172,7 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
    gameAirMinutesOverRealShallowMax:+(4/REAL.airMinutesShallow[0]).toFixed(2),
   },
   verdicts:{
-   swimSpeed:'GAMEPLAY PACE — force model cruise ~1.5 m/s / sprint ~2.2 m/s (faster than scuba, slower than old arcade 2.8/4.8).',
+   swimSpeed:'GAMEPLAY PACE — force model cruise ~2.2 m/s / sprint ~3.5 m/s (force model retained; closer to old arcade feel).',
    gasModel:'COMPRESSED — 4 min flat timer; no depth/exertion scaling (Boyle / SAC omitted).',
    buoyancy:'BCD STATE — Space/Q fill buoyancy −1..+1 with neutral trim; kick is look/strafe only.',
    dragCoast:'QUADRATIC — −k|v|v; short coast after releasing kick.',
@@ -187,7 +187,8 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  writeFileSync('/opt/cursor/artifacts/physics_reality_measurements.json',JSON.stringify(report,null,2));
  writeFileSync(new URL('../../docs/verification/physics-reality.json',import.meta.url),JSON.stringify(report,null,2));
 
- assert.ok(CRUISE<REAL.hardKickMs[1]*2.2,'cruise above hard kick but not arcade-fast');
+ assert.ok(CRUISE<REAL.hardKickMs[1]*3.2,'cruise raised for gameplay, still below old arcade 2.8');
+ assert.ok(SPRINT<4.5,'sprint below old arcade 4.8');
  assert.ok(240/60<REAL.airMinutesShallow[0]/5,'air budget is heavily time-compressed');
  assert.equal(report.measured.gravityOrBuoyancyForce,true);
  console.log(JSON.stringify({
