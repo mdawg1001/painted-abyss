@@ -7,7 +7,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
-import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
 
@@ -296,7 +296,18 @@ export class CaveWorld extends OceanWorld {
   const torchOn=this.mission.torch;
   this.torchLight.visible=torchOn;this.torchFill.visible=torchOn;this.beam.visible=torchOn;this.beamHalo.visible=torchOn;
   this.torchBody.visible=true;
-  (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=torchOn?1:0;
+  if(torchOn){
+   // Depth/aim modulation scaled to the lighting-hud torch baseline (mid swim, level look).
+   const torch=torchModulation(this.position.y,this.pitch);
+   const mid=torchModulation(3,0);
+   const iScale=torch.intensity/mid.intensity,dScale=torch.distance/mid.distance,bScale=torch.beamOpacity/mid.beamOpacity;
+   this.torchLight.intensity=260*iScale;this.torchLight.distance=36*dScale;this.torchLight.decay=1.1+(torch.decay-mid.decay);
+   this.torchLight.color.setRGB(torch.r,torch.g,torch.b);
+   this.torchFill.intensity=7*iScale;this.torchFill.color.setRGB(torch.r,torch.g,torch.b);
+   const beamMat=this.beam.material as THREE.ShaderMaterial;beamMat.uniforms.uOpacity.value=.11*bScale;beamMat.uniforms.uColor.value.setRGB(torch.r,torch.g,torch.b);
+   const haloMat=this.beamHalo.material as THREE.ShaderMaterial;haloMat.uniforms.uOpacity.value=.045*bScale;haloMat.uniforms.uColor.value.setRGB(torch.r*.85,torch.g*.9,torch.b);
+   (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=torch.particle;
+  }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
   // Bloom lifts shaft cores and torch hotspot without washing the HUD
   this.bloom.strength=torchOn?.48:.36;
   const p=this.mission.predator;this.guardian.group.position.copy(p.position);const diff=Math.atan2(Math.sin(p.heading-this.guardian.group.rotation.y),Math.cos(p.heading-this.guardian.group.rotation.y));this.guardian.group.rotation.y+=diff*Math.min(1,dt*5);
