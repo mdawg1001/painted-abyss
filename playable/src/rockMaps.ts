@@ -24,7 +24,7 @@ export type CaveRockMaps = { rock: PbrMaps; sand: PbrMaps; moss: PbrMaps };
 function configure(tex: THREE.Texture, colorMap: boolean) {
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.colorSpace = colorMap ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-  tex.anisotropy = 8;
+  tex.anisotropy = 1;
   tex.generateMipmaps = true;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;

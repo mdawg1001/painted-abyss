@@ -24,7 +24,7 @@ const GLTF='lifebuoy_1k.gltf';
 export function litLifebuoyMaterials(root:THREE.Object3D){
  root.traverse(o=>{
   if(!(o instanceof THREE.Mesh))return;
-  o.castShadow=true;o.receiveShadow=true;o.frustumCulled=false;
+  o.castShadow=false;o.receiveShadow=false;o.frustumCulled=true;
   const mats=Array.isArray(o.material)?o.material:[o.material];
   for(const m of mats){
    if(!m||!('roughness' in m))continue;
