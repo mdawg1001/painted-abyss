@@ -16,6 +16,7 @@ import {
  createLifebuoyVisual, upgradeLifebuoyVisual,
  LIFEBUOY_POS, LIFEBUOY_YAW, type LifebuoyVisual,
 } from './lifebuoyAsset';
+import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLight } from './sconceAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
@@ -147,6 +148,8 @@ export class CaveWorld extends OceanWorld {
  chestVisuals=new Map<number,ChestVisual>();
  /** Decorative Poly Haven life ring on the start-chamber floor. */
  lifebuoyVisual:LifebuoyVisual|null=null;
+ /** Poly Haven caged sconces mounted on the cave walls; their warm point lights flicker. */
+ wallSconceLights:SconceLight[]=[];
  /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
  knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
  /** PMREM for Poly Haven metal/wood specular on the held knife. */
@@ -223,6 +226,7 @@ export class CaveWorld extends OceanWorld {
   });
   this.mountChests();
   this.mountLifebuoy();
+  this.mountWallSconces();
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
  }
  /** Place the Poly Haven lifebuoy on the start-chamber floor and upgrade in the background. */
@@ -233,6 +237,14 @@ export class CaveWorld extends OceanWorld {
   this.scene.add(visual.root);
   this.lifebuoyVisual=visual;
   upgradeLifebuoyVisual(visual);
+ }
+ /** Bolt Poly Haven caged sconces to spaced wall faces; warm lights show at once, meshes upgrade in. */
+ mountWallSconces(){
+  const mounts=wallSconceMounts();
+  const {group,lights}=createWallSconces(mounts);
+  this.scene.add(group);
+  this.wallSconceLights=lights;
+  upgradeWallSconces(group,mounts);
  }
  /** Place the three Poly Haven chests and upgrade stubs to glTF in the background. */
  mountChests(){
@@ -994,6 +1006,7 @@ export class CaveWorld extends OceanWorld {
   fog.density=.032+.022*deep-.014*nearExit;
   (this.scene.background as THREE.Color).copy(fog.color);
   this.uniforms.uTime.value=this.time;
+  for(const s of this.wallSconceLights)s.light.intensity=s.base*(.86+.14*Math.sin(this.time*6+s.phase)+.04*Math.sin(this.time*19+s.phase*1.7));
   const selected=this.mission.inventory[this.mission.selected];
   const knifeHeld=this.holdingKnife();
   const torchOn=torchShouldShine(this.mission.torch,selected);
