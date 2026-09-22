@@ -9,7 +9,7 @@ import * as THREE from 'three';
 const root=join(dirname(fileURLToPath(import.meta.url)),'..','public','assets','scroll');
 
 test('scroll textures from Sketchfab CC-BY asset exist under public/assets/scroll',async()=>{
- for(const name of['albedo.jpg','roughness.jpg','normal.jpg','metallic.png','AO.jpg','emissive.jpg']){
+ for(const name of['albedo.jpg','parchment.jpg','roughness.jpg','normal.jpg','metallic.png','AO.jpg','emissive.jpg']){
   await access(join(root,'textures',name));
  }
  const readme=await readFile(join(root,'README.md'),'utf8');
@@ -22,13 +22,14 @@ test('scroll textures from Sketchfab CC-BY asset exist under public/assets/scrol
 });
 
 test('scroll mesh builds and presents inside an open crate',()=>{
- const mats=[
-  new THREE.MeshStandardMaterial({color:0xc4a574}),
-  new THREE.MeshStandardMaterial({color:0x4a3020}),
-  new THREE.MeshStandardMaterial({color:0x8a2030}),
- ];
+ const mats={
+  paper:new THREE.MeshStandardMaterial({color:0xf2e2c0}),
+  leather:new THREE.MeshStandardMaterial({color:0x4a2a14}),
+  rope:new THREE.MeshStandardMaterial({color:0x6a4424}),
+  wax:new THREE.MeshStandardMaterial({color:0xd02030}),
+ };
  const mesh=buildScrollMesh(mats);
- assert.ok(mesh.children.length>=4);
+ assert.ok(mesh.children.length>=6);
  const visual=createScrollVisual();
  assert.equal(visual.root.visible,false);
  syncScrollPresent(visual,true,1,'military',{x:0,y:.65,z:0},0);
