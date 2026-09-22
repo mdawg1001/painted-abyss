@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {
- KNIFE_HOLD_SCALE,KNIFE_HOLD_POS,KNIFE_STAB_Z,KNIFE_THUMB_URL,KNIFE_ASSET_URL,
+ KNIFE_HOLD_SCALE,KNIFE_HOLD_POS,KNIFE_HOLD_ROT,KNIFE_STAB_Z,KNIFE_THUMB_URL,KNIFE_ASSET_URL,
  createKnifeStub,poseKnife,alignKnifeBladeForward,prepareKnifeMaterials,knifeMeshReady,
 } from '../src/knifeAsset.ts';
 import {readFileSync,statSync} from 'node:fs';
@@ -40,8 +40,25 @@ test('stub knife is the blade only, parked in the lower-right',()=>{
  poseKnife(g);
  assert.equal(g.scale.x,KNIFE_HOLD_SCALE);
  assert.equal(g.position.x,KNIFE_HOLD_POS.x);
- assert.ok(KNIFE_HOLD_POS.x>0.25,'knife sits on the right');
- assert.ok(KNIFE_HOLD_POS.y<-0.15,'knife sits low in the frame');
+ assert.ok(KNIFE_HOLD_POS.x>0.35,'knife sits in the right corner');
+ assert.ok(KNIFE_HOLD_POS.y<-0.2,'knife sits low in the frame');
+});
+
+test('hold pose puts tip up-left of the butt (CS corner diagonal)',()=>{
+ // Tip is local −Z after alignKnifeBladeForward; project the rest pose.
+ const tipL=new THREE.Vector3(0,0,-.156);
+ const buttL=new THREE.Vector3(0,0,.06);
+ const cam=new THREE.PerspectiveCamera(64,16/9,.12,130);
+ const g=createKnifeStub();
+ poseKnife(g);
+ g.updateMatrixWorld(true);
+ const tip=tipL.applyMatrix4(g.matrixWorld).project(cam);
+ const butt=buttL.applyMatrix4(g.matrixWorld).project(cam);
+ assert.ok(tip.x<butt.x-0.08,'tip left of grip');
+ assert.ok(tip.y>butt.y+0.2,'tip above grip');
+ assert.ok(butt.x>0.55&&butt.y<-0.55,'grip in the lower-right');
+ assert.ok(tip.y<0.05,'tip stays below the crosshair');
+ assert.ok(KNIFE_HOLD_ROT.x>0.5,'pitch tips the blade up for a steep diagonal');
 });
 
 test('alignKnifeBladeForward puts tip on −Z and pivots on butt',()=>{
