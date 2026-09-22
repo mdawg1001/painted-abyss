@@ -21,6 +21,12 @@
 - Files: `public/assets/lifebuoy/` (1k glTF + textures) with notes under `src/assets/lifebuoy/`
 - Decorative life ring on the start-chamber floor (not interactable).
 
+## Industrial Caged Sconce (Poly Haven)
+- Source: https://polyhaven.com/a/industrial_caged_sconce
+- License: CC0 1.0 Universal (public domain dedication)
+- Files: `public/assets/industrial_caged_sconce/industrial_caged_sconce.glb` — the single complete "_b" caged variant, packed to a self-contained binary glTF with 512px WebP textures; notes under `src/assets/industrial_caged_sconce/`.
+- Mounted as warm wall lamps bolted to spaced cave wall faces; each carries a gently flickering point light.
+
 ## Blood particles (Kenney Particle Pack)
 - Source: https://kenney.nl/assets/particle-pack
 - Author: Kenney Vleugels (Kenney.nl)
