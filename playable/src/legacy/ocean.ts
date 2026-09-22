@@ -34,8 +34,8 @@ export class OceanWorld {
     this.host=host;this.hooks=hooks;
     this.camera=new THREE.PerspectiveCamera(67,host.clientWidth/host.clientHeight,.12,600);
     this.camera.position.copy(this.position);this.camera.rotation.order='YXZ';this.camera.rotation.set(this.pitch,this.yaw,0);
-    this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));this.renderer.setSize(host.clientWidth,host.clientHeight);
+    this.renderer=new THREE.WebGLRenderer({antialias:false,alpha:false,powerPreference:'high-performance'});
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1));this.renderer.setSize(host.clientWidth,host.clientHeight);
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.18;
     this.renderer.setClearColor(0x0a5365);host.appendChild(this.renderer.domElement);
     this.scene.background=new THREE.Color(0x0b5363);this.scene.fog=new THREE.FogExp2(0x0b5363,.014);
@@ -368,7 +368,7 @@ export class OceanWorld {
   }
 
   suspendedParticles(){
-    const count=1800,pos=new Float32Array(count*3);for(let i=0;i<count;i++){pos[i*3]=rand(-110,110);pos[i*3+1]=rand(-16,26);pos[i*3+2]=rand(-110,110);}
+    const count=160,pos=new Float32Array(count*3);for(let i=0;i<count;i++){pos[i*3]=rand(-110,110);pos[i*3+1]=rand(-16,26);pos[i*3+2]=rand(-110,110);}
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));
     const mat=new THREE.ShaderMaterial({uniforms:{uTime:this.uniforms.uTime,uPixelRatio:{value:this.renderer.getPixelRatio()}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
       vertexShader:`uniform float uTime;uniform float uPixelRatio;varying float a;void main(){vec3 p=position;p.x+=sin(uTime*.14+position.z)*.22;p.y+=sin(uTime*.18+position.x)*.25;vec4 mv=modelViewMatrix*vec4(p,1.);gl_PointSize=clamp(38./-mv.z,1.,3.5)*uPixelRatio;gl_Position=projectionMatrix*mv;a=clamp(1.-length(mv.xyz)/95.,0.,1.)*.33;}`,
@@ -419,7 +419,7 @@ export class OceanWorld {
       const bass=ctx.createOscillator(),bassGain=ctx.createGain();bass.type='sine';bass.frequency.value=47;bassGain.gain.value=.055;bass.connect(bassGain);bassGain.connect(this.master);bass.start();
     }catch{/* Ocean remains fully playable when audio is unavailable. */}
   }
-  resize(){if(!this.alive)return;const w=this.host.clientWidth,h=this.host.clientHeight;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));this.renderer.setSize(w,h);}
+  resize(){if(!this.alive)return;const w=this.host.clientWidth,h=this.host.clientHeight;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1));this.renderer.setSize(w,h);}
 
   animate=()=>{
     if(!this.alive)return;this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);
