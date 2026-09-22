@@ -224,14 +224,27 @@ export function moveBody(p:Point,dx:number,dy:number,dz:number,r=.48){
 export function visible(a:Point,b:Point){const n=Math.ceil(distance(a,b)/.4);for(let i=0;i<=n;i++){const t=n?i/n:0;if(!isOpen(a.x+(b.x-a.x)*t,a.z+(b.z-a.z)*t))return false;}return true;}
 function predatorCell(col:number,row:number){return col>=4&&col<=18&&row>=12&&row<=28&&cells.has(`${col},${row}`);}
 /** Minimum diver↔guardian spawn separation each dive (metres). */
-export const SPAWN_SEPARATION=28;
+export const SPAWN_SEPARATION=32;
 /**
- * Curated entrance / approach open-floor cells (outside the hunting cavern).
- * Each dive picks one at random so the diver is not always at the classic START tile.
+ * Curated open-floor corners across distinct map regions (not a tight entrance cluster).
+ * Each dive picks one at random so starts feel far apart: entrance, corridor, shelves,
+ * exit arm, mid cavern, deep south, far north / bone alcove.
  */
 export const PLAYER_SPAWN_CELLS:[number,number][]=[
- [11,3],[9,2],[13,2],[9,4],[13,4],[11,2],[11,4],[8,3],[14,3],
- [10,5],[12,5],[11,6],[10,8],[12,8],[11,9],
+ // Entrance chamber
+ [11,3],[8,2],[14,5],
+ // Approach corridor
+ [11,8],
+ // West + east hunting shelves
+ [4,13],[4,22],[18,13],[18,22],
+ // Mid-cavern mouth (around the central pillar void)
+ [7,12],[15,12],
+ // Extraction / exit arm
+ [19,4],[20,2],
+ // Deep south corners + cavern mouth
+ [4,24],[18,24],[11,24],
+ // Far north / bone alcove
+ [8,28],[14,28],[11,30],
 ];
 /**
  * Curated hunting-cavern corners / chambers (inside `predatorCell` bounds).
@@ -247,8 +260,6 @@ export function playerSpawnCandidates():Point[]{
  const out:Point[]=[];
  for(const [col,row] of PLAYER_SPAWN_CELLS){
   if(!spawnCellOpen(col,row))continue;
-  // Keep starts out of the hunting cavern so the dive still begins in approach water.
-  if(predatorCell(col,row))continue;
   const p=world(col,row);
   if(fits(p,.48))out.push(p);
  }
