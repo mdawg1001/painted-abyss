@@ -29,6 +29,13 @@
 - Files: `public/assets/soviet-uniform/ww2_soviet_uniform.glb` (~27k triangles)
 - Phase 3 breath-corridor Soviet guard mesh (scaled to ~human height).
 
+## Poster from Soviet Union (Sketchfab)
+- Source: https://sketchfab.com/3d-models/poster-from-soviet-union-49a80251d7e543289b1deb656b15017a
+- Author: PotatoWit (@PotatoWit)
+- License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
+- Files: `public/assets/soviet-poster/textures/poster_literacy_albedo.png`, `poster_silence_albedo.png` — the two weathered propaganda sheets from the model’s public preview (downloadable glTF requires Sketchfab auth; wall planes use the preview artwork)
+- Hung as a pair on one cave wall face (not interactable).
+
 ## Lifebuoy (Poly Haven)
 - Source: https://polyhaven.com/a/lifebuoy
 - Author: Hank Kaamura
