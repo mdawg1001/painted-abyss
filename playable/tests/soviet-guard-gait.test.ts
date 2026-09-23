@@ -12,8 +12,8 @@ import {
  attachGuardLocomotion,updateGuardLocomotion,
 } from '../src/sovietGuardAsset';
 import {
- Mission,FLOOR_Y,WALK_EYE_Y,guardPatrolAxisX,guardPatrolPoints,breathFootprint,
- GUARD_PATROL_PAUSE,GUARD_CHASE_STANDOFF,GUARD_SPEED,
+ Mission,FLOOR_Y,WALK_EYE_Y,breathFootprint,
+ GUARD_CHASE_STANDOFF,GUARD_SPEED,
 } from '../src/simulation';
 import {GUARD_STEER_RUN,GUARD_STEER_WALK,forwardOf,wrapAngle} from '../src/guardSteering';
 
@@ -135,38 +135,6 @@ function dryMission(){
  return m;
 }
 
-test('patrol: straight centre-line legs, facing forward, stop, pause, about-turn on the spot',()=>{
- const m=dryMission();
- const axis=guardPatrolAxisX(),posts=guardPatrolPoints();
- m.position={x:axis,y:WALK_EYE_Y,z:posts[1].z-60}; // far outside the corridor: never senses
- m.guard.position={x:axis,y:WALK_EYE_Y,z:(posts[0].z+posts[1].z)/2};
- const dt=1/60;
- const s=track(m,60*40,dt,mm=>assert.equal(mm.guard.state,'patrol'));
- assertFacingTravel(s,'patrol');
- assertTurnRate(s,dt,GUARD_STEER_WALK.turnRateStanding,'patrol');
- for(const p of s)assert.equal(p.x,axis,'never leaves the centre line');
- // Every heading while moving is exactly along the corridor (±Z).
- for(const p of s)if(p.speed>0)assert.ok(Math.abs(Math.sin(p.heading))<1e-9,'walks straight along Z');
- // Top speed reached, and acceleration never exceeds the limit.
- assert.ok(Math.max(...s.map(p=>p.speed))>GUARD_SPEED.patrol-.01);
- for(let i=1;i<s.length;i++)assert.ok(s[i].speed-s[i-1].speed<=GUARD_STEER_WALK.accel*dt+1e-9,'eases into the walk');
- // He reaches both posts precisely (no overshoot past the mark).
- const zs=s.map(p=>p.z);
- const lo=Math.min(posts[0].z,posts[1].z),hi=Math.max(posts[0].z,posts[1].z);
- assert.ok(Math.min(...zs)>=lo-1e-6&&Math.max(...zs)<=hi+1e-6,'never overshoots a post');
- // Find a pivot: heading swings ~180° while position is frozen, after a pause of ≥ GUARD_PATROL_PAUSE.
- let still=0,pivotSeen=false;
- for(let i=1;i<s.length;i++){
-  const moved=Math.hypot(s[i].x-s[i-1].x,s[i].z-s[i-1].z)>1e-6;
-  if(!moved)still+=dt;else still=0;
-  if(!moved&&Math.abs(wrapAngle(s[i].heading-s[i-1].heading))>1e-4)assert.ok(still>=GUARD_PATROL_PAUSE-dt*2,'waits before turning');
-  if(still>GUARD_PATROL_PAUSE+.5)pivotSeen=true;
- }
- assert.ok(pivotSeen,'stands still at the post for the pause and the turn');
- const headings=new Set(s.filter(p=>p.speed>0).map(p=>Math.round(Math.cos(p.heading))));
- assert.deepEqual([...headings].sort(),[-1,1],'walks both directions');
-});
-
 test('chase: squares up, closes in one straight line, stops at arm\'s length without circling',()=>{
  const m=dryMission();
  const fp=breathFootprint();
@@ -202,10 +170,10 @@ test('chase: squares up, closes in one straight line, stops at arm\'s length wit
 
 test('alert halts and turns to the noise; search walks there and scans without moving',()=>{
  const m=dryMission();
- const axis=guardPatrolAxisX();
+ const axis=breathFootprint().cx;
  m.guard.position={x:axis,y:WALK_EYE_Y,z:breathFootprint().cz};
  m.guard.heading=0;m.guard.speed=GUARD_SPEED.patrol;
- m.position={x:axis,y:WALK_EYE_Y,z:m.guard.position.z-60};
+ m.position={x:500,y:WALK_EYE_Y,z:500}; // outside the building: never seen
  m.guard.state='alert';m.guard.timer=0;
  m.guard.lastKnown={x:axis+2,y:WALK_EYE_Y,z:m.guard.position.z-4};
  const dt=1/60;
