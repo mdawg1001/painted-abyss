@@ -66,7 +66,7 @@ function App(){
  const nearest=m?.nearest();const nearChest=m?.nearestChest();const extraction=m&&distance(m.position,EXIT)<4;
  const chestPrompt=nearChest
   ?(nearChest.open
-   ?(m?.hasMapFragment(nearChest.fragment)?`The ${CHEST_LABEL[nearChest.kind]} is empty`:`E · Take map scrap`)
+   ?(m?.hasMapFragment(nearChest.fragment)?`The ${CHEST_LABEL[nearChest.kind]} is empty`:`E · Take chart scrap`)
    :`E · Open ${CHEST_LABEL[nearChest.kind]}`)
   :'';
  const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):chestPrompt?chestPrompt:nearest?`E · Collect ${ITEMS[nearest.item].name}`:'';

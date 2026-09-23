@@ -349,8 +349,14 @@ test('three distinct Poly Haven chests sit in the cavern and open with E',()=>{
  const target=m.chests.find(c=>c.kind==='military')!;
  m.position={x:target.position.x,y:3,z:target.position.z};
  assert.equal(m.nearestChest()?.id,target.id);
+ // First E opens only — scrap stays inside.
  m.interact();
  assert.equal(target.open,true);
+ assert.equal(m.mapFragmentCount,0);
+ assert.match(m.notice,/Opened the military crate/i);
+ assert.match(m.notice,/chart scrap rests inside/i);
+ // Second E takes the physical scroll.
+ m.interact();
  assert.equal(m.mapFragmentCount,1);
  assert.ok(m.hasMapFragment('west'));
  assert.match(m.notice,/Map fragment \(1\/3\).*west cavern/i);
@@ -373,8 +379,10 @@ test('opening all three crates fits the cave chart and Tab toggles the overlay',
  for(const id of MAP_FRAGMENT_ORDER){
   const chest=m.chests.find(c=>c.fragment===id)!;
   m.position={x:chest.position.x,y:3,z:chest.position.z};
-  m.interact();
+  m.interact(); // open
   assert.equal(chest.open,true);
+  assert.equal(m.hasMapFragment(id),false);
+  m.interact(); // take scrap
   assert.ok(m.hasMapFragment(id));
  }
  assert.equal(m.mapFragmentCount,3);
