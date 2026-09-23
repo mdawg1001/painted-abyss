@@ -4,13 +4,13 @@
  */
 import React from 'react';
 import {
- START,RELIC,EXIT,cells,tile,
+ START,RELIC,EXIT,cells,tile,BREATH_ROW_HATCH,
  MAP_FRAGMENT_ORDER,MAP_FRAGMENT_LABEL,
  type MapFragmentId,type Point,
 } from './simulation';
 
-/** Map SVG viewBox — col 4..21, row 1..30 → x right, y down (north = −Z = up on chart). */
-const COL0=4,COL1=21,ROW0=1,ROW1=30;
+/** Map SVG viewBox — col 4..21, hatch row..30 → x right, y down (north = −Z = up on chart). */
+const COL0=4,COL1=21,ROW0=BREATH_ROW_HATCH,ROW1=30;
 const VW=340,VH=420;
 const PAD=18;
 
