@@ -19,6 +19,9 @@ import {
  LIFEBUOY_POS, LIFEBUOY_YAW, type LifebuoyVisual,
 } from './lifebuoyAsset';
 import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLight } from './sconceAsset';
+import {
+ createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, type SovietGuardVisual,
+} from './sovietGuardAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, inBreathCorridor, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 /** Point lights packed per cave chunk. 24 covers every light whose range reaches a chunk; the rest of the set still exists in the scene for spots/shadows. */
@@ -171,6 +174,8 @@ export class CaveWorld extends OceanWorld {
  torchRestPos=V(HELD_VIEW_POS.x,HELD_VIEW_POS.y,HELD_VIEW_POS.z);torchRestRot=new THREE.Euler(HELD_VIEW_ROT.x,HELD_VIEW_ROT.y,HELD_VIEW_ROT.z);
  composer!:EffectComposer;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
+ /** Phase 3 Soviet corridor guard (Sketchfab WW2 uniform). */
+ sovietGuard:SovietGuardVisual|null=null;
  /** World crates / suitcase (Poly Haven) keyed by mission chest id. */
  chestVisuals=new Map<number,ChestVisual>();
  /** Chart-scrap scrolls nested in each crate (visible until taken). */
@@ -254,6 +259,12 @@ export class CaveWorld extends OceanWorld {
   this.guardian.group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
   const eyeMat=new THREE.MeshBasicMaterial({color:0xe0a772});
   for(const side of [-1,1])this.ellipsoid(this.guardian.group,eyeMat,1.8,.27,side*.5,.1,.1,.04);
+  this.sovietGuard=createSovietGuardVisual();
+  this.scene.add(this.sovietGuard.root);
+  upgradeSovietGuardVisual(this.sovietGuard).then(()=>{
+   if(!this.alive||!this.sovietGuard)return;
+   this.syncSovietGuard(0);
+  });
   this.suspendedParticles();const positions=this.particles.geometry.attributes.position;
   for(let i=0;i<positions.count;i++)positions.setXYZ(i,Math.sin(i*78.23)*37,1+(i%71)/10,-(i*13.23)%122);
   this.particles.geometry.computeBoundingSphere();
@@ -815,6 +826,18 @@ export class CaveWorld extends OceanWorld {
   this.camera.position.copy(this.position);
   this.onFoot=true;
   this.syncBreathProps();
+  this.syncSovietGuard(0);
+ }
+ /** Place the Soviet guard mesh on the corridor floor from sim state. */
+ syncSovietGuard(_dt:number){
+  const visual=this.sovietGuard;if(!visual)return;
+  const g=this.mission.guard;
+  visual.root.position.set(g.position.x,FLOOR_Y,g.position.z);
+  // Heading in sim is atan2(-dz, dx); Three.js Yaw faces −Z at 0.
+  const yaw=g.heading-Math.PI/2;
+  const diff=Math.atan2(Math.sin(yaw-visual.root.rotation.y),Math.cos(yaw-visual.root.rotation.y));
+  visual.root.rotation.y+=diff*Math.min(1,Math.max(.2,_dt*6));
+  syncGuardGear(visual,{gun:g.gun,bottle:g.bottle,coat:g.coat});
  }
  beamMaterial(color:THREE.ColorRepresentation,opacity:number,beta=.38){
   return new THREE.ShaderMaterial({
@@ -1580,6 +1603,7 @@ export class CaveWorld extends OceanWorld {
    this.guardian.fins.forEach(f=>f.rotation.x=Math.sin(this.time*2*thrash+(f.userData.phase||0))*.25*(f.userData.side||1)*thrash);
    this.guardian.tail.rotation.y=Math.sin(this.time*3*thrash)*.22*thrash;
   }
+  this.syncSovietGuard(dt);
   this.syncBreathProps();
   this.syncPickups();this.syncChests(dt);this.decoyMesh.visible=!!this.mission.decoy;if(this.mission.decoy)this.decoyMesh.position.copy(this.mission.decoy.position);
   if(this.time-this.lastSent>.05){this.lastSent=this.time;this.publish();}
