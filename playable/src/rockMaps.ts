@@ -1,13 +1,14 @@
 import * as THREE from 'three';
-import rockDiff from './assets/rocks/rock_face_03/diff.jpg?url';
-import rockNor from './assets/rocks/rock_face_03/nor.jpg?url';
-import rockArm from './assets/rocks/rock_face_03/arm.jpg?url';
-import sandDiff from './assets/rocks/dry_riverbed_rock/diff.jpg?url';
-import sandNor from './assets/rocks/dry_riverbed_rock/nor.jpg?url';
-import sandArm from './assets/rocks/dry_riverbed_rock/arm.jpg?url';
-import mossDiff from './assets/rocks/mossy_rock/diff.jpg?url';
-import mossNor from './assets/rocks/mossy_rock/nor.jpg?url';
-import mossArm from './assets/rocks/mossy_rock/arm.jpg?url';
+import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
+import rockDiff from './assets/rocks/rock_face_03/diff.ktx2?url';
+import rockNor from './assets/rocks/rock_face_03/nor.ktx2?url';
+import rockArm from './assets/rocks/rock_face_03/arm.ktx2?url';
+import sandDiff from './assets/rocks/dry_riverbed_rock/diff.ktx2?url';
+import sandNor from './assets/rocks/dry_riverbed_rock/nor.ktx2?url';
+import sandArm from './assets/rocks/dry_riverbed_rock/arm.ktx2?url';
+import mossDiff from './assets/rocks/mossy_rock/diff.ktx2?url';
+import mossNor from './assets/rocks/mossy_rock/nor.ktx2?url';
+import mossArm from './assets/rocks/mossy_rock/arm.ktx2?url';
 
 /** Packed Poly Haven PBR set: albedo + OpenGL normal + ARM (AO/Rough/Metal). */
 export type PbrMaps = {
@@ -21,20 +22,60 @@ export type PbrMaps = {
 
 export type CaveRockMaps = { rock: PbrMaps; sand: PbrMaps; moss: PbrMaps };
 
-function configure(tex: THREE.Texture, colorMap: boolean) {
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.colorSpace = colorMap ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-  tex.anisotropy = 8;
-  tex.generateMipmaps = true;
-  tex.minFilter = THREE.LinearMipmapLinearFilter;
-  tex.magFilter = THREE.LinearFilter;
-  tex.needsUpdate = true;
-  return tex;
+/** One transcoder for the whole dive. `./basis/` is `public/basis`, copied from three's KTX2Loader build. */
+let ktx2Loader: KTX2Loader | null = null;
+
+function pendingMap(colorMap: boolean): THREE.CompressedTexture {
+  const data = new Uint8Array(4 * 4 * 4);
+  // RGBA until the transcoder reports the GPU format. A few frames may sample this flat block.
+  const format = THREE.RGBAFormat as unknown as THREE.CompressedPixelFormat;
+  return new THREE.CompressedTexture(
+    [{ data, width: 4, height: 4 }],
+    4, 4,
+    format,
+    THREE.UnsignedByteType,
+    THREE.UVMapping,
+    THREE.RepeatWrapping,
+    THREE.RepeatWrapping,
+    THREE.LinearFilter,
+    THREE.LinearFilter,
+    8,
+    colorMap ? THREE.SRGBColorSpace : THREE.NoColorSpace,
+  );
 }
 
-/** Load cave rock/floor/moss maps (TextureLoader returns immediately; images fill in async). */
-export function loadCaveRockMaps(loader = new THREE.TextureLoader()): CaveRockMaps {
-  const load = (url: string, colorMap: boolean) => configure(loader.load(url), colorMap);
+/** Copy a transcoded KTX2 onto the texture already bound in the rock shaders. */
+function adopt(dst: THREE.CompressedTexture, src: THREE.CompressedTexture, colorMap: boolean) {
+  dst.mipmaps = src.mipmaps;
+  dst.image = src.image;
+  dst.format = src.format;
+  dst.type = src.type;
+  dst.colorSpace = colorMap ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  dst.wrapS = dst.wrapT = THREE.RepeatWrapping;
+  dst.anisotropy = 8;
+  dst.magFilter = THREE.LinearFilter;
+  dst.minFilter = src.mipmaps.length > 1 ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter;
+  dst.generateMipmaps = false;
+  dst.needsUpdate = true;
+}
+
+/**
+ * Load cave rock/floor/moss maps. Returns compressed textures immediately; mip data
+ * arrives after the Basis transcoder finishes. Resolution stays 2048.
+ */
+export function loadCaveRockMaps(renderer: THREE.WebGLRenderer): CaveRockMaps {
+  if (!ktx2Loader) {
+    ktx2Loader = new KTX2Loader();
+    ktx2Loader.setTranscoderPath('./basis/');
+  }
+  ktx2Loader.detectSupport(renderer);
+  const load = (url: string, colorMap: boolean) => {
+    const tex = pendingMap(colorMap);
+    ktx2Loader!.load(url, (loaded) => adopt(tex, loaded, colorMap), undefined, (err) => {
+      console.error('Rock map failed to transcode', url, err);
+    });
+    return tex;
+  };
   return {
     rock: {
       diff: load(rockDiff, true),

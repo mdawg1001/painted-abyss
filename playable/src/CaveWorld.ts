@@ -243,7 +243,7 @@ export class CaveWorld extends OceanWorld {
  rockMaps:CaveRockMaps;
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
   super(host,{onReady:()=>{},onPause:()=>{},onStatus:()=>{},onToggleUI:()=>{},onGlide:()=>{},onError:()=>{}},{deferStart:true});
-  this.ui=ui;this.rockMaps=loadCaveRockMaps();this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
+  this.ui=ui;this.rockMaps=loadCaveRockMaps(this.renderer);this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
   // Deep teal void — matches reference plates (cyan haze, not pure black)
   this.scene.background=new THREE.Color(0x041a22);this.scene.fog=new THREE.FogExp2(0x0a2e38,.038);
   this.camera.far=130;this.camera.fov=64;this.camera.updateProjectionMatrix();
