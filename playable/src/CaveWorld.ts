@@ -183,6 +183,8 @@ export class CaveWorld extends OceanWorld {
  wallSconceLights:SconceLight[]=[];
  /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
  knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
+ /** Held gun. Visible only while that slot is selected. It does not fire. */
+ gunVisual:THREE.Group|null=null;
  /** PMREM for Poly Haven metal/wood specular on the held knife. */
  knifeEnvMap:THREE.Texture|null=null;
  shakeAmp=0;
@@ -267,6 +269,8 @@ export class CaveWorld extends OceanWorld {
   this.camera.add(this.knifeVisual);
   // Stay hidden until glTF upgrades — stub + bright envMap flashed white.
   this.knifeVisual.visible=false;
+  this.gunVisual=this.makeHeldGun();
+  this.camera.add(this.gunVisual);
   this.syncHeldTorch();
   upgradeKnifeVisual(this.knifeVisual,this.knifeEnvMap).then(()=>{
    if(!this.alive||!this.knifeVisual)return;
@@ -945,7 +949,47 @@ export class CaveWorld extends OceanWorld {
   );
  }
  holdingKnife(){return this.mission.inventory[this.mission.selected]==='knife';}
+ holdingGun(){return this.mission.inventory[this.mission.selected]==='gun';}
  holdingTorch(){return holdingTorchItem(this.mission.inventory[this.mission.selected]);}
+ /** Unlit pistol in the lower-right. MeshBasic so it reads with the torch stowed. */
+ makeHeldGun(){
+  const g=new THREE.Group();
+  g.name='gunVisual';
+  const steel=new THREE.MeshBasicMaterial({color:0xb8c0c6});
+  const body=new THREE.Mesh(new THREE.BoxGeometry(.09,.11,.28),steel);
+  const barrel=new THREE.Mesh(new THREE.BoxGeometry(.04,.04,.24),new THREE.MeshBasicMaterial({color:0x8e969c}));
+  barrel.position.set(.01,.03,-.22);
+  const grip=new THREE.Mesh(new THREE.BoxGeometry(.05,.16,.07),new THREE.MeshBasicMaterial({color:0x3a3028}));
+  grip.position.set(0,-.12,.05);
+  grip.rotation.x=.35;
+  g.add(body,barrel,grip);
+  g.position.set(.32,-.28,-.55);
+  g.rotation.set(.2,.55,.08);
+  g.visible=false;
+  return g;
+ }
+ /** Floor props for corridor gear. Unlit so they read before the torch is out. */
+ gearPickupMesh(item:'gun'|'bottle'|'coat'){
+  const g=new THREE.Group();
+  if(item==='gun'){
+   const body=new THREE.Mesh(new THREE.BoxGeometry(.46,.14,.12),new THREE.MeshBasicMaterial({color:0x9aa3aa}));
+   const barrel=new THREE.Mesh(new THREE.BoxGeometry(.5,.06,.06),new THREE.MeshBasicMaterial({color:0xd5dbe0}));
+   barrel.position.set(.4,.04,0);
+   g.add(body,barrel);
+  }else if(item==='bottle'){
+   const cyl=new THREE.Mesh(new THREE.CylinderGeometry(.11,.13,.46,10),new THREE.MeshBasicMaterial({color:0x3d8f62}));
+   const cap=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,.09,8),new THREE.MeshBasicMaterial({color:0xe4e8ea}));
+   cap.position.y=.26;
+   g.add(cyl,cap);
+  }else{
+   const fold=new THREE.Mesh(new THREE.BoxGeometry(.62,.14,.4),new THREE.MeshBasicMaterial({color:0xc49662}));
+   const collar=new THREE.Mesh(new THREE.BoxGeometry(.24,.1,.16),new THREE.MeshBasicMaterial({color:0x6e5340}));
+   collar.position.set(0,.1,.02);
+   g.add(fold,collar);
+  }
+  g.position.y=.42;
+  return g;
+ }
  /** Hide lantern meshes while a non-torch prop occupies the hand. SpotLight is gated separately. */
  setTorchMeshesVisible(show:boolean){
   this.torchBody.traverse(o=>{if(o instanceof THREE.Mesh)o.visible=show;});
@@ -1059,7 +1103,9 @@ export class CaveWorld extends OceanWorld {
  syncPickups(){
   for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);group.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
   for(const p of this.mission.pickups){let group=this.pickupMeshes.get(p.id);if(!group){group=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:p.item==='relic'?0xe2b65e:0x82c8b7,emissive:p.item==='relic'?0x6b3c07:0x153c36,emissiveIntensity:.7,metalness:.4,roughness:.45});
-    if(p.item==='relic'){const points:THREE.Vector3[]=[],radii:number[]=[];for(let i=0;i<=72;i++){const t=i/72,a=t*Math.PI*4.5,r=.03+t*t*.62;points.push(V(Math.cos(a)*r,Math.sin(a)*r,0));radii.push(.01+t*.12);}group.add(this.tube(points,radii,mat,90,8));group.add(new THREE.PointLight(0xefbb68,3.5,7));}else group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.3,1),mat));
+    if(p.item==='relic'){const points:THREE.Vector3[]=[],radii:number[]=[];for(let i=0;i<=72;i++){const t=i/72,a=t*Math.PI*4.5,r=.03+t*t*.62;points.push(V(Math.cos(a)*r,Math.sin(a)*r,0));radii.push(.01+t*.12);}group.add(this.tube(points,radii,mat,90,8));group.add(new THREE.PointLight(0xefbb68,3.5,7));}
+    else if(p.item==='gun'||p.item==='bottle'||p.item==='coat')group.add(this.gearPickupMesh(p.item));
+    else group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.3,1),mat));
     group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
     const pickup=group;
     const box=new THREE.Box3();
@@ -1237,6 +1283,7 @@ export class CaveWorld extends OceanWorld {
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
   this.shakeAmp=0;this.knifeFlashUntil=0;
   if(this.knifeVisual){poseKnife(this.knifeVisual);this.knifeVisual.visible=this.holdingKnife()&&knifeMeshReady(this.knifeVisual);}
+  if(this.gunVisual)this.gunVisual.visible=this.holdingGun();
   this.syncHeldTorch();
   if(this.bloodGroup){
    this.bloodGroup.visible=false;this.bloodLife=0;
@@ -1350,6 +1397,12 @@ export class CaveWorld extends OceanWorld {
      poseKnife(this.knifeVisual);
     }
    }
+   if(this.gunVisual){
+    this.gunVisual.visible=this.holdingGun();
+    if(this.gunVisual.visible){
+     this.gunVisual.position.set(.32+Math.sin(this.time*.7)*.02*bobBlend,-.28+Math.sin(this.time*1.05)*.02*bobBlend,-.55);
+    }
+   }
    this.updateBlood(dt);
    }
 
@@ -1388,6 +1441,7 @@ export class CaveWorld extends OceanWorld {
    this.knifeVisual.visible=knifeHeld&&knifeMeshReady(this.knifeVisual);
    if(knifeHeld)poseKnife(this.knifeVisual);
   }
+  if(this.gunVisual&&!this.playing)this.gunVisual.visible=this.holdingGun();
   this.torchBody.visible=true;
   if(torchOn){
    const torch=torchModulation(this.position.y,this.pitch);
