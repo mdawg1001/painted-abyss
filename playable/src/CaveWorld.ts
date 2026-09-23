@@ -625,7 +625,8 @@ export class CaveWorld extends OceanWorld {
   this.scene.add(this.breathVolume,this.breathWater);
 
   const steel=new THREE.MeshStandardMaterial({color:0x8a9298,metalness:.72,roughness:.32});
-  const ring=new THREE.MeshBasicMaterial({color:0xe2c27a});
+  const ring=new THREE.MeshBasicMaterial({color:0xf0d48a});
+  const blaze=new THREE.MeshBasicMaterial({color:0xc8d4d2});
   const hatch=new THREE.Group();
   const door=new THREE.Mesh(new THREE.BoxGeometry(3.6,2.6,.22),steel);
   door.position.y=1.65;
@@ -637,6 +638,12 @@ export class CaveWorld extends OceanWorld {
   const spawn=breathHatchSpawn();
   hatch.position.set(spawn.x,0,spawn.z+2.2);
   this.scene.add(hatch);
+  // Unlit floor blazes so the dry corridor reads with the knife out (torch is off).
+  for(let i=0;i<8;i++){
+   const dash=new THREE.Mesh(new THREE.BoxGeometry(1.1,.04,1.6),blaze);
+   dash.position.set(foot.cx,.06,spawn.z-3.2-i*3.4);
+   this.scene.add(dash);
+  }
 
   const mark=new THREE.MeshBasicMaterial({color:0xffb04a});
   const far=new THREE.Group();
@@ -655,8 +662,8 @@ export class CaveWorld extends OceanWorld {
 
   const tank=new THREE.Group();
   tank.name='breathTank';
-  const body=new THREE.Mesh(new THREE.CylinderGeometry(.17,.17,.74,14),new THREE.MeshStandardMaterial({color:0x2c6b42,metalness:.48,roughness:.38}));
-  const stripe=new THREE.Mesh(new THREE.CylinderGeometry(.178,.178,.14,14),new THREE.MeshBasicMaterial({color:0xd8f5a4}));
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(.17,.17,.74,14),new THREE.MeshBasicMaterial({color:0x3dce6a}));
+  const stripe=new THREE.Mesh(new THREE.CylinderGeometry(.178,.178,.14,14),new THREE.MeshBasicMaterial({color:0xf4ffc8}));
   stripe.position.y=.08;
   const valve=new THREE.Mesh(new THREE.BoxGeometry(.14,.16,.14),new THREE.MeshStandardMaterial({color:0xd5dde2,metalness:.82,roughness:.22}));
   valve.position.y=.44;
@@ -665,6 +672,13 @@ export class CaveWorld extends OceanWorld {
   tank.add(body,stripe,valve,collar);
   this.breathTank=tank;
   this.scene.add(tank);
+  // Short-range practicals. Distances stay inside corridor chunks so the cave sconce budget is left alone.
+  const lamps=[{z:spawn.z-2,d:12},{z:16,d:11},{z:8,d:5}];
+  for(const lamp of lamps){
+   const light=new THREE.PointLight(0xffc48a,14,lamp.d,2);
+   light.position.set(foot.cx,2.4,lamp.z);
+   this.scene.add(light);
+  }
   this.syncBreathProps();
  }
  syncBreathProps(){
