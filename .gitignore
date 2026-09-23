@@ -1,6 +1,10 @@
 node_modules/
 test-results/
 .DS_Store
+# Generated build output and verification artifacts — rebuilt on demand
+# (playable/serve.mjs and refresh.mjs auto-build dist when it is missing or stale).
+playable/dist/
+docs/verification/physics-reality.json
 .env
 .env.*
 !.env.example

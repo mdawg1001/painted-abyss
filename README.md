@@ -28,19 +28,23 @@ A small playable underwater survival mission built from the supplied Ancient Sea
 
 The supplied **Underwater Ambience** track loops during the dive, fades in gently, and shares the existing M mute and Esc pause controls. Resuming continues the music; restarting a dive starts it again. The original MP3 is included unchanged at `playable/src/assets/underwater-ambience.mp3`. The generated water ambience has been removed: the remaining generated sounds are regulator breathing (with quiet gaps between breaths), the two-tone chime, and a short mechanical inventory select click/snap on 1–5.
 
-## Play the included build — no dependency installation
+## Play the build
+
+The production build (`playable/dist/`) is **generated, not committed**. The local server builds it for you on first run and whenever the version changes.
 
 1. Clone the repository or unzip the entire downloaded folder.
-2. With **Node.js 22.13 or newer** installed, open a terminal in this folder and run:
+2. With **Node.js 22.13 or newer** installed, open a terminal and run:
 
    ```sh
-   node playable/serve.mjs
+   cd playable
+   npm ci        # one-time: install pinned dependencies
+   npm start     # runs serve.mjs — builds dist if missing/stale, then serves
    ```
 
 3. Open **http://127.0.0.1:5173** in desktop Chrome, Edge, or another WebGL 2 browser.
 4. Click **Begin dive** once. Move the mouse or trackpad normally to look. No button needs to be held.
 
-Keep the terminal open while playing. Stop it with Ctrl+C. If port 5173 is already occupied, stop that other local server or set the `PORT` environment variable to a free port before running. The ready-made game requires no internet after extraction. Opening an HTML file by double-clicking does not start its local server. The root `index.html` is the preserved artwork gallery, not the new game.
+Keep the terminal open while playing. Stop it with Ctrl+C. If port 5173 is already occupied, stop that other local server or set the `PORT` environment variable to a free port before running. After dependencies are installed the game needs no internet. Opening an HTML file by double-clicking does not start its local server. The root `index.html` is the preserved artwork gallery, not the new game.
 
 ## Controls
 
@@ -89,7 +93,7 @@ npm test
 npm run build
 ```
 
-`npm ci` downloads pinned dependencies. `npm run build` type-checks the project and replaces `playable/dist/`. The included production build uses relative asset paths and a tiny local Node server; it does not need the old Cloudflare / Sites hosting stack.
+`npm ci` downloads pinned dependencies. `npm run build` type-checks the project and regenerates the (gitignored) `playable/dist/`. The production build uses relative asset paths and a tiny local Node server; it does not need the old Cloudflare / Sites hosting stack.
 
 Optional browser suite: install Playwright (`npm install --no-save --package-lock=false playwright@1.62.1`), have desktop Google Chrome installed, run the development server at port 5173, then run `node tests/browser.cjs` in another terminal inside `playable/`. This suite uses an isolated headless Chrome instance and software WebGL. Results go in `test-results/`.
 

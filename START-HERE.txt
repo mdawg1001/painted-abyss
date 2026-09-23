@@ -3,14 +3,17 @@ PAINTED ABYSS — FIRST DIVE
 Unzip the entire folder. With Node.js 22.13+ installed, open a terminal
 in this folder and run:
 
-    node playable/refresh.mjs
+    cd playable
+    npm ci                 (one-time: install dependencies)
+    node refresh.mjs       (pulls latest, builds, and serves)
 
-(Or, if already up to date: node playable/serve.mjs)
+(Or, if already up to date: node serve.mjs)
 
 Open http://127.0.0.1:5173 in a desktop browser and click Begin dive.
-Confirm the on-screen label says BUILD v0.3.2 · <git-sha>
+Confirm the on-screen label says BUILD v0.3.3 · <git-sha>
 (menu and during the dive). After another agent merges, run refresh.mjs again.
-No dependency installation is needed to play the included build.
+The production build (playable/dist) is generated on demand — serve.mjs and
+refresh.mjs build it for you, so it is not committed to git.
 
 WASD swim · Space/Q up/down · Shift sprint · mouse/trackpad look
 F torch · E collect/extract · 1–5 select · click stab (knife) · R use · G drop · Esc pause

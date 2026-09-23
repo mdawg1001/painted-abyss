@@ -1,3 +1,5 @@
 node_modules/
 test-results/
 .DS_Store
+# Generated production build — rebuilt on demand by serve.mjs / refresh.mjs.
+dist/
