@@ -1,6 +1,6 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
 export type Point={x:number;y:number;z:number};
-export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife';
+export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife'|'gun'|'bottle'|'coat';
 export type Pickup={id:number;item:Item;position:Point};
 export type PredatorState='patrol'|'alert'|'chase'|'search'|'damaged'|'dead';
 export type StabResult='hit'|'miss'|'cooldown'|'blocked';
@@ -30,6 +30,31 @@ export const SURFACE_Y=7.1;
 export const START:Point={x:0,y:3,z:-12};
 export const RELIC:Point={x:0,y:2,z:-112};
 export const EXIT:Point={x:32,y:3,z:-12};
+/**
+ * Breath corridor — one addition south of the entrance chamber.
+ * Hatch (spawn) at the south end, marked far end where it meets the cave.
+ * Water rises in these cells only and is not part of the cave column.
+ */
+export const BREATH_COLS:[number,number]=[10,11];
+export const BREATH_ROW_HATCH=-8;
+export const BREATH_ROW_FAR=0;
+/** One-cell buffer so the hatch and the far end never host the tank. */
+export const BREATH_HATCH_ROWS=1;
+export const BREATH_FAR_ROWS=1;
+/** Metres the corridor water climbs each second. Head-height in about two minutes. */
+export const BREATH_RISE_MPS=0.016;
+/** Starts under the floor mesh so the first life is dry enough to walk. */
+export const BREATH_WATER_START=0.08;
+/** Standing eye height on the dry corridor floor. */
+export const WALK_EYE_Y=FLOOR_Y+1.6;
+export const WALK_SPEED=2.35;
+export const WALK_SPRINT=3.55;
+/** Litres on the cylinder after a death — enough to search, not to skip the tank. */
+export const BREATH_RESPAWN_LITRES=28;
+/** Spare bottle in the corridor. Used with R; death can take it before that. */
+export const SPARE_BOTTLE_LITRES=40;
+/** Walk while the corridor water is still below the eyes. */
+export const BREATH_WALK_WATER=WALK_EYE_Y-.05;
 /** Floor-sitting interactables — each chest hides one map fragment. */
 export const CHEST_LABEL:Record<ChestKind,string>={
  military:'military crate',
@@ -185,6 +210,9 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  air:{name:'Pony bottle',short:'Pony',description:`R · Arm a separate bailout cylinder (~${AIR_BAILOUT_LITRES} L). Drains after the main tank.`,hint:'R arm bailout · consumed'},
  bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
+ gun:{name:'Gun',short:'Gun',description:'Carry it in the hand. It does not fire. Death leaves it on the corpse.',hint:'Carry · death drops it'},
+ bottle:{name:'Spare air bottle',short:'Bottle',description:`R · Add ${SPARE_BOTTLE_LITRES} L to the main cylinder (consumed).`,hint:'R use · consumed'},
+ coat:{name:'Coat',short:'Coat',description:'Carry it. Nothing here hurts less for wearing it yet. Death leaves it on the corpse.',hint:'Carry · death drops it'},
 };
 /**
  * Inventory items that occupy the FPS hand instead of the dive torch.
@@ -192,7 +220,16 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  * selected slot is not one of these (knife today; other hand-props later).
  */
 export function occupiesFpsHand(item:Item|null):boolean{
- return item==='knife';
+ return item==='knife'||item==='gun';
+}
+/** Corridor floor gear. Not on the hatch. */
+export function corridorGearPickups():Pickup[]{
+ const spots:{item:Item;x:number;z:number}[]=[
+  {item:'gun',x:-3.2,z:22},
+  {item:'bottle',x:-.5,z:14},
+  {item:'coat',x:-2.6,z:8},
+ ];
+ return spots.map((s,i)=>({id:3+i,item:s.item,position:{x:s.x,y:FLOOR_Y,z:s.z}}));
 }
 /** True when the selected slot should show the dive torch (and may shine). */
 export function holdingTorchItem(item:Item|null):boolean{
@@ -208,6 +245,8 @@ rect(8,14,1,5);rect(10,12,5,11);rect(4,18,11,24);rect(10,12,24,26);rect(8,14,26,
 for(let c=9;c<=12;c++)for(let r=15;r<=20;r++)cells.delete(`${c},${r}`);
 // A single-cell fissure separates the predator's cavern from the extraction pool.
 rect(19,19,4,20);rect(18,19,20,21);rect(17,21,1,4);
+// South corridor joined to the entrance (row 1). Does not replace any cave cell.
+for(const col of BREATH_COLS)for(let row=BREATH_ROW_HATCH;row<=BREATH_ROW_FAR;row++)cells.add(`${col},${row}`);
 export const world=(col:number,row:number):Point=>({x:(col-11)*CELL,y:3,z:-row*CELL});
 export const tile=(p:Point)=>({col:Math.round(p.x/CELL)+11,row:Math.round(-p.z/CELL)});
 export const distance=(a:Point,b:Point)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
@@ -284,6 +323,51 @@ export function predatorSpawnCandidates(awayFrom:Point=START):Point[]{
 export function randomPredatorSpawn(rand:()=>number=Math.random,awayFrom:Point=START):Point{
  const picks=predatorSpawnCandidates(awayFrom);
  return {...picks[Math.floor(rand()*picks.length)!]};
+}
+export type BreathZone='hatch'|'middle'|'far'|'';
+/** Hatch, open middle, or marked far end. Empty string means this cell is not the corridor. */
+export function breathZone(col:number,row:number):BreathZone{
+ if((col!==BREATH_COLS[0]&&col!==BREATH_COLS[1])||row<BREATH_ROW_HATCH||row>BREATH_ROW_FAR)return '';
+ if(row<=BREATH_ROW_HATCH+BREATH_HATCH_ROWS)return 'hatch';
+ if(row>=BREATH_ROW_FAR-BREATH_FAR_ROWS)return 'far';
+ return 'middle';
+}
+export function inBreathCorridor(p:Point){const t=tile(p);return breathZone(t.col,t.row)!=='';}
+/** Dry or wading: head still above the corridor waterline. The cave itself is never this. */
+export function canWalkBreath(p:Point,waterY:number){return inBreathCorridor(p)&&waterY<BREATH_WALK_WATER;}
+export function riseBreathWater(waterY:number,dt:number){return Math.min(SURFACE_Y,waterY+BREATH_RISE_MPS*Math.max(0,dt));}
+export type BreathTankMount={x:number;y:number;z:number;yaw:number;row:number;col:number};
+/**
+ * Wall mounts along the middle of the corridor only.
+ * Alternating walls so a respawn is a different place, never the hatch or the far end.
+ */
+export function breathTankMounts():BreathTankMount[]{
+ const rows:number[]=[];
+ for(let row=BREATH_ROW_HATCH+BREATH_HATCH_ROWS+1;row<=BREATH_ROW_FAR-BREATH_FAR_ROWS-1;row++)rows.push(row);
+ return rows.map((row,i)=>{
+  const west=i%2===0;
+  const col=west?BREATH_COLS[0]:BREATH_COLS[1];
+  const p=world(col,row);
+  return {x:west?p.x-1.7:p.x+1.7,y:1.55,z:p.z,yaw:west?Math.PI/2:-Math.PI/2,row,col};
+ });
+}
+export function nextBreathTankIndex(current:number,count=breathTankMounts().length){
+ if(count<=1)return 0;
+ return (current+1)%count;
+}
+/** Always the hatch. Replaces random diver spawn for this phase. */
+export function breathHatchSpawn():Point{
+ const a=world(BREATH_COLS[0],BREATH_ROW_HATCH);
+ const b=world(BREATH_COLS[1],BREATH_ROW_HATCH);
+ return {x:(a.x+b.x)/2,y:WALK_EYE_Y,z:(a.z+b.z)/2};
+}
+/** Axis-aligned footprint of the corridor water (not the cave). */
+export function breathFootprint(){
+ const minX=world(BREATH_COLS[0],0).x-CELL/2;
+ const maxX=world(BREATH_COLS[1],0).x+CELL/2;
+ const maxZ=world(BREATH_COLS[0],BREATH_ROW_HATCH).z+CELL/2;
+ const minZ=world(BREATH_COLS[0],BREATH_ROW_FAR).z-CELL/2;
+ return {minX,maxX,minZ,maxZ,width:maxX-minX,depth:maxZ-minZ,cx:(minX+maxX)/2,cz:(minZ+maxZ)/2};
 }
 export function pathBetween(a:Point,b:Point){
  const from=tile(a),to=tile(b),start=`${from.col},${from.row}`,end=`${to.col},${to.row}`;
@@ -415,7 +499,12 @@ export function writeInventoryTipsSeen(){
  try{globalThis.localStorage?.setItem(INVENTORY_TIPS_KEY,'1');}catch{/* private mode */}
 }
  export class Mission {
- position={...START};health=100;air=AIR_MAIN_MAX;bailout=0;elapsed=0;stamina=100;torch=true;
+ position={...breathHatchSpawn()};health=100;air=AIR_MAIN_MAX;bailout=0;elapsed=0;stamina=100;torch=true;
+ /** Corridor waterline (metres). Rises over time and is kept across death. */
+ breathWaterY=BREATH_WATER_START;
+ /** Index into `breathTankMounts`. Moves on each death. */
+ breathTankIndex=0;
+ breathDeaths=0;
  /** BCD trim −1 (sink) .. 0 (neutral) .. +1 (float). Driven by Space/Q, not kick speed. */
  buoyancy=0;
  /** Idle drift target for buoyancy (−1..+1). Player sets with [ ] / X; Space/Q are momentary. */
@@ -423,7 +512,7 @@ export function writeInventoryTipsSeen(){
  /** Elevated gas effort until this mission elapsed time (bite / panic). */
  gasPanicUntil=0;
  inventory:(Item|null)[]=['knife','wood','flare','air','bandage'];selected=0;
- pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},{id:2,item:'flare',position:{x:-20,y:2,z:-56}}];nextId=3;
+ pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},{id:2,item:'flare',position:{x:-20,y:2,z:-56}},...corridorGearPickups()];nextId=6;
  chests:Chest[]=createDiveChests();
  /** Collected cave-chart scraps (from opened chests). */
  mapFragments:MapFragmentId[]=[];
@@ -442,7 +531,7 @@ export function writeInventoryTipsSeen(){
  patrol=[world(16,22),world(6,22),world(6,13),world(16,13)];
  constructor(tipsSeen=false){
   this.tipsSeen=tipsSeen;
-  const player=randomPlayerSpawn();
+  const player=breathHatchSpawn();
   this.position={...player};
   const spawn=randomPredatorSpawn(Math.random,player);
   this.predator.position={...spawn};
@@ -489,8 +578,62 @@ export function writeInventoryTipsSeen(){
    .filter(c=>distance(c.position,this.position)<3.4&&visible(this.position,{...c.position,y:c.position.y+.4}))
    .sort((a,b)=>distance(a.position,this.position)-distance(b.position,this.position))[0];
  }
+ nearBreathTank(){
+  const t=breathTankMounts()[this.breathTankIndex];
+  if(!t)return false;
+  return distance(this.position,t)<3.2;
+ }
+ /**
+  * Leave every carried item in a ring at `where` (the corpse), then empty the hands.
+  * World pickups that were never taken stay where they are.
+  */
+ dropCarriedAt(where:Point){
+  const carried=this.inventory.filter((item):item is Item=>item!==null);
+  const n=carried.length;
+  for(let i=0;i<n;i++){
+   const a=(i/n)*Math.PI*2;
+   this.pickups.push({
+    id:this.nextId++,
+    item:carried[i],
+    position:{x:where.x+Math.cos(a)*.55,y:Math.max(1,where.y-.4),z:where.z+Math.sin(a)*.55},
+   });
+  }
+  this.inventory=[null,null,null,null,null];
+  this.selected=0;
+  this.pending=null;
+ }
+ /**
+  * Death in the playable returns here: hatch, empty hands, short air, same water, tank on the next mount.
+  * Whatever was carried stays on the corpse. Outcome stays `lost` inside `update` so a fresh mission is still a full reset.
+  */
+ respawnAtHatch(){
+  const corpse={...this.position};
+  this.dropCarriedAt(corpse);
+  const water=this.breathWaterY;
+  this.breathTankIndex=nextBreathTankIndex(this.breathTankIndex);
+  this.breathWaterY=water;
+  this.breathDeaths+=1;
+  this.position={...breathHatchSpawn()};
+  this.health=100;
+  this.air=BREATH_RESPAWN_LITRES;
+  this.bailout=0;
+  this.buoyancy=0;
+  this.buoyancyTrim=0;
+  this.stamina=100;
+  this.gasPanicUntil=0;
+  this.outcome='playing';
+  this.reason='';
+  this.pending=null;
+  this.say('You wake at the hatch with empty hands. What you carried is on the corpse. The water stayed. The air tank has moved.','blocked');
+ }
  interact(){
   if(this.outcome!=='playing')return;
+  if(this.nearBreathTank()){
+   if(this.air>=AIR_MAIN_MAX-.01){this.say('The wall tank hisses. Your cylinder is already full.','blocked');return;}
+   this.air=AIR_MAIN_MAX;
+   this.say('Wall tank. Main cylinder filled.','ok');
+   return;
+  }
   if(distance(this.position,EXIT)<4){if(this.hasRelic){this.outcome='won';this.reason='Relic secured. You made it back to the light.';}else this.say('Extraction needs the ammonite relic. Follow the turquoise markers.','blocked');return;}
   const chest=this.pending===null?this.nearestChest():undefined;
   const pickup=this.pending===null?this.nearest():this.pickups.find(p=>p.id===this.pending);
@@ -549,6 +692,13 @@ export function writeInventoryTipsSeen(){
    }
    this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
   }
+  if(item==='bottle'){
+   if(this.air>=AIR_MAIN_MAX-.01){this.pulse('blocked');return;}
+   this.air=Math.min(AIR_MAIN_MAX,this.air+SPARE_BOTTLE_LITRES);
+   this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
+  }
+  // Gun does not fire. Coat does not change damage. Both are only carried, then lost.
+  if(item==='gun'||item==='coat'){this.pulse('blocked');return;}
   this.pulse('blocked');
  }
  /**
@@ -595,6 +745,7 @@ export function writeInventoryTipsSeen(){
  }
  update(dt:number,sprinting=false){
   if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;
+  this.breathWaterY=riseBreathWater(this.breathWaterY,dt);
   const panic=this.elapsed<this.gasPanicUntil;
   let need=gasDrainRate(this.position.y,sprinting,panic)*dt;
   if(this.air>=need){this.air-=need;need=0;}
