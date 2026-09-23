@@ -21,6 +21,14 @@
 - Files: `public/assets/scroll/scroll.gltf` (authored mesh, 7,444 triangles) and `textures/` (albedo, normal, roughness, metallic, AO, emissive)
 - Visible in the open-top plastic crate immediately, and inside the military crate or suitcase after that lid is opened, until the scrap is taken.
 
+## WW2 Soviet Uniform (Sketchfab)
+- Source: https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99
+- Author: tnnv (@tnnv)
+- License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
+- Mirror: Zenodo 10.5281/zenodo.10237261 (same UID / license; used to fetch the downloadable glTF binary)
+- Files: `public/assets/soviet-uniform/ww2_soviet_uniform.glb` (~27k triangles)
+- Phase 3 breath-corridor Soviet guard mesh (scaled to ~human height).
+
 ## Lifebuoy (Poly Haven)
 - Source: https://polyhaven.com/a/lifebuoy
 - Author: Hank Kaamura

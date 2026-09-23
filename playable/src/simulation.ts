@@ -3,6 +3,8 @@ export type Point={x:number;y:number;z:number};
 export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife'|'gun'|'bottle'|'coat';
 export type Pickup={id:number;item:Item;position:Point};
 export type PredatorState='patrol'|'alert'|'chase'|'search'|'damaged'|'dead';
+/** Corridor Soviet guard FSM (Phase 3). Separate from the cave ichthyosaur. */
+export type GuardState='patrol'|'alert'|'chase'|'search';
 export type StabResult='hit'|'miss'|'cooldown'|'blocked';
 export type ChestKind='military'|'plastic'|'suitcase';
 /** Which torn map region a chest yields. */
@@ -55,6 +57,20 @@ export const BREATH_RESPAWN_LITRES=28;
 export const SPARE_BOTTLE_LITRES=40;
 /** Walk while the corridor water is still below the eyes. */
 export const BREATH_WALK_WATER=WALK_EYE_Y-.05;
+/** Phase 3 Soviet guard — melee reach on dry corridor floor. */
+export const GUARD_MELEE_RANGE=1.85;
+export const GUARD_MELEE_DAMAGE=22;
+/** When the guard wears the stolen coat, his strike damage is multiplied by this. */
+export const GUARD_COAT_DAMAGE_MULT=.55;
+export const GUARD_GUN_RANGE=12;
+export const GUARD_GUN_DAMAGE=30;
+export const GUARD_GUN_COOLDOWN=1.35;
+export const GUARD_MELEE_COOLDOWN=1.55;
+/** Bottle fuel the guard drinks as “his air” while chasing. */
+export const GUARD_BOTTLE_AIR=SPARE_BOTTLE_LITRES;
+export const GUARD_SPEED={patrol:1.2,alert:.65,chase:2.15,chaseTired:1.25,search:1.45} as const;
+/** How close a corpse drop must be for him to claim gun / bottle / coat. */
+export const GUARD_LOOT_RANGE=1.6;
 /** Floor-sitting interactables — each chest hides one map fragment. */
 export const CHEST_LABEL:Record<ChestKind,string>={
  military:'military crate',
@@ -221,9 +237,9 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  air:{name:'Pony bottle',short:'Pony',description:`R · Arm a separate bailout cylinder (~${AIR_BAILOUT_LITRES} L). Drains after the main tank.`,hint:'R arm bailout · consumed'},
  bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
- gun:{name:'Gun',short:'Gun',description:'Carry it in the hand. It does not fire. Death leaves it on the corpse.',hint:'Carry · death drops it'},
- bottle:{name:'Spare air bottle',short:'Bottle',description:`R · Add ${SPARE_BOTTLE_LITRES} L to the main cylinder (consumed).`,hint:'R use · consumed'},
- coat:{name:'Coat',short:'Coat',description:'Carry it. Nothing here hurts less for wearing it yet. Death leaves it on the corpse.',hint:'Carry · death drops it'},
+ gun:{name:'Gun',short:'Gun',description:'Carry it in the hand. It does not fire for you. If the corridor guard kills you, he will take it and shoot.',hint:'Carry · death drops it'},
+ bottle:{name:'Spare air bottle',short:'Bottle',description:`R · Add ${SPARE_BOTTLE_LITRES} L to the main cylinder (consumed). The corridor guard will drink it as his air if he takes it from your corpse.`,hint:'R use · consumed'},
+ coat:{name:'Coat',short:'Coat',description:'Carry it. It does not soften guardian bites. If the corridor guard takes it from your corpse, his strikes hurt less.',hint:'Carry · death drops it'},
 };
 /**
  * Inventory items that occupy the FPS hand instead of the dive torch.
@@ -347,6 +363,48 @@ export function inBreathCorridor(p:Point){const t=tile(p);return breathZone(t.co
 /** Dry or wading: head still above the corridor waterline. The cave itself is never this. */
 export function canWalkBreath(p:Point,waterY:number){return inBreathCorridor(p)&&waterY<BREATH_WALK_WATER;}
 export function riseBreathWater(waterY:number,dt:number){return Math.min(SURFACE_Y,waterY+BREATH_RISE_MPS*Math.max(0,dt));}
+/** Open corridor cells only — the Soviet guard never enters the cave grid. */
+export function breathCell(col:number,row:number){return breathZone(col,row)!=='';}
+/** Standing spawn for the corridor guard (middle stretch, clear of hatch gear). */
+export function guardSpawnPoint():Point{
+ const p=world(BREATH_COLS[0],-4);
+ return {x:p.x+.6,y:WALK_EYE_Y,z:p.z};
+}
+/** Patrol posts along the dry middle of the breath corridor. */
+export function guardPatrolPoints():Point[]{
+ const rows=[-6,-4,-2];
+ return rows.map((row,i)=>{
+  const col=BREATH_COLS[i%2];
+  const p=world(col,row);
+  return {x:p.x+(i%2?-.4:.4),y:WALK_EYE_Y,z:p.z};
+ });
+}
+/**
+ * BFS along breath-corridor cells only.
+ * Returns cell centers toward `b`, or [] if unreachable / not in the corridor.
+ */
+export function pathBreath(a:Point,b:Point){
+ const from=tile(a),to=tile(b),start=`${from.col},${from.row}`,end=`${to.col},${to.row}`;
+ if(!breathCell(to.col,to.row))return [];
+ const queue=[start],parents=new Map<string,string|null>([[start,null]]);
+ for(let i=0;i<queue.length;i++){
+  const key=queue[i];if(key===end)break;
+  const [c,r]=key.split(',').map(Number);
+  for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]]){
+   const nc=c+dc,nr=r+dr,k=`${nc},${nr}`;
+   if(breathCell(nc,nr)&&!parents.has(k)){parents.set(k,key);queue.push(k);}
+  }
+ }
+ if(!parents.has(end))return [];
+ const path:Point[]=[];let key:string|null=end;
+ while(key&&key!==start){
+  const [c,r]=key.split(',').map(Number);
+  const w=world(c,r);
+  path.unshift({x:w.x,y:WALK_EYE_Y,z:w.z});
+  key=parents.get(key)!;
+ }
+ return path;
+}
 export type BreathTankMount={x:number;y:number;z:number;yaw:number;row:number;col:number};
 /**
  * Wall mounts along the middle of the corridor only.
@@ -540,10 +598,26 @@ export function writeInventoryTipsSeen(){
   position:world(16,19),state:'patrol' as PredatorState,timer:0,lost:0,lastKnown:world(16,19),waypoint:0,bite:0,heading:0,
   hp:PREDATOR_HP_MAX,raged:false,flinch:0,stabCool:0,
  };
+ /**
+  * Phase 3 Soviet corridor guard. Walks dry breath-corridor floor only.
+  * On kill he claims dropped gun / bottle / coat and uses them.
+  */
+ guard={
+  position:guardSpawnPoint(),
+  state:'patrol' as GuardState,
+  timer:0,lost:0,lastKnown:guardSpawnPoint(),waypoint:0,heading:0,
+  meleeCool:0,shootCool:0,
+  gun:false,bottle:false,coat:false,
+  /** Remaining “air” from a stolen spare bottle. */
+  air:0,
+ };
+ /** Set when the corridor guard deals the killing blow — triggers corpse loot claim. */
+ killedByGuard=false;
  /** Latest combat cue for audio / camera (cleared by the renderer when consumed). */
- combatCue:''|'stab-hit'|'stab-miss'|'flinch'|'break'|'kill'='';
+ combatCue:''|'stab-hit'|'stab-miss'|'flinch'|'break'|'kill'|'guard-shot'|'guard-melee'='';
  decoy:{position:Point;until:number}|null=null;
  patrol=[world(16,22),world(6,22),world(6,13),world(16,13)];
+ guardPatrol=guardPatrolPoints();
  constructor(tipsSeen=false){
   this.tipsSeen=tipsSeen;
   const player=breathHatchSpawn();
@@ -557,6 +631,11 @@ export function writeInventoryTipsSeen(){
    if(d<bestD){bestD=d;best=i;}
   }
   this.predator.waypoint=best;
+  const gSpawn=guardSpawnPoint();
+  this.guard.position={...gSpawn};
+  this.guard.lastKnown={...gSpawn};
+  this.guard.waypoint=0;
+  this.killedByGuard=false;
   if(!tipsSeen){
    this.notice='1–5 select · click stabs with the knife · R uses consumables.';
    this.noticeUntil=8;this.feedbackKind='select';
@@ -620,10 +699,15 @@ export function writeInventoryTipsSeen(){
  /**
   * Death in the playable returns here: hatch, empty hands, short air, same water, tank on the next mount.
   * Whatever was carried stays on the corpse. Outcome stays `lost` inside `update` so a fresh mission is still a full reset.
+  * If the Soviet guard killed you, he claims gun / bottle / coat from that corpse and will use them.
   */
  respawnAtHatch(){
   const corpse={...this.position};
   this.dropCarriedAt(corpse);
+  if(this.killedByGuard){
+   this.claimGuardLoot(corpse);
+   this.killedByGuard=false;
+  }
   const water=this.breathWaterY;
   this.breathTankIndex=nextBreathTankIndex(this.breathTankIndex);
   this.breathWaterY=water;
@@ -640,6 +724,28 @@ export function writeInventoryTipsSeen(){
   this.reason='';
   this.pending=null;
   this.say('You wake at the hatch with empty hands. What you carried is on the corpse. The water stayed. The air tank has moved.','blocked');
+ }
+ /**
+  * After a guard kill, pull gun / bottle / coat lying on the corpse into his kit.
+  * Untaken corridor gear farther away stays on the floor.
+  */
+ claimGuardLoot(corpse:Point){
+  const keep:Pickup[]=[];
+  for(const p of this.pickups){
+   const near=distance(p.position,corpse)<=GUARD_LOOT_RANGE;
+   if(near&&p.item==='gun'){this.guard.gun=true;continue;}
+   if(near&&p.item==='bottle'){
+    this.guard.bottle=true;
+    this.guard.air=Math.max(this.guard.air,GUARD_BOTTLE_AIR);
+    continue;
+   }
+   if(near&&p.item==='coat'){this.guard.coat=true;continue;}
+   keep.push(p);
+  }
+  this.pickups=keep;
+  if(this.guard.gun||this.guard.bottle||this.guard.coat){
+   this.say('The guard took what you dropped.','blocked');
+  }
  }
  private takeChestScrap(chest:Chest){
   const got=this.collectMapFragment(chest.fragment);
@@ -776,6 +882,103 @@ export function writeInventoryTipsSeen(){
   this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?-18:17)*dt));
   if(this.air<=0&&this.bailout<=0){this.outcome='lost';this.reason='Your air ran out. Arm the pony earlier or climb and calm your kick.';return;}
   if(this.pending!==null&&!this.pickups.some(p=>p.id===this.pending&&distance(p.position,this.position)<3.2))this.pending=null;
+  // Corridor guard runs even while the cave guardian is dead / flinching.
+  this.updateGuard(dt,sprinting);
+  if(this.outcome!=='playing')return;
+  this.updatePredator(dt,sprinting);
+ }
+ /**
+  * Phase 3 Soviet guard: patrol / chase on dry breath-corridor floor only.
+  * Stops where water is too deep. No see-through-walls (uses `visible`).
+  * Stolen gun shoots; stolen bottle fuels his chase; stolen coat softens his damage.
+  */
+ private updateGuard(dt:number,sprinting:boolean){
+  const g=this.guard;
+  g.timer+=dt;
+  g.meleeCool=Math.max(0,g.meleeCool-dt);
+  g.shootCool=Math.max(0,g.shootCool-dt);
+  // Bottle is his air — burns while chasing / searching.
+  if(g.bottle&&g.air>0&&(g.state==='chase'||g.state==='search')){
+   g.air=Math.max(0,g.air-dt*2.4);
+   if(g.air<=0)g.bottle=false;
+  }
+  const d=distance(g.position,this.position);
+  const canSee=visible(g.position,this.position);
+  const playerInCorridor=inBreathCorridor(this.position);
+  const sense=canSee&&playerInCorridor&&(d<5||d<(this.torch?14:sprinting?11:7));
+  // FSM
+  if(g.state==='patrol'&&sense){g.state='alert';g.timer=0;g.lastKnown={...this.position};}
+  else if(g.state==='alert'){
+   if(sense)g.lastKnown={...this.position};
+   if(g.timer>1.1){g.state=sense?'chase':'search';g.timer=0;g.lost=0;}
+  }else if(g.state==='chase'){
+   if(sense){g.lastKnown={...this.position};g.lost=0;}else g.lost+=dt;
+   if(g.lost>2.8){g.state='search';g.timer=0;}
+  }else if(g.state==='search'){
+   if(sense){g.state='chase';g.timer=0;g.lost=0;}
+   else if(g.timer>8){g.state='patrol';g.timer=0;}
+  }
+  const goal=g.state==='patrol'?this.guardPatrol[g.waypoint]:g.lastKnown;
+  if(g.state==='patrol'&&distance(g.position,goal)<1.0)g.waypoint=(g.waypoint+1)%this.guardPatrol.length;
+  // Prefer a dry path; if the goal tile is flooded, advance as far as water allows.
+  let target=g.position;
+  const path=pathBreath(g.position,goal);
+  for(const step of path.length?path:[goal]){
+   if(!canWalkBreath(step,this.breathWaterY))break;
+   target=step;
+   break;
+  }
+  // If we only have a flooded goal, hold the last dry footing (no wading chase).
+  if(!canWalkBreath(target,this.breathWaterY))target={...g.position};
+  const dx=target.x-g.position.x,dz=target.z-g.position.z,len=Math.hypot(dx,dz);
+  const tired=!g.bottle||g.air<=0;
+  const speed=g.state==='chase'?(tired?GUARD_SPEED.chaseTired:GUARD_SPEED.chase)
+   :g.state==='alert'?GUARD_SPEED.alert
+   :g.state==='search'?GUARD_SPEED.search
+   :GUARD_SPEED.patrol;
+  if(len>.05&&canWalkBreath(g.position,this.breathWaterY)){
+   g.heading=Math.atan2(-dz,dx);
+   const step={...g.position};
+   moveBody(step,dx/len*Math.min(len,speed*dt),0,dz/len*Math.min(len,speed*dt),.42);
+   // Reject any slide that leaves the corridor or enters deep water.
+   if(canWalkBreath(step,this.breathWaterY)){
+    g.position.x=step.x;g.position.z=step.z;
+   }
+  }
+  g.position.y=WALK_EYE_Y;
+
+  // Combat — only with LOS (no wall shots / stabs).
+  if(canSee&&g.gun&&d<=GUARD_GUN_RANGE&&d>GUARD_MELEE_RANGE*.85&&g.shootCool<=0&&(g.state==='chase'||g.state==='alert')){
+   let dmg=GUARD_GUN_DAMAGE;
+   if(g.coat)dmg=Math.round(dmg*GUARD_COAT_DAMAGE_MULT);
+   this.health=Math.max(0,this.health-dmg);
+   g.shootCool=GUARD_GUN_COOLDOWN;
+   this.gasPanicUntil=this.elapsed+AIR_PANIC_SECONDS;
+   this.combatCue='guard-shot';
+   this.say(g.coat?'Coat-muffled shot!':'The guard fires!');
+   if(this.health<=0){
+    this.killedByGuard=true;
+    this.outcome='lost';
+    this.reason='The corridor guard shot you. He will take what you dropped.';
+   }
+   return;
+  }
+  if(canSee&&d<GUARD_MELEE_RANGE&&g.meleeCool<=0&&(g.state==='chase'||g.state==='alert'||g.state==='search')){
+   let dmg=GUARD_MELEE_DAMAGE;
+   if(g.coat)dmg=Math.round(dmg*GUARD_COAT_DAMAGE_MULT);
+   this.health=Math.max(0,this.health-dmg);
+   g.meleeCool=GUARD_MELEE_COOLDOWN;
+   this.gasPanicUntil=this.elapsed+AIR_PANIC_SECONDS;
+   this.combatCue='guard-melee';
+   this.say(g.coat?'Heavy coat — the blow is softer.':'The guard strikes!');
+   if(this.health<=0){
+    this.killedByGuard=true;
+    this.outcome='lost';
+    this.reason='The corridor guard finished you. He takes your dropped gear.';
+   }
+  }
+ }
+ private updatePredator(dt:number,sprinting:boolean){
   const p=this.predator;const d=distance(p.position,this.position);const canSee=visible(p.position,this.position);
   const sense=canSee&&(d<4.5||d<(this.torch?16:sprinting?13:8));
   const safe=!predatorCell(tile(this.position).col,tile(this.position).row);
