@@ -27,9 +27,10 @@ export const KNIFE_HOLD_POS=HELD_VIEW_POS;
 export const KNIFE_HOLD_ROT={x:1.2,y:.25,z:-.25} as const;
 /**
  * Fish-knife glTF is a ~22cm prop (blade along local Z, width along X).
- * Scaled so the upright blade stays large in the corner, face toward the camera.
+ * Tuned so the upright blade's on-screen box matches the lantern (scale 1.15),
+ * not a larger silhouette.
  */
-export const KNIFE_HOLD_SCALE={x:8,y:5,z:4.8} as const;
+export const KNIFE_HOLD_SCALE={x:10,y:5,z:2.2} as const;
 export const KNIFE_STAB_Z=-1.05;
 
 const stubMetal=()=>new THREE.MeshStandardMaterial({
