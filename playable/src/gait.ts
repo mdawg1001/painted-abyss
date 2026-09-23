@@ -49,6 +49,13 @@ export const GAIT_SPEED={
  runBlendStart:1.95,runBlendEnd:2.45,
 };
 
+/**
+ * Share of the body's head motion passed to the first-person camera (0..1).
+ * The gait model itself stays at full human amplitude; only what the camera
+ * shows is scaled. 0.3 = 70 % less camera shake than the raw head path.
+ */
+export const WALK_CAMERA_MOTION=.3;
+
 /** Acceleration limits (m/s²): gait initiation reaches walking speed in ~2 steps. */
 export const GAIT_ACCEL={walkUp:1.4,walkDown:2.4,runUp:3.2,runDown:4.2};
 

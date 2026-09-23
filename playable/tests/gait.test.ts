@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
  Gait,gaitPose,stepFrequency,stepLength,runWeight,toeOffPhase,wadingDrag,
- GAIT_SPEED,GAIT_ACCEL,BODY,
+ GAIT_SPEED,GAIT_ACCEL,BODY,WALK_CAMERA_MOTION,
 } from '../src/gait';
 import {Mission,canWalk,EXIT,FLOOR_Y,BREATH_WALK_WATER,WALK_SPEED,WALK_SPRINT} from '../src/simulation';
 
@@ -133,4 +133,12 @@ test('wading slows the stride; deep water forces a swim; dry cave floor is walka
  assert.equal(canWalk({...EXIT},m.breathWaterY),true);
  assert.equal(canWalk({...EXIT},BREATH_WALK_WATER+.01),false);
  assert.ok(BODY.hipHeight<BODY.eyeAboveFloor&&FLOOR_Y>0);
+});
+
+test('first-person camera carries 30 % of the head path (70 % less shake)',()=>{
+ assert.equal(WALK_CAMERA_MOTION,.3);
+ const cam=sample(1.4,p=>p.head.y*WALK_CAMERA_MOTION);
+ const body=sample(1.4,p=>p.head.y);
+ assert.ok(Math.abs(p2p(cam)/p2p(body)-.3)<1e-9);
+ assert.ok(p2p(cam)<.015,`camera rise/fall ${(p2p(cam)*100).toFixed(1)} cm`);
 });

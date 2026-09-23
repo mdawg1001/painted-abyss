@@ -6,7 +6,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep } from './diveAudio';
-import { Gait, wadingDrag, runWeight, type GaitEvent } from './gait';
+import { Gait, wadingDrag, runWeight, WALK_CAMERA_MOTION, type GaitEvent } from './gait';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
 import { createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, knifeMeshReady, HELD_VIEW_POS, HELD_VIEW_ROT, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
@@ -1613,11 +1613,13 @@ export class CaveWorld extends OceanWorld {
     // The eye rides the gait: pelvis rise/fall and sway through the trunk and neck,
     // with gaze stabilisation leaving only a small residual nod, roll and yaw.
     const pose=this.gait.pose();
-    const h=pose.head;
+    // Camera takes only WALK_CAMERA_MOTION of the head path (70 % less shake than the raw body).
+    const k=WALK_CAMERA_MOTION,raw=pose.head;
+    const h={x:raw.x*k,y:raw.y*k,z:raw.z*k,pitch:raw.pitch*k,roll:raw.roll*k,yaw:raw.yaw*k};
     // Quiet standing: slow breathing (~0.25 Hz) and a few millimetres of postural sway.
     const still=1-this.gait.moving;
-    const breathe=Math.sin(this.time*1.6)*.004*still;
-    const sway=Math.sin(this.time*.45)*.003*still;
+    const breathe=Math.sin(this.time*1.6)*.004*still*k;
+    const sway=Math.sin(this.time*.45)*.003*still*k;
     const flat=Math.hypot(this.forward.x,this.forward.z)||1;
     const fx=this.forward.x/flat,fz=this.forward.z/flat;
     eyeX=this.position.x+(-fz)*(h.x+sway)+fx*h.z;
