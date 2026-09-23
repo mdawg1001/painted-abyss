@@ -16,19 +16,20 @@ export const KNIFE_ASSET_URL='/assets/knife/fish_knife_1k.gltf';
 export const KNIFE_THUMB_URL='/assets/knife/thumb.png';
 
 /**
- * Camera-local slot shared with the dive torch (CaveWorld torchRest*).
- * The knife occupies this exact transform so it sits where the lantern sits.
+ * Camera-local corner shared with the dive torch (CaveWorld torchRest*).
+ * The knife grip uses that position. Its rotation is its own: the blade stands
+ * up (tip toward the top of the view) instead of aiming forward with the lantern.
  */
 export const HELD_VIEW_POS={x:.44,y:-.4,z:-.62} as const;
 export const HELD_VIEW_ROT={x:.18,y:-.22,z:.32} as const;
 export const KNIFE_HOLD_POS=HELD_VIEW_POS;
-export const KNIFE_HOLD_ROT=HELD_VIEW_ROT;
+/** Pitch stands the blade up; yaw leans the tip slightly toward center. */
+export const KNIFE_HOLD_ROT={x:1.2,y:.25,z:-.25} as const;
 /**
  * Fish-knife glTF is a ~22cm prop (blade along local Z, width along X).
- * Non-uniform scale makes it longer than the lantern and about as wide as the bezel,
- * while the grip origin stays in the shared torch slot.
+ * Scaled so the upright blade stays large in the corner, face toward the camera.
  */
-export const KNIFE_HOLD_SCALE={x:10,y:8,z:6.5} as const;
+export const KNIFE_HOLD_SCALE={x:8,y:5,z:4.8} as const;
 export const KNIFE_STAB_Z=-1.05;
 
 const stubMetal=()=>new THREE.MeshStandardMaterial({
