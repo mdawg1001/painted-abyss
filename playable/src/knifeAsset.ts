@@ -23,9 +23,13 @@ export const HELD_VIEW_POS={x:.44,y:-.4,z:-.62} as const;
 export const HELD_VIEW_ROT={x:.18,y:-.22,z:.32} as const;
 export const KNIFE_HOLD_POS=HELD_VIEW_POS;
 export const KNIFE_HOLD_ROT=HELD_VIEW_ROT;
-/** Fish-knife glTF is much smaller than the lantern mesh; this fills the same corner. */
-export const KNIFE_HOLD_SCALE=1.7;
-export const KNIFE_STAB_Z=-.82;
+/**
+ * Fish-knife glTF is a ~22cm prop (blade along local Z, width along X).
+ * Non-uniform scale makes it longer than the lantern and about as wide as the bezel,
+ * while the grip origin stays in the shared torch slot.
+ */
+export const KNIFE_HOLD_SCALE={x:10,y:8,z:6.5} as const;
+export const KNIFE_STAB_Z=-1.05;
 
 const stubMetal=()=>new THREE.MeshStandardMaterial({
  color:0x6a7078,metalness:.55,roughness:.55,envMapIntensity:.35,
@@ -159,7 +163,7 @@ export function createKnifeStub():THREE.Group{
 
 /** Camera-local rest pose for the held diving knife. */
 export function poseKnife(g:THREE.Group){
- g.scale.setScalar(KNIFE_HOLD_SCALE);
+ g.scale.set(KNIFE_HOLD_SCALE.x,KNIFE_HOLD_SCALE.y,KNIFE_HOLD_SCALE.z);
  g.position.set(KNIFE_HOLD_POS.x,KNIFE_HOLD_POS.y,KNIFE_HOLD_POS.z);
  g.rotation.set(KNIFE_HOLD_ROT.x,KNIFE_HOLD_ROT.y,KNIFE_HOLD_ROT.z);
 }
