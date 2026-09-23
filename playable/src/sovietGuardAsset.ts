@@ -34,17 +34,32 @@ export const GUARD_LOCO_PROCEDURAL=false;
  */
 export const SOVIET_GUARD_HEIGHT=1.90;
 
-/** Native clip travel speeds (m/s) used to match stride rate to AI move speed. */
-export const GUARD_WALK_CLIP_SPEED=1.2;
-export const GUARD_RUN_CLIP_SPEED=2.15;
+/**
+ * Ground speed baked into each authored clip at SOVIET_GUARD_HEIGHT (m/s).
+ * Measured from the planted foot's backward slide during contact
+ * (`tests/soviet-guard-gait.test.ts` re-measures the GLB and fails if these drift).
+ * Stride rate is scaled from these so the planted foot stays locked to the floor.
+ */
+export const GUARD_WALK_CLIP_SPEED=1.05;
+export const GUARD_RUN_CLIP_SPEED=2.65;
+/** Walk→run blend band (m/s). Below the start it is pure walk, above the end pure run. */
+export const GUARD_GAIT_BLEND_START=1.45;
+export const GUARD_GAIT_BLEND_END=2.05;
+/** Idle→walk blend band (m/s): the first steps out of a stand. */
+export const GUARD_IDLE_BLEND_END=.45;
 
 export type GuardLocomotionKind='idle'|'walk'|'run';
 
 export type SovietGuardLocomotion={
  mixer:THREE.AnimationMixer;
  actions:Record<GuardLocomotionKind,THREE.AnimationAction>;
+ /** Gait he is heading into (dominant target weight). */
  current:GuardLocomotionKind;
  skin:THREE.SkinnedMesh;
+ /** Smoothed blend weights actually applied to the mixer. */
+ weights:Record<GuardLocomotionKind,number>;
+ /** Shared normalised gait phase (0..1) so walk and run feet stay in step while blending. */
+ phase:number;
 };
 
 export type SovietGuardVisual={
@@ -269,43 +284,73 @@ export function attachGuardLocomotion(
  } as const;
  for(const a of Object.values(actions)){
   a.enabled=true;
-  a.setEffectiveWeight(0);
   a.setLoop(THREE.LoopRepeat,Infinity);
+  a.setEffectiveWeight(0);
   a.play();
  }
- actions.idle.setEffectiveWeight(1);
+ // Gait clips are phase-driven by hand below; the mixer only evaluates them.
+ actions.walk.timeScale=0;
+ actions.run.timeScale=0;
  actions.idle.timeScale=1;
- return{mixer,actions,current:'idle',skin};
+ actions.idle.setEffectiveWeight(1);
+ return{mixer,actions,current:'idle',skin,weights:{idle:1,walk:0,run:0},phase:0};
+}
+
+const smooth01=(e0:number,e1:number,x:number)=>{const t=THREE.MathUtils.clamp((x-e0)/(e1-e0),0,1);return t*t*(3-2*t);};
+
+/**
+ * Target blend weights for a ground speed (a 1D blend space: idle → walk → run).
+ * `turnRate` (rad/s) adds a small stepping-in-place walk layer while pivoting.
+ */
+export function guardGaitWeights(speed:number,turnRate=0):Record<GuardLocomotionKind,number>{
+ const s=Math.max(0,speed);
+ const move=smooth01(.02,GUARD_IDLE_BLEND_END,s);
+ const run=smooth01(GUARD_GAIT_BLEND_START,GUARD_GAIT_BLEND_END,s);
+ // Pivot footwork: feet shuffle while the body swings round on the spot.
+ const pivot=(1-move)*THREE.MathUtils.clamp(Math.abs(turnRate)/2.4,0,1)*.45;
+ const gait=Math.max(move,pivot);
+ return{idle:1-gait,walk:gait*(1-run),run:gait*run};
 }
 
 /**
- * Pick idle / walk / run from AI motion, crossfade, and match stride rate.
- * `moving` false → idle (water edge / stand). Chase → run; other travel → walk.
+ * Drive idle / walk / run as a phase-synchronised blend space from real ground speed.
+ *
+ * - Stride rate comes from speed ÷ stride length, so the planted foot does not skate.
+ * - Walk and run share one normalised phase, so crossing the blend band never
+ *   double-steps or scissors the legs.
+ * - Weights ease with a short time constant, so state flips never pop.
  */
 export function updateGuardLocomotion(
  loco:SovietGuardLocomotion,
  dt:number,
- opts:{moving:boolean;speed:number;state:string},
+ opts:{moving:boolean;speed:number;state:string;turnRate?:number},
 ){
- let want:GuardLocomotionKind='idle';
- if(opts.moving&&opts.speed>.08){
-  want=(opts.state==='chase'&&opts.speed>=1.6)?'run':'walk';
+ const speed=opts.moving?Math.max(0,opts.speed):0;
+ const target=guardGaitWeights(speed,opts.turnRate??0);
+ loco.current=target.run>=target.walk&&target.run>=target.idle?'run':target.walk>=target.idle?'walk':'idle';
+ // Critically-damped-ish weight easing (~0.12 s): smooth but responsive.
+ const k=1-Math.exp(-Math.max(0,dt)/.12);
+ let sum=0;
+ for(const kind of ['idle','walk','run'] as const){
+  loco.weights[kind]+= (target[kind]-loco.weights[kind])*k;
+  sum+=loco.weights[kind];
  }
- if(want!==loco.current){
-  const fade=.28;
-  loco.actions[loco.current].fadeOut(fade);
-  const next=loco.actions[want];
-  next.reset().setEffectiveWeight(1).fadeIn(fade);
-  loco.current=want;
+ for(const kind of ['idle','walk','run'] as const){
+  loco.actions[kind].setEffectiveWeight(sum>1e-6?loco.weights[kind]/sum:kind==='idle'?1:0);
  }
- // Stride rate ≈ moveSpeed / clip reference speed (no skating).
- if(loco.current==='walk'){
-  loco.actions.walk.timeScale=THREE.MathUtils.clamp(opts.speed/GUARD_WALK_CLIP_SPEED,.55,1.45);
- }else if(loco.current==='run'){
-  loco.actions.run.timeScale=THREE.MathUtils.clamp(opts.speed/GUARD_RUN_CLIP_SPEED,.65,1.35);
- }else{
-  loco.actions.idle.timeScale=1;
- }
+ // Phase: blended stride length (metres per full cycle) sets cycles per second.
+ const walkClip=loco.actions.walk.getClip(),runClip=loco.actions.run.getClip();
+ const walkStride=GUARD_WALK_CLIP_SPEED*walkClip.duration;
+ const runStride=GUARD_RUN_CLIP_SPEED*runClip.duration;
+ const gaitW=loco.weights.walk+loco.weights.run;
+ const runMix=gaitW>1e-4?loco.weights.run/gaitW:0;
+ const stride=THREE.MathUtils.lerp(walkStride,runStride,runMix);
+ // While pivoting on the spot, shuffle at a slow walking cadence.
+ const pivotCadence=Math.min(1,Math.abs(opts.turnRate??0)/2.4)*.55/walkClip.duration;
+ const cycles=Math.max(speed/stride,pivotCadence);
+ loco.phase=(loco.phase+cycles*Math.max(0,dt))%1;
+ loco.actions.walk.time=loco.phase*walkClip.duration;
+ loco.actions.run.time=loco.phase*runClip.duration;
  loco.mixer.update(dt);
 }
 
