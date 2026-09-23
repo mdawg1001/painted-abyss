@@ -21,6 +21,7 @@ import {
 } from './lifebuoyAsset';
 import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLight } from './sconceAsset';
 import { createWallPosters, upgradeWallPosters, type WallPosters } from './posterAsset';
+import { createWallPipe, upgradeWallPipe, type WallPipe } from './pipeAsset';
 import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion,
  type SovietGuardVisual,
@@ -194,6 +195,8 @@ export class CaveWorld extends OceanWorld {
  wallSconceLights:SconceLight[]=[];
  /** Sketchfab PotatoWit soviet posters hung on one cave wall. */
  wallPosters:WallPosters|null=null;
+ /** Sketchfab gleb_tihon pipe run hidden on the far south-west cavern wall. */
+ wallPipe:WallPipe|null=null;
  /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
  knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
  /** Held gun. Visible only while that slot is selected. It does not fire. */
@@ -325,6 +328,7 @@ export class CaveWorld extends OceanWorld {
   this.mountLifebuoy();
   this.mountWallSconces();
   this.mountWallPosters();
+  this.mountWallPipe();
   this.pointCullSyncs.push(()=>{
    const p=this.camera.position;
    this.heldLightBox.min.set(p.x-2.2,p.y-2.2,p.z-2.2);
@@ -371,6 +375,16 @@ export class CaveWorld extends OceanWorld {
   this.scene.add(visual.group);
   this.wallPosters=visual;
   upgradeWallPosters(visual).then(ok=>{
+   if(!ok||!this.alive)return;
+   this.adoptPointCull(visual.group,this.worldBox(visual.group),true,true);
+  });
+ }
+ /** Bolt the Sketchfab pipe to the blind south-west wall (stub → decimated GLB). */
+ mountWallPipe(){
+  const visual=createWallPipe();
+  this.scene.add(visual.group);
+  this.wallPipe=visual;
+  upgradeWallPipe(visual).then(ok=>{
    if(!ok||!this.alive)return;
    this.adoptPointCull(visual.group,this.worldBox(visual.group),true,true);
   });
