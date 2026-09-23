@@ -16,12 +16,14 @@ export const KNIFE_ASSET_URL='/assets/knife/fish_knife_1k.gltf';
 export const KNIFE_THUMB_URL='/assets/knife/thumb.png';
 
 /**
- * Camera-local FPS corner pose (knife only, no arm). Handle anchored in the
- * extreme lower-right; blade steeply diagonal with the tip toward screen
- * center (~65° on fov 64). Same framing language as a CS knife viewmodel.
+ * Camera-local slot shared with the dive torch (CaveWorld torchRest*).
+ * The knife occupies this exact transform so it sits where the lantern sits.
  */
-export const KNIFE_HOLD_POS={x:.44,y:-.28,z:-.62} as const;
-export const KNIFE_HOLD_ROT={x:.85,y:.6,z:-.55} as const;
+export const HELD_VIEW_POS={x:.44,y:-.4,z:-.62} as const;
+export const HELD_VIEW_ROT={x:.18,y:-.22,z:.32} as const;
+export const KNIFE_HOLD_POS=HELD_VIEW_POS;
+export const KNIFE_HOLD_ROT=HELD_VIEW_ROT;
+/** Fish-knife glTF is much smaller than the lantern mesh; this fills the same corner. */
 export const KNIFE_HOLD_SCALE=1.7;
 export const KNIFE_STAB_Z=-.82;
 

@@ -8,7 +8,7 @@ import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
-import { createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, knifeMeshReady, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
+import { createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, knifeMeshReady, HELD_VIEW_POS, HELD_VIEW_ROT, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
 import { loadCausticAtlas, makeCausticFallbackTexture } from './causticAsset';
@@ -167,7 +167,7 @@ export class CaveWorld extends OceanWorld {
  torchLight=new THREE.SpotLight(0xeaf6ff,210,34,.38,.55,1.05);
  beam!:THREE.Mesh;torchBody!:THREE.Group;torchLensMat!:THREE.MeshStandardMaterial;
  /** Rest pose for the camera-parented lantern (local space). */
- torchRestPos=V(.44,-.4,-.62);torchRestRot=new THREE.Euler(.18,-.22,.32);
+ torchRestPos=V(HELD_VIEW_POS.x,HELD_VIEW_POS.y,HELD_VIEW_POS.z);torchRestRot=new THREE.Euler(HELD_VIEW_ROT.x,HELD_VIEW_ROT.y,HELD_VIEW_ROT.z);
  composer!:EffectComposer;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  /** World crates / suitcase (Poly Haven) keyed by mission chest id. */
@@ -838,14 +838,14 @@ export class CaveWorld extends OceanWorld {
   if(!this.knifeVisual)return;
   const s=bobBlend;
   this.knifeVisual.position.set(
-   KNIFE_HOLD_POS.x+Math.sin(this.time*.7)*.024*s,
-   KNIFE_HOLD_POS.y+Math.sin(this.time*1.05)*.03*s,
-   KNIFE_HOLD_POS.z+Math.cos(this.time*.55)*.018*s,
+   KNIFE_HOLD_POS.x+Math.sin(this.time*.7)*.028*s,
+   KNIFE_HOLD_POS.y+Math.sin(this.time*1.05)*.036*s,
+   KNIFE_HOLD_POS.z+Math.cos(this.time*.55)*.02*s,
   );
   this.knifeVisual.rotation.set(
-   KNIFE_HOLD_ROT.x+Math.sin(this.time*.9)*.045*s,
-   KNIFE_HOLD_ROT.y+Math.sin(this.time*.45)*.025*s,
-   KNIFE_HOLD_ROT.z+Math.cos(this.time*.75)*.05*s,
+   KNIFE_HOLD_ROT.x+Math.sin(this.time*.9)*.055*s,
+   KNIFE_HOLD_ROT.y+Math.sin(this.time*.45)*.03*s,
+   KNIFE_HOLD_ROT.z+Math.cos(this.time*.75)*.065*s,
   );
  }
  buildLights(){

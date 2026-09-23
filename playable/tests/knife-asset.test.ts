@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {
- KNIFE_HOLD_SCALE,KNIFE_HOLD_POS,KNIFE_HOLD_ROT,KNIFE_STAB_Z,KNIFE_THUMB_URL,KNIFE_ASSET_URL,
+ KNIFE_HOLD_SCALE,KNIFE_HOLD_POS,KNIFE_HOLD_ROT,HELD_VIEW_POS,HELD_VIEW_ROT,KNIFE_STAB_Z,KNIFE_THUMB_URL,KNIFE_ASSET_URL,
  createKnifeStub,poseKnife,alignKnifeBladeForward,prepareKnifeMaterials,knifeMeshReady,
 } from '../src/knifeAsset.ts';
 import {readFileSync,statSync} from 'node:fs';
@@ -40,25 +40,28 @@ test('stub knife is the blade only, parked in the lower-right',()=>{
  poseKnife(g);
  assert.equal(g.scale.x,KNIFE_HOLD_SCALE);
  assert.equal(g.position.x,KNIFE_HOLD_POS.x);
- assert.ok(KNIFE_HOLD_POS.x>0.35,'knife sits in the right corner');
- assert.ok(KNIFE_HOLD_POS.y<-0.2,'knife sits low in the frame');
+ assert.deepEqual(KNIFE_HOLD_POS,HELD_VIEW_POS);
+ assert.deepEqual(KNIFE_HOLD_ROT,HELD_VIEW_ROT);
+ assert.equal(KNIFE_HOLD_POS.x,.44);
+ assert.equal(KNIFE_HOLD_POS.y,-.4);
+ assert.equal(KNIFE_HOLD_POS.z,-.62);
 });
 
-test('hold pose puts tip up-left of the butt (CS corner diagonal)',()=>{
- // Tip is local −Z after alignKnifeBladeForward; project the rest pose.
- const tipL=new THREE.Vector3(0,0,-.156);
- const buttL=new THREE.Vector3(0,0,.06);
+test('knife rest pose matches the torch slot on screen',()=>{
  const cam=new THREE.PerspectiveCamera(64,16/9,.12,130);
- const g=createKnifeStub();
- poseKnife(g);
- g.updateMatrixWorld(true);
- const tip=tipL.applyMatrix4(g.matrixWorld).project(cam);
- const butt=buttL.applyMatrix4(g.matrixWorld).project(cam);
- assert.ok(tip.x<butt.x-0.08,'tip left of grip');
- assert.ok(tip.y>butt.y+0.2,'tip above grip');
- assert.ok(butt.x>0.55&&butt.y<-0.55,'grip in the lower-right');
- assert.ok(tip.y<0.05,'tip stays below the crosshair');
- assert.ok(KNIFE_HOLD_ROT.x>0.5,'pitch tips the blade up for a steep diagonal');
+ const project=(pos:{x:number;y:number;z:number},rot:{x:number;y:number;z:number},scale:number,local:THREE.Vector3)=>{
+  const g=new THREE.Group();
+  g.position.set(pos.x,pos.y,pos.z);
+  g.rotation.set(rot.x,rot.y,rot.z);
+  g.scale.setScalar(scale);
+  g.updateMatrixWorld(true);
+  return local.clone().applyMatrix4(g.matrixWorld).project(cam);
+ };
+ const torchCenter=project(HELD_VIEW_POS,HELD_VIEW_ROT,1.15,new THREE.Vector3(0,0,-.11));
+ const knifeMid=project(KNIFE_HOLD_POS,KNIFE_HOLD_ROT,KNIFE_HOLD_SCALE,new THREE.Vector3(0,0,-.048));
+ assert.ok(Math.abs(knifeMid.x-torchCenter.x)<.08,'knife shares the torch x');
+ assert.ok(Math.abs(knifeMid.y-torchCenter.y)<.15,'knife shares the torch y');
+ assert.ok(knifeMid.x>.4&&knifeMid.y<-.7,'both sit in the lower-right');
 });
 
 test('alignKnifeBladeForward puts tip on −Z and pivots on butt',()=>{
