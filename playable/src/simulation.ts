@@ -90,6 +90,7 @@ export const GUARD_PATROL_PAUSE=2.4;
 export const GUARD_CHASE_STANDOFF=1.15;
 /** Half arc of the look-around at the end of a search (radians, ~52°). */
 export const GUARD_SCAN_ARC=.9;
+const TAU_GUARD=Math.PI*2;
 /** Floor-sitting interactables — each chest hides one map fragment. */
 export const CHEST_LABEL:Record<ChestKind,string>={
  military:'military crate',
@@ -419,53 +420,170 @@ export function floodColumnY(p:Point,waterY:number){
 export function riseBreathWater(waterY:number,dt:number){return Math.min(SURFACE_Y,waterY+BREATH_RISE_MPS*Math.max(0,dt));}
 /** Open corridor cells only — the Soviet guard never enters the cave grid. */
 export function breathCell(col:number,row:number){return breathZone(col,row)!=='';}
-/** Corridor centerline X — guard patrol stays on this axis (no lateral weave). */
-export function guardPatrolAxisX():number{
- return (world(BREATH_COLS[0],0).x+world(BREATH_COLS[1],0).x)/2;
-}
-/** Standing spawn for the corridor guard (middle stretch, clear of hatch gear). */
-export function guardSpawnPoint():Point{
- const p=world(BREATH_COLS[0],-4);
- return {x:guardPatrolAxisX(),y:WALK_EYE_Y,z:p.z};
-}
+export type GuardWaypoint={x:number;z:number;
+ /** corner = a turn in the wall; inspect = a stop partway along a long wall. */
+ kind:'corner'|'inspect';
+ /** Seconds he stands here looking around. */
+ pause:number};
+/** How far the guard's patrol line keeps off the walls (m). Leaves room for rock and fittings. */
+export const GUARD_WALL_CLEARANCE=1.3;
+/** Longest stretch he walks before stopping to look around (m). */
+export const GUARD_INSPECT_SPACING=16;
+export const GUARD_CORNER_PAUSE=2.6;
+export const GUARD_INSPECT_PAUSE=1.8;
+/** Half-angle of the guard's field of view (radians, ~65°). */
+export const GUARD_FOV_HALF=65*Math.PI/180;
+let guardRouteCache:GuardWaypoint[]|null=null;
 /**
- * Straight out-and-back along corridor Z on the centerline.
- * Two posts only — no column zigzag, diagonal jitter, or mid-stride turns.
+ * Perimeter patrol for the whole bunker: the outer boundary of every open cell
+ * (corridor, cave chambers, fissure and exit pool), pulled in off the walls,
+ * walked as one closed loop. The central rock pillar is a hole, so the loop goes
+ * round the outside of the building, not the pillar.
  */
-export function guardPatrolPoints():Point[]{
- const x=guardPatrolAxisX();
- const south=world(BREATH_COLS[0],-6);
- const north=world(BREATH_COLS[0],-2);
- return [
-  {x,y:WALK_EYE_Y,z:south.z},
-  {x,y:WALK_EYE_Y,z:north.z},
- ];
-}
-/**
- * BFS along breath-corridor cells only.
- * Returns cell centers toward `b`, or [] if unreachable / not in the corridor.
- */
-export function pathBreath(a:Point,b:Point){
- const from=tile(a),to=tile(b),start=`${from.col},${from.row}`,end=`${to.col},${to.row}`;
- if(!breathCell(to.col,to.row))return [];
- const queue=[start],parents=new Map<string,string|null>([[start,null]]);
- for(let i=0;i<queue.length;i++){
-  const key=queue[i];if(key===end)break;
-  const [c,r]=key.split(',').map(Number);
-  for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]]){
-   const nc=c+dc,nr=r+dr,k=`${nc},${nr}`;
-   if(breathCell(nc,nr)&&!parents.has(k)){parents.set(k,key);queue.push(k);}
+export function guardPerimeterRoute():GuardWaypoint[]{
+ if(guardRouteCache)return guardRouteCache;
+ // 1. Directed boundary edges in grid space (u = col, v = row), interior on the left.
+ type V={u:number;v:number};
+ const key=(p:V)=>`${p.u},${p.v}`;
+ const out=new Map<string,V[]>();
+ const add=(a:V,b:V)=>{const k=key(a);if(!out.has(k))out.set(k,[]);out.get(k)!.push(b);};
+ for(const c of cells){
+  const [u,v]=c.split(',').map(Number);
+  const has=(du:number,dv:number)=>cells.has(`${u+du},${v+dv}`);
+  if(!has(0,-1))add({u:u-.5,v:v-.5},{u:u+.5,v:v-.5});
+  if(!has(1,0))add({u:u+.5,v:v-.5},{u:u+.5,v:v+.5});
+  if(!has(0,1))add({u:u+.5,v:v+.5},{u:u-.5,v:v+.5});
+  if(!has(-1,0))add({u:u-.5,v:v+.5},{u:u-.5,v:v-.5});
+ }
+ // 2. Chain edges into loops (a pinch vertex takes the sharpest left turn so rooms stay separate).
+ const used=new Set<string>();
+ const loops:V[][]=[];
+ for(const [k,list] of out)for(const first of list){
+  const ek=k+'>'+key(first);if(used.has(ek))continue;
+  const start=(()=>{const [u,v]=k.split(',').map(Number);return{u,v};})();
+  const loop:V[]=[start];let prev=start,cur=first;used.add(ek);
+  while(key(cur)!==key(start)){
+   loop.push(cur);
+   const nexts=(out.get(key(cur))||[]).filter(n=>!used.has(key(cur)+'>'+key(n)));
+   const din={u:cur.u-prev.u,v:cur.v-prev.v};
+   nexts.sort((a,b)=>{
+    const turn=(n:V)=>{const d={u:n.u-cur.u,v:n.v-cur.v};return Math.atan2(din.u*d.v-din.v*d.u,din.u*d.u+din.v*d.v);};
+    return turn(b)-turn(a);
+   });
+   const nx=nexts[0];if(!nx)break;
+   used.add(key(cur)+'>'+key(nx));prev=cur;cur=nx;
+  }
+  loops.push(loop);
+ }
+ // 3. The outer wall is the loop enclosing the most area (holes wind the other way).
+ const area=(l:V[])=>l.reduce((a,p,i)=>{const q=l[(i+1)%l.length];return a+p.u*q.v-q.u*p.v;},0)/2;
+ const outer=loops.reduce((best,l)=>area(l)>area(best)?l:best,loops[0]);
+ // 4. Drop collinear points, then offset every corner inward along both wall normals.
+ const corners=outer.filter((p,i)=>{const a=outer[(i-1+outer.length)%outer.length],b=outer[(i+1)%outer.length];return (p.u-a.u)*(b.v-p.v)-(p.v-a.v)*(b.u-p.u)!==0;});
+ const m=GUARD_WALL_CLEARANCE/CELL;
+ const pts=corners.map((p,i)=>{
+  const a=corners[(i-1+corners.length)%corners.length],b=corners[(i+1)%corners.length];
+  const d1={u:Math.sign(p.u-a.u),v:Math.sign(p.v-a.v)},d2={u:Math.sign(b.u-p.u),v:Math.sign(b.v-p.v)};
+  // Left normal of a direction (u,v) is (−v,u): interior side.
+  const g={u:p.u+m*(-d1.v-d2.v),v:p.v+m*(d1.u+d2.u)};
+  const w=world(g.u,g.v);return{x:w.x,z:w.z};
+ });
+ // 5. Stops: every corner, plus inspection stops along long walls.
+ const route:GuardWaypoint[]=[];
+ for(let i=0;i<pts.length;i++){
+  const a=pts[i],b=pts[(i+1)%pts.length];
+  route.push({x:a.x,z:a.z,kind:'corner',pause:GUARD_CORNER_PAUSE});
+  const len=Math.hypot(b.x-a.x,b.z-a.z),n=Math.floor(len/GUARD_INSPECT_SPACING);
+  for(let k=1;k<=n;k++){
+   const t=k/(n+1);
+   route.push({x:a.x+(b.x-a.x)*t,z:a.z+(b.z-a.z)*t,kind:'inspect',pause:GUARD_INSPECT_PAUSE});
   }
  }
- if(!parents.has(end))return [];
- const path:Point[]=[];let key:string|null=end;
- while(key&&key!==start){
-  const [c,r]=key.split(',').map(Number);
-  const w=world(c,r);
-  path.unshift({x:w.x,y:WALK_EYE_Y,z:w.z});
-  key=parents.get(key)!;
+ // 6. Step round floor props (crates, suitcase) that sit near a wall.
+ const props=createDiveChests().map(c=>({x:c.position.x,z:c.position.z,r:1.25}));
+ for(const o of props){
+  const segDist=(a:{x:number;z:number},b:{x:number;z:number})=>{
+   const abx=b.x-a.x,abz=b.z-a.z,l2=abx*abx+abz*abz||1;
+   const t=Math.max(0,Math.min(1,((o.x-a.x)*abx+(o.z-a.z)*abz)/l2));
+   return Math.hypot(o.x-a.x-abx*t,o.z-a.z-abz*t);
+  };
+  // A prop tucked into a corner: cut the corner on the room side, far enough back
+  // that both new legs and the diagonal keep clear of it.
+  for(let i=0;i<route.length;i++){
+   const w=route[i];if(w.kind!=='corner'||Math.hypot(w.x-o.x,w.z-o.z)>o.r+2)continue;
+   const pv=route[(i-1+route.length)%route.length],nx=route[(i+1)%route.length];
+   const lp=Math.hypot(pv.x-w.x,pv.z-w.z),ln=Math.hypot(nx.x-w.x,nx.z-w.z);
+   for(let k=1;k<Math.min(lp,ln)-.3;k+=.25){
+    const p1={x:w.x+(pv.x-w.x)/lp*k,z:w.z+(pv.z-w.z)/lp*k},p2={x:w.x+(nx.x-w.x)/ln*k,z:w.z+(nx.z-w.z)/ln*k};
+    if(segDist(pv,p1)>=o.r&&segDist(p1,p2)>=o.r&&segDist(p2,nx)>=o.r&&guardClearLine(p1,p2,GUARD_BODY_RADIUS)){
+     route.splice(i,1,{...p1,kind:'corner',pause:w.pause},{...p2,kind:'inspect',pause:0});
+     i++;break;
+    }
+   }
+  }
+  for(let i=0;i<route.length;i++){
+   const a=route[i],b=route[(i+1)%route.length];
+   const abx=b.x-a.x,abz=b.z-a.z,l2=abx*abx+abz*abz||1;
+   const t=Math.max(0,Math.min(1,((o.x-a.x)*abx+(o.z-a.z)*abz)/l2));
+   const cx=a.x+abx*t,cz=a.z+abz*t,dd=Math.hypot(o.x-cx,o.z-cz);
+   if(dd>=o.r)continue;
+   const len=Math.sqrt(l2),nx=-abz/len,nz=abx/len,ux=abx/len,uz=abz/len;
+   const sd=(cx-o.x)*nx+(cz-o.z)*nz;
+   // Pass on whichever side leaves the most room to the wall.
+   let pick:{x:number;z:number}[]|null=null,room=0;
+   for(const side of [1,-1]){
+    const shift=side*(o.r+.05)-sd;
+    for(const along of [o.r*1.6,o.r]){
+     const pts=[{x:cx-ux*along+nx*shift,z:cz-uz*along+nz*shift},{x:cx+ux*along+nx*shift,z:cz+uz*along+nz*shift}];
+     const r=[1.3,1.1,.9,.7,.5].find(rr=>pts.every(q=>fits({x:q.x,y:3,z:q.z},rr)))??0;
+     if(r>room){room=r;pick=pts;}
+    }
+   }
+   if(!pick)continue;
+   const [before,after]=pick;
+   route.splice(i+1,0,{...before,kind:'inspect',pause:0},{...after,kind:'inspect',pause:0});
+   i+=2;
+  }
  }
- return path;
+ guardRouteCache=route;
+ return route;
+}
+/** Every point along a→b leaves room for a body of radius r inside open cells. */
+export function guardClearLine(a:{x:number;z:number},b:{x:number;z:number},r=GUARD_BODY_RADIUS){
+ const n=Math.max(1,Math.ceil(Math.hypot(b.x-a.x,b.z-a.z)/.25));
+ for(let i=0;i<=n;i++){const t=i/n;if(!fits({x:a.x+(b.x-a.x)*t,y:3,z:a.z+(b.z-a.z)*t},r))return false;}
+ return true;
+}
+/**
+ * Where the guard should head next to reach `to` anywhere in the bunker:
+ * a breadth-first route over open cells, pulled tight so he walks the longest
+ * straight line he can actually fit along (no zigzag between cell centres).
+ */
+export function guardNavTarget(from:{x:number;z:number},to:{x:number;z:number}):{x:number;z:number;final:boolean}{
+ if(guardClearLine(from,to))return{x:to.x,z:to.z,final:true};
+ const a=tile({x:from.x,y:0,z:from.z}),b=tile({x:to.x,y:0,z:to.z});
+ const start=`${a.col},${a.row}`,end=`${b.col},${b.row}`;
+ const parents=new Map<string,string|null>([[start,null]]),queue=[start];
+ for(let i=0;i<queue.length&&!parents.has(end);i++){
+  const [c,r]=queue[i].split(',').map(Number);
+  for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]]){const k=`${c+dc},${r+dr}`;if(cells.has(k)&&!parents.has(k)){parents.set(k,queue[i]);queue.push(k);}}
+ }
+ if(!parents.has(end))return{x:from.x,z:from.z,final:true};
+ const path:{x:number;z:number}[]=[];
+ for(let k:string|null=end;k&&k!==start;k=parents.get(k)??null){const [c,r]=k.split(',').map(Number);const w=world(c,r);path.unshift({x:w.x,z:w.z});}
+ path.push({x:to.x,z:to.z});
+ for(let i=path.length-1;i>=0;i--)if(guardClearLine(from,path[i]))return{...path[i],final:i===path.length-1};
+ return{...path[0],final:path.length===1};
+}
+/**
+ * Pick where the guard starts a life: a random stop on the perimeter, well away
+ * from the player and never the same stop as last time.
+ */
+export function pickGuardSpawn(rand:()=>number,avoid:Point,previous=-1,minDistance=30){
+ const route=guardPerimeterRoute();
+ const ok=route.map((w,i)=>i).filter(i=>i!==previous&&route[i].pause>0&&Math.hypot(route[i].x-avoid.x,route[i].z-avoid.z)>=minDistance);
+ const pool=ok.length?ok:route.map((w,i)=>i).filter(i=>i!==previous);
+ return pool[Math.min(pool.length-1,Math.floor(rand()*pool.length))];
 }
 export type BreathTankMount={x:number;y:number;z:number;yaw:number;row:number;col:number};
 /**
@@ -661,13 +779,15 @@ export function writeInventoryTipsSeen(){
   hp:PREDATOR_HP_MAX,raged:false,flinch:0,stabCool:0,
  };
  /**
-  * Phase 3 Soviet corridor guard. Walks dry breath-corridor floor only.
+  * Soviet guard. Patrols the perimeter of the whole bunker, inspecting each corner
+  * and long wall, and starts each of the player's lives somewhere new on that loop.
   * On kill he claims dropped gun / bottle / coat and uses them.
   */
  guard={
-  position:guardSpawnPoint(),
+  position:{x:0,y:WALK_EYE_Y,z:0} as Point,
   state:'patrol' as GuardState,
-  timer:0,lost:0,lastKnown:guardSpawnPoint(),waypoint:0,
+  /** waypoint indexes guardPerimeterRoute(); spawnIndex is where this life began. */
+  timer:0,lost:0,lastKnown:{x:0,y:WALK_EYE_Y,z:0} as Point,waypoint:0,spawnIndex:-1,
   /** Facing yaw, radians: 0 faces world +Z, π/2 faces +X. The mesh uses it as rotation.y. */
   heading:0,
   /** Ground speed along the heading (m/s). Drives stride rate; never negative. */
@@ -690,7 +810,8 @@ export function writeInventoryTipsSeen(){
  combatCue:''|'stab-hit'|'stab-miss'|'flinch'|'break'|'kill'|'guard-shot'|'guard-melee'='';
  decoy:{position:Point;until:number}|null=null;
  patrol=[world(16,22),world(6,22),world(6,13),world(16,13)];
- guardPatrol=guardPatrolPoints();
+ /** Random source for spawns (swappable in tests). */
+ rand:()=>number=Math.random;
  constructor(tipsSeen=false){
   this.tipsSeen=tipsSeen;
   const player=breathHatchSpawn();
@@ -704,15 +825,27 @@ export function writeInventoryTipsSeen(){
    if(d<bestD){bestD=d;best=i;}
   }
   this.predator.waypoint=best;
-  const gSpawn=guardSpawnPoint();
-  this.guard.position={...gSpawn};
-  this.guard.lastKnown={...gSpawn};
-  this.guard.waypoint=0;
+  this.spawnGuard();
   this.killedByGuard=false;
   if(!tipsSeen){
    this.notice='The bunker is leaking. The water is rising. WASD walk · Shift run · 1–5 select · click stabs.';
    this.noticeUntil=9;this.feedbackKind='select';
   }
+ }
+ /**
+  * Place the guard at a fresh perimeter stop, away from the player and different
+  * from his last start, facing on to the next stop. Keeps any gear he looted.
+  */
+ spawnGuard(){
+  const g=this.guard,route=guardPerimeterRoute();
+  const i=pickGuardSpawn(this.rand,this.position,g.spawnIndex);
+  const at=route[i],next=route[(i+1)%route.length];
+  g.spawnIndex=i;g.waypoint=(i+1)%route.length;
+  g.position={x:at.x,y:WALK_EYE_Y,z:at.z};g.lastKnown={...g.position};
+  g.heading=Math.atan2(next.x-at.x,next.z-at.z);
+  g.state='patrol';g.lastState='patrol';g.timer=0;g.lost=0;
+  g.speed=0;g.turnRate=0;g.pause=0;g.arrived=false;g.scanBase=g.heading;g.scanTime=0;
+  g.meleeCool=0;g.shootCool=0;
  }
  get hasRelic(){return this.inventory.includes('relic');}
  get mapComplete(){return MAP_FRAGMENT_ORDER.every(id=>this.mapFragments.includes(id));}
@@ -796,6 +929,7 @@ export function writeInventoryTipsSeen(){
   this.outcome='playing';
   this.reason='';
   this.pending=null;
+  this.spawnGuard();
   this.say('You wake at the hatch with empty hands. What you carried is on the corpse. The water stayed. The air tank has moved.','blocked');
  }
  /**
@@ -981,8 +1115,11 @@ export function writeInventoryTipsSeen(){
   }
   const d=distance(g.position,this.position);
   const canSee=visible(g.position,this.position);
-  const playerInCorridor=inBreathCorridor(this.position);
-  const sense=canSee&&playerInCorridor&&(d<5||d<(this.torch?14:sprinting?11:7));
+  // He sees what is in front of him (a lit torch from further), hears running, and
+  // notices anyone right beside him whichever way he faces.
+  const toward=Math.atan2(this.position.x-g.position.x,this.position.z-g.position.z);
+  const inView=Math.abs(wrapAngle(toward-g.heading))<=GUARD_FOV_HALF;
+  const sense=canSee&&(d<2.5||(inView&&d<(this.torch?16:9))||(sprinting&&d<11));
   // FSM
   if(g.state==='patrol'&&sense){g.state='alert';g.timer=0;g.lastKnown={...this.position};}
   else if(g.state==='alert'){
@@ -993,7 +1130,12 @@ export function writeInventoryTipsSeen(){
    if(g.lost>2.8){g.state='search';g.timer=0;}
   }else if(g.state==='search'){
    if(sense){g.state='chase';g.timer=0;g.lost=0;}
-   else if(g.timer>8){g.state='patrol';g.timer=0;}
+   else if(g.timer>8){
+    // Give up and rejoin the perimeter loop at the nearest stop.
+    const route=guardPerimeterRoute();let best=0,bd=Infinity;
+    route.forEach((w,i)=>{const dd=Math.hypot(w.x-g.position.x,w.z-g.position.z);if(dd<bd){bd=dd;best=i;}});
+    g.state='patrol';g.timer=0;g.waypoint=best;g.pause=0;
+   }
   }
   this.steerGuard(dt);
 
@@ -1009,7 +1151,7 @@ export function writeInventoryTipsSeen(){
    if(this.health<=0){
     this.killedByGuard=true;
     this.outcome='lost';
-    this.reason='The corridor guard shot you. He will take what you dropped.';
+    this.reason='The guard shot you. He will take what you dropped.';
    }
    return;
   }
@@ -1024,7 +1166,7 @@ export function writeInventoryTipsSeen(){
    if(this.health<=0){
     this.killedByGuard=true;
     this.outcome='lost';
-    this.reason='The corridor guard finished you. He takes your dropped gear.';
+    this.reason='The guard finished you. He takes your dropped gear.';
    }
   }
  }
@@ -1039,47 +1181,48 @@ export function writeInventoryTipsSeen(){
   const g=this.guard;
   if(g.lastState!==g.state){g.lastState=g.state;g.arrived=false;g.scanTime=0;}
   const water=this.breathWaterY;
-  const r=GUARD_BODY_RADIUS;
-  const fp=breathFootprint();
-  const canMove=(x:number,z:number)=>x>=fp.minX+r&&x<=fp.maxX-r&&z>=fp.minZ+r&&z<=fp.maxZ-r&&canWalkBreath({x,y:WALK_EYE_Y,z},water);
-  const clampGoal=(p:{x:number;z:number})=>({
-   x:Math.min(fp.maxX-r-.05,Math.max(fp.minX+r+.05,p.x)),
-   z:Math.min(fp.maxZ-r-.05,Math.max(fp.minZ+r+.05,p.z)),
-  });
-  const dry=canWalkBreath(g.position,water);
+  const dry=water<BREATH_WALK_WATER;
+  const canMove=(x:number,z:number)=>dry&&fits({x,y:3,z},GUARD_BODY_RADIUS);
   const tired=!g.bottle||g.air<=0;
   if(!dry){
-   // Flooded past the knees of the rule: hold footing, keep eyes on the goal.
+   // Flooded past the walk line: he holds his ground and keeps watching.
    faceStanding(g,g.heading,GUARD_STEER_WALK,dt,()=>false);
   }else if(g.state==='patrol'){
-   const axis=guardPatrolAxisX();
-   const post=this.guardPatrol[g.waypoint];
+   const route=guardPerimeterRoute();
+   const wp=route[g.waypoint%route.length];
    if(g.pause>0){
-    // Stand at the post. When the pause ends, pick the next post; the turn follows.
-    faceStanding(g,g.heading,GUARD_STEER_WALK,dt,canMove);
+    // Inspect: stand at the stop and sweep the room, left then right, back to centre.
+    g.scanTime+=dt;
+    const t=Math.min(1,g.scanTime/Math.max(.1,wp.pause));
+    const look=wrapAngle(g.scanBase+GUARD_SCAN_ARC*1.35*Math.sin(TAU_GUARD*t));
+    faceStanding(g,look,GUARD_STEER_WALK,dt,canMove);
     g.pause=Math.max(0,g.pause-dt);
-    if(g.pause===0)g.waypoint=(g.waypoint+1)%this.guardPatrol.length;
+    if(g.pause===0)g.waypoint=(g.waypoint+1)%route.length;
    }else{
-    const left=steerToward(g,{x:axis,z:post.z},{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.patrol,stopDistance:0,pivotAngle:1e-3},dt,canMove);
-    if(left<.02&&g.speed===0)g.pause=GUARD_PATROL_PAUSE;
+    const nav=guardNavTarget(g.position,wp);
+    const left=steerToward(g,nav,{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.patrol,stopDistance:0,pivotAngle:1e-3},dt,canMove);
+    if(nav.final&&left<.02&&g.speed===0){
+     if(wp.pause>0){g.pause=wp.pause;g.scanBase=g.heading;g.scanTime=0;}
+     else g.waypoint=(g.waypoint+1)%route.length; // detour point round a prop: keep walking
+    }
    }
-   // Patrol legs run exactly on the centre line.
-   g.position.x=axis;
   }else if(g.state==='alert'){
    // Freeze, then square up to where the noise came from.
    faceStanding(g,yawToward(g.position,g.lastKnown),GUARD_STEER_WALK,dt,canMove);
   }else if(g.state==='chase'){
    const params=tired
-    ?{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.chaseTired,stopDistance:GUARD_CHASE_STANDOFF}
-    :{...GUARD_STEER_RUN,maxSpeed:GUARD_SPEED.chase,stopDistance:GUARD_CHASE_STANDOFF};
-   const left=steerToward(g,clampGoal(g.lastKnown),params,dt,canMove);
+    ?{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.chaseTired}
+    :{...GUARD_STEER_RUN,maxSpeed:GUARD_SPEED.chase};
+   const nav=guardNavTarget(g.position,g.lastKnown);
+   const left=steerToward(g,nav,{...params,stopDistance:nav.final?GUARD_CHASE_STANDOFF:0},dt,canMove);
    // At arm's length keep squared up to the target rather than circling it.
-   if(left<.02&&g.speed===0)faceStanding(g,yawToward(g.position,g.lastKnown),params,dt,canMove);
+   if(nav.final&&left<.02&&g.speed===0)faceStanding(g,yawToward(g.position,g.lastKnown),params,dt,canMove);
   }else{
    // Search: walk to the last sighting, then scan left and right from there.
    if(!g.arrived){
-    const left=steerToward(g,clampGoal(g.lastKnown),{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.search,stopDistance:.3},dt,canMove);
-    if(left<.02&&g.speed===0){g.arrived=true;g.scanBase=g.heading;g.scanTime=0;}
+    const nav=guardNavTarget(g.position,g.lastKnown);
+    const left=steerToward(g,nav,{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.search,stopDistance:nav.final?.3:0},dt,canMove);
+    if(nav.final&&left<.02&&g.speed===0){g.arrived=true;g.scanBase=g.heading;g.scanTime=0;}
    }else{
     g.scanTime+=dt;
     faceStanding(g,wrapAngle(g.scanBase+Math.sin(g.scanTime*.7)*GUARD_SCAN_ARC),GUARD_STEER_WALK,dt,canMove);
