@@ -244,7 +244,7 @@ export class CaveWorld extends OceanWorld {
   const {group,lights}=createWallSconces(mounts);
   this.scene.add(group);
   this.wallSconceLights=lights;
-  upgradeWallSconces(group,mounts);
+  upgradeWallSconces(group,mounts,lights);
  }
  /** Place the three Poly Haven chests and upgrade stubs to glTF in the background. */
  mountChests(){
@@ -1006,7 +1006,15 @@ export class CaveWorld extends OceanWorld {
   fog.density=.032+.022*deep-.014*nearExit;
   (this.scene.background as THREE.Color).copy(fog.color);
   this.uniforms.uTime.value=this.time;
-  for(const s of this.wallSconceLights)s.light.intensity=s.base*(.86+.14*Math.sin(this.time*6+s.phase)+.04*Math.sin(this.time*19+s.phase*1.7));
+  for(const s of this.wallSconceLights){
+   if(s.state==='off')continue;
+   if(s.state==='flicker'){
+    // Failing-tube flicker: mostly lit with erratic dips toward near-dark.
+    const t=this.time,p=s.phase;
+    const f=Math.max(.08,Math.min(1.3,.72+.5*Math.sin(t*11+p)+.3*Math.sin(t*27+p*1.7)+.2*Math.sin(t*53+p*2.3)));
+    s.light.intensity=s.base*f;
+   }else s.light.intensity=s.base;
+  }
   const selected=this.mission.inventory[this.mission.selected];
   const knifeHeld=this.holdingKnife();
   const torchOn=torchShouldShine(this.mission.torch,selected);

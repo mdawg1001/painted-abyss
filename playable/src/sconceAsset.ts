@@ -24,8 +24,25 @@ const BASE='/assets/industrial_caged_sconce/';
 const GLB='industrial_caged_sconce.glb';
 
 export type SconceMount={x:number;z:number;yaw:number};
-export type SconceLight={light:THREE.PointLight;base:number;phase:number};
+/** Half the sconces are dark, a tenth flicker, the rest burn steady. */
+export type SconceState='steady'|'flicker'|'off';
+export type SconceLight={light:THREE.PointLight;base:number;phase:number;state:SconceState};
 export type WallSconces={group:THREE.Group;lights:SconceLight[]};
+
+/** Deterministic, spatially spread assignment: ~50% off, ~10% flicker, remainder steady. */
+export function assignSconceStates(n:number):SconceState[]{
+ const states:SconceState[]=new Array(n).fill('steady');
+ if(n<=0)return states;
+ const offCount=Math.round(n*0.5);
+ const flickerCount=Math.round(n*0.1);
+ // Order indices by a hash so the off/flicker picks are scattered, not clustered by wall order.
+ const hash=(i:number)=>((i+1)*2654435761)>>>0;
+ const order=[...Array(n).keys()].sort((a,b)=>hash(a)-hash(b));
+ order.forEach((idx,rank)=>{
+  states[idx]=rank<offCount?'off':rank<offCount+flickerCount?'flicker':'steady';
+ });
+ return states;
+}
 
 /**
  * Interior-facing mount points from the cave's solid wall faces. Walls are boxes at
@@ -74,24 +91,42 @@ export function createWallSconces(mounts:SconceMount[]):WallSconces{
  const group=new THREE.Group();
  group.name='wallSconces';
  const lights:SconceLight[]=[];
+ const states=assignSconceStates(mounts.length);
  const stubGeo=new THREE.SphereGeometry(.09,8,6);
- const stubMat=new THREE.MeshBasicMaterial({color:0xffca7a});
- for(const m of mounts){
-  const inward=inwardVec(m.yaw);
-  const stub=new THREE.Mesh(stubGeo,stubMat);
+ const litStubMat=new THREE.MeshBasicMaterial({color:0xffca7a});
+ // Unlit fixtures get a cold, dark bulb so they read as switched off.
+ const darkStubMat=new THREE.MeshBasicMaterial({color:0x2a2118});
+ for(let i=0;i<mounts.length;i++){
+  const m=mounts[i],state=states[i],on=state!=='off',inward=inwardVec(m.yaw);
+  const stub=new THREE.Mesh(stubGeo,on?litStubMat:darkStubMat);
   stub.name='sconceStub';
   stub.position.set(m.x,SCONCE_MOUNT_Y+.45,m.z).addScaledVector(inward,.28);
   group.add(stub);
   const light=new THREE.PointLight(SCONCE_LIGHT_COLOR,SCONCE_LIGHT_INTENSITY,SCONCE_LIGHT_DISTANCE,SCONCE_LIGHT_DECAY);
   light.position.set(m.x,SCONCE_MOUNT_Y+.55,m.z).addScaledVector(inward,.5);
+  // Off fixtures cast no light (also spares the renderer half the point lights).
+  light.visible=on;
   group.add(light);
-  lights.push({light,base:light.intensity,phase:Math.random()*Math.PI*2});
+  lights.push({light,base:light.intensity,phase:Math.random()*Math.PI*2,state});
  }
  return{group,lights};
 }
 
+/** Kill the baked bulb glow on an "off" fixture so it reads as unlit (clones shared materials first). */
+function darkenSconce(root:THREE.Object3D){
+ root.traverse(o=>{
+  if(!(o instanceof THREE.Mesh))return;
+  const clone=(m:THREE.Material)=>{
+   const c=m.clone();
+   if(c instanceof THREE.MeshStandardMaterial){c.emissive.setHex(0x000000);c.emissiveIntensity=0;c.needsUpdate=true;}
+   return c;
+  };
+  o.material=Array.isArray(o.material)?o.material.map(clone):clone(o.material);
+ });
+}
+
 /** Replace the stub bulbs with cloned Poly Haven caged-sconce meshes bolted to each wall. */
-export async function upgradeWallSconces(group:THREE.Group,mounts:SconceMount[]):Promise<boolean>{
+export async function upgradeWallSconces(group:THREE.Group,mounts:SconceMount[],lights:SconceLight[]):Promise<boolean>{
  try{
   const loader=new GLTFLoader();
   loader.setPath(BASE);
@@ -102,9 +137,11 @@ export async function upgradeWallSconces(group:THREE.Group,mounts:SconceMount[])
   const scale=SCONCE_TARGET_HEIGHT/(size.y||1);
   // Drop the placeholder bulbs now that the real fixtures are ready.
   for(const stub of group.children.filter(o=>o.name==='sconceStub'))group.remove(stub);
-  for(const m of mounts){
-   const inward=inwardVec(m.yaw);
+  for(let i=0;i<mounts.length;i++){
+   const m=mounts[i],inward=inwardVec(m.yaw);
    const inst=proto.clone(true);
+   // Off fixtures share geometry but get their own darkened materials (no bulb glow).
+   if(lights[i]?.state==='off')darkenSconce(inst);
    inst.scale.setScalar(scale);
    inst.rotation.y=m.yaw;
    inst.position.set(m.x,SCONCE_MOUNT_Y,m.z).addScaledVector(inward,-.05);
