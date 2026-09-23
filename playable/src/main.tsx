@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {CaveWorld,type Snapshot} from './CaveWorld';
-import {ITEMS,EXIT,distance,hydrostaticDepth,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,MAP_FRAGMENT_ORDER,type Item} from './simulation';
+import {ITEMS,EXIT,distance,effectiveDepth,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,MAP_FRAGMENT_ORDER,type Item} from './simulation';
 import {DiveMap} from './DiveMap';
 import {KNIFE_THUMB_URL} from './knifeAsset';
 import {APP_VERSION,APP_BUILD_LABEL,APP_BUILD_SHA} from './version';
@@ -74,12 +74,13 @@ function App(){
  const mapCount=m?.mapFragmentCount??0;
  const mapComplete=!!m?.mapComplete;
  const yaw=snap?.yaw??0;
+ const onFoot=!!snap?.onFoot;
  const onBailout=!!(m&&m.air<=0&&m.bailout>0);
  const airPool=m?(onBailout?m.bailout:m.air):AIR_MAIN_LITRES;
  const airMax=onBailout?AIR_BAILOUT_LITRES:AIR_MAIN_LITRES;
  const airLitres=Math.max(0,Math.ceil(airPool));
  const ponyReady=!!(m&&m.bailout>0&&m.air>0);
- const depth=m?Math.round(hydrostaticDepth(m.position.y)):0;
+ const depth=m?Math.round(effectiveDepth(m.position,m.breathWaterY)):0;
  const buoyancy=m?.buoyancy??0;
  const trimBias=m?.buoyancyTrim??0;
  const trimLabel=buoyancy>.2?'FLOAT':buoyancy<-.2?'SINK':'LEVEL';
@@ -113,12 +114,12 @@ function App(){
     <span>MAP</span><strong>{mapCount}/{MAP_FRAGMENT_ORDER.length}</strong><em>Tab</em>
    </div>
    <Compass yaw={yaw}/>
-   <div className="depth">DEPTH {depth} m</div>
+   <div className="depth">{onFoot?'ON FOOT':`DEPTH ${depth} m`}</div>
    <section className="vitals" aria-label="Vitals">
-    <div className="vital"><div className="vital-row"><span>{onBailout?'PONY':'AIR'}{ponyReady?` · +${Math.ceil(m.bailout)} L`:''}</span><strong className={airLitres<airMax*.2||onBailout?'warning':''}>{airLitres} L</strong></div><div className={`meter air ${onBailout?'bailout':''}`}><i style={{width:`${Math.min(100,airPool/airMax*100)}%`}}/></div></div>
-    <div className="vital"><div className="vital-row"><span>TRIM</span><strong className={Math.abs(buoyancy)>.55?'warning':''}>{trimLabel}{biasLabel}</strong></div><div className="meter trim" aria-valuemin={-1} aria-valuemax={1} aria-valuenow={+buoyancy.toFixed(2)}><em className="trim-bias" style={{left:`${biasMark}%`}} aria-hidden="true"/><i style={{left:`${trimLeft}%`,width:`${trimWidth}%`}}/></div></div>
+    <div className="vital"><div className="vital-row"><span>{onBailout?'PONY':'AIR'}{ponyReady?` · +${Math.ceil(m.bailout)} L`:''}{onFoot?' · OPEN':''}</span><strong className={airLitres<airMax*.2||onBailout?'warning':''}>{airLitres} L</strong></div><div className={`meter air ${onBailout?'bailout':''}`}><i style={{width:`${Math.min(100,airPool/airMax*100)}%`}}/></div></div>
+    {!onFoot&&<div className="vital"><div className="vital-row"><span>TRIM</span><strong className={Math.abs(buoyancy)>.55?'warning':''}>{trimLabel}{biasLabel}</strong></div><div className="meter trim" aria-valuemin={-1} aria-valuemax={1} aria-valuenow={+buoyancy.toFixed(2)}><em className="trim-bias" style={{left:`${biasMark}%`}} aria-hidden="true"/><i style={{left:`${trimLeft}%`,width:`${trimWidth}%`}}/></div></div>}
     <div className="vital"><div className="vital-row"><span>SUIT</span><strong className={m.health<40?'warning':''}>{Math.ceil(m.health)}</strong></div><div className="meter suit"><i style={{width:`${m.health}%`}}/></div></div>
-    <div className="vital"><div className="vital-row"><span>FINS</span><strong>{Math.round(m.stamina)}</strong></div><div className="meter fins"><i style={{width:`${m.stamina}%`}}/></div></div>
+    <div className="vital"><div className="vital-row"><span>{onFoot?'LEGS':'FINS'}</span><strong>{Math.round(m.stamina)}</strong></div><div className="meter fins"><i style={{width:`${m.stamina}%`}}/></div></div>
    </section>
    {threat&&<div className={`threat ${predator}`} role="status">{threat}</div>}
    {snap?.audioNotice&&<div className="audio-notice" role="status">{snap.audioNotice}</div>}
@@ -128,6 +129,9 @@ function App(){
     <div className="slots">{m.inventory.map((item,i)=>{const selected=i===m.selected;const pulse=selected&&m.feedbackKind?m.feedbackKind:'';return <div className={`slot ${selected?'selected':''} ${item==='relic'?'relic':''} ${item==='flare'?'flare':''} ${item==='knife'?'knife':''} ${item==='gun'?'gun':''} ${item==='bottle'?'bottle':''} ${item==='coat'?'coat':''} ${pulse?`pulse-${pulse}`:''}`} key={selected?`${i}-p${m.feedbackPulse}`:i}><kbd>{i+1}</kbd><Icon item={item}/>{selected&&<em className="slot-mark" aria-hidden="true">●</em>}</div>;})}</div>
    </div>
    <aside className="keybinds" aria-hidden="true">
+    <div><kbd>WASD</kbd><span>{onFoot?'Walk':'Swim'}</span></div>
+    <div><kbd>Shift</kbd><span>{onFoot?'Run':'Sprint'}</span></div>
+    {!onFoot&&<div><kbd>Space/Q</kbd><span>Buoyancy</span></div>}
     <div><kbd>1–5</kbd><span>Select</span></div>
     <div><kbd>Click</kbd><span>Stab</span></div>
     <div><kbd>F</kbd><span>Torch</span></div>
@@ -160,7 +164,7 @@ function App(){
    <div className="menu-actions"><button onClick={()=>{const w=engine.current;if(w){w.setSound(!w.sound);w.publish();}}}>{engine.current?.sound===false?'Sound off':'Sound on'}</button><button onClick={()=>engine.current?.testSound()}>Test sound</button>{snap?.started&&!terminal&&<button onClick={()=>{engine.current?.reset();engine.current?.start();}}>Restart dive</button>}</div>
    <p className="sound-help" role="status">{snap?.audioNotice||'Test sound plays two clear tones. During the dive, hear your music.'}</p>
    <div className="dive-note">2–4 MINUTES <span>·</span> DESKTOP / HEADPHONES <span>·</span> PROTOTYPE {APP_VERSION}</div>
-   </section><aside className="briefing"><div className="eyebrow">BEFORE YOU DESCEND</div><ol><li><b>Wake at the hatch.</b><span>A corridor joins the south of the cave. It starts dry enough to walk. Water rises there only and stays when you die. The wall tank is on a middle mount — after you die it is somewhere else. Press E to fill your cylinder. A gun, a spare bottle, and a coat lie farther up the corridor. A Soviet guard patrols the dry floor — he stops where the water is too deep and cannot see through walls. Death drops whatever you carry on the corpse; if he killed you he takes the gun, bottle, and coat and will use them. You wake with empty hands.</span></li><li><b>Follow the turquoise lights.</b><span>Find the relic in the bone alcove, beyond the central pillar.</span></li><li><b>Chart scraps in the crates.</b><span>The plastic crate has no lid — the scrap is already visible; press E to grab it. Lidded crates open with E, then E takes the scrap. Tab reviews the field chart. Exits stay unmarked until all three fit.</span></li><li><b>Make room for your discovery.</b><span>Five slots, no backpack. Press E, choose 1–5, then E to swap. The old item drops. Slot 1 starts with a diving knife.</span></li><li><b>Escape through the east fissure.</b><span>Follow amber lights north to the extraction pool. The guardian cannot enter the narrow passage.</span></li></ol><div className="control-grid"><span><kbd>W A S D</kbd> Walk / swim</span><span><kbd>Space / Q</kbd> Buoyancy</span><span><kbd>[ ]</kbd> Set trim bias</span><span><kbd>X</kbd> Clear trim</span><span><kbd>Shift</kbd> Sprint</span><span><kbd>F</kbd> Torch</span><span><kbd>E</kbd> Collect / open crate</span><span><kbd>Tab</kbd> Cave chart</span><span><kbd>1–5</kbd> Select slot</span><span><kbd>Click</kbd> Stab (knife)</span><span><kbd>R</kbd> Use / consume</span><span><kbd>G</kbd> Drop selected</span></div><p className="look-note">Move the mouse or trackpad to look — right looks right. No button held. If the browser limits the pointer, hold left or right of center to keep turning through 360° without leaving the dive window. Arrow keys also look. <kbd>Esc</kbd> pauses; <kbd>M</kbd> mutes.</p><p className="tip">Inventory: <kbd>1</kbd> selects the diving knife, then <kbd>click</kbd> stabs at close range — wound it and it rages; cut deep and it breaks off slow, or sinks bloody when killed. <kbd>R</kbd> uses consumables (air, sealant, flares). Crates yield chart scraps — <kbd>Tab</kbd> opens the field chart; exits stay unmarked until all three fit. A one-time tip appears on the first dive only. Rock blocks its sight; a flare distracts it while you move away. Killing is optional — extraction still only needs the relic.</p></aside></div>}
+   </section><aside className="briefing"><div className="eyebrow">BEFORE YOU DESCEND</div><ol><li><b>Wake at the hatch.</b><span>A corridor joins the south of the cave. You start on dry ground — WASD walk, Shift run. The cylinder does not burn until you swim. When corridor water rises past your eyes you leave the floor and swim with the usual buoyancy controls. Water rises there only and stays when you die. The wall tank is on a middle mount — after you die it is somewhere else. Press E to fill your cylinder. A gun, a spare bottle, and a coat lie farther up the corridor. A Soviet guard patrols the dry floor — he stops where the water is too deep and cannot see through walls. Death drops whatever you carry on the corpse; if he killed you he takes the gun, bottle, and coat and will use them. You wake with empty hands. Entering the flooded cave always means swimming.</span></li><li><b>Follow the turquoise lights.</b><span>Find the relic in the bone alcove, beyond the central pillar.</span></li><li><b>Chart scraps in the crates.</b><span>The plastic crate has no lid — the scrap is already visible; press E to grab it. Lidded crates open with E, then E takes the scrap. Tab reviews the field chart. Exits stay unmarked until all three fit.</span></li><li><b>Make room for your discovery.</b><span>Five slots, no backpack. Press E, choose 1–5, then E to swap. The old item drops. Slot 1 starts with a diving knife.</span></li><li><b>Escape through the east fissure.</b><span>Follow amber lights north to the extraction pool. The guardian cannot enter the narrow passage.</span></li></ol><div className="control-grid"><span><kbd>W A S D</kbd> Walk then swim</span><span><kbd>Shift</kbd> Run / sprint</span><span><kbd>Space / Q</kbd> Buoyancy (swim)</span><span><kbd>[ ]</kbd> Set trim bias</span><span><kbd>X</kbd> Clear trim</span><span><kbd>F</kbd> Torch</span><span><kbd>E</kbd> Collect / open crate</span><span><kbd>Tab</kbd> Cave chart</span><span><kbd>1–5</kbd> Select slot</span><span><kbd>Click</kbd> Stab (knife)</span><span><kbd>R</kbd> Use / consume</span><span><kbd>G</kbd> Drop selected</span></div><p className="look-note">Move the mouse or trackpad to look — right looks right. No button held. If the browser limits the pointer, hold left or right of center to keep turning through 360° without leaving the dive window. Arrow keys also look. <kbd>Esc</kbd> pauses; <kbd>M</kbd> mutes.</p><p className="tip">Inventory: <kbd>1</kbd> selects the diving knife, then <kbd>click</kbd> stabs at close range — wound it and it rages; cut deep and it breaks off slow, or sinks bloody when killed. <kbd>R</kbd> uses consumables (air, sealant, flares). Crates yield chart scraps — <kbd>Tab</kbd> opens the field chart; exits stay unmarked until all three fit. A one-time tip appears on the first dive only. Rock blocks its sight; a flare distracts it while you move away. Killing is optional — extraction still only needs the relic.</p></aside></div>}
  </main>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);

@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.4.6
+# Painted Abyss — First Dive · 0.4.7
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -57,12 +57,12 @@ Keep the terminal open while playing. Stop it with Ctrl+C. If port 5173 is alrea
 | Mouse / one-finger trackpad motion | Look; right turns right, left turns left |
 | Two-finger scroll | Additional camera look; does not select items |
 | Arrow keys | Keyboard camera look |
-| W / A / S / D | Kick-swim forward / left / back / right (look-relative) |
-| Space | Add positive buoyancy (BCD up) |
-| Q or Ctrl | Add negative buoyancy (BCD down) |
-| [ / ] | Nudge locked idle trim bias toward sink / float |
-| X | Clear trim bias back to neutral |
-| Shift | Sprint kick; spends fin energy, which replenishes |
+| W / A / S / D | Walk on the dry breath corridor; kick-swim once flooded or in the cave |
+| Space | Add positive buoyancy (BCD up) — swim only |
+| Q or Ctrl | Add negative buoyancy (BCD down) — swim only |
+| [ / ] | Nudge locked idle trim bias toward sink / float — swim only |
+| X | Clear trim bias back to neutral — swim only |
+| Shift | Run on dry corridor floor; sprint kick while swimming |
 | F | Toggle the mounted torch |
 | E | Collect a nearby item / open a lidded crate / grab a scrap from the plastic crate / confirm replacement / extract |
 | Tab | Toggle the field chart (map scraps from crates; exits marked only when all three fit) |
@@ -78,6 +78,7 @@ Pointer lock is requested by Begin / Resume. If the browser refuses it, moving t
 ## Your first dive
 
 - Follow **turquoise markers** down the entrance tunnel and around the central rock pillar. The relic rests above a plinth in the bone alcove at the far end.
+- You wake at the hatch on dry corridor floor: **WASD walk**, **Shift run**. Tank air does not burn until you swim. When corridor water rises past eye height you leave the floor and use the swim stack (Space/Q buoyancy). Stepping into the flooded cave always means swimming.
 - Three floor **crates** hold torn **map scraps** (west cavern, east shelf, bone alcove). The plastic crate has no lid — the chart scroll is already visible inside, and **E** grabs it. The military crate and suitcase open with **E**, then **E** again takes the scrap. **Tab** reviews the field chart. Exit marks appear only after all three scraps fit.
 - You start with a **diving knife** in slot 1, plus driftwood, flare, pony bottle, and sealant — five slots so the swap mechanic can be tried immediately. Press **E**, select the slot to replace with **1–5**, then press **E** again. The displaced item remains in the world and can be recovered. There is no extra backpack.
 - Driftwood is spare salvage; replacing it keeps your useful supplies. Press **1** then **click** to stab the guardian at close range — wounds make it rage harder; at ~85% damage taken it breaks off slow and limping; killing it sinks the corpse with soft floating blood sprites in the water (optional — extract still only needs the relic). Press **1–5** to select a slot, then **R** to use consumables — air, sealant, and flares are consumed. A one-time tip appears on the first dive only; later dives rely on the selected-slot chrome. Selecting the knife puts the Poly Haven fish knife in hand; other slots return the mounted torch as the held FPS object.

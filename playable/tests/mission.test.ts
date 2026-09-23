@@ -206,7 +206,8 @@ test('air loss, pony bailout, sealant and distraction have tangible effects',()=
  m.inventory[3]='air';m.use();assert.equal(m.bailout,AIR_BAILOUT_LITRES);assert.equal(m.feedbackKind,'blocked'); // pony already full
  m.health=30;m.selected=4;m.use();assert.equal(m.health,75);
  m.selected=2;m.use();assert.ok(m.decoy);assert.equal(m.predator.state,'search');advance(m,13);assert.equal(m.decoy,null);
- m.air=.01;m.bailout=0;m.update(.05);assert.equal(m.outcome,'lost');
+ // Drown in the flooded cave — hatch free-air does not burn the tank.
+ m.position={...START};m.air=.01;m.bailout=0;m.update(.05);assert.equal(m.outcome,'lost');
 });
 test('main tank empties in well under four minutes at depth',()=>{
  const m=new Mission(true);m.position={...START,y:FLOOR_Y};
@@ -226,7 +227,7 @@ test('gas drain scales with ATA and sprint; bailout feeds after main',()=>{
  const shallow=new Mission(true);shallow.position={...START,y:SURFACE_Y};
  for(let i=0;i<60;i++){deep.update(1/60,true);shallow.update(1/60,false);}
  assert.ok(deep.air<shallow.air);
- const m=new Mission(true);m.air=.2;m.bailout=AIR_BAILOUT_LITRES;
+ const m=new Mission(true);m.position={...START};m.air=.2;m.bailout=AIR_BAILOUT_LITRES;
  for(let i=0;i<20;i++)m.update(.05,false);
  assert.equal(m.air,0);assert.ok(m.bailout<AIR_BAILOUT_LITRES);assert.equal(m.outcome,'playing');
  m.bailout=.01;m.update(.2,false);assert.equal(m.outcome,'lost');

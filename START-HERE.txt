@@ -8,11 +8,11 @@ in this folder and run:
 (Or, if already up to date: node playable/serve.mjs)
 
 Open http://127.0.0.1:5173 in a desktop browser and click Begin dive.
-Confirm the on-screen label says BUILD v0.4.6 · <git-sha>
+Confirm the on-screen label says BUILD v0.4.7 · <git-sha>
 (menu and during the dive). After another agent merges, run refresh.mjs again.
 First rebuild needs `cd playable && npm ci` once; serve/refresh then bake dist locally.
 
-WASD swim · Space/Q up/down · Shift sprint · mouse/trackpad look
+WASD walk (dry corridor) / swim · Shift run/sprint · Space/Q buoyancy (swim) · mouse/trackpad look
 F torch · E collect/extract · 1–5 select · click stab (knife) · R use · G drop · Esc pause
 
 Recover the relic by following turquoise markers. Slot 1 starts with a diving

@@ -55,8 +55,13 @@ export const WALK_SPRINT=3.55;
 export const BREATH_RESPAWN_LITRES=28;
 /** Spare bottle in the corridor. Used with R; death can take it before that. */
 export const SPARE_BOTTLE_LITRES=40;
-/** Walk while the corridor water is still below the eyes. */
+/**
+ * Walk while corridor water is still below the eyes.
+ * Above this the player leaves the floor and uses the swim stack.
+ */
 export const BREATH_WALK_WATER=WALK_EYE_Y-.05;
+/** Head clears the corridor waterline — free air, no tank drain. */
+export const BREATH_AIR_MARGIN=.12;
 /** Phase 3 Soviet guard — melee reach on dry corridor floor. */
 export const GUARD_MELEE_RANGE=1.85;
 export const GUARD_MELEE_DAMAGE=22;
@@ -137,6 +142,14 @@ export function gasEffort(sprinting=false,panic=false){
 /** Litres consumed per wall-clock second (SAC/60 × ATA × effort). */
 export function gasDrainRate(depthY:number,sprinting=false,panic=false){
  return (SAC_CRUISE_LPM/60)*ata(depthY)*gasEffort(sprinting,panic);
+}
+/** Tank burn for the current pose. Zero while breathing free air in the corridor. */
+export function gasDrainRateAt(p:Point,waterY:number,sprinting=false,panic=false){
+ if(breathingFreeAir(p,waterY))return 0;
+ const depth=effectiveDepth(p,waterY);
+ // Cave column still keyed off eye height via hydrostaticDepth; corridor uses flood depth.
+ if(inBreathCorridor(p))return (SAC_CRUISE_LPM/60)*(1+depth/10)*gasEffort(sprinting,panic);
+ return gasDrainRate(p.y,sprinting,panic);
 }
 
 /** Kick thrust (m/s²) — terminal speed ≈ sqrt(thrust / SWIM_DRAG_K). */
@@ -360,8 +373,24 @@ export function breathZone(col:number,row:number):BreathZone{
  return 'middle';
 }
 export function inBreathCorridor(p:Point){const t=tile(p);return breathZone(t.col,t.row)!=='';}
-/** Dry or wading: head still above the corridor waterline. The cave itself is never this. */
+/**
+ * Dry or wading on the corridor floor. False in the cave (always swim)
+ * and false once corridor water reaches eye height.
+ */
 export function canWalkBreath(p:Point,waterY:number){return inBreathCorridor(p)&&waterY<BREATH_WALK_WATER;}
+/** Head above the corridor flood — free air, no tank drain, air-side fog. */
+export function breathingFreeAir(p:Point,waterY:number){
+ return inBreathCorridor(p)&&p.y>waterY+BREATH_AIR_MARGIN;
+}
+/**
+ * Depth for HUD / gas / torch. Corridor uses the rising flood plane;
+ * the cave still uses the shared SURFACE_Y column. Free-air corridor = 0.
+ */
+export function effectiveDepth(p:Point,waterY:number){
+ if(breathingFreeAir(p,waterY))return 0;
+ if(inBreathCorridor(p))return Math.max(0,waterY-p.y);
+ return hydrostaticDepth(p.y);
+}
 export function riseBreathWater(waterY:number,dt:number){return Math.min(SURFACE_Y,waterY+BREATH_RISE_MPS*Math.max(0,dt));}
 /** Open corridor cells only — the Soviet guard never enters the cave grid. */
 export function breathCell(col:number,row:number){return breathZone(col,row)!=='';}
@@ -637,7 +666,7 @@ export function writeInventoryTipsSeen(){
   this.guard.waypoint=0;
   this.killedByGuard=false;
   if(!tipsSeen){
-   this.notice='1–5 select · click stabs with the knife · R uses consumables.';
+   this.notice='WASD walk · Shift run · cylinder rests until you swim. 1–5 select · click stabs.';
    this.noticeUntil=8;this.feedbackKind='select';
   }
  }
@@ -876,7 +905,10 @@ export function writeInventoryTipsSeen(){
   if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;
   this.breathWaterY=riseBreathWater(this.breathWaterY,dt);
   const panic=this.elapsed<this.gasPanicUntil;
-  let need=gasDrainRate(this.position.y,sprinting,panic)*dt;
+  const onFoot=canWalkBreath(this.position,this.breathWaterY);
+  // Dry corridor: no BCD — trim stays neutral until the flood forces a swim.
+  if(onFoot){this.buoyancy=0;this.buoyancyTrim=0;}
+  let need=gasDrainRateAt(this.position,this.breathWaterY,sprinting,panic)*dt;
   if(this.air>=need){this.air-=need;need=0;}
   else{need-=this.air;this.air=0;this.bailout=Math.max(0,this.bailout-need);need=0;}
   this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?-18:17)*dt));
