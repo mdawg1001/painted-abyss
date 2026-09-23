@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
  Mission,cells,tile,fits,distance,world,FLOOR_Y,SURFACE_Y,AIR_MAIN_MAX,EXIT,RELIC,
  breathZone,breathHatchSpawn,breathTankMounts,breathFootprint,nextBreathTankIndex,
- riseBreathWater,floodFraction,BREATH_RISE_MPS,canWalkBreath,inBreathCorridor,breathingFreeAir,effectiveDepth,gasDrainRateAt,
+ riseBreathWater,floodFraction,canWalk,BREATH_RISE_MPS,canWalkBreath,inBreathCorridor,breathingFreeAir,effectiveDepth,gasDrainRateAt,
  BREATH_WATER_START,BREATH_WATER_FILL_START,BREATH_WALK_WATER,BREATH_RESPAWN_LITRES,BREATH_ROW_HATCH,BREATH_ROW_FAR,BREATH_COLS,
  WALK_EYE_Y,WALK_SPEED,WALK_SPRINT,
 } from '../src/simulation';
@@ -42,7 +42,8 @@ test('first life is dry enough to walk and water rises only as corridor state',(
  assert.ok(m.breathWaterY>before,'flood clock runs while you are in the cave');
  assert.ok(m.breathWaterY<BREATH_WALK_WATER);
  assert.equal(inBreathCorridor(m.position),false);
- assert.equal(canWalkBreath(m.position,m.breathWaterY),false,'walking is still corridor-only (cave walking comes next)');
+ assert.equal(canWalkBreath(m.position,m.breathWaterY),false,'the guard\'s corridor rule is unchanged');
+ assert.equal(canWalk(m.position,m.breathWaterY),true,'the player walks the dry cave floor');
  const capped=riseBreathWater(SURFACE_Y-.01,10);
  assert.equal(capped,SURFACE_Y);
 });

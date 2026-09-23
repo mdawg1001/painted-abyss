@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.5.0
+# Painted Abyss — First Dive · 0.6.0
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -57,7 +57,7 @@ Keep the terminal open while playing. Stop it with Ctrl+C. If port 5173 is alrea
 | Mouse / one-finger trackpad motion | Look; right turns right, left turns left |
 | Two-finger scroll | Additional camera look; does not select items |
 | Arrow keys | Keyboard camera look |
-| W / A / S / D | Walk on the dry breath corridor; kick-swim once flooded or in the cave |
+| W / A / S / D | Walk anywhere the bunker floor is dry or wadeable (corridor and cave); swim once the flood passes the walk line |
 | Space | Add positive buoyancy (BCD up) — swim only |
 | Q or Ctrl | Add negative buoyancy (BCD down) — swim only |
 | [ / ] | Nudge locked idle trim bias toward sink / float — swim only |
@@ -78,7 +78,8 @@ Pointer lock is requested by Begin / Resume. If the browser refuses it, moving t
 ## Your first dive
 
 - Follow **turquoise markers** down the entrance tunnel and around the central rock pillar. The relic rests above a plinth in the bone alcove at the far end.
-- **The bunker is leaking.** At spawn the whole bunker, corridor and cave, is dry: the waterline starts below the floor and one shared flood level rises at about 1.6 cm/s (over the floor in about 35 s, standing head height in about 2 min 15 s, the ceiling in about 7 min 20 s). The HUD **FLOOD · LEAK** gauge tracks it. Tank air only burns while your head is under the waterline; above it the HUD reads **IN AIR**. In the corridor you **WASD walk** / **Shift run** until the water passes eye height, then swim (Space/Q buoyancy). In the cave the controls are still the swim stack for now; cave walking is the next step.
+- **The bunker is leaking.** At spawn the whole bunker, corridor and cave, is dry: the waterline starts below the floor and one shared flood level rises at about 1.6 cm/s (over the floor in about 35 s, standing head height in about 2 min 15 s, the ceiling in about 7 min 20 s). The HUD **FLOOD · LEAK** gauge tracks it. Tank air only burns while your head is under the waterline; above it the HUD reads **IN AIR**. In the corridor you **WASD walk** / **Shift run** until the water passes eye height, then swim (Space/Q buoyancy). The cave is walkable too until the flood passes the walk line; then you swim.
+- **Walking is a human gait** (`playable/src/gait.ts`), not a glide. Speed sets cadence and stride (≈117 steps/min at the 1.55 m/s walk, ≈165 at the 3.4 m/s run); each leg follows clinical hip/knee/ankle curves with heel strike, loading response, midstance, push-off and swing; the pelvis rises and falls twice per stride (≈4 cm walking, lowest at heel strike; ≈7 cm running, lowest at midstance), sways toward the stance foot, rotates ±4° and drops ±5° on the swing side; the thorax counter-rotates and the arms swing opposite the legs. The camera rides that body with gaze stabilisation, so you feel the rise, fall and sway but only a slight nod. Starting takes about a second, stopping finishes the step and settles on both feet, backward and sideways steps are slower, you cannot run backwards, wading slows the stride, and every heel strike plays a footstep (splashing once the water is over your boots). Legs tire more slowly than fins: about 12 s of hard running.
 - Three floor **crates** hold torn **map scraps** (west cavern, east shelf, bone alcove). The plastic crate has no lid — the chart scroll is already visible inside, and **E** grabs it. The military crate and suitcase open with **E**, then **E** again takes the scrap. **Tab** reviews the field chart. Exit marks appear only after all three scraps fit.
 - You start with a **diving knife** in slot 1, plus driftwood, flare, pony bottle, and sealant — five slots so the swap mechanic can be tried immediately. Press **E**, select the slot to replace with **1–5**, then press **E** again. The displaced item remains in the world and can be recovered. There is no extra backpack.
 - Driftwood is spare salvage; replacing it keeps your useful supplies. Press **1** then **click** to stab the guardian at close range — wounds make it rage harder; at ~85% damage taken it breaks off slow and limping; killing it sinks the corpse with soft floating blood sprites in the water (optional — extract still only needs the relic). Press **1–5** to select a slot, then **R** to use consumables — air, sealant, and flares are consumed. A one-time tip appears on the first dive only; later dives rely on the selected-slot chrome. Selecting the knife puts the Poly Haven fish knife in hand; other slots return the mounted torch as the held FPS object.

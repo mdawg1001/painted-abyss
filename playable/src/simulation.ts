@@ -48,8 +48,9 @@ export const BREATH_FAR_ROWS=1;
 export const BREATH_RISE_MPS=0.016;
 /** Standing eye height on the dry corridor floor. */
 export const WALK_EYE_Y=FLOOR_Y+1.6;
-export const WALK_SPEED=2.35;
-export const WALK_SPRINT=3.55;
+/** Brisk human walk and steady run (m/s). The gait model in gait.ts owns the details. */
+export const WALK_SPEED=1.55;
+export const WALK_SPRINT=3.4;
 /** Litres on the cylinder after a death — enough to search, not to skip the tank. */
 export const BREATH_RESPAWN_LITRES=28;
 /** Spare bottle in the corridor. Used with R; death can take it before that. */
@@ -390,6 +391,11 @@ export function inBreathCorridor(p:Point){const t=tile(p);return breathZone(t.co
  * and false once corridor water reaches eye height.
  */
 export function canWalkBreath(p:Point,waterY:number){return inBreathCorridor(p)&&waterY<BREATH_WALK_WATER;}
+/**
+ * The player walks on any open bunker floor (corridor or cave) while the flood is
+ * below the walk line; deeper than that he has to swim.
+ */
+export function canWalk(p:Point,waterY:number){return waterY<BREATH_WALK_WATER&&isOpen(p.x,p.z);}
 /**
  * Head above the bunker flood — free air, no tank drain, air-side fog.
  * The whole bunker (corridor and cave) shares one leak-driven waterline.
@@ -943,13 +949,14 @@ export function writeInventoryTipsSeen(){
   if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;
   this.breathWaterY=riseBreathWater(this.breathWaterY,dt);
   const panic=this.elapsed<this.gasPanicUntil;
-  const onFoot=canWalkBreath(this.position,this.breathWaterY);
+  const onFoot=canWalk(this.position,this.breathWaterY);
   // Dry corridor: no BCD — trim stays neutral until the flood forces a swim.
   if(onFoot){this.buoyancy=0;this.buoyancyTrim=0;}
   let need=gasDrainRateAt(this.position,this.breathWaterY,sprinting,panic)*dt;
   if(this.air>=need){this.air-=need;need=0;}
   else{need-=this.air;this.air=0;this.bailout=Math.max(0,this.bailout-need);need=0;}
-  this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?-18:17)*dt));
+  // Legs last far longer than a finning sprint: ~12 s of hard running vs ~5.5 s of sprint kicking.
+  this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?(onFoot?-8:-18):17)*dt));
   if(this.air<=0&&this.bailout<=0){this.outcome='lost';this.reason='Your air ran out. Arm the pony earlier or climb and calm your kick.';return;}
   if(this.pending!==null&&!this.pickups.some(p=>p.id===this.pending&&distance(p.position,this.position)<3.2))this.pending=null;
   // Corridor guard runs even while the cave guardian is dead / flinching.
