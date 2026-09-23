@@ -361,13 +361,17 @@ export function breathHatchSpawn():Point{
  const b=world(BREATH_COLS[1],BREATH_ROW_HATCH);
  return {x:(a.x+b.x)/2,y:WALK_EYE_Y,z:(a.z+b.z)/2};
 }
-/** Axis-aligned footprint of the corridor water (not the cave). */
-export function breathFootprint(){
+export type BreathFootprint={minX:number;maxX:number;minZ:number;maxZ:number;width:number;depth:number;cx:number;cz:number};
+/** Axis-aligned footprint of the corridor water (not the cave). Constant for the life of the map. */
+let breathFootprintCache:BreathFootprint|null=null;
+export function breathFootprint():BreathFootprint{
+ if(breathFootprintCache)return breathFootprintCache;
  const minX=world(BREATH_COLS[0],0).x-CELL/2;
  const maxX=world(BREATH_COLS[1],0).x+CELL/2;
  const maxZ=world(BREATH_COLS[0],BREATH_ROW_HATCH).z+CELL/2;
  const minZ=world(BREATH_COLS[0],BREATH_ROW_FAR).z-CELL/2;
- return {minX,maxX,minZ,maxZ,width:maxX-minX,depth:maxZ-minZ,cx:(minX+maxX)/2,cz:(minZ+maxZ)/2};
+ breathFootprintCache={minX,maxX,minZ,maxZ,width:maxX-minX,depth:maxZ-minZ,cx:(minX+maxX)/2,cz:(minZ+maxZ)/2};
+ return breathFootprintCache;
 }
 export function pathBetween(a:Point,b:Point){
  const from=tile(a),to=tile(b),start=`${from.col},${from.row}`,end=`${to.col},${to.row}`;
