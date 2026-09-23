@@ -394,19 +394,27 @@ export function effectiveDepth(p:Point,waterY:number){
 export function riseBreathWater(waterY:number,dt:number){return Math.min(SURFACE_Y,waterY+BREATH_RISE_MPS*Math.max(0,dt));}
 /** Open corridor cells only — the Soviet guard never enters the cave grid. */
 export function breathCell(col:number,row:number){return breathZone(col,row)!=='';}
+/** Corridor centerline X — guard patrol stays on this axis (no lateral weave). */
+export function guardPatrolAxisX():number{
+ return (world(BREATH_COLS[0],0).x+world(BREATH_COLS[1],0).x)/2;
+}
 /** Standing spawn for the corridor guard (middle stretch, clear of hatch gear). */
 export function guardSpawnPoint():Point{
  const p=world(BREATH_COLS[0],-4);
- return {x:p.x+.6,y:WALK_EYE_Y,z:p.z};
+ return {x:guardPatrolAxisX(),y:WALK_EYE_Y,z:p.z};
 }
-/** Patrol posts along the dry middle of the breath corridor. */
+/**
+ * Straight out-and-back along corridor Z on the centerline.
+ * Two posts only — no column zigzag, diagonal jitter, or mid-stride turns.
+ */
 export function guardPatrolPoints():Point[]{
- const rows=[-6,-4,-2];
- return rows.map((row,i)=>{
-  const col=BREATH_COLS[i%2];
-  const p=world(col,row);
-  return {x:p.x+(i%2?-.4:.4),y:WALK_EYE_Y,z:p.z};
- });
+ const x=guardPatrolAxisX();
+ const south=world(BREATH_COLS[0],-6);
+ const north=world(BREATH_COLS[0],-2);
+ return [
+  {x,y:WALK_EYE_Y,z:south.z},
+  {x,y:WALK_EYE_Y,z:north.z},
+ ];
 }
 /**
  * BFS along breath-corridor cells only.
@@ -951,14 +959,20 @@ export function writeInventoryTipsSeen(){
    else if(g.timer>8){g.state='patrol';g.timer=0;}
   }
   const goal=g.state==='patrol'?this.guardPatrol[g.waypoint]:g.lastKnown;
-  if(g.state==='patrol'&&distance(g.position,goal)<1.0)g.waypoint=(g.waypoint+1)%this.guardPatrol.length;
+  if(g.state==='patrol'&&Math.abs(g.position.z-goal.z)<.55)g.waypoint=(g.waypoint+1)%this.guardPatrol.length;
   // Prefer a dry path; if the goal tile is flooded, advance as far as water allows.
   let target=g.position;
-  const path=pathBreath(g.position,goal);
-  for(const step of path.length?path:[goal]){
-   if(!canWalkBreath(step,this.breathWaterY))break;
-   target=step;
-   break;
+  if(g.state==='patrol'){
+   // Straight Z march on the centerline — never pathfind sideways while patrolling.
+   target={x:guardPatrolAxisX(),y:WALK_EYE_Y,z:this.guardPatrol[g.waypoint].z};
+   if(!canWalkBreath(target,this.breathWaterY))target={...g.position,x:guardPatrolAxisX()};
+  }else{
+   const path=pathBreath(g.position,goal);
+   for(const step of path.length?path:[goal]){
+    if(!canWalkBreath(step,this.breathWaterY))break;
+    target=step;
+    break;
+   }
   }
   // If we only have a flooded goal, hold the last dry footing (no wading chase).
   if(!canWalkBreath(target,this.breathWaterY))target={...g.position};
@@ -969,12 +983,23 @@ export function writeInventoryTipsSeen(){
    :g.state==='search'?GUARD_SPEED.search
    :GUARD_SPEED.patrol;
   if(len>.05&&canWalkBreath(g.position,this.breathWaterY)){
-   g.heading=Math.atan2(-dz,dx);
-   const step={...g.position};
-   moveBody(step,dx/len*Math.min(len,speed*dt),0,dz/len*Math.min(len,speed*dt),.42);
-   // Reject any slide that leaves the corridor or enters deep water.
-   if(canWalkBreath(step,this.breathWaterY)){
-    g.position.x=step.x;g.position.z=step.z;
+   if(g.state==='patrol'){
+    // Out-and-back on Z only: lock X, face along the corridor, no mid-stride yaw wobble.
+    const faceZ=dz>=0?1:-1;
+    g.heading=Math.atan2(-faceZ,0);
+    const stepZ=g.position.z+faceZ*Math.min(Math.abs(dz),speed*dt);
+    const step={x:guardPatrolAxisX(),y:WALK_EYE_Y,z:stepZ};
+    if(canWalkBreath(step,this.breathWaterY)){
+     g.position.x=step.x;g.position.z=step.z;
+    }
+   }else{
+    g.heading=Math.atan2(-dz,dx);
+    const step={...g.position};
+    moveBody(step,dx/len*Math.min(len,speed*dt),0,dz/len*Math.min(len,speed*dt),.42);
+    // Reject any slide that leaves the corridor or enters deep water.
+    if(canWalkBreath(step,this.breathWaterY)){
+     g.position.x=step.x;g.position.z=step.z;
+    }
    }
   }
   g.position.y=WALK_EYE_Y;
