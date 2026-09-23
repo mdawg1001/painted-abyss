@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.3.5
+# Painted Abyss — First Dive · 0.3.6
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -64,7 +64,7 @@ Keep the terminal open while playing. Stop it with Ctrl+C. If port 5173 is alrea
 | X | Clear trim bias back to neutral |
 | Shift | Sprint kick; spends fin energy, which replenishes |
 | F | Toggle the mounted torch |
-| E | Collect a nearby item / open a crate / confirm replacement / extract |
+| E | Collect a nearby item / open a lidded crate / grab a scrap from the plastic crate / confirm replacement / extract |
 | Tab | Toggle the field chart (map scraps from crates; exits marked only when all three fit) |
 | 1–5 | Select one of exactly five carried slots (plays a short click when the selection changes; muted when sound is off) |
 | Click (knife selected) | Stab — short forward melee; range shorter than the guardian's bite |
@@ -78,7 +78,7 @@ Pointer lock is requested by Begin / Resume. If the browser refuses it, moving t
 ## Your first dive
 
 - Follow **turquoise markers** down the entrance tunnel and around the central rock pillar. The relic rests above a plinth in the bone alcove at the far end.
-- Three floor **crates** hide torn **map scraps** (west cavern, east shelf, bone alcove). Press **E** to open a crate — a physical chart scroll sits inside; **E** again takes the scrap. **Tab** reviews the field chart. Exit marks appear only after all three scraps fit.
+- Three floor **crates** hold torn **map scraps** (west cavern, east shelf, bone alcove). The plastic crate has no lid — the chart scroll is already visible inside, and **E** grabs it. The military crate and suitcase open with **E**, then **E** again takes the scrap. **Tab** reviews the field chart. Exit marks appear only after all three scraps fit.
 - You start with a **diving knife** in slot 1, plus driftwood, flare, pony bottle, and sealant — five slots so the swap mechanic can be tried immediately. Press **E**, select the slot to replace with **1–5**, then press **E** again. The displaced item remains in the world and can be recovered. There is no extra backpack.
 - Driftwood is spare salvage; replacing it keeps your useful supplies. Press **1** then **click** to stab the guardian at close range — wounds make it rage harder; at ~85% damage taken it breaks off slow and limping; killing it sinks the corpse with soft floating blood sprites in the water (optional — extract still only needs the relic). Press **1–5** to select a slot, then **R** to use consumables — air, sealant, and flares are consumed. A one-time tip appears on the first dive only; later dives rely on the selected-slot chrome. Selecting the knife puts the Poly Haven fish knife in hand; other slots return the mounted torch as the held FPS object.
 - Carry the relic east toward the **amber markers**, enter the narrow fissure, then follow it north to the extraction pool. Press **E** near the light to win. You must still be carrying the relic; dropping it removes eligibility to extract.
@@ -116,8 +116,8 @@ New mission rules live in `playable/src/simulation.ts`; cave rendering and input
 ## Third-party assets
 
 - **Fish Knife** ([Poly Haven](https://polyhaven.com/a/fish_knife)) by Mateusz Sadek — CC0 1.0. Used as the diving-knife inventory icon and held FPS prop when the knife slot is selected (`playable/public/assets/knife/`). Other slots restore the dive torch as the held object.
-- **Dive chests** (CC0 1.0): [Wooden Military Crate](https://polyhaven.com/a/wooden_military_crate) (Prabhjinder Singh), [Plastic Crate 02](https://polyhaven.com/a/plastic_crate_02) (Fabi_G), [Vintage Suitcase](https://polyhaven.com/a/vintage_suitcase) (Maximilian Schuster). Floor props under `playable/public/assets/chests/`; press **E** to open, then **E** again to take the chart scrap.
-- **Map scrap scroll** (CC BY 4.0): [Scroll (game ready asset)](https://sketchfab.com/3d-models/scroll-game-ready-asset-c1503d2292c74faebf83a5937646c1c7) (Aparicio Silva 3D). Authored mesh and PBR maps under `playable/public/assets/scroll/`; the scrap sits inside an open crate.
+- **Dive chests** (CC0 1.0): [Wooden Military Crate](https://polyhaven.com/a/wooden_military_crate) (Prabhjinder Singh), [Plastic Crate 02](https://polyhaven.com/a/plastic_crate_02) (Fabi_G), [Vintage Suitcase](https://polyhaven.com/a/vintage_suitcase) (Maximilian Schuster). Floor props under `playable/public/assets/chests/`. The military crate and suitcase open with **E**, then **E** takes the chart scrap. The plastic crate has no lid — the scrap is already visible and **E** grabs it.
+- **Map scrap scroll** (CC BY 4.0): [Scroll (game ready asset)](https://sketchfab.com/3d-models/scroll-game-ready-asset-c1503d2292c74faebf83a5937646c1c7) (Aparicio Silva 3D). Authored mesh and PBR maps under `playable/public/assets/scroll/`. It sits in the open-top plastic crate the whole time, and inside a lidded crate after that crate is opened.
 
 ## Validation and limits
 

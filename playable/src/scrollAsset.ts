@@ -18,7 +18,7 @@ const GLTF='/assets/scroll/scroll.gltf';
 
 export type ScrollVisual={
  root:THREE.Group;
- /** 0 hidden → 1 fully presented on an open crate. */
+ /** 0 hidden → 1 fully seated in the crate. */
  present:number;
  ready:boolean;
 };
@@ -163,8 +163,16 @@ export function scrollFit(kind:ScrollKind){
 }
 
 /**
+ * Plastic crates have no lid, so the scrap is visible before any interact.
+ * Lidded crates show it only after they are opened. Taken scraps stay hidden.
+ */
+export function scrollShouldShow(kind:ScrollKind,open:boolean,taken:boolean){
+ return !taken&&(kind==='plastic'||open);
+}
+
+/**
  * Rest the scroll on the crate floor (crate-local — parent it to the chest pivot).
- * `want` true while the crate is open and the scrap has not been taken.
+ * `want` true while the scrap is still sitting in the crate.
  */
 export function syncScrollPresent(
  visual:ScrollVisual,

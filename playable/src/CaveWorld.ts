@@ -13,7 +13,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
 import { loadCausticAtlas, makeCausticFallbackTexture } from './causticAsset';
 import { createChestVisual, upgradeChestVisual, syncChestOpen, type ChestVisual } from './chestAsset';
-import { createScrollVisual, syncScrollPresent, type ScrollVisual } from './scrollAsset';
+import { createScrollVisual, scrollShouldShow, syncScrollPresent, type ScrollVisual } from './scrollAsset';
 import {
  createLifebuoyVisual, upgradeLifebuoyVisual,
  LIFEBUOY_POS, LIFEBUOY_YAW, type LifebuoyVisual,
@@ -364,7 +364,7 @@ export class CaveWorld extends OceanWorld {
    syncChestOpen(visual,chest.open,dt);
    const scroll=this.scrollVisuals.get(chest.id);
    if(scroll){
-    const want=chest.open&&!this.mission.hasMapFragment(chest.fragment);
+    const want=scrollShouldShow(chest.kind,chest.open,this.mission.hasMapFragment(chest.fragment));
     syncScrollPresent(scroll,want,dt,chest.kind);
     // Shared scroll material would otherwise light every parchment with all 48 point lights.
     if(scroll.ready&&!scroll.root.userData.pointReady){
