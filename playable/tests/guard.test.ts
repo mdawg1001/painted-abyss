@@ -17,19 +17,19 @@ import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 
 test('Soviet guard asset is credited and the glb is present',()=>{
- assert.match(SOVIET_GUARD_SOURCE,/f85a4ed8c33a43eca1a7caa45f7acf99/);
- assert.equal(SOVIET_GUARD_AUTHOR,'tnnv');
- assert.match(SOVIET_GUARD_LICENSE,/CC BY/);
- assert.equal(SOVIET_GUARD_GLB,'/assets/soviet-uniform/ww2_soviet_uniform.glb');
+ assert.match(SOVIET_GUARD_SOURCE,/quaternius\.com/);
+ assert.equal(SOVIET_GUARD_AUTHOR,'Quaternius');
+ assert.match(SOVIET_GUARD_LICENSE,/CC0/);
+ assert.equal(SOVIET_GUARD_GLB,'/assets/soviet-uniform/quaternius_soldier_male.glb');
  assert.ok(SOVIET_GUARD_HEIGHT>=1.85&&SOVIET_GUARD_HEIGHT<=2.0);
- const glb=path.join(root,'public/assets/soviet-uniform/ww2_soviet_uniform.glb');
+ const glb=path.join(root,'public/assets/soviet-uniform/quaternius_soldier_male.glb');
  assert.ok(fs.existsSync(glb),'glb must ship under public/assets');
  const buf=fs.readFileSync(glb);
  assert.equal(buf.toString('ascii',0,4),'glTF');
  const notice=fs.readFileSync(path.join(root,'NOTICE.md'),'utf8');
- assert.match(notice,/WW2 Soviet Uniform/);
- assert.match(notice,/tnnv/);
- assert.match(notice,/CC BY 4\.0/);
+ assert.match(notice,/Quaternius/);
+ assert.match(notice,/Soldier_Male/);
+ assert.match(notice,/CC0/);
 });
 
 test('guard spawns and patrols only inside the breath corridor',()=>{

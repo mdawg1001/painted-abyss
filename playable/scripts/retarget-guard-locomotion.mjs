@@ -1,13 +1,14 @@
 /**
- * Attempt: retarget Quaternius Universal Animation Library (CC0) Idle/Walk/Jog
- * onto the WW2 Soviet Uniform skeleton via SkeletonUtils.retargetClip.
+ * Historical attempt: retarget Quaternius UAL (CC0) Idle/Walk/Jog onto the
+ * Sketchfab WW2 Soviet Uniform Unreal-style skeleton via SkeletonUtils.retargetClip.
  *
- * Status: FAILED in practice — Quaternius (and Mixamo Soldier) rest-pose bone
- * axes are incompatible with this Sketchfab Unreal-style rig; world-space and
- * local-delta retargets collapse height. Kept as the open Mixamo/CC0 path for a
- * future Blender/axis-fix pass. Shipped clips come from bake-guard-locomotion.mjs.
+ * Status: FAILED — rest-pose bone axes incompatible (height collapse).
+ * Mixamo autorig of that mesh was also blocked (Adobe OAuth) in cloud agents.
  *
- * Usage:
+ * Shipped path (v0.4.7+): replace the guard with Quaternius Soldier_Male GLB that
+ * already carries authored idle/walk/run — see `public/assets/soviet-uniform/`.
+ *
+ * Usage (research only; prior Sketchfab GLB no longer in tree):
  *   node scripts/retarget-guard-locomotion.mjs /path/to/UAL1_Standard.fbx
  */
 import * as THREE from 'three';

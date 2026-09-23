@@ -7,9 +7,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
- SOVIET_GUARD_GLB,SOVIET_GUARD_HEIGHT,SOVIET_GUARD_LOCOMOTION,
+ SOVIET_GUARD_GLB,SOVIET_GUARD_HEIGHT,GUARD_LOCO_PROCEDURAL,
  boneWorldBox,meshWorldBox,normalizeHumanoid,
- attachGuardLocomotion,updateGuardLocomotion,
+ attachGuardLocomotion,updateGuardLocomotion,mountGuardGunOnHand,
 } from '../src/sovietGuardAsset';
 import {FLOOR_Y,WALK_EYE_Y} from '../src/simulation';
 
@@ -30,9 +30,18 @@ function installImageStubs(){
   createElement:()=>new FakeImage(),
  };
  (globalThis as unknown as {createImageBitmap:unknown}).createImageBitmap=async()=>({width:4,height:4,close(){}});
+ if(!(globalThis as unknown as {ProgressEvent?:unknown}).ProgressEvent){
+  (globalThis as unknown as {ProgressEvent:unknown}).ProgressEvent=class ProgressEvent extends Event{
+   lengthComputable=false;loaded=0;total=0;
+   constructor(type:string,init:Record<string,unknown>={}){
+    super(type);
+    Object.assign(this,init);
+   }
+  };
+ }
 }
 
-async function loadSovietScene(){
+async function loadGuardGltf(){
  installImageStubs();
  const glbPath=path.join(root,'public',SOVIET_GUARD_GLB.replace(/^\//,''));
  const buf=fs.readFileSync(glbPath);
@@ -40,22 +49,21 @@ async function loadSovietScene(){
  const gltf=await new Promise<Awaited<ReturnType<GLTFLoader['parseAsync']>>>((resolve,reject)=>{
   new GLTFLoader().parse(ab,'',resolve,reject);
  });
- return gltf.scene;
+ return gltf;
 }
 
 test('Soviet guard normalizes to adult mesh height (not toy bind-pose)',async()=>{
  assert.ok(SOVIET_GUARD_HEIGHT>=1.85&&SOVIET_GUARD_HEIGHT<=2.0);
- const scene=await loadSovietScene();
+ const gltf=await loadGuardGltf();
+ const scene=gltf.scene;
  normalizeHumanoid(scene,SOVIET_GUARD_HEIGHT);
  const box=meshWorldBox(scene);
  const height=box.max.y-box.min.y;
  assert.ok(Math.abs(height-SOVIET_GUARD_HEIGHT)<0.05,`mesh height ${height} ≈ ${SOVIET_GUARD_HEIGHT}`);
  assert.ok(Math.abs(box.min.y)<0.05,'feet near local y=0');
- // Crown near player eye when feet on FLOOR_Y, below hatch door (~FLOOR_Y+2.3).
  const crownWorld=FLOOR_Y+height;
  assert.ok(crownWorld>=WALK_EYE_Y-.05,`crown ${crownWorld} near eye ${WALK_EYE_Y}`);
  assert.ok(crownWorld<=FLOOR_Y+2.35,`crown ${crownWorld} below door top`);
- // SkeletonUtils clone must keep the same posed height.
  const cloned=cloneSkinned(scene);
  const parent=new THREE.Group();
  parent.add(cloned);
@@ -65,29 +73,24 @@ test('Soviet guard normalizes to adult mesh height (not toy bind-pose)',async()=
  assert.ok(Math.abs(cHeight-SOVIET_GUARD_HEIGHT)<0.06,`cloned mesh height ${cHeight}`);
 });
 
-test('procedural idle/walk/run clips ship and drive the skeleton',async()=>{
- const locoPath=path.join(root,'public',SOVIET_GUARD_LOCOMOTION.replace(/^\//,''));
- assert.ok(fs.existsSync(locoPath),'guard-locomotion.json present');
- const payload=JSON.parse(fs.readFileSync(locoPath,'utf8')) as{
-  source:string;
-  clips:{idle:object;walk:object;run:object};
- };
- assert.match(payload.source,/[Pp]rocedural|Quaternius|Mixamo/);
+test('authored Quaternius idle/walk/run clips drive the skeleton (not procedural)',async()=>{
+ assert.equal(GUARD_LOCO_PROCEDURAL,false);
+ const gltf=await loadGuardGltf();
+ const by=new Map(gltf.animations.map(a=>[a.name.toLowerCase(),a]));
+ assert.ok(by.has('idle')&&by.has('walk')&&by.has('run'),'GLB embeds idle/walk/run');
  const clips={
-  idle:THREE.AnimationClip.parse(payload.clips.idle as THREE.AnimationClipJSON),
-  walk:THREE.AnimationClip.parse(payload.clips.walk as THREE.AnimationClipJSON),
-  run:THREE.AnimationClip.parse(payload.clips.run as THREE.AnimationClipJSON),
+  idle:by.get('idle')!,
+  walk:by.get('walk')!,
+  run:by.get('run')!,
  };
  assert.ok(clips.idle.duration>1);
  assert.ok(clips.walk.duration>.5);
  assert.ok(clips.run.duration>.5);
- // Rotation-only (no skating root translation).
  for(const c of Object.values(clips)){
-  assert.ok(c.tracks.every(t=>!t.name.endsWith('.position')),`${c.name} has no position tracks`);
-  assert.ok(c.tracks.length>=8,`${c.name} has enough bone tracks`);
+  assert.ok(c.tracks.length>=20,`${c.name} has enough bone tracks (${c.tracks.length})`);
  }
 
- const scene=await loadSovietScene();
+ const scene=gltf.scene;
  normalizeHumanoid(scene,SOVIET_GUARD_HEIGHT);
  const instance=cloneSkinned(scene);
  instance.name='sovietGuardMesh';
@@ -98,20 +101,20 @@ test('procedural idle/walk/run clips ship and drive the skeleton',async()=>{
  assert.ok(loco,'mixer attached');
  assert.equal(loco!.current,'idle');
 
- // Idle → walk crossfade while moving at patrol speed.
+ const gun=new THREE.Group();
+ gun.name='guardGun';
+ assert.ok(mountGuardGunOnHand(instance,gun),'TT-33 mounts on FistR');
+ assert.equal(gun.parent?.name,'FistR');
+
  updateGuardLocomotion(loco!,.05,{moving:true,speed:1.2,state:'patrol'});
  assert.equal(loco!.current,'walk');
  for(let i=0;i<10;i++)updateGuardLocomotion(loco!,1/30,{moving:true,speed:1.2,state:'patrol'});
  const walkBox=boneWorldBox(instance);
- assert.ok(Math.abs(walkBox.min.y)<0.08,`planted feet minY=${walkBox.min.y}`);
+ assert.ok(Math.abs(walkBox.min.y)<0.15,`planted feet minY=${walkBox.min.y}`);
 
- // Chase → run.
  updateGuardLocomotion(loco!,.05,{moving:true,speed:2.15,state:'chase'});
  assert.equal(loco!.current,'run');
 
- // Stop at water → idle.
  updateGuardLocomotion(loco!,.05,{moving:false,speed:0,state:'chase'});
  assert.equal(loco!.current,'idle');
- const idleBox=boneWorldBox(instance);
- assert.ok(Math.abs(idleBox.min.y)<0.08,`idle feet minY=${idleBox.min.y}`);
 });

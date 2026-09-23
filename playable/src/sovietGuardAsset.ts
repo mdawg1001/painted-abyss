@@ -1,17 +1,16 @@
 /**
  * Phase 3 corridor guard mesh + locomotion.
  *
- * Sketchfab “WW2 Soviet Uniform” by tnnv (CC BY 4.0):
- * https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99
+ * Quaternius Ultimate Animated Character — Soldier_Male (CC0 1.0):
+ * https://quaternius.com/packs/ultimateanimatedcharacter.html
+ * Authored Idle / Walk / Run skeletal clips (not procedural).
  *
- * Runtime file: `public/assets/soviet-uniform/ww2_soviet_uniform.glb`
- * (Zenodo mirror of the same downloadable Sketchfab archive).
+ * Mixamo autorig of the prior Sketchfab WW2 Soviet Uniform was blocked
+ * (Adobe OAuth on Mixamo API/site; no credentials in this environment).
+ * SkeletonUtils.retarget onto that Unreal-style rig also failed — see
+ * NOTICE.md and `scripts/retarget-guard-locomotion.mjs`.
  *
- * Locomotion: Mixamo-quality procedural idle/walk/run clips on this skeleton
- * (`guard-locomotion.json`). Quaternius/Mixamo retarget attempted but rest-pose
- * axes incompatible — see NOTICE.md and `scripts/retarget-guard-locomotion.mjs`.
- *
- * Scale: size from **visible mesh AABB** (not bone-only), feet on local y=0.
+ * Scale: mesh AABB → ~1.90 m, feet on local y=0.
  * Always clone with `SkeletonUtils.clone` so skinned bind stays linked.
  */
 import * as THREE from 'three';
@@ -19,22 +18,19 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mountTt33 } from './gunAsset';
 
-export const SOVIET_GUARD_SOURCE='https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99';
-export const SOVIET_GUARD_AUTHOR='tnnv';
-export const SOVIET_GUARD_LICENSE='CC BY 4.0';
-export const SOVIET_GUARD_ZENODO='https://doi.org/10.5281/zenodo.10237261';
+export const SOVIET_GUARD_SOURCE='https://quaternius.com/packs/ultimateanimatedcharacter.html';
+export const SOVIET_GUARD_AUTHOR='Quaternius';
+export const SOVIET_GUARD_LICENSE='CC0 1.0';
+export const SOVIET_GUARD_PACK='Ultimate Animated Character Pack — Soldier_Male';
+/** Prior Sketchfab mesh (CC BY) — Mixamo autorig blocked; retained for credit history only. */
+export const SOVIET_GUARD_SKETCHFAB_PRIOR='https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99';
 /** Public path — must match files under `playable/public/assets/soviet-uniform/`. */
-export const SOVIET_GUARD_GLB='/assets/soviet-uniform/ww2_soviet_uniform.glb';
-/** Retargeted Quaternius idle/walk/run clips (rotation tracks on this skeleton). */
-export const SOVIET_GUARD_LOCOMOTION='/assets/soviet-uniform/guard-locomotion.json';
-export const QUATERNIUS_UAL_SOURCE='https://quaternius.com/packs/universalanimationlibrary.html';
-export const QUATERNIUS_UAL_LICENSE='CC0 1.0';
-/** True when shipped clips are procedural (Mixamo retarget not yet viable on this rig). */
-export const GUARD_LOCO_PROCEDURAL=true;
+export const SOVIET_GUARD_GLB='/assets/soviet-uniform/quaternius_soldier_male.glb';
+/** True when shipped clips are procedural bake (should be false — real Quaternius clips). */
+export const GUARD_LOCO_PROCEDURAL=false;
 /**
  * Standing height in metres (feet → crown) from **mesh** extent.
  * Crown near player eye (`WALK_EYE_Y` = FLOOR_Y+1.6) and below hatch door (~2.3 m open).
- * Prior 1.78 bone-norm still read toy in play — force adult mesh height.
  */
 export const SOVIET_GUARD_HEIGHT=1.90;
 
@@ -64,8 +60,12 @@ export type SovietGuardVisual={
  loco:SovietGuardLocomotion|null;
 };
 
-let loadPromise:Promise<THREE.Object3D>|null=null;
-let locoPromise:Promise<Record<GuardLocomotionKind,THREE.AnimationClip>|null>|null=null;
+type GuardGltfBundle={
+ scene:THREE.Object3D;
+ clips:Record<GuardLocomotionKind,THREE.AnimationClip>;
+};
+
+let loadPromise:Promise<GuardGltfBundle>|null=null;
 
 function clothMat(color:number,rough=.82){
  return new THREE.MeshStandardMaterial({
@@ -93,6 +93,16 @@ export function buildSovietGuardStub(){
  return body;
 }
 
+function findNamedBone(root:THREE.Object3D,names:string[]):THREE.Object3D|null{
+ const want=new Set(names.map(n=>n.toLowerCase()));
+ let found:THREE.Object3D|null=null;
+ root.traverse(o=>{
+  if(found)return;
+  if(want.has(o.name.toLowerCase()))found=o;
+ });
+ return found;
+}
+
 function makeGearProps(root:THREE.Group){
  const gun=new THREE.Group();
  gun.name='guardGun';
@@ -104,7 +114,7 @@ function makeGearProps(root:THREE.Group){
   new THREE.BoxGeometry(.08,.08,.55),
   new THREE.MeshStandardMaterial({color:0x9aa3aa,metalness:.55,roughness:.4}),
  );
- // Chest-height stub until TT-33 glTF mounts; y scales with adult guard height.
+ // Chest-height stub until TT-33 mounts / hand bone parents.
  barrel.position.set(.32,SOVIET_GUARD_HEIGHT*.66,-.38);
  stub.add(barrel);
  gun.add(stub);
@@ -133,6 +143,19 @@ function makeGearProps(root:THREE.Group){
  return{gun,bottle,coat};
 }
 
+/** Parent the TT-33 to the right fist so it follows walk/run hand motion. */
+export function mountGuardGunOnHand(body:THREE.Object3D,gun:THREE.Object3D){
+ const fist=findNamedBone(body,['FistR','Hand_R','hand_r','mixamorigRightHand','RightHand']);
+ if(!fist)return false;
+ if(gun.parent)gun.parent.remove(gun);
+ // Clear chest-stub layout; local offset in fist space (barrel forward −Z after fitTt33).
+ gun.position.set(0.02,-0.02,-0.08);
+ gun.rotation.set(0,0,0);
+ gun.scale.set(1,1,1);
+ fist.add(gun);
+ return true;
+}
+
 /** Axis-aligned box of skeleton bones in world space (posed height). */
 export function boneWorldBox(root:THREE.Object3D):THREE.Box3{
  root.updateMatrixWorld(true);
@@ -150,8 +173,7 @@ export function boneWorldBox(root:THREE.Object3D):THREE.Box3{
 }
 
 /**
- * Visible mesh AABB. Sketchfab geometry is authored in a standing pose, so
- * `Box3.setFromObject` reflects the drawn height (not the toy bind helper).
+ * Visible mesh AABB. Authored standing pose → drawn height.
  */
 export function meshWorldBox(root:THREE.Object3D):THREE.Box3{
  root.updateMatrixWorld(true);
@@ -160,7 +182,6 @@ export function meshWorldBox(root:THREE.Object3D):THREE.Box3{
 
 /**
  * Scale so **mesh** crown→feet ≈ `targetHeight`, then put feet on local y=0.
- * Mesh-extent (not bone-only) so the drawn guard matches corridor eye/door scale.
  */
 export function normalizeHumanoid(scene:THREE.Object3D,targetHeight=SOVIET_GUARD_HEIGHT){
  scene.scale.set(1,1,1);
@@ -204,54 +225,43 @@ function findSkinnedMesh(root:THREE.Object3D):THREE.SkinnedMesh|null{
  return skin;
 }
 
-function loadGuardObject(){
+function pickLocoClips(anims:THREE.AnimationClip[]):Record<GuardLocomotionKind,THREE.AnimationClip>|null{
+ const by=new Map(anims.map(a=>[a.name.toLowerCase(),a]));
+ const idle=by.get('idle');
+ const walk=by.get('walk');
+ const run=by.get('run');
+ if(!idle||!walk||!run)return null;
+ idle.name='idle';walk.name='walk';run.name='run';
+ return{idle,walk,run};
+}
+
+function loadGuardBundle(){
  if(loadPromise)return loadPromise;
  loadPromise=(async()=>{
-  try{
-   const gltf=await new GLTFLoader().loadAsync(SOVIET_GUARD_GLB);
-   const scene=gltf.scene;
-   scene.name='sovietGuardMesh';
-   normalizeHumanoid(scene,SOVIET_GUARD_HEIGHT);
-   litGuardMaterials(scene);
-   return scene;
-  }catch(err){
-   console.warn('Soviet guard mesh failed to load; using stub.',err);
-   return buildSovietGuardStub();
-  }
- })();
+  const gltf=await new GLTFLoader().loadAsync(SOVIET_GUARD_GLB);
+  const scene=gltf.scene;
+  scene.name='sovietGuardMesh';
+  normalizeHumanoid(scene,SOVIET_GUARD_HEIGHT);
+  litGuardMaterials(scene);
+  const clips=pickLocoClips(gltf.animations);
+  if(!clips)throw new Error('Guard GLB missing idle/walk/run clips');
+  return{scene,clips};
+ })().catch(err=>{
+  console.warn('Soviet guard mesh failed to load; using stub.',err);
+  loadPromise=null;
+  throw err;
+ });
  return loadPromise;
 }
 
-function loadLocomotionClips(){
- if(locoPromise)return locoPromise;
- locoPromise=(async()=>{
-  try{
-   const res=await fetch(SOVIET_GUARD_LOCOMOTION);
-   if(!res.ok)throw new Error(`HTTP ${res.status}`);
-   const data=await res.json() as{
-    clips:{idle:object;walk:object;run:object};
-   };
-   const idle=THREE.AnimationClip.parse(data.clips.idle as THREE.AnimationClipJSON);
-   const walk=THREE.AnimationClip.parse(data.clips.walk as THREE.AnimationClipJSON);
-   const run=THREE.AnimationClip.parse(data.clips.run as THREE.AnimationClipJSON);
-   idle.name='idle';walk.name='walk';run.name='run';
-   return{idle,walk,run};
-  }catch(err){
-   console.warn('Guard locomotion clips failed to load.',err);
-   return null;
-  }
- })();
- return locoPromise;
-}
-
-/** Attach AnimationMixer + idle/walk/run actions to a skinned guard instance. */
+/** Attach AnimationMixer + idle/walk/run actions (mixer on body so bone tracks resolve). */
 export function attachGuardLocomotion(
  body:THREE.Object3D,
  clips:Record<GuardLocomotionKind,THREE.AnimationClip>,
 ):SovietGuardLocomotion|null{
  const skin=findSkinnedMesh(body);
  if(!skin)return null;
- const mixer=new THREE.AnimationMixer(skin);
+ const mixer=new THREE.AnimationMixer(body);
  const actions={
   idle:mixer.clipAction(clips.idle),
   walk:mixer.clipAction(clips.walk),
@@ -260,6 +270,7 @@ export function attachGuardLocomotion(
  for(const a of Object.values(actions)){
   a.enabled=true;
   a.setEffectiveWeight(0);
+  a.setLoop(THREE.LoopRepeat,Infinity);
   a.play();
  }
  actions.idle.setEffectiveWeight(1);
@@ -309,23 +320,25 @@ export function createSovietGuardVisual():SovietGuardVisual{
 }
 
 /**
- * Swap the stub for the authored Sketchfab glTF when ready.
- * Uses SkeletonUtils.clone so skinned bind pose stays linked to the bones
- * (plain `clone(true)` left a toy-sized bind-pose mesh in the corridor).
+ * Swap the stub for the Quaternius soldier + attach authored loco clips.
+ * Uses SkeletonUtils.clone so skinned bind pose stays linked to the bones.
  */
 export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
- const mesh=await loadGuardObject();
- if(visual.ready&&visual.body.name==='sovietGuardMesh')return visual;
- visual.root.remove(visual.body);
- // Skinned FBX: plain clone(true) detaches skin → bind-pose toy. SkeletonUtils keeps bones.
- const instance=mesh.name==='sovietGuardMesh'?cloneSkinned(mesh):mesh.clone(true);
- instance.name='sovietGuardMesh';
- visual.root.add(instance);
- visual.body=instance;
- visual.ready=true;
- const clips=await loadLocomotionClips();
- if(clips)visual.loco=attachGuardLocomotion(instance,clips);
- return visual;
+ try{
+  const {scene,clips}=await loadGuardBundle();
+  if(visual.ready&&visual.body.name==='sovietGuardMesh')return visual;
+  visual.root.remove(visual.body);
+  const instance=cloneSkinned(scene);
+  instance.name='sovietGuardMesh';
+  visual.root.add(instance);
+  visual.body=instance;
+  visual.ready=true;
+  mountGuardGunOnHand(instance,visual.gun);
+  visual.loco=attachGuardLocomotion(instance,clips);
+  return visual;
+ }catch{
+  return visual;
+ }
 }
 
 export function syncGuardGear(
