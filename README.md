@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.3.5
+# Painted Abyss — First Dive · 0.3.6
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -6,7 +6,7 @@ The live build is shown in the game as **BUILD v… · git-sha** (menu and durin
 node playable/refresh.mjs
 ```
 
-That pulls `main`, stops the old server on port 5173, rebuilds, and serves. Agents must bump `playable/package.json` and commit `playable/dist` on every playable change — see `.cursor/rules/playable-version.mdc`.
+That pulls `main`, stops the old server on port 5173, rebuilds, and serves. Agents must bump `playable/package.json` (and README / START-HERE) on every playable change — see `.cursor/rules/playable-version.mdc`. Do **not** commit `playable/dist/`; serve/refresh rebuild it when stale.
 
 Includes a clearly audible inventory select click/snap, quieter first-play tip, sound, and continuous 360° horizontal camera turning. When pointer lock is unavailable, hold the pointer near either edge to keep turning; move it back towards the centre to stop.
 
@@ -28,19 +28,27 @@ A small playable underwater survival mission built from the supplied Ancient Sea
 
 The supplied **Underwater Ambience** track loops during the dive, fades in gently, and shares the existing M mute and Esc pause controls. Resuming continues the music; restarting a dive starts it again. The original MP3 is included unchanged at `playable/src/assets/underwater-ambience.mp3`. The generated water ambience has been removed: the remaining generated sounds are regulator breathing (with quiet gaps between breaths), the two-tone chime, and a short mechanical inventory select click/snap on 1–5.
 
-## Play the included build — no dependency installation
+## Play locally
 
 1. Clone the repository or unzip the entire downloaded folder.
-2. With **Node.js 22.13 or newer** installed, open a terminal in this folder and run:
+2. With **Node.js 22.13 or newer** installed, once:
+
+   ```sh
+   cd playable && npm ci
+   ```
+
+3. From the repo root (or `playable/`), run:
 
    ```sh
    node playable/serve.mjs
    ```
 
-3. Open **http://127.0.0.1:5173** in desktop Chrome, Edge, or another WebGL 2 browser.
-4. Click **Begin dive** once. Move the mouse or trackpad normally to look. No button needs to be held.
+   `serve.mjs` rebuilds `playable/dist/` when it is missing or its version does not match `package.json`.
 
-Keep the terminal open while playing. Stop it with Ctrl+C. If port 5173 is already occupied, stop that other local server or set the `PORT` environment variable to a free port before running. The ready-made game requires no internet after extraction. Opening an HTML file by double-clicking does not start its local server. The root `index.html` is the preserved artwork gallery, not the new game.
+4. Open **http://127.0.0.1:5173** in desktop Chrome, Edge, or another WebGL 2 browser.
+5. Click **Begin dive** once. Move the mouse or trackpad normally to look. No button needs to be held.
+
+Keep the terminal open while playing. Stop it with Ctrl+C. If port 5173 is already occupied, stop that other local server or set the `PORT` environment variable to a free port before running. After dependencies are installed, play needs no internet. Opening an HTML file by double-clicking does not start its local server. The root `index.html` is the preserved artwork gallery, not the new game.
 
 ## Controls
 
@@ -89,7 +97,7 @@ npm test
 npm run build
 ```
 
-`npm ci` downloads pinned dependencies. `npm run build` type-checks the project and replaces `playable/dist/`. The included production build uses relative asset paths and a tiny local Node server; it does not need the old Cloudflare / Sites hosting stack.
+`npm ci` downloads pinned dependencies. `npm run build` type-checks the project and writes local `playable/dist/` (gitignored). Serve/refresh use that build with relative asset paths; no Cloudflare / Sites hosting stack.
 
 Optional browser suite: install Playwright (`npm install --no-save --package-lock=false playwright@1.62.1`), have desktop Google Chrome installed, run the development server at port 5173, then run `node tests/browser.cjs` in another terminal inside `playable/`. This suite uses an isolated headless Chrome instance and software WebGL. Results go in `test-results/`.
 
