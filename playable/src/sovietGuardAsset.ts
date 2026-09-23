@@ -7,17 +7,16 @@
  * Runtime file: `public/assets/soviet-uniform/ww2_soviet_uniform.glb`
  * (Zenodo mirror of the same downloadable Sketchfab archive).
  *
- * Scale note: this is a skinned Sketchfab FBX. `Object3D.clone` breaks the
- * skeleton so the mesh sticks in bind pose (~toy height). Always clone with
- * `SkeletonUtils.clone`. Size from **visible mesh** world height (not bone
- * helpers alone) to match corridor door panels / player eye.
+ * Scale note: Sketchfab FBX skin often draws at **bind-pose** size (~0.4 m) while
+ * `Box3.setFromObject` / bone extents report ~1.85 m. We **bake** the standing
+ * pose into static meshes with `applyBoneTransform`, then normalize the visible
+ * AABB to adult height so play never sees a toy T-pose.
  *
- * Animation: the authored glTF has no clips — drive a procedural idle/walk
- * on the Unreal-style skeleton so patrol is clearly alive.
+ * Animation: authored GLB has no clips — procedural bob/stride on the body
+ * (skeletal clips unavailable after bake; root motion keeps him clearly alive).
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mountTt33 } from './gunAsset';
 
 export const SOVIET_GUARD_SOURCE='https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99';
@@ -28,28 +27,15 @@ export const SOVIET_GUARD_ZENODO='https://doi.org/10.5281/zenodo.10237261';
 export const SOVIET_GUARD_GLB='/assets/soviet-uniform/ww2_soviet_uniform.glb';
 
 /**
- * Standing mesh height in metres (feet → crown).
- * Corridor refs: hatch door panels are 2.6 m tall; player eye is FLOOR_Y+1.6.
- * Prior 1.78 m bone-extent still read toy in play — size the **visible mesh**
- * to a clear adult so the crown sits near eye height when feet are on FLOOR_Y.
+ * Standing mesh height in metres (feet → crown) after bake + normalize.
+ * Corridor refs: hatch door panels 2.6 m; player eye = FLOOR_Y+1.6.
+ * Tall adult so crown sits clearly above eye and reads vs the door.
  */
-export const SOVIET_GUARD_HEIGHT=1.85;
+export const SOVIET_GUARD_HEIGHT=1.95;
 /** Hatch door panel height (CaveWorld breath hatch BoxGeometry y). */
 export const CORRIDOR_DOOR_PANEL_H=2.6;
 /** Standing eye height above FLOOR_Y (simulation WALK_EYE_Y − FLOOR_Y). */
 export const CORRIDOR_EYE_ABOVE_FLOOR=1.6;
-
-type GuardBones={
- thighL:THREE.Bone|null;
- thighR:THREE.Bone|null;
- calfL:THREE.Bone|null;
- calfR:THREE.Bone|null;
- spine:THREE.Bone|null;
- spine2:THREE.Bone|null;
- upperL:THREE.Bone|null;
- upperR:THREE.Bone|null;
- rest:Map<THREE.Bone,THREE.Quaternion>;
-};
 
 export type SovietGuardVisual={
  root:THREE.Group;
@@ -62,9 +48,7 @@ export type SovietGuardVisual={
  coat:THREE.Object3D;
  /** Procedural stride phase (radians). */
  animPhase:number;
- /** Cached skeleton handles for idle/walk. */
- bones:GuardBones|null;
- /** Last sim XZ — used to detect real movement vs water stop. */
+ /** Last sim XZ — detect real movement vs water stop. */
  lastXZ:{x:number;z:number}|null;
 };
 
@@ -107,7 +91,6 @@ function makeGearProps(root:THREE.Group){
   new THREE.BoxGeometry(.08,.08,.55),
   new THREE.MeshStandardMaterial({color:0x9aa3aa,metalness:.55,roughness:.4}),
  );
- // Chest-height stub until TT-33 glTF mounts; y scales with adult guard height.
  barrel.position.set(.32,SOVIET_GUARD_HEIGHT*.66,-.38);
  stub.add(barrel);
  gun.add(stub);
@@ -136,7 +119,23 @@ function makeGearProps(root:THREE.Group){
  return{gun,bottle,coat};
 }
 
-/** Axis-aligned box of skeleton bones in world space. */
+/** Visible mesh AABB in world space. */
+export function meshWorldBox(root:THREE.Object3D):THREE.Box3{
+ root.updateMatrixWorld(true);
+ const box=new THREE.Box3();
+ let any=false;
+ root.traverse(o=>{
+  if(!(o instanceof THREE.Mesh))return;
+  const b=new THREE.Box3().setFromObject(o);
+  if(b.isEmpty())return;
+  if(!any){box.copy(b);any=true;}
+  else box.union(b);
+ });
+ if(!any)box.setFromObject(root);
+ return box;
+}
+
+/** Bone AABB (debug / tests). Prefer meshWorldBox for authored height. */
 export function boneWorldBox(root:THREE.Object3D):THREE.Box3{
  root.updateMatrixWorld(true);
  const box=new THREE.Box3();
@@ -152,25 +151,75 @@ export function boneWorldBox(root:THREE.Object3D):THREE.Box3{
  return box;
 }
 
-/** Visible mesh AABB in world space (what the player actually sees). */
-export function meshWorldBox(root:THREE.Object3D):THREE.Box3{
+/**
+ * Bind-pose mesh height (geometry × matrixWorld, **no** skinning).
+ * On this asset that is ~0.4 m — what you see if GPU skinning fails.
+ */
+export function bindPoseMeshHeight(root:THREE.Object3D):number{
  root.updateMatrixWorld(true);
- const box=new THREE.Box3();
- let any=false;
+ let minY=Infinity,maxY=-Infinity,any=false;
  root.traverse(o=>{
-  if(!(o instanceof THREE.Mesh))return;
-  const b=new THREE.Box3().setFromObject(o);
-  if(b.isEmpty())return;
-  if(!any){box.copy(b);any=true;}
-  else box.union(b);
+  if(!(o instanceof THREE.Mesh)&&!(o as THREE.SkinnedMesh).isSkinnedMesh)return;
+  const mesh=o as THREE.Mesh;
+  const g=mesh.geometry;
+  if(!g.boundingBox)g.computeBoundingBox();
+  const bb=g.boundingBox!;
+  const corners:[number,number,number][]=[
+   [bb.min.x,bb.min.y,bb.min.z],[bb.min.x,bb.min.y,bb.max.z],
+   [bb.min.x,bb.max.y,bb.min.z],[bb.min.x,bb.max.y,bb.max.z],
+   [bb.max.x,bb.min.y,bb.min.z],[bb.max.x,bb.min.y,bb.max.z],
+   [bb.max.x,bb.max.y,bb.min.z],[bb.max.x,bb.max.y,bb.max.z],
+  ];
+  const e=mesh.matrixWorld.elements;
+  for(const [x,y,z] of corners){
+   const wy=e[1]*x+e[5]*y+e[9]*z+e[13];
+   minY=Math.min(minY,wy);maxY=Math.max(maxY,wy);any=true;
+  }
  });
- if(!any)return boneWorldBox(root);
- return box;
+ return any?maxY-minY:0;
 }
 
 /**
- * Scale so **visible mesh** feet→crown ≈ `targetHeight`, then put feet on local y=0.
- * Must run on the authored skinned graph (not a broken Object3D.clone).
+ * Bake standing pose into static meshes (keeps parent transforms).
+ * Removes SkinnedMesh so bind-pose toy scale cannot appear in-engine.
+ */
+export function bakeSkinnedMeshes(root:THREE.Object3D):number{
+ root.updateMatrixWorld(true);
+ const replacements:Array<[THREE.SkinnedMesh,THREE.Mesh]>=[];
+ root.traverse(o=>{
+  if(!(o as THREE.SkinnedMesh).isSkinnedMesh)return;
+  const sk=o as THREE.SkinnedMesh;
+  sk.skeleton.update();
+  const geo=sk.geometry.clone();
+  const pos=geo.attributes.position;
+  const v=new THREE.Vector3();
+  for(let i=0;i<pos.count;i++){
+   v.fromBufferAttribute(pos,i);
+   sk.applyBoneTransform(i,v);
+   pos.setXYZ(i,v.x,v.y,v.z);
+  }
+  pos.needsUpdate=true;
+  geo.deleteAttribute('skinIndex');
+  geo.deleteAttribute('skinWeight');
+  geo.computeBoundingBox();
+  geo.computeVertexNormals();
+  const mesh=new THREE.Mesh(geo,sk.material);
+  mesh.name=sk.name||'sovietGuardBake';
+  mesh.position.copy(sk.position);
+  mesh.quaternion.copy(sk.quaternion);
+  mesh.scale.copy(sk.scale);
+  mesh.castShadow=true;mesh.receiveShadow=true;mesh.frustumCulled=false;
+  replacements.push([sk,mesh]);
+ });
+ for(const [sk,mesh] of replacements){
+  sk.parent?.add(mesh);
+  sk.parent?.remove(sk);
+ }
+ return replacements.length;
+}
+
+/**
+ * Scale baked (or static) mesh feet→crown to `targetHeight`, feet on local y=0.
  */
 export function normalizeHumanoid(scene:THREE.Object3D,targetHeight=SOVIET_GUARD_HEIGHT){
  scene.scale.set(1,1,1);
@@ -187,83 +236,24 @@ export function normalizeHumanoid(scene:THREE.Object3D,targetHeight=SOVIET_GUARD
  scene.updateMatrixWorld(true);
 }
 
-function findBone(root:THREE.Object3D,re:RegExp):THREE.Bone|null{
- let hit:THREE.Bone|null=null;
- root.traverse(o=>{
-  if(hit||!(o as THREE.Bone).isBone)return;
-  if(re.test(o.name))hit=o as THREE.Bone;
- });
- return hit;
-}
-
-function captureRest(bones:GuardBones){
- bones.rest.clear();
- for(const b of [bones.thighL,bones.thighR,bones.calfL,bones.calfR,bones.spine,bones.spine2,bones.upperL,bones.upperR]){
-  if(b)bones.rest.set(b,b.quaternion.clone());
- }
-}
-
-/** Bind procedural idle/walk handles after the skinned mesh is mounted. */
-export function bindGuardBones(body:THREE.Object3D):GuardBones{
- const bones:GuardBones={
-  thighL:findBone(body,/thigh_l/i),
-  thighR:findBone(body,/thigh_r/i),
-  calfL:findBone(body,/calf_l/i),
-  calfR:findBone(body,/calf_r/i),
-  spine:findBone(body,/spine_01/i),
-  spine2:findBone(body,/spine_02/i),
-  upperL:findBone(body,/upperarm_l/i),
-  upperR:findBone(body,/upperarm_r/i),
-  rest:new Map(),
- };
- captureRest(bones);
- return bones;
-}
-
-function applyBone(b:THREE.Bone|null,rest:Map<THREE.Bone,THREE.Quaternion>,euler:THREE.Euler){
- if(!b)return;
- const base=rest.get(b);if(!base)return;
- const q=new THREE.Quaternion().setFromEuler(euler);
- b.quaternion.copy(base).multiply(q);
-}
-
 /**
- * Procedural idle / walk. The WW2 Soviet Uniform GLB ships with **zero** clips;
- * this drives the Unreal-style skeleton so he is clearly alive on patrol and
- * settles to a breathing idle when stopped (water edge / alert).
+ * Procedural idle / walk on the body pivot.
+ * GLB has no clips; bake removed the skeleton — root bob/stride keeps him alive.
  */
 export function updateGuardAnimation(visual:SovietGuardVisual,dt:number,walking:boolean){
- if(!visual.bones){
-  if(visual.ready)visual.bones=bindGuardBones(visual.body);
-  else return;
- }
- const b=visual.bones;
- const rate=walking?7.2:2.4;
+ const rate=walking?8.5:2.6;
  visual.animPhase+=dt*rate;
  const t=visual.animPhase;
+ const body=visual.body;
  if(walking){
-  const swing=.55;
-  const calf=.7;
-  applyBone(b.thighL,b.rest,new THREE.Euler(Math.sin(t)*swing,0,0));
-  applyBone(b.thighR,b.rest,new THREE.Euler(Math.sin(t+Math.PI)*swing,0,0));
-  applyBone(b.calfL,b.rest,new THREE.Euler(Math.max(0,-Math.sin(t))*calf,0,0));
-  applyBone(b.calfR,b.rest,new THREE.Euler(Math.max(0,-Math.sin(t+Math.PI))*calf,0,0));
-  applyBone(b.spine,b.rest,new THREE.Euler(Math.sin(t*2)*.04,Math.sin(t)*.06,0));
-  applyBone(b.spine2,b.rest,new THREE.Euler(0,Math.sin(t)*.05,0));
-  applyBone(b.upperL,b.rest,new THREE.Euler(Math.sin(t+Math.PI)*.35,0,.12));
-  applyBone(b.upperR,b.rest,new THREE.Euler(Math.sin(t)*.35,0,-.12));
+  body.position.y=Math.abs(Math.sin(t))*.055;
+  body.rotation.z=Math.sin(t)*.07;
+  body.rotation.x=Math.sin(t*2)*.035;
  }else{
-  const breath=Math.sin(t)*.025;
-  applyBone(b.thighL,b.rest,new THREE.Euler(.04,0,.02));
-  applyBone(b.thighR,b.rest,new THREE.Euler(.04,0,-.02));
-  applyBone(b.calfL,b.rest,new THREE.Euler(.08,0,0));
-  applyBone(b.calfR,b.rest,new THREE.Euler(.08,0,0));
-  applyBone(b.spine,b.rest,new THREE.Euler(breath,.0,0));
-  applyBone(b.spine2,b.rest,new THREE.Euler(breath*.6,0,0));
-  applyBone(b.upperL,b.rest,new THREE.Euler(.08,0,.15));
-  applyBone(b.upperR,b.rest,new THREE.Euler(.08,0,-.15));
+  body.position.y=Math.sin(t)*.012;
+  body.rotation.z=Math.sin(t*.7)*.015;
+  body.rotation.x=0;
  }
- visual.body.updateMatrixWorld(true);
 }
 
 function litGuardMaterials(root:THREE.Object3D){
@@ -276,7 +266,6 @@ function litGuardMaterials(root:THREE.Object3D){
    const sm=m as THREE.MeshStandardMaterial;
    sm.envMapIntensity=.35;
    if(!sm.emissive)sm.emissive=new THREE.Color(0x000000);
-   // Soft lift so olive cloth reads under corridor murk.
    sm.emissive.lerp(new THREE.Color(0x2a3220),.15);
    sm.emissiveIntensity=Math.max(sm.emissiveIntensity,.18);
    sm.needsUpdate=true;
@@ -291,10 +280,8 @@ function loadGuardObject(){
    const gltf=await new GLTFLoader().loadAsync(SOVIET_GUARD_GLB);
    const scene=gltf.scene;
    scene.name='sovietGuardMesh';
-   // Authored archive has no AnimationClips — procedural idle/walk instead.
-   if(gltf.animations?.length){
-    console.info('Soviet guard glTF clips:',gltf.animations.map(a=>a.name));
-   }
+   // Authored archive ships with zero AnimationClips.
+   bakeSkinnedMeshes(scene);
    normalizeHumanoid(scene,SOVIET_GUARD_HEIGHT);
    litGuardMaterials(scene);
    return scene;
@@ -313,25 +300,22 @@ export function createSovietGuardVisual():SovietGuardVisual{
  const body=buildSovietGuardStub();
  root.add(body);
  const props=makeGearProps(root);
- return{root,body,ready:false,animPhase:0,bones:null,lastXZ:null,...props};
+ return{root,body,ready:false,animPhase:0,lastXZ:null,...props};
 }
 
 /**
- * Swap the stub for the authored Sketchfab glTF when ready.
- * Uses SkeletonUtils.clone so skinned bind pose stays linked to the bones
- * (plain `clone(true)` left a toy-sized bind-pose mesh in the corridor).
+ * Swap the stub for the baked Sketchfab mesh.
+ * Prototype is already static (no skin) — plain clone is safe.
  */
 export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
  const mesh=await loadGuardObject();
  if(visual.ready&&visual.body.name==='sovietGuardMesh')return visual;
  visual.root.remove(visual.body);
- // Skinned FBX: plain clone(true) detaches skin → bind-pose toy. SkeletonUtils keeps bones.
- const instance=mesh.name==='sovietGuardMesh'?cloneSkinned(mesh):mesh.clone(true);
+ const instance=mesh.clone(true);
  instance.name='sovietGuardMesh';
  visual.root.add(instance);
  visual.body=instance;
  visual.ready=true;
- visual.bones=bindGuardBones(instance);
  visual.animPhase=0;
  return visual;
 }

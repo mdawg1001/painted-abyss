@@ -2,14 +2,13 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
  SOVIET_GUARD_GLB,SOVIET_GUARD_HEIGHT,CORRIDOR_DOOR_PANEL_H,CORRIDOR_EYE_ABOVE_FLOOR,
- boneWorldBox,meshWorldBox,normalizeHumanoid,bindGuardBones,updateGuardAnimation,
- createSovietGuardVisual,
+ meshWorldBox,bindPoseMeshHeight,bakeSkinnedMeshes,normalizeHumanoid,
+ updateGuardAnimation,createSovietGuardVisual,
 } from '../src/sovietGuardAsset';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -31,7 +30,7 @@ function installImageStubs(){
  (globalThis as unknown as {createImageBitmap:unknown}).createImageBitmap=async()=>({width:4,height:4,close(){}});
 }
 
-async function loadGuardScene(){
+async function loadRawScene(){
  installImageStubs();
  const glbPath=path.join(root,'public',SOVIET_GUARD_GLB.replace(/^\//,''));
  const buf=fs.readFileSync(glbPath);
@@ -41,48 +40,48 @@ async function loadGuardScene(){
  });
 }
 
-test('Soviet guard mesh height is adult vs corridor door / eye',async()=>{
- assert.ok(SOVIET_GUARD_HEIGHT>=1.82&&SOVIET_GUARD_HEIGHT<=1.95,'target adult mesh height');
- assert.ok(SOVIET_GUARD_HEIGHT>CORRIDOR_EYE_ABOVE_FLOOR,'crown above standing eye offset');
- assert.ok(SOVIET_GUARD_HEIGHT<CORRIDOR_DOOR_PANEL_H,'shorter than 2.6 m door panels');
- const gltf=await loadGuardScene();
- assert.equal(gltf.animations.length,0,'authored GLB has no clips — procedural anim expected');
+test('raw Sketchfab bind-pose is toy-sized vs skinned AABB (why we bake)',async()=>{
+ const gltf=await loadRawScene();
+ assert.equal(gltf.animations.length,0,'no authored clips');
  const scene=gltf.scene;
+ scene.updateMatrixWorld(true);
+ const bindH=bindPoseMeshHeight(scene);
+ const skinnedH=new THREE.Box3().setFromObject(scene).max.y-new THREE.Box3().setFromObject(scene).min.y;
+ assert.ok(bindH>0.05&&bindH<0.8,`bind-pose toy height ${bindH}`);
+ assert.ok(skinnedH>1.5,`skinned/bone AABB ${skinnedH} looks adult (misleading)`);
+ assert.ok(bindH<skinnedH*.5,'bind pose much shorter than setFromObject — bake required');
+});
+
+test('baked Soviet guard mesh is adult vs corridor door / eye',async()=>{
+ assert.ok(SOVIET_GUARD_HEIGHT>=1.9&&SOVIET_GUARD_HEIGHT<=2.05,'tall adult target');
+ assert.ok(SOVIET_GUARD_HEIGHT>CORRIDOR_EYE_ABOVE_FLOOR);
+ assert.ok(SOVIET_GUARD_HEIGHT<CORRIDOR_DOOR_PANEL_H);
+ const gltf=await loadRawScene();
+ const scene=gltf.scene;
+ const n=bakeSkinnedMeshes(scene);
+ assert.ok(n>=1,`baked ${n} skinned meshes`);
+ let left=0;
+ scene.traverse(o=>{if((o as THREE.SkinnedMesh).isSkinnedMesh)left++;});
+ assert.equal(left,0,'no SkinnedMesh left after bake');
  normalizeHumanoid(scene,SOVIET_GUARD_HEIGHT);
  const mesh=meshWorldBox(scene);
  const meshH=mesh.max.y-mesh.min.y;
- assert.ok(Math.abs(meshH-SOVIET_GUARD_HEIGHT)<0.05,`mesh height ${meshH} ≈ ${SOVIET_GUARD_HEIGHT}`);
- assert.ok(Math.abs(mesh.min.y)<0.05,'mesh feet near local y=0');
- // SkeletonUtils clone must keep the same posed height (plain clone skins break in-engine).
- const cloned=cloneSkinned(scene);
+ assert.ok(Math.abs(meshH-SOVIET_GUARD_HEIGHT)<0.05,`mesh height ${meshH}`);
+ assert.ok(Math.abs(mesh.min.y)<0.05,'feet near local y=0');
+ // Plain clone of baked mesh keeps height (no skin to break).
+ const cloned=scene.clone(true);
  const parent=new THREE.Group();
  parent.add(cloned);
  parent.updateMatrixWorld(true);
- const cMesh=meshWorldBox(cloned);
- const cHeight=cMesh.max.y-cMesh.min.y;
- assert.ok(Math.abs(cHeight-SOVIET_GUARD_HEIGHT)<0.06,`cloned mesh height ${cHeight}`);
- const bones=boneWorldBox(cloned);
- assert.ok(bones.max.y-bones.min.y>1.5,'bones still span a human-sized figure');
+ const cH=meshWorldBox(cloned).max.y-meshWorldBox(cloned).min.y;
+ assert.ok(Math.abs(cH-SOVIET_GUARD_HEIGHT)<0.06,`cloned height ${cH}`);
 });
 
-test('Soviet guard procedural walk moves thigh bones off rest',async()=>{
- const gltf=await loadGuardScene();
- const scene=gltf.scene;
- normalizeHumanoid(scene,SOVIET_GUARD_HEIGHT);
+test('procedural walk bobs the guard body off rest',()=>{
  const visual=createSovietGuardVisual();
- visual.root.remove(visual.body);
- const cloned=cloneSkinned(scene);
- cloned.name='sovietGuardMesh';
- visual.root.add(cloned);
- visual.body=cloned;
- visual.ready=true;
- visual.bones=bindGuardBones(cloned);
- assert.ok(visual.bones.thighL&&visual.bones.thighR,'found thigh bones');
- const restL=visual.bones.rest.get(visual.bones.thighL!)!.clone();
+ const y0=visual.body.position.y;
  updateGuardAnimation(visual,1/30,true);
  updateGuardAnimation(visual,1/30,true);
  updateGuardAnimation(visual,1/30,true);
- const q=visual.bones.thighL!.quaternion;
- const angle=restL.angleTo(q);
- assert.ok(angle>0.05,`walk swung thigh off rest (angle ${angle})`);
+ assert.ok(Math.abs(visual.body.position.y-y0)>0.01||Math.abs(visual.body.rotation.z)>0.01,'walk bob/sway');
 });
