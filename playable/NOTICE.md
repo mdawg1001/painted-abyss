@@ -36,6 +36,15 @@
 - Files: `public/assets/soviet-poster/textures/poster_literacy_albedo.png`, `poster_silence_albedo.png` — the two weathered propaganda sheets from the model’s public preview (downloadable glTF requires Sketchfab auth; wall planes use the preview artwork)
 - Hung as a pair on one cave wall face (not interactable).
 
+## Soviet pistol TT-33 (Sketchfab)
+- Source: https://sketchfab.com/3d-models/soviet-pistol-tt-33-0e2876969dff4d0ea86e9dbf3cb0dce9
+- Author: Stupid Mad Polygon (@stupidmadpolygon)
+- License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
+- Files: `public/assets/tt33/tt33.glb` (authored mesh, 5,306 triangles)
+- The glTF asset extras also name Simon Volt (https://sketchfab.com/tursunovabduseit).
+- Corridor gun mesh on the floor, in the diver's hand, and in the Soviet guard's hand. Replaces the box placeholder only.
+
+
 ## Lifebuoy (Poly Haven)
 - Source: https://polyhaven.com/a/lifebuoy
 - Author: Hank Kaamura

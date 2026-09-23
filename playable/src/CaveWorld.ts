@@ -23,6 +23,7 @@ import { createWallPosters, upgradeWallPosters, type WallPosters } from './poste
 import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, type SovietGuardVisual,
 } from './sovietGuardAsset';
+import { mountTt33 } from './gunAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, inBreathCorridor, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 /** Point lights packed per cave chunk. 24 covers every light whose range reaches a chunk; the rest of the set still exists in the scene for spots/shadows. */
@@ -1088,10 +1089,14 @@ export class CaveWorld extends OceanWorld {
  holdingKnife(){return this.mission.inventory[this.mission.selected]==='knife';}
  holdingGun(){return this.mission.inventory[this.mission.selected]==='gun';}
  holdingTorch(){return holdingTorchItem(this.mission.inventory[this.mission.selected]);}
- /** Unlit pistol in the lower-right. MeshBasic so it reads with the torch stowed. */
+ /** Unlit pistol in the lower-right. Stub boxes until the TT-33 glTF replaces them. */
  makeHeldGun(){
   const g=new THREE.Group();
   g.name='gunVisual';
+  g.userData.gunAlive=true;
+  const stub=new THREE.Group();
+  stub.name='gunStub';
+  stub.userData.gunStub=true;
   const steel=new THREE.MeshBasicMaterial({color:0xb8c0c6});
   const body=new THREE.Mesh(new THREE.BoxGeometry(.09,.11,.28),steel);
   const barrel=new THREE.Mesh(new THREE.BoxGeometry(.04,.04,.24),new THREE.MeshBasicMaterial({color:0x8e969c}));
@@ -1099,7 +1104,9 @@ export class CaveWorld extends OceanWorld {
   const grip=new THREE.Mesh(new THREE.BoxGeometry(.05,.16,.07),new THREE.MeshBasicMaterial({color:0x3a3028}));
   grip.position.set(0,-.12,.05);
   grip.rotation.x=.35;
-  g.add(body,barrel,grip);
+  stub.add(body,barrel,grip);
+  g.add(stub);
+  mountTt33(g,'held');
   g.position.set(.32,-.28,-.55);
   g.rotation.set(.2,.55,.08);
   g.visible=false;
@@ -1109,10 +1116,16 @@ export class CaveWorld extends OceanWorld {
  gearPickupMesh(item:'gun'|'bottle'|'coat'){
   const g=new THREE.Group();
   if(item==='gun'){
+   const stub=new THREE.Group();
+   stub.name='gunStub';
+   stub.userData.gunStub=true;
    const body=new THREE.Mesh(new THREE.BoxGeometry(.46,.14,.12),new THREE.MeshBasicMaterial({color:0x9aa3aa}));
    const barrel=new THREE.Mesh(new THREE.BoxGeometry(.5,.06,.06),new THREE.MeshBasicMaterial({color:0xd5dbe0}));
    barrel.position.set(.4,.04,0);
-   g.add(body,barrel);
+   stub.add(body,barrel);
+   g.add(stub);
+   g.userData.gunAlive=true;
+   mountTt33(g,'pickup');
   }else if(item==='bottle'){
    const cyl=new THREE.Mesh(new THREE.CylinderGeometry(.11,.13,.46,10),new THREE.MeshBasicMaterial({color:0x3d8f62}));
    const cap=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,.09,8),new THREE.MeshBasicMaterial({color:0xe4e8ea}));
@@ -1238,7 +1251,7 @@ export class CaveWorld extends OceanWorld {
   this.renderer.setSize(w,h);this.composer?.setSize(w,h);
  }
  syncPickups(){
-  for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);group.traverse(o=>{if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
+  for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);group.traverse(o=>{o.userData.gunAlive=false;if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
   for(const p of this.mission.pickups){let group=this.pickupMeshes.get(p.id);if(!group){group=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:p.item==='relic'?0xe2b65e:0x82c8b7,emissive:p.item==='relic'?0x6b3c07:0x153c36,emissiveIntensity:.7,metalness:.4,roughness:.45});
     if(p.item==='relic'){const points:THREE.Vector3[]=[],radii:number[]=[];for(let i=0;i<=72;i++){const t=i/72,a=t*Math.PI*4.5,r=.03+t*t*.62;points.push(V(Math.cos(a)*r,Math.sin(a)*r,0));radii.push(.01+t*.12);}group.add(this.tube(points,radii,mat,90,8));group.add(new THREE.PointLight(0xefbb68,3.5,7));}
     else if(p.item==='gun'||p.item==='bottle'||p.item==='coat')group.add(this.gearPickupMesh(p.item));
