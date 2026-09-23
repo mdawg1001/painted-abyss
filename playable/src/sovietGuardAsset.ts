@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { mountTt33 } from './gunAsset';
 
 export const SOVIET_GUARD_SOURCE='https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99';
 export const SOVIET_GUARD_AUTHOR='tnnv';
@@ -70,12 +71,19 @@ export function buildSovietGuardStub(){
 function makeGearProps(root:THREE.Group){
  const gun=new THREE.Group();
  gun.name='guardGun';
+ gun.userData.gunAlive=true;
+ const stub=new THREE.Group();
+ stub.name='gunStub';
+ stub.userData.gunStub=true;
  const barrel=new THREE.Mesh(
   new THREE.BoxGeometry(.08,.08,.55),
   new THREE.MeshStandardMaterial({color:0x9aa3aa,metalness:.55,roughness:.4}),
  );
+ // Chest-height stub until TT-33 glTF mounts; y scales with adult guard height.
  barrel.position.set(.32,SOVIET_GUARD_HEIGHT*.66,-.38);
- gun.add(barrel);
+ stub.add(barrel);
+ gun.add(stub);
+ mountTt33(gun,'guard');
  gun.visible=false;
  root.add(gun);
 
