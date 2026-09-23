@@ -26,8 +26,11 @@ export const TT33_GLB='/assets/tt33/tt33.glb';
 export const TT33_HELD_LENGTH=.42;
 export const TT33_PICKUP_LENGTH=.8;
 export const TT33_GUARD_LENGTH=.5;
-/** Same anchor as the old guard box (chest-height, in front of the right side). */
-export const TT33_GUARD_POS={x:.28,y:1.15,z:-.35} as const;
+/**
+ * Same anchor as the guard stub box (chest-height, right-front).
+ * y ≈ SOVIET_GUARD_HEIGHT * 0.66 (1.78 m adult → ~1.17).
+ */
+export const TT33_GUARD_POS={x:.32,y:1.17,z:-.38} as const;
 
 export type GunFit='held'|'pickup'|'guard';
 
