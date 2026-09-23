@@ -343,7 +343,8 @@ export class CaveWorld extends OceanWorld {
    visual.root.rotation.y=chest.yaw;
    const scroll=createScrollVisual();
    this.scene.add(visual.root);
-   this.scene.add(scroll.root);
+   // Inside the body, so it inherits the crate yaw and stays in the cavity.
+   visual.pivot.add(scroll.root);
    this.chestVisuals.set(chest.id,visual);
    this.scrollVisuals.set(chest.id,scroll);
    upgradeChestVisual(visual).then(ok=>{
@@ -364,7 +365,7 @@ export class CaveWorld extends OceanWorld {
    const scroll=this.scrollVisuals.get(chest.id);
    if(scroll){
     const want=chest.open&&!this.mission.hasMapFragment(chest.fragment);
-    syncScrollPresent(scroll,want,dt,chest.kind,chest.position,chest.yaw);
+    syncScrollPresent(scroll,want,dt,chest.kind);
     // Shared scroll material would otherwise light every parchment with all 48 point lights.
     if(scroll.ready&&!scroll.root.userData.pointReady){
      scroll.root.userData.pointReady=true;
