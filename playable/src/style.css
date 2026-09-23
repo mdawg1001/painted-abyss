@@ -263,6 +263,7 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   transition:left .12s linear,width .12s linear;
 }
 .meter.suit i{background:#4eb8d0;box-shadow:0 0 5px rgba(78,184,208,.45)}
+.meter.flood i{background:#4f9fb8;box-shadow:0 0 6px rgba(79,159,184,.5)}
 .meter.fins i{background:#e8b52e;box-shadow:0 0 5px rgba(232,181,46,.5)}
 
 .inventory{

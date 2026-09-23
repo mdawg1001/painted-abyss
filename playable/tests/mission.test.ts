@@ -207,10 +207,10 @@ test('air loss, pony bailout, sealant and distraction have tangible effects',()=
  m.health=30;m.selected=4;m.use();assert.equal(m.health,75);
  m.selected=2;m.use();assert.ok(m.decoy);assert.equal(m.predator.state,'search');advance(m,13);assert.equal(m.decoy,null);
  // Drown in the flooded cave — hatch free-air does not burn the tank.
- m.position={...START};m.air=.01;m.bailout=0;m.update(.05);assert.equal(m.outcome,'lost');
+ m.breathWaterY=SURFACE_Y;m.position={...START};m.air=.01;m.bailout=0;m.update(.05);assert.equal(m.outcome,'lost');
 });
 test('main tank empties in well under four minutes at depth',()=>{
- const m=new Mission(true);m.position={...START,y:FLOOR_Y};
+ const m=new Mission(true);m.position={...START,y:FLOOR_Y};m.breathWaterY=SURFACE_Y; // fully flooded bunker
  // Floor cruise: ~1.65 ATA × 0.3 L/s → ~202 s of a 100 L surface tank.
  for(let i=0;i<Math.ceil(230*60);i++)m.update(1/60,false);
  assert.equal(m.outcome,'lost');
@@ -223,11 +223,11 @@ test('gas drain scales with ATA and sprint; bailout feeds after main',()=>{
  assert.ok(Math.abs(gasDrainRate(SURFACE_Y,false)-(SAC_CRUISE_LPM/60))<1e-9);
  assert.equal(AIR_MAIN_LITRES,100);
  assert.equal(AIR_BAILOUT_LITRES,9);
- const deep=new Mission(true);deep.position={...START,y:FLOOR_Y};
- const shallow=new Mission(true);shallow.position={...START,y:SURFACE_Y};
+ const deep=new Mission(true);deep.position={...START,y:FLOOR_Y};deep.breathWaterY=SURFACE_Y;
+ const shallow=new Mission(true);shallow.position={...START,y:SURFACE_Y};shallow.breathWaterY=SURFACE_Y;
  for(let i=0;i<60;i++){deep.update(1/60,true);shallow.update(1/60,false);}
  assert.ok(deep.air<shallow.air);
- const m=new Mission(true);m.position={...START};m.air=.2;m.bailout=AIR_BAILOUT_LITRES;
+ const m=new Mission(true);m.position={...START};m.breathWaterY=SURFACE_Y;m.air=.2;m.bailout=AIR_BAILOUT_LITRES;
  for(let i=0;i<20;i++)m.update(.05,false);
  assert.equal(m.air,0);assert.ok(m.bailout<AIR_BAILOUT_LITRES);assert.equal(m.outcome,'playing');
  m.bailout=.01;m.update(.2,false);assert.equal(m.outcome,'lost');
@@ -245,12 +245,12 @@ test('player can lock a non-zero trim bias that idle buoyancy settles onto',()=>
  assert.equal(b,0);
 });
 test('guardian bite raises panic gas effort briefly',()=>{
- const m=new Mission(true);m.position=world(16,19);m.position.y=FLOOR_Y;
+ const m=new Mission(true);m.position=world(16,19);m.position.y=FLOOR_Y;m.breathWaterY=SURFACE_Y;
  m.predator.position={...m.position};m.predator.state='chase';m.predator.bite=0;
  m.update(.05,false);
  assert.ok(m.gasPanicUntil>m.elapsed);assert.equal(m.health,75);
- const panic=new Mission(true);panic.position={...START,y:FLOOR_Y};panic.gasPanicUntil=1e9;
- const calm=new Mission(true);calm.position={...START,y:FLOOR_Y};
+ const panic=new Mission(true);panic.position={...START,y:FLOOR_Y};panic.gasPanicUntil=1e9;panic.breathWaterY=SURFACE_Y;
+ const calm=new Mission(true);calm.position={...START,y:FLOOR_Y};calm.breathWaterY=SURFACE_Y;
  for(let i=0;i<60;i++){panic.update(1/60,false);calm.update(1/60,false);}
  assert.ok(panic.air<calm.air);
 });

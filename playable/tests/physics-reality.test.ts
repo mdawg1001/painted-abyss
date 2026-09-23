@@ -66,11 +66,11 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  while(m.stamina<99.5&&regen<30){m.update(1/60,false);regen+=1/60;}
 
  const airMission=new Mission(true);
- airMission.position={...START,y:0.8};
+ airMission.position={...START,y:0.8};airMission.breathWaterY=SURFACE_Y;
  for(let i=0;i<60;i++)airMission.update(1/60,true);
  const airAfterSprintDeep=airMission.air;
  const airMission2=new Mission(true);
- airMission2.position={...START,y:6.5};
+ airMission2.position={...START,y:6.5};airMission2.breathWaterY=SURFACE_Y;
  for(let i=0;i<60;i++)airMission2.update(1/60,false);
  const airAfterCruiseShallow=airMission2.air;
  assert.ok(airAfterSprintDeep<airAfterCruiseShallow,'deep sprint burns more surface-equivalent gas');

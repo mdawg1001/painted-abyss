@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
  Mission,cells,tile,fits,distance,world,FLOOR_Y,SURFACE_Y,AIR_MAIN_MAX,EXIT,RELIC,
  breathZone,breathHatchSpawn,breathTankMounts,breathFootprint,nextBreathTankIndex,
- riseBreathWater,canWalkBreath,inBreathCorridor,breathingFreeAir,effectiveDepth,gasDrainRateAt,
+ riseBreathWater,floodFraction,BREATH_RISE_MPS,canWalkBreath,inBreathCorridor,breathingFreeAir,effectiveDepth,gasDrainRateAt,
  BREATH_WATER_START,BREATH_WATER_FILL_START,BREATH_WALK_WATER,BREATH_RESPAWN_LITRES,BREATH_ROW_HATCH,BREATH_ROW_FAR,BREATH_COLS,
  WALK_EYE_Y,WALK_SPEED,WALK_SPRINT,
 } from '../src/simulation';
@@ -42,7 +42,7 @@ test('first life is dry enough to walk and water rises only as corridor state',(
  assert.ok(m.breathWaterY>before,'flood clock runs while you are in the cave');
  assert.ok(m.breathWaterY<BREATH_WALK_WATER);
  assert.equal(inBreathCorridor(m.position),false);
- assert.equal(canWalkBreath(m.position,m.breathWaterY),false,'cave water column is not the corridor');
+ assert.equal(canWalkBreath(m.position,m.breathWaterY),false,'walking is still corridor-only (cave walking comes next)');
  const capped=riseBreathWater(SURFACE_Y-.01,10);
  assert.equal(capped,SURFACE_Y);
 });
@@ -139,11 +139,16 @@ test('dry corridor walk: free air, zero depth, no tank burn; flood forces swim',
  assert.equal(breathingFreeAir(m.position,m.breathWaterY),false);
  assert.ok(effectiveDepth(m.position,m.breathWaterY)>.3);
  assert.ok(gasDrainRateAt(m.position,m.breathWaterY,false,false)>0);
- // Cave always swims and burns.
- m.position={...EXIT};
- assert.equal(canWalkBreath(m.position,m.breathWaterY),false);
+ // The cave shares the same leak-driven waterline: head above it is free air…
+ m.position={...EXIT,y:m.breathWaterY+1};
+ assert.equal(inBreathCorridor(m.position),false);
+ assert.equal(breathingFreeAir(m.position,m.breathWaterY),true);
+ assert.equal(effectiveDepth(m.position,m.breathWaterY),0);
+ assert.equal(gasDrainRateAt(m.position,m.breathWaterY,false,false),0);
+ // …and under it the tank burns with depth below the flood plane.
+ m.position={...EXIT,y:m.breathWaterY-1};
  assert.equal(breathingFreeAir(m.position,m.breathWaterY),false);
- assert.ok(effectiveDepth(m.position,m.breathWaterY)>0);
+ assert.ok(Math.abs(effectiveDepth(m.position,m.breathWaterY)-1)<1e-9);
  assert.ok(gasDrainRateAt(m.position,m.breathWaterY,false,false)>0);
 });
 
@@ -151,4 +156,28 @@ test('walk sprint uses WALK_SPRINT and walk cruise uses WALK_SPEED',()=>{
  assert.ok(WALK_SPRINT>WALK_SPEED);
  assert.ok(WALK_SPEED>1.5);
  assert.ok(WALK_SPRINT<5);
+});
+
+test('the leak floods the whole bunker from nearly dry: no cave water at spawn',()=>{
+ const m=new Mission(true);
+ // Spawn: water sits below the floor everywhere, so every head position in the cave is in free air.
+ assert.ok(m.breathWaterY<FLOOR_Y,'bunker starts dry');
+ assert.equal(floodFraction(m.breathWaterY),0);
+ for(const y of [FLOOR_Y+.3,3,SURFACE_Y-.2]){
+  const p={...EXIT,y};
+  assert.equal(breathingFreeAir(p,m.breathWaterY),true,`cave air at y=${y}`);
+  assert.equal(gasDrainRateAt(p,m.breathWaterY,true,false),0,'no tank burn in dry cave air');
+ }
+ // The leak raises one shared waterline at BREATH_RISE_MPS until the ceiling.
+ m.position={...EXIT,y:6.8};
+ const w0=m.breathWaterY;
+ for(let i=0;i<60*10;i++)m.update(1/60,false);
+ assert.ok(Math.abs(m.breathWaterY-(w0+BREATH_RISE_MPS*10))<1e-6,'rises at the leak rate');
+ for(let i=0;i<60*30;i++)m.update(1/60,false);
+ assert.ok(m.breathWaterY>FLOOR_Y&&floodFraction(m.breathWaterY)>0,'water is over the floor within ~40 s');
+ assert.equal(riseBreathWater(SURFACE_Y-.01,60),SURFACE_Y,'fills to the ceiling and stops');
+ assert.equal(floodFraction(SURFACE_Y),1);
+ // Head-height in the cave (standing eye) floods in roughly two to three minutes.
+ const toHead=(WALK_EYE_Y-BREATH_WATER_START)/BREATH_RISE_MPS;
+ assert.ok(toHead>100&&toHead<200,`head height after ${toHead.toFixed(0)} s`);
 });
