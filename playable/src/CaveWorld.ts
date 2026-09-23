@@ -19,7 +19,7 @@ import {
  LIFEBUOY_POS, LIFEBUOY_YAW, type LifebuoyVisual,
 } from './lifebuoyAsset';
 import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLight } from './sconceAsset';
-import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, canWalkBreath, inBreathCorridor, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
 /** Point lights packed per cave chunk. 24 covers every light whose range reaches a chunk; the rest of the set still exists in the scene for spots/shadows. */
 const POINT_CULL_MAX=24;
@@ -188,6 +188,12 @@ export class CaveWorld extends OceanWorld {
  shakeAmp=0;
  /** Soft additive caustic floor pools under major light shafts. */
  causticPools:THREE.Mesh[]=[];
+ /** Rising water in the breath corridor only. */
+ breathWater!:THREE.Mesh;
+ breathVolume!:THREE.Mesh;
+ breathTank!:THREE.Group;
+ /** True while the corridor is still dry enough to walk. */
+ onFoot=false;
  /** Per-chunk point-light lists. Same BRDF as the full set, only lights that can reach the chunk. */
  pointCullTargets:PointCull[]=[];
  pointCullSyncs:(()=>void)[]=[];
@@ -222,7 +228,7 @@ export class CaveWorld extends OceanWorld {
   this.scene.add(new THREE.HemisphereLight(0x5a9eae,0x081820,.42));
   this.scene.add(new THREE.AmbientLight(0x123840,.22));
   const skyFill=new THREE.DirectionalLight(0x7ec8d4,.55);skyFill.position.set(-8,30,-20);this.scene.add(skyFill);
-  this.buildCave();this.buildLights();this.buildComposer();
+  this.buildCave();this.buildBreath();this.buildLights();this.buildComposer();
   loadCausticAtlas().then(tex=>{
    if(!this.alive)return;
    for(const pool of this.causticPools){
@@ -596,6 +602,101 @@ export class CaveWorld extends OceanWorld {
   plinth.geometry.computeBoundingBox();
   const pbox=plinth.geometry.boundingBox?.clone().applyMatrix4(plinth.matrixWorld).expandByScalar(.05)??new THREE.Box3();
   this.trackPointCull(plinthMat,pbox);this.scene.add(plinth);
+ }
+ /** Hatch, far-end marks, wall tank, and the corridor water volume. Cave meshes stay as built. */
+ buildBreath(){
+  const foot=breathFootprint();
+  const waterMat=new THREE.MeshStandardMaterial({
+   color:0x9fd4d8,transparent:true,opacity:.55,roughness:.08,metalness:.15,
+   depthWrite:false,side:THREE.DoubleSide,
+  });
+  const volMat=new THREE.MeshStandardMaterial({
+   color:0x0a3e48,transparent:true,opacity:.42,roughness:.2,metalness:.05,
+   depthWrite:false,side:THREE.BackSide,
+  });
+  this.breathWater=new THREE.Mesh(new THREE.PlaneGeometry(foot.width*.96,foot.depth*.98),waterMat);
+  this.breathWater.rotation.x=-Math.PI/2;
+  this.breathWater.position.set(foot.cx,0,foot.cz);
+  this.breathWater.visible=false;
+  this.breathWater.renderOrder=2;
+  this.breathVolume=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),volMat);
+  this.breathVolume.visible=false;
+  this.breathVolume.renderOrder=1;
+  this.scene.add(this.breathVolume,this.breathWater);
+
+  const steel=new THREE.MeshStandardMaterial({color:0x8a9298,metalness:.72,roughness:.32});
+  const ring=new THREE.MeshBasicMaterial({color:0xe2c27a});
+  const hatch=new THREE.Group();
+  const door=new THREE.Mesh(new THREE.BoxGeometry(3.6,2.6,.22),steel);
+  door.position.y=1.65;
+  const wheel=new THREE.Mesh(new THREE.TorusGeometry(.42,.055,8,18),ring);
+  wheel.position.set(0,1.7,.16);
+  const rim=new THREE.Mesh(new THREE.TorusGeometry(.95,.04,8,24),ring);
+  rim.position.set(0,1.65,.13);
+  hatch.add(door,wheel,rim);
+  const spawn=breathHatchSpawn();
+  hatch.position.set(spawn.x,0,spawn.z+2.2);
+  this.scene.add(hatch);
+
+  const mark=new THREE.MeshBasicMaterial({color:0xffb04a});
+  const far=new THREE.Group();
+  for(let i=0;i<4;i++){
+   const stripe=new THREE.Mesh(new THREE.BoxGeometry(6.4,.05,.22),mark);
+   stripe.position.set(0,.08,i*.85);
+   far.add(stripe);
+  }
+  const band=new THREE.Mesh(new THREE.BoxGeometry(.1,1.4,2.6),mark);
+  band.position.set(-3.85,1.7,1.2);
+  const bandEast=band.clone();
+  bandEast.position.x=3.85;
+  far.add(band,bandEast);
+  far.position.set(foot.cx,0,foot.minZ+2.4);
+  this.scene.add(far);
+
+  const tank=new THREE.Group();
+  tank.name='breathTank';
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(.17,.17,.74,14),new THREE.MeshStandardMaterial({color:0x2c6b42,metalness:.48,roughness:.38}));
+  const stripe=new THREE.Mesh(new THREE.CylinderGeometry(.178,.178,.14,14),new THREE.MeshBasicMaterial({color:0xd8f5a4}));
+  stripe.position.y=.08;
+  const valve=new THREE.Mesh(new THREE.BoxGeometry(.14,.16,.14),new THREE.MeshStandardMaterial({color:0xd5dde2,metalness:.82,roughness:.22}));
+  valve.position.y=.44;
+  const collar=new THREE.Mesh(new THREE.TorusGeometry(.2,.035,6,12),new THREE.MeshBasicMaterial({color:0xf2f6c8}));
+  collar.rotation.x=Math.PI/2;collar.position.y=.22;
+  tank.add(body,stripe,valve,collar);
+  this.breathTank=tank;
+  this.scene.add(tank);
+  this.syncBreathProps();
+ }
+ syncBreathProps(){
+  const y=this.mission.breathWaterY;
+  const foot=breathFootprint();
+  const show=y>0.32;
+  this.breathWater.visible=show;
+  this.breathVolume.visible=show;
+  if(show){
+   this.breathWater.position.set(foot.cx,y+.02,foot.cz);
+   const h=Math.max(.08,y);
+   this.breathVolume.scale.set(foot.width*.94,h,foot.depth*.96);
+   this.breathVolume.position.set(foot.cx,h*.5,foot.cz);
+  }
+  const mounts=breathTankMounts();
+  const mount=mounts[this.mission.breathTankIndex%mounts.length];
+  if(mount){
+   this.breathTank.position.set(mount.x,mount.y,mount.z);
+   this.breathTank.rotation.set(0,mount.yaw,0);
+  }
+ }
+ applyBreathRespawn(){
+  this.mission.respawnAtHatch();
+  this.mission.mapOpen=false;
+  this.position.copy(this.mission.position);
+  this.velocity.set(0,0,0);
+  this.yaw=this.targetYaw=0;
+  this.pitch=this.targetPitch=0;
+  this.camera.rotation.set(0,0,0);
+  this.camera.position.copy(this.position);
+  this.onFoot=true;
+  this.syncBreathProps();
  }
  beamMaterial(color:THREE.ColorRepresentation,opacity:number,beta=.38){
   return new THREE.ShaderMaterial({
@@ -1135,6 +1236,7 @@ export class CaveWorld extends OceanWorld {
    const pressed=(...keys:string[])=>keys.some(k=>this.keys.has(k))?1:0;
    if(m.mapOpen){
     // Chart reading: hold still, but the dive clock / gas / predator keep running.
+    this.onFoot=false;
     this.velocity.set(0,0,0);this.keys.clear();
     m.update(dt,false);this.position.copy(m.position);
     this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
@@ -1145,6 +1247,25 @@ export class CaveWorld extends OceanWorld {
    const delta=lookDelta(this.targetYaw,this.targetPitch,horizontalLook*dt*650,(pressed('ArrowDown')-pressed('ArrowUp'))*dt*650);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;
    this.yaw=THREE.MathUtils.lerp(this.yaw,this.targetYaw,1-Math.exp(-16*dt));this.pitch=THREE.MathUtils.lerp(this.pitch,this.targetPitch,1-Math.exp(-16*dt));this.camera.rotation.set(this.pitch,this.yaw,0);
    this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
+   const walking=canWalkBreath(m.position,m.breathWaterY);
+   this.onFoot=walking;
+   if(walking){
+    // Dry corridor: walk the floor. Look pitch does not lift you off it.
+    const flat=Math.hypot(this.forward.x,this.forward.z)||1;
+    const fx=this.forward.x/flat,fz=this.forward.z/flat;
+    this.right.set(-fz,0,fx);
+    this.move.set(fx,0,fz).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));
+    const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.01;
+    const speed=sprint?WALK_SPRINT:WALK_SPEED;
+    const wishX=this.move.x*speed,wishZ=this.move.z*speed;
+    const blend=1-Math.exp(-10*dt);
+    this.velocity.x+=(wishX-this.velocity.x)*blend;
+    this.velocity.z+=(wishZ-this.velocity.z)*blend;
+    this.velocity.y=0;
+    moveBody(m.position,this.velocity.x*dt,0,this.velocity.z*dt);
+    m.position.y=WALK_EYE_Y;
+    m.update(dt,sprint);this.position.copy(m.position);
+   }else{
    // Kick = look / strafe only. Space/Q drive BCD buoyancy, not equal XYZ thrust.
    this.move.copy(this.forward).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));
    const bcd=pressed('Space')-pressed('KeyQ','ControlLeft','ControlRight');
@@ -1158,9 +1279,16 @@ export class CaveWorld extends OceanWorld {
    const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.01;
    stepSwimVelocity(this.velocity,this.move,m.buoyancy,sprint,dt);
    moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);
+   // Corridor flood is a local ceiling. The cave column is unchanged.
+   if(inBreathCorridor(m.position)&&m.breathWaterY<SURFACE_Y-.35){
+    const cap=Math.max(FLOOR_Y+.35,m.breathWaterY-.28);
+    if(m.position.y>cap){m.position.y=cap;if(this.velocity.y>0)this.velocity.y=0;}
+   }
    m.update(dt,sprint);this.position.copy(m.position);
+   }
    }else{
     // holdCamera: keep mission clock + chests syncing, but leave look/swim alone.
+    this.onFoot=false;
     this.velocity.set(0,0,0);
     m.update(dt,false);this.position.copy(m.position);
     this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
@@ -1170,9 +1298,10 @@ export class CaveWorld extends OceanWorld {
    if(!this.holdCamera){
    const speed=this.velocity.length();
    const bobBlend=1-THREE.MathUtils.smoothstep(speed,.06,.5);
-   const bobY=Math.sin(this.time*1.1)*.13*bobBlend;
-   const bobSide=Math.sin(this.time*.65)*.065*bobBlend;
-   const bobFwd=Math.cos(this.time*.5)*.065*bobBlend;
+   const bobScale=this.onFoot?.22:1;
+   const bobY=Math.sin(this.time*1.1)*.13*bobBlend*bobScale;
+   const bobSide=Math.sin(this.time*.65)*.065*bobBlend*bobScale;
+   const bobFwd=Math.cos(this.time*.5)*.065*bobBlend*bobScale;
    const eyeX=this.position.x+this.upAxis.x*bobY+this.right.x*bobSide+this.forward.x*bobFwd;
    const eyeY=this.position.y+this.upAxis.y*bobY+this.right.y*bobSide+this.forward.y*bobFwd;
    const eyeZ=this.position.z+this.upAxis.z*bobY+this.right.z*bobSide+this.forward.z*bobFwd;
@@ -1210,14 +1339,22 @@ export class CaveWorld extends OceanWorld {
    this.updateBlood(dt);
    }
 
-   if(m.outcome!=='playing')this.pause();
+   if(m.outcome==='lost')this.applyBreathRespawn();
+   else if(m.outcome!=='playing')this.pause();
   }
-  // Atmosphere: cyan-teal murk, denser in deep chambers, clears at exit
+  // Atmosphere: cyan-teal murk, denser in deep chambers, clears at exit.
+  // Head above the corridor waterline reads as air; the cave stays submerged.
   const deep=THREE.MathUtils.smoothstep(-this.position.z,35,100);
   const nearExit=1-THREE.MathUtils.smoothstep(distance(this.position,EXIT),4,22);
   const fog=this.scene.fog as THREE.FogExp2;
-  fog.color.copy(this.fogDeep).lerp(this.fogMurk,deep).lerp(this.fogExit,nearExit*.65);
-  fog.density=.032+.022*deep-.014*nearExit;
+  const corridorAir=inBreathCorridor(this.position)&&this.position.y>this.mission.breathWaterY+.12;
+  if(corridorAir){
+   fog.color.set(0x243238);
+   fog.density=.012;
+  }else{
+   fog.color.copy(this.fogDeep).lerp(this.fogMurk,deep).lerp(this.fogExit,nearExit*.65);
+   fog.density=.032+.022*deep-.014*nearExit;
+  }
   (this.scene.background as THREE.Color).copy(fog.color);
   this.uniforms.uTime.value=this.time;
   for(const s of this.wallSconceLights)s.light.intensity=s.base*(.86+.14*Math.sin(this.time*6+s.phase)+.04*Math.sin(this.time*19+s.phase*1.7));
@@ -1267,6 +1404,7 @@ export class CaveWorld extends OceanWorld {
    this.guardian.fins.forEach(f=>f.rotation.x=Math.sin(this.time*2*thrash+(f.userData.phase||0))*.25*(f.userData.side||1)*thrash);
    this.guardian.tail.rotation.y=Math.sin(this.time*3*thrash)*.22*thrash;
   }
+  this.syncBreathProps();
   this.syncPickups();this.syncChests(dt);this.decoyMesh.visible=!!this.mission.decoy;if(this.mission.decoy)this.decoyMesh.position.copy(this.mission.decoy.position);
   if(this.time-this.lastSent>.05){this.lastSent=this.time;this.publish();}
   this.updatePointCull();
