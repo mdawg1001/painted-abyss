@@ -25,8 +25,8 @@ import {
  type SovietGuardVisual,
 } from './sovietGuardAsset';
 import { mountTt33 } from './gunAsset';
-import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, inBreathCorridor, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_SPEED, type BreathFootprint, type BreathTankMount } from './simulation';
-export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
+import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, inBreathCorridor, breathingFreeAir, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_SPEED, type BreathFootprint, type BreathTankMount } from './simulation';
+export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean};
 /** Point lights packed per cave chunk. 24 covers every light whose range reaches a chunk; the rest of the set still exists in the scene for spots/shadows. */
 const POINT_CULL_MAX=24;
 type PointCull={box:THREE.Box3;count:{value:number};pos:THREE.Vector3[];col:THREE.Vector3[];dist:Float32Array;decay:Float32Array};
@@ -208,6 +208,8 @@ export class CaveWorld extends OceanWorld {
  breathTank!:THREE.Group;
  /** True while the corridor is still dry enough to walk. */
  onFoot=false;
+ /** Previous-frame walk flag — detects the flood-forced swim handoff. */
+ wasOnFoot=true;
  /** Per-chunk point-light lists. Same BRDF as the full set, only lights that can reach the chunk. */
  pointCullTargets:PointCull[]=[];
  pointCullSyncs:(()=>void)[]=[];
@@ -843,8 +845,10 @@ export class CaveWorld extends OceanWorld {
   this.camera.rotation.set(0,0,0);
   this.camera.position.copy(this.position);
   this.onFoot=true;
+  this.wasOnFoot=true;
   this.syncBreathProps();
   this.syncSovietGuard(0);
+  this.backgroundMusic?.setDry(true);
  }
  /** Place the Soviet guard mesh on the corridor floor from sim state. */
  syncSovietGuard(dt:number){
@@ -1287,7 +1291,7 @@ export class CaveWorld extends OceanWorld {
    }group.position.set(p.position.x,p.position.y+Math.sin(this.time*1.7+p.id)*.12,p.position.z);group.rotation.y=this.time*.45;
   }
  }
- publish(){this.ui({mission:this.mission,playing:this.playing,started:this.started,pointerLocked:this.pointerLocked,error:this.error,audioNotice:this.audioNotice,yaw:this.yaw});}
+ publish(){this.ui({mission:this.mission,playing:this.playing,started:this.started,pointerLocked:this.pointerLocked,error:this.error,audioNotice:this.audioNotice,yaw:this.yaw,onFoot:this.onFoot});}
  bind(){
   const on=(target:EventTarget,type:string,fn:EventListener,options?:AddEventListenerOptions)=>{target.addEventListener(type,fn,options);this.listeners.push(()=>target.removeEventListener(type,fn,options));};
   on(window,'keydown',((e:KeyboardEvent)=>{
@@ -1368,7 +1372,9 @@ export class CaveWorld extends OceanWorld {
    if(!this.playing&&!this.testingAudio){ctx.suspend().catch(()=>{});return;}
    if(ctx.state!=='running'){this.audioNotice='Sound is blocked. Pause and choose Test sound.';this.publish();return;}
    this.audioNotice='';if(chime&&this.sound&&(this.playing||this.testingAudio))playDiveChime(ctx,master);
-   if(this.playing)this.backgroundMusic?.start().catch(()=>{if(this.alive){this.audioNotice='Background music could not load. Pause and resume to retry.';this.publish();}});
+   if(this.playing)this.backgroundMusic?.start().then(()=>{
+    if(this.alive)this.backgroundMusic?.setDry(this.onFoot);
+   }).catch(()=>{if(this.alive){this.audioNotice='Background music could not load. Pause and resume to retry.';this.publish();}});
    this.publish();
   }).catch(()=>{if(this.alive){this.audioNotice='Sound is blocked. Pause and choose Test sound.';this.publish();}});
  }
@@ -1430,7 +1436,11 @@ export class CaveWorld extends OceanWorld {
   if(this.mission.outcome!=='playing')this.reset();
   // One-time tip is already on this mission when tipsSeen is false; persist so the next launch stays quiet.
   if(!this.mission.tipsSeen)writeInventoryTipsSeen();
-  this.playing=true;this.started=true;this.keys.clear();this.clock.getDelta();this.testingAudio=false;if(this.sound)this.enableAudio(true);
+  this.playing=true;this.started=true;this.keys.clear();this.clock.getDelta();this.testingAudio=false;
+  this.onFoot=canWalkBreath(this.mission.position,this.mission.breathWaterY);
+  this.wasOnFoot=this.onFoot;
+  this.backgroundMusic?.setDry(this.onFoot);
+  if(this.sound)this.enableAudio(true);
   this.lookPointer=null;this.fallbackTurn=0;this.requestLookLock(true);this.publish();
   // QA: `?bloodTest=1` spawns a kill-scale blood cloud ahead of the diver (no combat required).
   if(typeof location!=='undefined'&&new URLSearchParams(location.search).has('bloodTest')){
@@ -1449,6 +1459,7 @@ export class CaveWorld extends OceanWorld {
  reset(){
   this.backgroundMusic?.reset();this.mission=new Mission(readInventoryTipsSeen());
   this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();
+  this.onFoot=true;this.wasOnFoot=true;
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
   this.shakeAmp=0;this.knifeFlashUntil=0;
   if(this.knifeVisual){poseKnife(this.knifeVisual);this.knifeVisual.visible=this.holdingKnife()&&knifeMeshReady(this.knifeVisual);}
@@ -1458,7 +1469,7 @@ export class CaveWorld extends OceanWorld {
    this.bloodGroup.visible=false;this.bloodLife=0;
    for(const layer of this.bloodLayers)layer.uniforms.uOpacity.value=0;
   }
-  this.syncPickups();this.syncChests(0);this.publish();
+  this.syncPickups();this.syncChests(0);this.syncBreathProps();this.backgroundMusic?.setDry(true);this.publish();
  }
  animate=()=>{
   if(!this.alive)return;this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);
@@ -1466,7 +1477,7 @@ export class CaveWorld extends OceanWorld {
    const pressed=(...keys:string[])=>keys.some(k=>this.keys.has(k))?1:0;
    if(m.mapOpen){
     // Chart reading: hold still, but the dive clock / gas / predator keep running.
-    this.onFoot=false;
+    this.onFoot=canWalkBreath(m.position,m.breathWaterY);
     this.velocity.set(0,0,0);this.keys.clear();
     m.update(dt,false);this.position.copy(m.position);
     this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
@@ -1479,12 +1490,30 @@ export class CaveWorld extends OceanWorld {
    this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
    const walking=canWalkBreath(m.position,m.breathWaterY);
    this.onFoot=walking;
+   // Flood forces swim: sink the eye under the waterline and clear walk velocity.
+   if(this.wasOnFoot&&!walking){
+    this.velocity.set(0,0,0);
+    m.buoyancy=0;m.buoyancyTrim=0;
+    if(inBreathCorridor(m.position)){
+     const swimY=Math.max(FLOOR_Y+.55,m.breathWaterY-.35);
+     m.position.y=Math.min(m.position.y,swimY);
+     if(!m.tipsSeen||m.noticeUntil<=m.elapsed)m.say('Water is over you — swim. Space / Q for buoyancy.','ok');
+    }
+    this.backgroundMusic?.setDry(false);
+   }else if(!this.wasOnFoot&&walking){
+    this.velocity.set(0,0,0);
+    m.buoyancy=0;m.buoyancyTrim=0;
+    m.position.y=WALK_EYE_Y;
+    this.backgroundMusic?.setDry(true);
+   }
+   this.wasOnFoot=walking;
    if(walking){
-    // Dry corridor: walk the floor. Look pitch does not lift you off it.
+    // Dry corridor: walk / run on the floor. Look pitch does not lift you off it.
     const flat=Math.hypot(this.forward.x,this.forward.z)||1;
     const fx=this.forward.x/flat,fz=this.forward.z/flat;
     this.right.set(-fz,0,fx);
     this.move.set(fx,0,fz).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));
+    if(this.move.lengthSq()>1)this.move.normalize();
     const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.01;
     const speed=sprint?WALK_SPRINT:WALK_SPEED;
     const wishX=this.move.x*speed,wishZ=this.move.z*speed;
@@ -1518,20 +1547,21 @@ export class CaveWorld extends OceanWorld {
    }
    }else{
     // holdCamera: keep mission clock + chests syncing, but leave look/swim alone.
-    this.onFoot=false;
+    this.onFoot=canWalkBreath(m.position,m.breathWaterY);
     this.velocity.set(0,0,0);
     m.update(dt,false);this.position.copy(m.position);
     this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
    }
    // Presentation-only hover bob when nearly still — never moves mission.position.
-   // ~2.6× 0.1.18 amplitudes so the murk drift reads; torch gets extra local sway (mesh+light+beam).
+   // Walk bob is a light stride; swim keeps the stronger murk drift.
    if(!this.holdCamera){
    const speed=this.velocity.length();
    const bobBlend=1-THREE.MathUtils.smoothstep(speed,.06,.5);
-   const bobScale=this.onFoot?.22:1;
-   const bobY=Math.sin(this.time*1.1)*.13*bobBlend*bobScale;
-   const bobSide=Math.sin(this.time*.65)*.065*bobBlend*bobScale;
-   const bobFwd=Math.cos(this.time*.5)*.065*bobBlend*bobScale;
+   const walkStride=this.onFoot&&speed>.15?1:0;
+   const bobScale=this.onFoot?(.18+.55*walkStride):1;
+   const bobY=Math.sin(this.time*(this.onFoot?7.2:1.1))*(this.onFoot?.045:.13)*bobBlend*bobScale;
+   const bobSide=Math.sin(this.time*(this.onFoot?3.6:.65))*(this.onFoot?.02:.065)*bobBlend*bobScale;
+   const bobFwd=Math.cos(this.time*(this.onFoot?3.6:.5))*(this.onFoot?.015:.065)*bobBlend*bobScale;
    const eyeX=this.position.x+this.upAxis.x*bobY+this.right.x*bobSide+this.forward.x*bobFwd;
    const eyeY=this.position.y+this.upAxis.y*bobY+this.right.y*bobSide+this.forward.y*bobFwd;
    const eyeZ=this.position.z+this.upAxis.z*bobY+this.right.z*bobSide+this.forward.z*bobFwd;
@@ -1583,7 +1613,7 @@ export class CaveWorld extends OceanWorld {
   const deep=THREE.MathUtils.smoothstep(-this.position.z,35,100);
   const nearExit=1-THREE.MathUtils.smoothstep(distance(this.position,EXIT),4,22);
   const fog=this.scene.fog as THREE.FogExp2;
-  const corridorAir=inBreathCorridor(this.position)&&this.position.y>this.mission.breathWaterY+.12;
+  const corridorAir=breathingFreeAir(this.position,this.mission.breathWaterY);
   if(corridorAir){
    fog.color.set(0x243238);
    fog.density=.012;
@@ -1613,7 +1643,9 @@ export class CaveWorld extends OceanWorld {
   if(this.gunVisual&&!this.playing)this.gunVisual.visible=this.holdingGun();
   this.torchBody.visible=true;
   if(torchOn){
-   const torch=torchModulation(this.position.y,this.pitch);
+   // Free-air corridor uses surface torch response (effective depth 0).
+   const torchY=corridorAir?SURFACE_Y:this.position.y;
+   const torch=torchModulation(torchY,this.pitch);
    this.torchLight.intensity=torch.intensity;this.torchLight.distance=torch.distance;this.torchLight.decay=torch.decay;
    this.torchLight.color.setRGB(torch.r,torch.g,torch.b);
    // Keep shadow frustum matched to the attenuated range (avoids wasted Safari fill).

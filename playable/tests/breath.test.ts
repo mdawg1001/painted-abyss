@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {
  Mission,cells,tile,fits,distance,world,FLOOR_Y,SURFACE_Y,AIR_MAIN_MAX,EXIT,RELIC,
  breathZone,breathHatchSpawn,breathTankMounts,breathFootprint,nextBreathTankIndex,
- riseBreathWater,canWalkBreath,inBreathCorridor,BREATH_WATER_START,BREATH_WALK_WATER,
- BREATH_RESPAWN_LITRES,BREATH_ROW_HATCH,BREATH_ROW_FAR,BREATH_COLS,WALK_EYE_Y,
+ riseBreathWater,canWalkBreath,inBreathCorridor,breathingFreeAir,effectiveDepth,gasDrainRateAt,
+ BREATH_WATER_START,BREATH_WALK_WATER,BREATH_RESPAWN_LITRES,BREATH_ROW_HATCH,BREATH_ROW_FAR,BREATH_COLS,
+ WALK_EYE_Y,WALK_SPEED,WALK_SPRINT,
 } from '../src/simulation';
 
 test('breath corridor is attached to the cave and does not replace it',()=>{
@@ -109,4 +110,42 @@ test('every new life spawns at the hatch, never the far end or the old random se
  assert.ok(hatch.z<foot.maxZ&&hatch.z>foot.minZ);
  assert.ok(distance(hatch,EXIT)>20);
  assert.ok(distance(hatch,RELIC)>40);
+});
+
+test('dry corridor walk: free air, zero depth, no tank burn; flood forces swim',()=>{
+ const m=new Mission(true);
+ assert.ok(canWalkBreath(m.position,m.breathWaterY));
+ assert.ok(breathingFreeAir(m.position,m.breathWaterY));
+ assert.equal(effectiveDepth(m.position,m.breathWaterY),0);
+ assert.equal(gasDrainRateAt(m.position,m.breathWaterY,false,false),0);
+ assert.equal(gasDrainRateAt(m.position,m.breathWaterY,true,false),0);
+ const air0=m.air;
+ m.buoyancy=.8;m.buoyancyTrim=.3;
+ m.update(2,true);
+ assert.equal(m.air,air0,'open-circuit air does not burn while walking dry');
+ assert.equal(m.buoyancy,0,'BCD clears on foot');
+ assert.equal(m.buoyancyTrim,0);
+ assert.ok(canWalkBreath(m.position,m.breathWaterY));
+ // Flood past eye height — leave the floor.
+ m.breathWaterY=BREATH_WALK_WATER+.05;
+ assert.equal(canWalkBreath(m.position,m.breathWaterY),false);
+ // Still head-above until the eye is pushed under the waterline.
+ assert.ok(breathingFreeAir(m.position,m.breathWaterY)||m.position.y<=m.breathWaterY+.12);
+ // Dive into the corridor water — tank burns again.
+ m.position={...m.position,y:m.breathWaterY-.4};
+ assert.equal(breathingFreeAir(m.position,m.breathWaterY),false);
+ assert.ok(effectiveDepth(m.position,m.breathWaterY)>.3);
+ assert.ok(gasDrainRateAt(m.position,m.breathWaterY,false,false)>0);
+ // Cave always swims and burns.
+ m.position={...EXIT};
+ assert.equal(canWalkBreath(m.position,m.breathWaterY),false);
+ assert.equal(breathingFreeAir(m.position,m.breathWaterY),false);
+ assert.ok(effectiveDepth(m.position,m.breathWaterY)>0);
+ assert.ok(gasDrainRateAt(m.position,m.breathWaterY,false,false)>0);
+});
+
+test('walk sprint uses WALK_SPRINT and walk cruise uses WALK_SPEED',()=>{
+ assert.ok(WALK_SPRINT>WALK_SPEED);
+ assert.ok(WALK_SPEED>1.5);
+ assert.ok(WALK_SPRINT<5);
 });
