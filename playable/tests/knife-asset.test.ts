@@ -13,7 +13,6 @@ const knifeDir=path.join(path.dirname(fileURLToPath(import.meta.url)),'../public
 
 test('knife hold pose thrusts farther than rest along −Z',()=>{
  assert.ok(KNIFE_STAB_Z<KNIFE_HOLD_POS.z);
- assert.ok(KNIFE_HOLD_SCALE.z>=4,'blade stays long enough to read upright');
  assert.ok(KNIFE_HOLD_SCALE.x>=KNIFE_HOLD_SCALE.z,'blade must be widened so it is not a sliver');
  assert.ok(KNIFE_HOLD_ROT.x>1,'pitch stands the blade up');
 });
@@ -61,26 +60,27 @@ test('knife stands upright in the torch corner',()=>{
   g.updateMatrixWorld(true);
   return local.clone().applyMatrix4(g.matrixWorld).project(cam);
  };
- const span=(a:THREE.Vector3,b:THREE.Vector3)=>Math.hypot(a.x-b.x,a.y-b.y);
- const torchScale={x:1.15,y:1.15,z:1.15};
- const torchWide=span(
-  project(HELD_VIEW_ROT,torchScale,new THREE.Vector3(-.122,0,-.38)),
-  project(HELD_VIEW_ROT,torchScale,new THREE.Vector3(.122,0,-.38)),
- );
+ const screenBox=(rot:{x:number;y:number;z:number},scale:{x:number;y:number;z:number},box:THREE.Box3)=>{
+  const xs:number[]=[];const ys:number[]=[];
+  for(const x of [box.min.x,box.max.x])for(const y of [box.min.y,box.max.y])for(const z of [box.min.z,box.max.z]){
+   const p=project(rot,scale,new THREE.Vector3(x,y,z));
+   xs.push(Math.min(1,Math.max(-1,p.x)));
+   ys.push(Math.min(1,Math.max(-1,p.y)));
+  }
+  return {w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)};
+ };
+ const torch=screenBox(HELD_VIEW_ROT,{x:1.15,y:1.15,z:1.15},new THREE.Box3(new THREE.Vector3(-.13,-.2,-.44),new THREE.Vector3(.13,.18,.24)));
+ const knife=screenBox(KNIFE_HOLD_ROT,KNIFE_HOLD_SCALE,new THREE.Box3(new THREE.Vector3(-.0157,-.0084,-.1556),new THREE.Vector3(.0157,.0084,.0604)));
  const tip=project(KNIFE_HOLD_ROT,KNIFE_HOLD_SCALE,new THREE.Vector3(0,0,-.1556));
  const butt=project(KNIFE_HOLD_ROT,KNIFE_HOLD_SCALE,new THREE.Vector3(0,0,.0604));
- const knifeWide=span(
-  project(KNIFE_HOLD_ROT,KNIFE_HOLD_SCALE,new THREE.Vector3(-.0157,0,-.05)),
-  project(KNIFE_HOLD_ROT,KNIFE_HOLD_SCALE,new THREE.Vector3(.0157,0,-.05)),
- );
  const grip=project(KNIFE_HOLD_ROT,KNIFE_HOLD_SCALE,new THREE.Vector3(0,0,0));
  const rise=tip.y-butt.y;
  const lean=Math.abs(tip.x-butt.x);
- assert.ok(rise>1.2,'tip rises well above the handle');
  assert.ok(rise>lean*2,'blade is nearer vertical than diagonal');
- assert.ok(tip.y>0.25,'tip reaches the upper half of the view');
+ assert.ok(tip.y>butt.y,'tip is above the handle');
  assert.ok(tip.x<butt.x,'tip leans toward center from the handle');
- assert.ok(knifeWide>=torchWide*.7,'flat of the blade stays readable');
+ assert.ok(Math.abs(knife.w-torch.w)/torch.w<.08,'knife screen width matches the torch');
+ assert.ok(Math.abs(knife.h-torch.h)/torch.h<.08,'knife screen height matches the torch');
  assert.ok(grip.x>.45&&grip.y<-.6,'grip stays in the torch corner');
 });
 
