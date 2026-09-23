@@ -899,23 +899,15 @@ export class CaveWorld extends OceanWorld {
   const poolFill=new THREE.PointLight(0xa8f0e8,34,16,1.1);poolFill.position.set(32,5,-12);this.scene.add(poolFill);
   this.addShaft(32,5.2,-12,9,.75,2.9,0xe0fdf8,.3,0,0,{caustic:true,causticR:5.2});
 
-  // Main cavern ceiling shaft
-  const cavern:[number,number,number,number,number,number,number][]=[
-   [6,6,-64,9.5,.55,2.6,.18],
-  ];
-  for(const [x,y,z,len,top,bot,op] of cavern){
-   this.addShaft(x,y,z,len,top,bot,0xc4f2ea,op,(Math.random()-.5)*.12,(Math.random()-.5)*.1,{caustic:true,causticR:bot*2.6});
-   const spot=new THREE.SpotLight(0xb8f0e8,70+op*520,15,.5,.85,1.15);
-   spot.position.set(x,8.2,z);spot.target.position.set(x,0,z);this.scene.add(spot,spot.target);
-  }
+  // Cavern ceiling fill + floor caustic. No volumetric column — the only god ray is the exit.
+  const cavernX=6,cavernZ=-64,cavernOp=.18,cavernBot=2.6;
+  this.addCausticPool(cavernX,cavernZ,cavernBot*2.6,cavernOp);
+  const spot=new THREE.SpotLight(0xb8f0e8,70+cavernOp*520,15,.5,.85,1.15);
+  spot.position.set(cavernX,8.2,cavernZ);spot.target.position.set(cavernX,0,cavernZ);this.scene.add(spot,spot.target);
 
-  // Entrance corridor soft shaft (no floor caustic — tight tunnel)
-  this.addShaft(0,6.3,-22,8,.45,2.2,0xb0e8e0,.12,0,0,{caustic:false});
+  // Entrance corridor fill. No god ray in the tight tunnel.
   const entrance=new THREE.SpotLight(0xa8e4dc,80,13,.48,.8,1.1);
   entrance.position.set(0,8.5,-22);entrance.target.position.set(0,0,-22);this.scene.add(entrance,entrance.target);
-
-  // Relic alcove pale shaft
-  this.addShaft(0,5.8,-110,7.5,.3,1.5,0xd0e0c8,.1,0,0,{caustic:false});
  }
  buildComposer(){
   this.composer=new EffectComposer(this.renderer);
