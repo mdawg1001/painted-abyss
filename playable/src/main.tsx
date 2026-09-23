@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {CaveWorld,type Snapshot} from './CaveWorld';
-import {ITEMS,EXIT,distance,effectiveDepth,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,MAP_FRAGMENT_ORDER,type Item} from './simulation';
+import {ITEMS,EXIT,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,MAP_FRAGMENT_ORDER,type Item} from './simulation';
 import {DiveMap} from './DiveMap';
 import {KNIFE_THUMB_URL} from './knifeAsset';
 import {APP_VERSION,APP_BUILD_LABEL,APP_BUILD_SHA} from './version';
@@ -75,6 +75,8 @@ function App(){
  const mapComplete=!!m?.mapComplete;
  const yaw=snap?.yaw??0;
  const onFoot=!!snap?.onFoot;
+ const airborne=snap?.airborne??true;
+ const flood=m?Math.round(floodFraction(m.breathWaterY)*100):0;
  const onBailout=!!(m&&m.air<=0&&m.bailout>0);
  const airPool=m?(onBailout?m.bailout:m.air):AIR_MAIN_LITRES;
  const airMax=onBailout?AIR_BAILOUT_LITRES:AIR_MAIN_LITRES;
@@ -114,10 +116,11 @@ function App(){
     <span>MAP</span><strong>{mapCount}/{MAP_FRAGMENT_ORDER.length}</strong><em>Tab</em>
    </div>
    <Compass yaw={yaw}/>
-   <div className="depth">{onFoot?'ON FOOT':`DEPTH ${depth} m`}</div>
+   <div className="depth">{onFoot?'ON FOOT':airborne?'IN AIR':`DEPTH ${depth} m`}</div>
    <section className="vitals" aria-label="Vitals">
-    <div className="vital"><div className="vital-row"><span>{onBailout?'PONY':'AIR'}{ponyReady?` · +${Math.ceil(m.bailout)} L`:''}{onFoot?' · OPEN':''}</span><strong className={airLitres<airMax*.2||onBailout?'warning':''}>{airLitres} L</strong></div><div className={`meter air ${onBailout?'bailout':''}`}><i style={{width:`${Math.min(100,airPool/airMax*100)}%`}}/></div></div>
+    <div className="vital"><div className="vital-row"><span>{onBailout?'PONY':'AIR'}{ponyReady?` · +${Math.ceil(m.bailout)} L`:''}{airborne?' · OPEN':''}</span><strong className={airLitres<airMax*.2||onBailout?'warning':''}>{airLitres} L</strong></div><div className={`meter air ${onBailout?'bailout':''}`}><i style={{width:`${Math.min(100,airPool/airMax*100)}%`}}/></div></div>
     {!onFoot&&<div className="vital"><div className="vital-row"><span>TRIM</span><strong className={Math.abs(buoyancy)>.55?'warning':''}>{trimLabel}{biasLabel}</strong></div><div className="meter trim" aria-valuemin={-1} aria-valuemax={1} aria-valuenow={+buoyancy.toFixed(2)}><em className="trim-bias" style={{left:`${biasMark}%`}} aria-hidden="true"/><i style={{left:`${trimLeft}%`,width:`${trimWidth}%`}}/></div></div>}
+    <div className="vital"><div className="vital-row"><span>FLOOD · LEAK</span><strong className={flood>=50?'warning':''}>{flood}%</strong></div><div className="meter flood"><i style={{width:`${flood}%`}}/></div></div>
     <div className="vital"><div className="vital-row"><span>SUIT</span><strong className={m.health<40?'warning':''}>{Math.ceil(m.health)}</strong></div><div className="meter suit"><i style={{width:`${m.health}%`}}/></div></div>
     <div className="vital"><div className="vital-row"><span>{onFoot?'LEGS':'FINS'}</span><strong>{Math.round(m.stamina)}</strong></div><div className="meter fins"><i style={{width:`${m.stamina}%`}}/></div></div>
    </section>

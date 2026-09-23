@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.4.9
+# Painted Abyss — First Dive · 0.5.0
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -78,7 +78,7 @@ Pointer lock is requested by Begin / Resume. If the browser refuses it, moving t
 ## Your first dive
 
 - Follow **turquoise markers** down the entrance tunnel and around the central rock pillar. The relic rests above a plinth in the bone alcove at the far end.
-- You wake at the hatch with **5% corridor water** (nearly dry): **WASD walk**, **Shift run**. Tank air does not burn until you swim. When corridor water rises past eye height you leave the floor and use the swim stack (Space/Q buoyancy). Stepping into the flooded cave always means swimming.
+- **The bunker is leaking.** At spawn the whole bunker, corridor and cave, is dry: the waterline starts below the floor and one shared flood level rises at about 1.6 cm/s (over the floor in about 35 s, standing head height in about 2 min 15 s, the ceiling in about 7 min 20 s). The HUD **FLOOD · LEAK** gauge tracks it. Tank air only burns while your head is under the waterline; above it the HUD reads **IN AIR**. In the corridor you **WASD walk** / **Shift run** until the water passes eye height, then swim (Space/Q buoyancy). In the cave the controls are still the swim stack for now; cave walking is the next step.
 - Three floor **crates** hold torn **map scraps** (west cavern, east shelf, bone alcove). The plastic crate has no lid — the chart scroll is already visible inside, and **E** grabs it. The military crate and suitcase open with **E**, then **E** again takes the scrap. **Tab** reviews the field chart. Exit marks appear only after all three scraps fit.
 - You start with a **diving knife** in slot 1, plus driftwood, flare, pony bottle, and sealant — five slots so the swap mechanic can be tried immediately. Press **E**, select the slot to replace with **1–5**, then press **E** again. The displaced item remains in the world and can be recovered. There is no extra backpack.
 - Driftwood is spare salvage; replacing it keeps your useful supplies. Press **1** then **click** to stab the guardian at close range — wounds make it rage harder; at ~85% damage taken it breaks off slow and limping; killing it sinks the corpse with soft floating blood sprites in the water (optional — extract still only needs the relic). Press **1–5** to select a slot, then **R** to use consumables — air, sealant, and flares are consumed. A one-time tip appears on the first dive only; later dives rely on the selected-slot chrome. Selecting the knife puts the Poly Haven fish knife in hand; other slots return the mounted torch as the held FPS object.

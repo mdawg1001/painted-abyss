@@ -44,7 +44,7 @@ export const BREATH_ROW_FAR=0;
 /** One-cell buffer so the hatch and the far end never host the tank. */
 export const BREATH_HATCH_ROWS=1;
 export const BREATH_FAR_ROWS=1;
-/** Metres the corridor water climbs each second. Head-height in about two minutes. */
+/** Metres the bunker leak raises the waterline each second (corridor and cave share it). Head-height in about two minutes. */
 export const BREATH_RISE_MPS=0.016;
 /** Standing eye height on the dry corridor floor. */
 export const WALK_EYE_Y=FLOOR_Y+1.6;
@@ -156,13 +156,12 @@ export function gasEffort(sprinting=false,panic=false){
 export function gasDrainRate(depthY:number,sprinting=false,panic=false){
  return (SAC_CRUISE_LPM/60)*ata(depthY)*gasEffort(sprinting,panic);
 }
-/** Tank burn for the current pose. Zero while breathing free air in the corridor. */
+/** Tank burn for the current pose. Zero while the head is above the bunker waterline. */
 export function gasDrainRateAt(p:Point,waterY:number,sprinting=false,panic=false){
  if(breathingFreeAir(p,waterY))return 0;
+ // Depth is measured from the rising bunker waterline everywhere (corridor and cave).
  const depth=effectiveDepth(p,waterY);
- // Cave column still keyed off eye height via hydrostaticDepth; corridor uses flood depth.
- if(inBreathCorridor(p))return (SAC_CRUISE_LPM/60)*(1+depth/10)*gasEffort(sprinting,panic);
- return gasDrainRate(p.y,sprinting,panic);
+ return (SAC_CRUISE_LPM/60)*(1+depth/10)*gasEffort(sprinting,panic);
 }
 
 /** Kick thrust (m/s²) — terminal speed ≈ sqrt(thrust / SWIM_DRAG_K). */
@@ -391,18 +390,25 @@ export function inBreathCorridor(p:Point){const t=tile(p);return breathZone(t.co
  * and false once corridor water reaches eye height.
  */
 export function canWalkBreath(p:Point,waterY:number){return inBreathCorridor(p)&&waterY<BREATH_WALK_WATER;}
-/** Head above the corridor flood — free air, no tank drain, air-side fog. */
-export function breathingFreeAir(p:Point,waterY:number){
- return inBreathCorridor(p)&&p.y>waterY+BREATH_AIR_MARGIN;
-}
 /**
- * Depth for HUD / gas / torch. Corridor uses the rising flood plane;
- * the cave still uses the shared SURFACE_Y column. Free-air corridor = 0.
+ * Head above the bunker flood — free air, no tank drain, air-side fog.
+ * The whole bunker (corridor and cave) shares one leak-driven waterline.
  */
+export function breathingFreeAir(p:Point,waterY:number){
+ return p.y>waterY+BREATH_AIR_MARGIN;
+}
+/** Metres of water above the eye, measured from the bunker flood plane. 0 in free air. */
 export function effectiveDepth(p:Point,waterY:number){
  if(breathingFreeAir(p,waterY))return 0;
- if(inBreathCorridor(p))return Math.max(0,waterY-p.y);
- return hydrostaticDepth(p.y);
+ return Math.max(0,waterY-p.y);
+}
+/** Flood fill 0..1 from the bunker floor to the ceiling plane (HUD gauge). */
+export function floodFraction(waterY:number){
+ return Math.max(0,Math.min(1,(waterY-FLOOR_Y)/(SURFACE_Y-FLOOR_Y)));
+}
+/** Equivalent SURFACE_Y-based height for systems tuned to the old full column (torch murk). */
+export function floodColumnY(p:Point,waterY:number){
+ return breathingFreeAir(p,waterY)?SURFACE_Y:SURFACE_Y-effectiveDepth(p,waterY);
 }
 export function riseBreathWater(waterY:number,dt:number){return Math.min(SURFACE_Y,waterY+BREATH_RISE_MPS*Math.max(0,dt));}
 /** Open corridor cells only — the Soviet guard never enters the cave grid. */
@@ -623,7 +629,7 @@ export function writeInventoryTipsSeen(){
 }
  export class Mission {
  position={...breathHatchSpawn()};health=100;air=AIR_MAIN_MAX;bailout=0;elapsed=0;stamina=100;torch=true;
- /** Corridor waterline (metres). Rises over time and is kept across death. */
+ /** Bunker waterline (metres), shared by corridor and cave. The leak raises it over time; it is kept across death. */
  breathWaterY=BREATH_WATER_START;
  /** Index into `breathTankMounts`. Moves on each death. */
  breathTankIndex=0;
@@ -698,8 +704,8 @@ export function writeInventoryTipsSeen(){
   this.guard.waypoint=0;
   this.killedByGuard=false;
   if(!tipsSeen){
-   this.notice='WASD walk · Shift run · cylinder rests until you swim. 1–5 select · click stabs.';
-   this.noticeUntil=8;this.feedbackKind='select';
+   this.notice='The bunker is leaking. The water is rising. WASD walk · Shift run · 1–5 select · click stabs.';
+   this.noticeUntil=9;this.feedbackKind='select';
   }
  }
  get hasRelic(){return this.inventory.includes('relic');}

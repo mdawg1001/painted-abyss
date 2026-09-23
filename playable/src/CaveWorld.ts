@@ -25,8 +25,10 @@ import {
  type SovietGuardVisual,
 } from './sovietGuardAsset';
 import { mountTt33 } from './gunAsset';
-import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, inBreathCorridor, breathingFreeAir, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, type BreathFootprint, type BreathTankMount } from './simulation';
-export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean};
+import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, type BreathFootprint, type BreathTankMount } from './simulation';
+export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
+ /** Head above the bunker waterline (free air). */
+ airborne:boolean};
 /** Point lights packed per cave chunk. 24 covers every light whose range reaches a chunk; the rest of the set still exists in the scene for spots/shadows. */
 const POINT_CULL_MAX=24;
 type PointCull={box:THREE.Box3;count:{value:number};pos:THREE.Vector3[];col:THREE.Vector3[];dist:Float32Array;decay:Float32Array};
@@ -206,6 +208,12 @@ export class CaveWorld extends OceanWorld {
  breathTank!:THREE.Group;
  /** True while the corridor is still dry enough to walk. */
  onFoot=false;
+ /** Head above the bunker waterline last frame (drives fog, music filter, HUD). */
+ airborne=true;
+ /** Lights near the camera that may shade the bunker-wide water surface. Moves with the player. */
+ floodLightBox=new THREE.Box3();
+ /** World XZ bounds of every open bunker cell (corridor + cave). */
+ bunkerBounds={minX:0,maxX:0,minZ:0,maxZ:0,cx:0,cz:0,width:1,depth:1};
  /** Previous-frame walk flag — detects the flood-forced swim handoff. */
  wasOnFoot=true;
  /** Per-chunk point-light lists. Same BRDF as the full set, only lights that can reach the chunk. */
@@ -730,11 +738,22 @@ export class CaveWorld extends OceanWorld {
    new THREE.Vector3(foot.minX,-.3,foot.minZ),
    new THREE.Vector3(foot.maxX,8.7,foot.maxZ),
   );
-  this.trackPointCull(waterMat,waterBox);
+  // The leak floods the whole bunker, so the surface spans every open cell.
+  // Its lights come from a box that follows the camera, so a bunker-wide plane
+  // never unrolls every sconce in the cave into one shader.
+  let bx0=Infinity,bx1=-Infinity,bz0=Infinity,bz1=-Infinity;
+  for(const key of cells){
+   const [c,r]=key.split(',').map(Number);const w=world(c,r);
+   bx0=Math.min(bx0,w.x-CELL/2);bx1=Math.max(bx1,w.x+CELL/2);bz0=Math.min(bz0,w.z-CELL/2);bz1=Math.max(bz1,w.z+CELL/2);
+  }
+  this.bunkerBounds={minX:bx0,maxX:bx1,minZ:bz0,maxZ:bz1,cx:(bx0+bx1)/2,cz:(bz0+bz1)/2,width:bx1-bx0,depth:bz1-bz0};
+  this.floodLightBox.set(new THREE.Vector3(foot.minX,-.3,foot.minZ),new THREE.Vector3(foot.maxX,8.7,foot.maxZ));
+  this.trackPointCull(waterMat,this.floodLightBox);
   this.trackPointCull(volMat,waterBox);
-  this.breathWater=new THREE.Mesh(new THREE.PlaneGeometry(foot.width*.96,foot.depth*.98),waterMat);
+  const bb=this.bunkerBounds;
+  this.breathWater=new THREE.Mesh(new THREE.PlaneGeometry(bb.width,bb.depth),waterMat);
   this.breathWater.rotation.x=-Math.PI/2;
-  this.breathWater.position.set(foot.cx,0,foot.cz);
+  this.breathWater.position.set(bb.cx,0,bb.cz);
   this.breathWater.visible=false;
   this.breathWater.renderOrder=2;
   this.breathVolume=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),volMat);
@@ -821,10 +840,16 @@ export class CaveWorld extends OceanWorld {
    this.breathVolume.visible=show;
   }
   if(show){
-   this.breathWater.position.set(foot.cx,y+.02,foot.cz);
+   this.breathWater.position.set(this.bunkerBounds.cx,y+.02,this.bunkerBounds.cz);
    const h=Math.max(.08,y);
    this.breathVolume.scale.set(foot.width*.94,h,foot.depth*.96);
    this.breathVolume.position.set(foot.cx,h*.5,foot.cz);
+  }
+  // Floor caustics fade in once there is real water over the floor.
+  const cover=THREE.MathUtils.smoothstep(y-FLOOR_Y,.08,.6);
+  for(const pool of this.causticPools){
+   pool.visible=cover>.01;
+   ((pool.material as THREE.ShaderMaterial).uniforms.uOpacity).value=(pool.userData.baseOpacity??.3)*cover;
   }
   const mounts=this.breathMounts;
   const mount=mounts[this.mission.breathTankIndex%mounts.length];
@@ -944,6 +969,9 @@ export class CaveWorld extends OceanWorld {
   mesh.rotation.x=-Math.PI/2;
   mesh.position.set(x,FLOOR_Y+.05,z);
   mesh.renderOrder=1;mesh.frustumCulled=true;
+  mesh.userData.baseOpacity=mat.uniforms.uOpacity.value;
+  // Caustics need water over the floor; the leak brings them in as it rises.
+  mesh.visible=false;
   this.scene.add(mesh);
   this.causticPools.push(mesh);
   return mesh;
@@ -1276,7 +1304,7 @@ export class CaveWorld extends OceanWorld {
    }group.position.set(p.position.x,p.position.y+Math.sin(this.time*1.7+p.id)*.12,p.position.z);group.rotation.y=this.time*.45;
   }
  }
- publish(){this.ui({mission:this.mission,playing:this.playing,started:this.started,pointerLocked:this.pointerLocked,error:this.error,audioNotice:this.audioNotice,yaw:this.yaw,onFoot:this.onFoot});}
+ publish(){this.ui({mission:this.mission,playing:this.playing,started:this.started,pointerLocked:this.pointerLocked,error:this.error,audioNotice:this.audioNotice,yaw:this.yaw,onFoot:this.onFoot,airborne:this.airborne});}
  bind(){
   const on=(target:EventTarget,type:string,fn:EventListener,options?:AddEventListenerOptions)=>{target.addEventListener(type,fn,options);this.listeners.push(()=>target.removeEventListener(type,fn,options));};
   on(window,'keydown',((e:KeyboardEvent)=>{
@@ -1358,7 +1386,7 @@ export class CaveWorld extends OceanWorld {
    if(ctx.state!=='running'){this.audioNotice='Sound is blocked. Pause and choose Test sound.';this.publish();return;}
    this.audioNotice='';if(chime&&this.sound&&(this.playing||this.testingAudio))playDiveChime(ctx,master);
    if(this.playing)this.backgroundMusic?.start().then(()=>{
-    if(this.alive)this.backgroundMusic?.setDry(this.onFoot);
+    if(this.alive)this.backgroundMusic?.setDry(this.airborne);
    }).catch(()=>{if(this.alive){this.audioNotice='Background music could not load. Pause and resume to retry.';this.publish();}});
    this.publish();
   }).catch(()=>{if(this.alive){this.audioNotice='Sound is blocked. Pause and choose Test sound.';this.publish();}});
@@ -1424,7 +1452,8 @@ export class CaveWorld extends OceanWorld {
   this.playing=true;this.started=true;this.keys.clear();this.clock.getDelta();this.testingAudio=false;
   this.onFoot=canWalkBreath(this.mission.position,this.mission.breathWaterY);
   this.wasOnFoot=this.onFoot;
-  this.backgroundMusic?.setDry(this.onFoot);
+  this.airborne=breathingFreeAir(this.mission.position,this.mission.breathWaterY);
+  this.backgroundMusic?.setDry(this.airborne);
   if(this.sound)this.enableAudio(true);
   this.lookPointer=null;this.fallbackTurn=0;this.requestLookLock(true);this.publish();
   // QA: `?bloodTest=1` spawns a kill-scale blood cloud ahead of the diver (no combat required).
@@ -1484,12 +1513,10 @@ export class CaveWorld extends OceanWorld {
      m.position.y=Math.min(m.position.y,swimY);
      if(!m.tipsSeen||m.noticeUntil<=m.elapsed)m.say('Water is over you — swim. Space / Q for buoyancy.','ok');
     }
-    this.backgroundMusic?.setDry(false);
    }else if(!this.wasOnFoot&&walking){
     this.velocity.set(0,0,0);
     m.buoyancy=0;m.buoyancyTrim=0;
     m.position.y=WALK_EYE_Y;
-    this.backgroundMusic?.setDry(true);
    }
    this.wasOnFoot=walking;
    if(walking){
@@ -1593,15 +1620,22 @@ export class CaveWorld extends OceanWorld {
    if(m.outcome==='lost')this.applyBreathRespawn();
    else if(m.outcome!=='playing')this.pause();
   }
-  // Atmosphere: cyan-teal murk, denser in deep chambers, clears at exit.
-  // Head above the corridor waterline reads as air; the cave stays submerged.
+  // Atmosphere: above the bunker waterline it is stale dry air; below it, cyan-teal murk
+  // that is denser in deep chambers and clears at the exit.
   const deep=THREE.MathUtils.smoothstep(-this.position.z,35,100);
   const nearExit=1-THREE.MathUtils.smoothstep(distance(this.position,EXIT),4,22);
   const fog=this.scene.fog as THREE.FogExp2;
   const corridorAir=breathingFreeAir(this.position,this.mission.breathWaterY);
+  if(corridorAir!==this.airborne){
+   this.airborne=corridorAir;
+   this.backgroundMusic?.setDry(corridorAir);
+  }
+  // Keep the water surface lit by the lights around the player.
+  this.floodLightBox.min.set(this.position.x-22,this.mission.breathWaterY-3,this.position.z-22);
+  this.floodLightBox.max.set(this.position.x+22,this.mission.breathWaterY+3,this.position.z+22);
   if(corridorAir){
    fog.color.set(0x243238);
-   fog.density=.012;
+   fog.density=.012+.008*deep;
   }else{
    fog.color.copy(this.fogDeep).lerp(this.fogMurk,deep).lerp(this.fogExit,nearExit*.65);
    fog.density=.032+.022*deep-.014*nearExit;
@@ -1628,8 +1662,8 @@ export class CaveWorld extends OceanWorld {
   if(this.gunVisual&&!this.playing)this.gunVisual.visible=this.holdingGun();
   this.torchBody.visible=true;
   if(torchOn){
-   // Free-air corridor uses surface torch response (effective depth 0).
-   const torchY=corridorAir?SURFACE_Y:this.position.y;
+   // Torch murk follows water over the lens: free air reads as the clear surface response.
+   const torchY=floodColumnY(this.position,this.mission.breathWaterY);
    const torch=torchModulation(torchY,this.pitch);
    this.torchLight.intensity=torch.intensity;this.torchLight.distance=torch.distance;this.torchLight.decay=torch.decay;
    this.torchLight.color.setRGB(torch.r,torch.g,torch.b);
