@@ -4,10 +4,11 @@ import {access,readFile} from 'node:fs/promises';
 import {dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
- POSTER_AUTHOR,POSTER_LICENSE,POSTER_MOUNT_Y,POSTER_SOURCE,POSTER_TARGET_HEIGHT,
- POSTER_TEX_LITERACY,POSTER_TEX_SILENCE,
+ POSTER_AUTHOR,POSTER_LICENSE,POSTER_MOUNT_Y,POSTER_SOURCE,POSTER_STAND_OFF,
+ POSTER_TARGET_HEIGHT,POSTER_TEX_LITERACY,POSTER_TEX_SILENCE,
  buildPosterStub,createWallPosters,wallPosterMount,
 } from '../src/posterAsset';
+import * as THREE from 'three';
 import {wallSconceMounts} from '../src/sconceAsset';
 import {cells,world} from '../src/simulation';
 
@@ -52,6 +53,8 @@ test('wallPosterMount sits on a solid wall face away from sconces',()=>{
   'clear of sconce centres when sconces exist');
  assert.ok(POSTER_MOUNT_Y>2&&POSTER_MOUNT_Y<5);
  assert.ok(POSTER_TARGET_HEIGHT>1&&POSTER_TARGET_HEIGHT<2.5);
+ // Wall-detail icosahedrons bulge ~0.35 m into the room — stand-off must clear them.
+ assert.ok(POSTER_STAND_OFF>=.5,'stand-off clears cave rock blobs');
 });
 
 test('stub and createWallPosters expose two sheets',()=>{
@@ -64,4 +67,16 @@ test('stub and createWallPosters expose two sheets',()=>{
  assert.equal(visual.ready,false);
  assert.equal(visual.group.children.length,1);
  assert.ok(visual.group.getObjectByName('sovietPostersStub'));
+});
+
+test('poster sheets sit POSTER_STAND_OFF into the room from the wall face',()=>{
+ const mount=wallPosterMount();
+ const stub=buildPosterStub(mount);
+ const inward=new THREE.Vector3(Math.sin(mount.yaw),0,Math.cos(mount.yaw));
+ for(const child of stub.children){
+  assert.ok(child instanceof THREE.Mesh);
+  const delta=new THREE.Vector3(child.position.x-mount.x,0,child.position.z-mount.z);
+  const along=delta.dot(inward);
+  assert.ok(Math.abs(along-POSTER_STAND_OFF)<.001,`sheet stand-off ${along}`);
+ }
 });

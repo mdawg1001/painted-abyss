@@ -23,6 +23,12 @@ export const POSTER_MOUNT_Y=3.35;
 export const POSTER_GAP=.12;
 /** Aspect ≈ cropped preview sheets (width / height). */
 export const POSTER_ASPECT=.72;
+/**
+ * Pull sheets into the room past the wall-face rock icosahedrons (centres sit
+ * ~0.45 m into the wall box and bulge ~0.35 m toward the room). 0.55 clears
+ * those bumps so the full propaganda art isn’t buried in the stone.
+ */
+export const POSTER_STAND_OFF=.55;
 
 export type WallPosters={group:THREE.Group;ready:boolean};
 
@@ -74,10 +80,11 @@ export function buildPosterStub(mount:SconceMount):THREE.Group{
   const mesh=new THREE.Mesh(sheetGeo(),s.mat);
   mesh.scale.set(h,h,1);
   mesh.position.copy(new THREE.Vector3(mount.x,POSTER_MOUNT_Y,mount.z))
-   .addScaledVector(inward,.04)
+   .addScaledVector(inward,POSTER_STAND_OFF)
    .addScaledVector(right,s.x);
   mesh.rotation.y=mount.yaw;
   mesh.castShadow=true;mesh.receiveShadow=true;
+  mesh.renderOrder=2;
   root.add(mesh);
  }
  return root;
@@ -139,16 +146,21 @@ export async function upgradeWallPosters(visual:WallPosters):Promise<boolean>{
     emissiveIntensity:.55,
     side:THREE.DoubleSide,
     depthWrite:true,
+    // Prefer the sheet when coplanar rock fragments still graze the plane.
+    polygonOffset:true,
+    polygonOffsetFactor:-2,
+    polygonOffsetUnits:-2,
    });
    const mesh=new THREE.Mesh(sheetGeo(s.tex.image?s.tex.image.width/s.tex.image.height:POSTER_ASPECT),mat);
    // PlaneGeometry is aspect×1; scale by height so sheet is POSTER_TARGET_HEIGHT tall.
    mesh.scale.setScalar(h);
    mesh.position.copy(new THREE.Vector3(mount.x,POSTER_MOUNT_Y,mount.z))
-    .addScaledVector(inward,.04)
+    .addScaledVector(inward,POSTER_STAND_OFF)
     .addScaledVector(right,s.x);
    mesh.rotation.y=mount.yaw;
    mesh.castShadow=true;mesh.receiveShadow=true;
    mesh.frustumCulled=false;
+   mesh.renderOrder=2;
    visual.group.add(mesh);
   }
   visual.ready=true;
