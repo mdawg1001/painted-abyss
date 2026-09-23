@@ -16,12 +16,13 @@ export const KNIFE_ASSET_URL='/assets/knife/fish_knife_1k.gltf';
 export const KNIFE_THUMB_URL='/assets/knife/thumb.png';
 
 /**
- * Camera-local pose. Grip sits in the lower-right corner; the tip angles
- * inward toward screen center. Tuned for fov 64 so the blade stays on screen.
+ * Camera-local FPS corner pose (knife only, no arm). Handle anchored in the
+ * extreme lower-right; blade steeply diagonal with the tip toward screen
+ * center (~65° on fov 64). Same framing language as a CS knife viewmodel.
  */
-export const KNIFE_HOLD_POS={x:.28,y:-.22,z:-.6} as const;
-export const KNIFE_HOLD_ROT={x:-.2,y:.55,z:.12} as const;
-export const KNIFE_HOLD_SCALE=1.5;
+export const KNIFE_HOLD_POS={x:.44,y:-.28,z:-.62} as const;
+export const KNIFE_HOLD_ROT={x:.85,y:.6,z:-.55} as const;
+export const KNIFE_HOLD_SCALE=1.7;
 export const KNIFE_STAB_Z=-.82;
 
 const stubMetal=()=>new THREE.MeshStandardMaterial({

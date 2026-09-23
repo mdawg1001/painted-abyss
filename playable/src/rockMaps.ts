@@ -67,25 +67,51 @@ vec3 triBlend(vec3 n){
   return b/(b.x+b.y+b.z+1e-5);
 }
 vec3 triAlbedo(sampler2D map,vec3 p,vec3 b,float s){
+  // Flat floor / wall / ceiling weights are exactly 1 on one axis, so one tap
+  // equals the three-tap blend. Diagonal normals still blend all three.
+  if(b.x>0.999) return texture2D(map,p.zy*s).rgb;
+  if(b.y>0.999) return texture2D(map,p.xz*s).rgb;
+  if(b.z>0.999) return texture2D(map,p.xy*s).rgb;
   return texture2D(map,p.zy*s).rgb*b.x
        + texture2D(map,p.xz*s).rgb*b.y
        + texture2D(map,p.xy*s).rgb*b.z;
 }
 vec3 triArm(sampler2D map,vec3 p,vec3 b,float s){
+  if(b.x>0.999) return texture2D(map,p.zy*s).rgb;
+  if(b.y>0.999) return texture2D(map,p.xz*s).rgb;
+  if(b.z>0.999) return texture2D(map,p.xy*s).rgb;
   return texture2D(map,p.zy*s).rgb*b.x
        + texture2D(map,p.xz*s).rgb*b.y
        + texture2D(map,p.xy*s).rgb*b.z;
 }
 // Whiteout-blend OpenGL normals into world space, then to view space.
 vec3 triNormalView(sampler2D map,vec3 p,vec3 wn,vec3 b,float s,mat4 viewMatrix){
-  vec3 tx=texture2D(map,p.zy*s).xyz*2.-1.;
-  vec3 ty=texture2D(map,p.xz*s).xyz*2.-1.;
-  vec3 tz=texture2D(map,p.xy*s).xyz*2.-1.;
-  tx.xy*=1.55;ty.xy*=1.55;tz.xy*=1.55;
-  tx=vec3(tx.xy+wn.zy,abs(wn.x));
-  ty=vec3(ty.xy+wn.xz,abs(wn.y));
-  tz=vec3(tz.xy+wn.xy,abs(wn.z));
-  vec3 n=normalize(tx.zyx*b.x+ty.xzy*b.y+tz.xyz*b.z);
+  vec3 n;
+  if(b.y>0.999){
+    vec3 ty=texture2D(map,p.xz*s).xyz*2.-1.;
+    ty.xy*=1.55;
+    ty=vec3(ty.xy+wn.xz,abs(wn.y));
+    n=normalize(ty.xzy);
+  }else if(b.x>0.999){
+    vec3 tx=texture2D(map,p.zy*s).xyz*2.-1.;
+    tx.xy*=1.55;
+    tx=vec3(tx.xy+wn.zy,abs(wn.x));
+    n=normalize(tx.zyx);
+  }else if(b.z>0.999){
+    vec3 tz=texture2D(map,p.xy*s).xyz*2.-1.;
+    tz.xy*=1.55;
+    tz=vec3(tz.xy+wn.xy,abs(wn.z));
+    n=normalize(tz.xyz);
+  }else{
+    vec3 tx=texture2D(map,p.zy*s).xyz*2.-1.;
+    vec3 ty=texture2D(map,p.xz*s).xyz*2.-1.;
+    vec3 tz=texture2D(map,p.xy*s).xyz*2.-1.;
+    tx.xy*=1.55;ty.xy*=1.55;tz.xy*=1.55;
+    tx=vec3(tx.xy+wn.zy,abs(wn.x));
+    ty=vec3(ty.xy+wn.xz,abs(wn.y));
+    tz=vec3(tz.xy+wn.xy,abs(wn.z));
+    n=normalize(tx.zyx*b.x+ty.xzy*b.y+tz.xyz*b.z);
+  }
   return normalize((viewMatrix*vec4(n,0.)).xyz);
 }
 // Patchy moss: crevices + near-floor + ledge tops + wall streaks.
