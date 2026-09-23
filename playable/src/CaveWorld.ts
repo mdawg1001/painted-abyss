@@ -19,6 +19,7 @@ import {
  LIFEBUOY_POS, LIFEBUOY_YAW, type LifebuoyVisual,
 } from './lifebuoyAsset';
 import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLight } from './sconceAsset';
+import { createWallPosters, upgradeWallPosters, type WallPosters } from './posterAsset';
 import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, type SovietGuardVisual,
 } from './sovietGuardAsset';
@@ -187,6 +188,8 @@ export class CaveWorld extends OceanWorld {
  lifebuoyVisual:LifebuoyVisual|null=null;
  /** Poly Haven caged sconces mounted on the cave walls; their warm point lights flicker. */
  wallSconceLights:SconceLight[]=[];
+ /** Sketchfab PotatoWit soviet posters hung on one cave wall. */
+ wallPosters:WallPosters|null=null;
  /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
  knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
  /** Held gun. Visible only while that slot is selected. It does not fire. */
@@ -307,6 +310,7 @@ export class CaveWorld extends OceanWorld {
   this.mountChests();
   this.mountLifebuoy();
   this.mountWallSconces();
+  this.mountWallPosters();
   this.pointCullSyncs.push(()=>{
    const p=this.camera.position;
    this.heldLightBox.min.set(p.x-2.2,p.y-2.2,p.z-2.2);
@@ -345,6 +349,16 @@ export class CaveWorld extends OceanWorld {
     if((child as THREE.Light).isLight||child.name==='sconceStub')continue;
     this.adoptPointCull(child,this.worldBox(child),true,true);
    }
+  });
+ }
+ /** Hang PotatoWit soviet posters on one solid wall face (stub → PNG albedos). */
+ mountWallPosters(){
+  const visual=createWallPosters();
+  this.scene.add(visual.group);
+  this.wallPosters=visual;
+  upgradeWallPosters(visual).then(ok=>{
+   if(!ok||!this.alive)return;
+   this.adoptPointCull(visual.group,this.worldBox(visual.group),true,true);
   });
  }
  /** Place the three Poly Haven chests and upgrade stubs to glTF in the background. */
