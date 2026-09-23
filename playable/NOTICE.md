@@ -21,20 +21,20 @@
 - Files: `public/assets/scroll/scroll.gltf` (authored mesh, 7,444 triangles) and `textures/` (albedo, normal, roughness, metallic, AO, emissive)
 - Visible in the open-top plastic crate immediately, and inside the military crate or suitcase after that lid is opened, until the scrap is taken.
 
-## WW2 Soviet Uniform (Sketchfab)
-- Source: https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99
-- Author: tnnv (@tnnv)
-- License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
-- Mirror: Zenodo 10.5281/zenodo.10237261 (same UID / license; used to fetch the downloadable glTF binary)
-- Files: `public/assets/soviet-uniform/ww2_soviet_uniform.glb` (~27k triangles)
-- Phase 3 breath-corridor Soviet guard mesh (scaled to ~human height).
+## Corridor guard — Quaternius Soldier_Male (CC0)
+- Source: https://quaternius.com/packs/ultimateanimatedcharacter.html (Ultimate Animated Character Pack)
+- Author: Quaternius
+- License: CC0 1.0 — https://creativecommons.org/publicdomain/zero/1.0/
+- Files: `public/assets/soviet-uniform/quaternius_soldier_male.glb` — Soldier_Male + authored **idle / walk / run** skeletal clips
+- Phase 3 breath-corridor guard (runtime mesh height ≈ 1.90 m). Olive low-poly military; TT-33 parents to `FistR`.
+- AnimationMixer crossfades from AI (idle at water/stop, walk patrol/search, run chase); stride `timeScale` matched to move speed.
 
-## Guard locomotion (procedural skeletal · Mixamo-quality)
-- Clips: idle / walk / run — local-Euler offsets on the WW2 Soviet Uniform Unreal-style bones
-- Files: `public/assets/soviet-uniform/guard-locomotion.json` (rotation tracks; game drives XZ)
-- Build: `playable/scripts/bake-guard-locomotion.mjs`
-- Mixamo / Quaternius UAL `SkeletonUtils.retargetClip` was attempted (CC0 Quaternius + Mixamo Soldier) but rest-pose bone axes collapse this Sketchfab rig; open path: `playable/scripts/retarget-guard-locomotion.mjs`
-- Driven by AnimationMixer crossfades from AI state (idle when stopped, walk on patrol/search, run on chase)
+### Prior mesh / Mixamo (not shipped)
+- Sketchfab “WW2 Soviet Uniform” by tnnv (CC BY 4.0) was the first Phase 3 body:
+  https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99
+- **Mixamo autorig** of that mesh could not be completed here (Adobe login / Mixamo API 401; no credentials).
+- Quaternius UAL / Mixamo Soldier **retarget** onto its Unreal-style bones failed (rest-pose axes); see `scripts/retarget-guard-locomotion.mjs`.
+- Procedural bone-bake (#90) was playtest-rejected — not an acceptable substitute for real clips.
 
 ## Poster from Soviet Union (Sketchfab)
 - Source: https://sketchfab.com/3d-models/poster-from-soviet-union-49a80251d7e543289b1deb656b15017a

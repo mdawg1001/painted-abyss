@@ -27,10 +27,10 @@ export const TT33_HELD_LENGTH=.42;
 export const TT33_PICKUP_LENGTH=.8;
 export const TT33_GUARD_LENGTH=.5;
 /**
- * Same anchor as the guard stub box (chest-height, right-front).
- * y ≈ SOVIET_GUARD_HEIGHT * 0.66 (1.90 m adult → ~1.25).
+ * Local offset in the guard's right-hand bone (FistR) after the Quaternius
+ * soldier parents the gun group there. Near-origin so the pistol follows the fist.
  */
-export const TT33_GUARD_POS={x:.32,y:1.25,z:-.38} as const;
+export const TT33_GUARD_POS={x:.02,y:-.02,z:-.06} as const;
 
 export type GunFit='held'|'pickup'|'guard';
 
