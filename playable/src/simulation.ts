@@ -1,6 +1,6 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
 export type Point={x:number;y:number;z:number};
-export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife';
+export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife'|'gun'|'bottle'|'coat';
 export type Pickup={id:number;item:Item;position:Point};
 export type PredatorState='patrol'|'alert'|'chase'|'search'|'damaged'|'dead';
 export type StabResult='hit'|'miss'|'cooldown'|'blocked';
@@ -51,6 +51,8 @@ export const WALK_SPEED=2.35;
 export const WALK_SPRINT=3.55;
 /** Litres on the cylinder after a death — enough to search, not to skip the tank. */
 export const BREATH_RESPAWN_LITRES=28;
+/** Spare bottle in the corridor. Used with R; death can take it before that. */
+export const SPARE_BOTTLE_LITRES=40;
 /** Walk while the corridor water is still below the eyes. */
 export const BREATH_WALK_WATER=WALK_EYE_Y-.05;
 /** Floor-sitting interactables — each chest hides one map fragment. */
@@ -208,6 +210,9 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  air:{name:'Pony bottle',short:'Pony',description:`R · Arm a separate bailout cylinder (~${AIR_BAILOUT_LITRES} L). Drains after the main tank.`,hint:'R arm bailout · consumed'},
  bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
+ gun:{name:'Gun',short:'Gun',description:'Carry it in the hand. It does not fire. Death leaves it on the corpse.',hint:'Carry · death drops it'},
+ bottle:{name:'Spare air bottle',short:'Bottle',description:`R · Add ${SPARE_BOTTLE_LITRES} L to the main cylinder (consumed).`,hint:'R use · consumed'},
+ coat:{name:'Coat',short:'Coat',description:'Carry it. Nothing here hurts less for wearing it yet. Death leaves it on the corpse.',hint:'Carry · death drops it'},
 };
 /**
  * Inventory items that occupy the FPS hand instead of the dive torch.
@@ -215,7 +220,16 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  * selected slot is not one of these (knife today; other hand-props later).
  */
 export function occupiesFpsHand(item:Item|null):boolean{
- return item==='knife';
+ return item==='knife'||item==='gun';
+}
+/** Corridor floor gear. Not on the hatch. */
+export function corridorGearPickups():Pickup[]{
+ const spots:{item:Item;x:number;z:number}[]=[
+  {item:'gun',x:-3.2,z:22},
+  {item:'bottle',x:-.5,z:14},
+  {item:'coat',x:-2.6,z:8},
+ ];
+ return spots.map((s,i)=>({id:3+i,item:s.item,position:{x:s.x,y:FLOOR_Y,z:s.z}}));
 }
 /** True when the selected slot should show the dive torch (and may shine). */
 export function holdingTorchItem(item:Item|null):boolean{
@@ -498,7 +512,7 @@ export function writeInventoryTipsSeen(){
  /** Elevated gas effort until this mission elapsed time (bite / panic). */
  gasPanicUntil=0;
  inventory:(Item|null)[]=['knife','wood','flare','air','bandage'];selected=0;
- pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},{id:2,item:'flare',position:{x:-20,y:2,z:-56}}];nextId=3;
+ pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},{id:2,item:'flare',position:{x:-20,y:2,z:-56}},...corridorGearPickups()];nextId=6;
  chests:Chest[]=createDiveChests();
  /** Collected cave-chart scraps (from opened chests). */
  mapFragments:MapFragmentId[]=[];
@@ -570,10 +584,31 @@ export function writeInventoryTipsSeen(){
   return distance(this.position,t)<3.2;
  }
  /**
-  * Death in the playable returns here: hatch, short air, same water, tank on the next mount.
-  * Outcome stays `lost` inside `update` so a fresh mission is still a full reset.
+  * Leave every carried item in a ring at `where` (the corpse), then empty the hands.
+  * World pickups that were never taken stay where they are.
+  */
+ dropCarriedAt(where:Point){
+  const carried=this.inventory.filter((item):item is Item=>item!==null);
+  const n=carried.length;
+  for(let i=0;i<n;i++){
+   const a=(i/n)*Math.PI*2;
+   this.pickups.push({
+    id:this.nextId++,
+    item:carried[i],
+    position:{x:where.x+Math.cos(a)*.55,y:Math.max(1,where.y-.4),z:where.z+Math.sin(a)*.55},
+   });
+  }
+  this.inventory=[null,null,null,null,null];
+  this.selected=0;
+  this.pending=null;
+ }
+ /**
+  * Death in the playable returns here: hatch, empty hands, short air, same water, tank on the next mount.
+  * Whatever was carried stays on the corpse. Outcome stays `lost` inside `update` so a fresh mission is still a full reset.
   */
  respawnAtHatch(){
+  const corpse={...this.position};
+  this.dropCarriedAt(corpse);
   const water=this.breathWaterY;
   this.breathTankIndex=nextBreathTankIndex(this.breathTankIndex);
   this.breathWaterY=water;
@@ -589,7 +624,7 @@ export function writeInventoryTipsSeen(){
   this.outcome='playing';
   this.reason='';
   this.pending=null;
-  this.say('You wake at the hatch. The water stayed. The air tank has moved.','blocked');
+  this.say('You wake at the hatch with empty hands. What you carried is on the corpse. The water stayed. The air tank has moved.','blocked');
  }
  interact(){
   if(this.outcome!=='playing')return;
@@ -657,6 +692,13 @@ export function writeInventoryTipsSeen(){
    }
    this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
   }
+  if(item==='bottle'){
+   if(this.air>=AIR_MAIN_MAX-.01){this.pulse('blocked');return;}
+   this.air=Math.min(AIR_MAIN_MAX,this.air+SPARE_BOTTLE_LITRES);
+   this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
+  }
+  // Gun does not fire. Coat does not change damage. Both are only carried, then lost.
+  if(item==='gun'||item==='coat'){this.pulse('blocked');return;}
   this.pulse('blocked');
  }
  /**
