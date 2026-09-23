@@ -25,7 +25,7 @@ import {
  type SovietGuardVisual,
 } from './sovietGuardAsset';
 import { mountTt33 } from './gunAsset';
-import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, inBreathCorridor, breathingFreeAir, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_SPEED, type BreathFootprint, type BreathTankMount } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, inBreathCorridor, breathingFreeAir, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean};
 /** Point lights packed per cave chunk. 24 covers every light whose range reaches a chunk; the rest of the set still exists in the scene for spots/shadows. */
 const POINT_CULL_MAX=24;
@@ -179,8 +179,6 @@ export class CaveWorld extends OceanWorld {
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  /** Phase 3 Soviet corridor guard (Sketchfab WW2 uniform). */
  sovietGuard:SovietGuardVisual|null=null;
- /** Prior XZ for guard locomotion speed (detect water-edge stop). */
- sovietGuardPrev={x:0,z:0,init:false};
  /** World crates / suitcase (Poly Haven) keyed by mission chest id. */
  chestVisuals=new Map<number,ChestVisual>();
  /** Chart-scrap scrolls nested in each crate (visible until taken). */
@@ -855,26 +853,13 @@ export class CaveWorld extends OceanWorld {
   const visual=this.sovietGuard;if(!visual)return;
   const g=this.mission.guard;
   visual.root.position.set(g.position.x,FLOOR_Y,g.position.z);
-  // Heading in sim is atan2(-dz, dx); Three.js Yaw faces −Z at 0.
-  const yaw=g.heading-Math.PI/2;
-  const diff=Math.atan2(Math.sin(yaw-visual.root.rotation.y),Math.cos(yaw-visual.root.rotation.y));
-  visual.root.rotation.y+=diff*Math.min(1,Math.max(.2,dt*6));
+  // The sim owns facing (rate-limited, human turn speed). Yaw 0 faces +Z, which is
+  // the Quaternius rig's forward, so the body always points the way it travels.
+  visual.root.rotation.set(0,g.heading,0);
   syncGuardGear(visual,{gun:g.gun,bottle:g.bottle,coat:g.coat});
   if(visual.loco){
-   const prev=this.sovietGuardPrev;
-   let moveSpeed=0;
-   if(prev.init&&dt>1e-4){
-    moveSpeed=Math.hypot(g.position.x-prev.x,g.position.z-prev.z)/dt;
-   }
-   prev.x=g.position.x;prev.z=g.position.z;prev.init=true;
-   const tired=!g.bottle||g.air<=0;
-   const nominal=g.state==='chase'?(tired?GUARD_SPEED.chaseTired:GUARD_SPEED.chase)
-    :g.state==='alert'?GUARD_SPEED.alert
-    :g.state==='search'?GUARD_SPEED.search
-    :GUARD_SPEED.patrol;
-   // Prefer measured XZ speed so water-edge stops go idle; fall back to nominal while moving.
-   const speed=moveSpeed>.08?Math.max(moveSpeed,nominal*.55):moveSpeed;
-   updateGuardLocomotion(visual.loco,dt,{moving:speed>.08,speed:speed>.08?Math.max(speed,nominal*.7):0,state:g.state});
+   // Stride rate follows the sim's real ground speed, so feet plant without skating.
+   updateGuardLocomotion(visual.loco,dt,{moving:g.speed>.02,speed:g.speed,state:g.state,turnRate:g.turnRate});
   }
  }
  beamMaterial(color:THREE.ColorRepresentation,opacity:number,beta=.38){

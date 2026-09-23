@@ -1,4 +1,5 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
+import { steerToward, faceStanding, yawToward, wrapAngle, GUARD_STEER_WALK, GUARD_STEER_RUN } from './guardSteering';
 export type Point={x:number;y:number;z:number};
 export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife'|'gun'|'bottle'|'coat';
 export type Pickup={id:number;item:Item;position:Point};
@@ -80,6 +81,14 @@ export const GUARD_BOTTLE_AIR=SPARE_BOTTLE_LITRES;
 export const GUARD_SPEED={patrol:1.2,alert:.65,chase:2.15,chaseTired:1.25,search:1.45} as const;
 /** How close a corpse drop must be for him to claim gun / bottle / coat. */
 export const GUARD_LOOT_RANGE=1.6;
+/** Guard shoulder radius for wall clearance (m). */
+export const GUARD_BODY_RADIUS=.42;
+/** Seconds the guard stands at each patrol post before turning about. */
+export const GUARD_PATROL_PAUSE=2.4;
+/** Chase stops this far from the target: inside melee reach, outside body contact (m). */
+export const GUARD_CHASE_STANDOFF=1.15;
+/** Half arc of the look-around at the end of a search (radians, ~52°). */
+export const GUARD_SCAN_ARC=.9;
 /** Floor-sitting interactables — each chest hides one map fragment. */
 export const CHEST_LABEL:Record<ChestKind,string>={
  military:'military crate',
@@ -646,7 +655,18 @@ export function writeInventoryTipsSeen(){
  guard={
   position:guardSpawnPoint(),
   state:'patrol' as GuardState,
-  timer:0,lost:0,lastKnown:guardSpawnPoint(),waypoint:0,heading:0,
+  timer:0,lost:0,lastKnown:guardSpawnPoint(),waypoint:0,
+  /** Facing yaw, radians: 0 faces world +Z, π/2 faces +X. The mesh uses it as rotation.y. */
+  heading:0,
+  /** Ground speed along the heading (m/s). Drives stride rate; never negative. */
+  speed:0,
+  /** Signed yaw rate last tick (rad/s). Drives on-the-spot turning footwork. */
+  turnRate:0,
+  /** Seconds left standing at a patrol post. */
+  pause:0,
+  /** Search reached the last sighting and is scanning. */
+  arrived:false,scanBase:0,scanTime:0,
+  lastState:'patrol' as GuardState,
   meleeCool:0,shootCool:0,
   gun:false,bottle:false,coat:false,
   /** Remaining “air” from a stolen spare bottle. */
@@ -962,51 +982,7 @@ export function writeInventoryTipsSeen(){
    if(sense){g.state='chase';g.timer=0;g.lost=0;}
    else if(g.timer>8){g.state='patrol';g.timer=0;}
   }
-  const goal=g.state==='patrol'?this.guardPatrol[g.waypoint]:g.lastKnown;
-  if(g.state==='patrol'&&Math.abs(g.position.z-goal.z)<.55)g.waypoint=(g.waypoint+1)%this.guardPatrol.length;
-  // Prefer a dry path; if the goal tile is flooded, advance as far as water allows.
-  let target=g.position;
-  if(g.state==='patrol'){
-   // Straight Z march on the centerline — never pathfind sideways while patrolling.
-   target={x:guardPatrolAxisX(),y:WALK_EYE_Y,z:this.guardPatrol[g.waypoint].z};
-   if(!canWalkBreath(target,this.breathWaterY))target={...g.position,x:guardPatrolAxisX()};
-  }else{
-   const path=pathBreath(g.position,goal);
-   for(const step of path.length?path:[goal]){
-    if(!canWalkBreath(step,this.breathWaterY))break;
-    target=step;
-    break;
-   }
-  }
-  // If we only have a flooded goal, hold the last dry footing (no wading chase).
-  if(!canWalkBreath(target,this.breathWaterY))target={...g.position};
-  const dx=target.x-g.position.x,dz=target.z-g.position.z,len=Math.hypot(dx,dz);
-  const tired=!g.bottle||g.air<=0;
-  const speed=g.state==='chase'?(tired?GUARD_SPEED.chaseTired:GUARD_SPEED.chase)
-   :g.state==='alert'?GUARD_SPEED.alert
-   :g.state==='search'?GUARD_SPEED.search
-   :GUARD_SPEED.patrol;
-  if(len>.05&&canWalkBreath(g.position,this.breathWaterY)){
-   if(g.state==='patrol'){
-    // Out-and-back on Z only: lock X, face along the corridor, no mid-stride yaw wobble.
-    const faceZ=dz>=0?1:-1;
-    g.heading=Math.atan2(-faceZ,0);
-    const stepZ=g.position.z+faceZ*Math.min(Math.abs(dz),speed*dt);
-    const step={x:guardPatrolAxisX(),y:WALK_EYE_Y,z:stepZ};
-    if(canWalkBreath(step,this.breathWaterY)){
-     g.position.x=step.x;g.position.z=step.z;
-    }
-   }else{
-    g.heading=Math.atan2(-dz,dx);
-    const step={...g.position};
-    moveBody(step,dx/len*Math.min(len,speed*dt),0,dz/len*Math.min(len,speed*dt),.42);
-    // Reject any slide that leaves the corridor or enters deep water.
-    if(canWalkBreath(step,this.breathWaterY)){
-     g.position.x=step.x;g.position.z=step.z;
-    }
-   }
-  }
-  g.position.y=WALK_EYE_Y;
+  this.steerGuard(dt);
 
   // Combat — only with LOS (no wall shots / stabs).
   if(canSee&&g.gun&&d<=GUARD_GUN_RANGE&&d>GUARD_MELEE_RANGE*.85&&g.shootCool<=0&&(g.state==='chase'||g.state==='alert')){
@@ -1038,6 +1014,65 @@ export function writeInventoryTipsSeen(){
     this.reason='The corridor guard finished you. He takes your dropped gear.';
    }
   }
+ }
+ /**
+  * Corridor guard locomotion. Every state moves him only along his facing
+  * (see `guardSteering.ts`): patrol is a straight out-and-back on the centre
+  * line with a stop, a pause and an on-the-spot about-turn at each post;
+  * alert halts and turns to the noise; chase closes in a straight line and
+  * stops at arm's length; search walks to the last sighting and scans.
+  */
+ private steerGuard(dt:number){
+  const g=this.guard;
+  if(g.lastState!==g.state){g.lastState=g.state;g.arrived=false;g.scanTime=0;}
+  const water=this.breathWaterY;
+  const r=GUARD_BODY_RADIUS;
+  const fp=breathFootprint();
+  const canMove=(x:number,z:number)=>x>=fp.minX+r&&x<=fp.maxX-r&&z>=fp.minZ+r&&z<=fp.maxZ-r&&canWalkBreath({x,y:WALK_EYE_Y,z},water);
+  const clampGoal=(p:{x:number;z:number})=>({
+   x:Math.min(fp.maxX-r-.05,Math.max(fp.minX+r+.05,p.x)),
+   z:Math.min(fp.maxZ-r-.05,Math.max(fp.minZ+r+.05,p.z)),
+  });
+  const dry=canWalkBreath(g.position,water);
+  const tired=!g.bottle||g.air<=0;
+  if(!dry){
+   // Flooded past the knees of the rule: hold footing, keep eyes on the goal.
+   faceStanding(g,g.heading,GUARD_STEER_WALK,dt,()=>false);
+  }else if(g.state==='patrol'){
+   const axis=guardPatrolAxisX();
+   const post=this.guardPatrol[g.waypoint];
+   if(g.pause>0){
+    // Stand at the post. When the pause ends, pick the next post; the turn follows.
+    faceStanding(g,g.heading,GUARD_STEER_WALK,dt,canMove);
+    g.pause=Math.max(0,g.pause-dt);
+    if(g.pause===0)g.waypoint=(g.waypoint+1)%this.guardPatrol.length;
+   }else{
+    const left=steerToward(g,{x:axis,z:post.z},{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.patrol,stopDistance:0,pivotAngle:1e-3},dt,canMove);
+    if(left<.02&&g.speed===0)g.pause=GUARD_PATROL_PAUSE;
+   }
+   // Patrol legs run exactly on the centre line.
+   g.position.x=axis;
+  }else if(g.state==='alert'){
+   // Freeze, then square up to where the noise came from.
+   faceStanding(g,yawToward(g.position,g.lastKnown),GUARD_STEER_WALK,dt,canMove);
+  }else if(g.state==='chase'){
+   const params=tired
+    ?{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.chaseTired,stopDistance:GUARD_CHASE_STANDOFF}
+    :{...GUARD_STEER_RUN,maxSpeed:GUARD_SPEED.chase,stopDistance:GUARD_CHASE_STANDOFF};
+   const left=steerToward(g,clampGoal(g.lastKnown),params,dt,canMove);
+   // At arm's length keep squared up to the target rather than circling it.
+   if(left<.02&&g.speed===0)faceStanding(g,yawToward(g.position,g.lastKnown),params,dt,canMove);
+  }else{
+   // Search: walk to the last sighting, then scan left and right from there.
+   if(!g.arrived){
+    const left=steerToward(g,clampGoal(g.lastKnown),{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.search,stopDistance:.3},dt,canMove);
+    if(left<.02&&g.speed===0){g.arrived=true;g.scanBase=g.heading;g.scanTime=0;}
+   }else{
+    g.scanTime+=dt;
+    faceStanding(g,wrapAngle(g.scanBase+Math.sin(g.scanTime*.7)*GUARD_SCAN_ARC),GUARD_STEER_WALK,dt,canMove);
+   }
+  }
+  g.position.y=WALK_EYE_Y;
  }
  private updatePredator(dt:number,sprinting:boolean){
   const p=this.predator;const d=distance(p.position,this.position);const canSee=visible(p.position,this.position);
