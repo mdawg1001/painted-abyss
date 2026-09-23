@@ -26,7 +26,17 @@ Players must always know which build they are running. Merging to GitHub does **
 - Terminal must print `Painted Abyss vX.Y.Z · <sha> ready`.
 - UI must show the same `BUILD vX.Y.Z · <sha>`. If a yellow **OUTDATED TAB** banner appears, hard-refresh or re-run `refresh.mjs`.
 
+## Generated stamp conflicts
+`playable/dist/**` (`build-info.json` `sha` / `builtAt`, `index.html`, hashed bundles) and `docs/verification/physics-reality.json` `generatedAt` are baked. Two playable PRs will always disagree on those lines. Do **not** edit them to resolve a conflict, and do **not** keep either side's `sha`, `builtAt`, or `generatedAt`.
+
+1. `node playable/rematch-dist.mjs` — drops conflicted `playable/dist` and regenerates `physics-reality.json` by re-running its test. Source conflicts are left for you.
+2. Fix remaining source conflicts. Bump `playable/package.json` past `origin/main`.
+3. Commit the merge (source only; dist may be absent).
+4. `node playable/rematch-dist.mjs --bake` — runs `npm run build`, which writes a new `build-info.json`. Commit the staged `playable/dist`. The baked `sha` must be the merge commit from step 3.
+5. Push and confirm the PR is MERGEABLE. If `origin/main` moved, repeat from step 1.
+
 ## Do not
 - Leave a playable PR without bumping the version.
 - Ship source-only changes without rebuilding `dist`.
+- Hand-pick `sha`, `builtAt`, or `generatedAt` out of a conflict.
 - Assume the player's already-open Safari tab updates when GitHub updates — it does not.
