@@ -6,9 +6,15 @@
  *
  * Runtime file: `public/assets/soviet-uniform/ww2_soviet_uniform.glb`
  * (Zenodo mirror of the same downloadable Sketchfab archive).
+ *
+ * Scale note: this is a skinned Sketchfab FBX. `Object3D.clone` breaks the
+ * skeleton so the mesh sticks in bind pose (~toy height). Always clone with
+ * `SkeletonUtils.clone`, and size from bone world extents (not the inflated
+ * bind-pose / helper AABB).
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 export const SOVIET_GUARD_SOURCE='https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99';
 export const SOVIET_GUARD_AUTHOR='tnnv';
@@ -16,13 +22,16 @@ export const SOVIET_GUARD_LICENSE='CC BY 4.0';
 export const SOVIET_GUARD_ZENODO='https://doi.org/10.5281/zenodo.10237261';
 /** Public path — must match files under `playable/public/assets/soviet-uniform/`. */
 export const SOVIET_GUARD_GLB='/assets/soviet-uniform/ww2_soviet_uniform.glb';
-/** Standing height in metres after normalize (≈ adult). */
-export const SOVIET_GUARD_HEIGHT=1.72;
+/**
+ * Standing height in metres (feet → crown), matched to player eye (~WALK_EYE_Y)
+ * and the hatch door (~2.6 m panels). Adult corridor scale.
+ */
+export const SOVIET_GUARD_HEIGHT=1.78;
 
 export type SovietGuardVisual={
  root:THREE.Group;
  /** Mesh pivot with feet on local y=0. */
- body:THREE.Group;
+ body:THREE.Object3D;
  ready:boolean;
  /** Child props toggled from mission.guard inventory. */
  gun:THREE.Object3D;
@@ -43,16 +52,17 @@ function clothMat(color:number,rough=.82){
 export function buildSovietGuardStub(){
  const body=new THREE.Group();
  body.name='sovietGuardBody';
- const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.28,.72,6,10),clothMat(0x4a5a3a));
- torso.position.y=1.05;
+ const h=SOVIET_GUARD_HEIGHT;
+ const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.28,h*.42,6,10),clothMat(0x4a5a3a));
+ torso.position.y=h*.58;
  torso.castShadow=true;torso.receiveShadow=true;
  body.add(torso);
  const head=new THREE.Mesh(new THREE.SphereGeometry(.16,12,10),clothMat(0xc4a882,.55));
- head.position.y=1.62;
+ head.position.y=h*.92;
  head.castShadow=true;
  body.add(head);
  const helmet=new THREE.Mesh(new THREE.SphereGeometry(.18,12,8,0,Math.PI*2,0,Math.PI*.55),clothMat(0x3a4038,.7));
- helmet.position.y=1.68;
+ helmet.position.y=h*.95;
  body.add(helmet);
  return body;
 }
@@ -64,7 +74,7 @@ function makeGearProps(root:THREE.Group){
   new THREE.BoxGeometry(.08,.08,.55),
   new THREE.MeshStandardMaterial({color:0x9aa3aa,metalness:.55,roughness:.4}),
  );
- barrel.position.set(.28,1.15,-.35);
+ barrel.position.set(.32,SOVIET_GUARD_HEIGHT*.66,-.38);
  gun.add(barrel);
  gun.visible=false;
  root.add(gun);
@@ -74,32 +84,56 @@ function makeGearProps(root:THREE.Group){
   new THREE.MeshStandardMaterial({color:0x3d8f62,roughness:.45,metalness:.15}),
  );
  bottle.name='guardBottle';
- bottle.position.set(-.32,1.05,.08);
+ bottle.position.set(-.34,SOVIET_GUARD_HEIGHT*.6,.1);
  bottle.visible=false;
  root.add(bottle);
 
  const coat=new THREE.Mesh(
-  new THREE.CapsuleGeometry(.34,.55,4,8),
+  new THREE.CapsuleGeometry(.36,SOVIET_GUARD_HEIGHT*.32,4,8),
   new THREE.MeshStandardMaterial({color:0xc49662,roughness:.88,metalness:0,transparent:true,opacity:.72}),
  );
  coat.name='guardCoat';
- coat.position.y=1.05;
+ coat.position.y=SOVIET_GUARD_HEIGHT*.58;
  coat.visible=false;
  root.add(coat);
 
  return{gun,bottle,coat};
 }
 
-function normalizeHumanoid(scene:THREE.Object3D,targetHeight:number){
- const box=new THREE.Box3().setFromObject(scene);
- const size=box.getSize(new THREE.Vector3());
- const scale=targetHeight/Math.max(size.y,.001);
- scene.scale.multiplyScalar(scale);
- box.setFromObject(scene);
- const center=box.getCenter(new THREE.Vector3());
+/** Axis-aligned box of skeleton bones in world space (true posed height). */
+export function boneWorldBox(root:THREE.Object3D):THREE.Box3{
+ root.updateMatrixWorld(true);
+ const box=new THREE.Box3();
+ let any=false;
+ root.traverse(o=>{
+  if(!(o as THREE.Bone).isBone)return;
+  const p=new THREE.Vector3();
+  o.getWorldPosition(p);
+  if(!any){box.set(p,p);any=true;}
+  else box.expandByPoint(p);
+ });
+ if(!any)box.setFromObject(root);
+ return box;
+}
+
+/**
+ * Scale so bone-crown→bone-feet ≈ `targetHeight`, then put feet on local y=0.
+ * Must run on the authored skinned graph (not a broken Object3D.clone).
+ */
+export function normalizeHumanoid(scene:THREE.Object3D,targetHeight=SOVIET_GUARD_HEIGHT){
+ scene.scale.set(1,1,1);
+ scene.position.set(0,0,0);
+ scene.rotation.set(0,0,0);
+ const box=boneWorldBox(scene);
+ const height=Math.max(box.max.y-box.min.y,.001);
+ const scale=targetHeight/height;
+ scene.scale.setScalar(scale);
+ const box2=boneWorldBox(scene);
+ const center=box2.getCenter(new THREE.Vector3());
  scene.position.x-=center.x;
  scene.position.z-=center.z;
- scene.position.y-=box.min.y;
+ scene.position.y-=box2.min.y;
+ scene.updateMatrixWorld(true);
 }
 
 function litGuardMaterials(root:THREE.Object3D){
@@ -148,15 +182,20 @@ export function createSovietGuardVisual():SovietGuardVisual{
  return{root,body,ready:false,...props};
 }
 
-/** Swap the stub for the authored Sketchfab glTF when ready. */
+/**
+ * Swap the stub for the authored Sketchfab glTF when ready.
+ * Uses SkeletonUtils.clone so skinned bind pose stays linked to the bones
+ * (plain `clone(true)` left a toy-sized bind-pose mesh in the corridor).
+ */
 export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
  const mesh=await loadGuardObject();
  if(visual.ready&&visual.body.name==='sovietGuardMesh')return visual;
  visual.root.remove(visual.body);
- const clone=mesh.clone(true);
- clone.name='sovietGuardMesh';
- visual.root.add(clone);
- visual.body=clone as THREE.Group;
+ // Skinned FBX: plain clone(true) detaches skin → bind-pose toy. SkeletonUtils keeps bones.
+ const instance=mesh.name==='sovietGuardMesh'?cloneSkinned(mesh):mesh.clone(true);
+ instance.name='sovietGuardMesh';
+ visual.root.add(instance);
+ visual.body=instance;
  visual.ready=true;
  return visual;
 }
