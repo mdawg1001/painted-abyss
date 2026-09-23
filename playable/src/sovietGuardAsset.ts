@@ -1,5 +1,5 @@
 /**
- * Phase 3 corridor guard mesh.
+ * Phase 3 corridor guard mesh + locomotion.
  *
  * Sketchfab “WW2 Soviet Uniform” by tnnv (CC BY 4.0):
  * https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99
@@ -7,10 +7,12 @@
  * Runtime file: `public/assets/soviet-uniform/ww2_soviet_uniform.glb`
  * (Zenodo mirror of the same downloadable Sketchfab archive).
  *
- * Scale note: this is a skinned Sketchfab FBX. `Object3D.clone` breaks the
- * skeleton so the mesh sticks in bind pose (~toy height). Always clone with
- * `SkeletonUtils.clone`, and size from bone world extents (not the inflated
- * bind-pose / helper AABB).
+ * Locomotion: Mixamo-quality procedural idle/walk/run clips on this skeleton
+ * (`guard-locomotion.json`). Quaternius/Mixamo retarget attempted but rest-pose
+ * axes incompatible — see NOTICE.md and `scripts/retarget-guard-locomotion.mjs`.
+ *
+ * Scale: size from **visible mesh AABB** (not bone-only), feet on local y=0.
+ * Always clone with `SkeletonUtils.clone` so skinned bind stays linked.
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -23,11 +25,31 @@ export const SOVIET_GUARD_LICENSE='CC BY 4.0';
 export const SOVIET_GUARD_ZENODO='https://doi.org/10.5281/zenodo.10237261';
 /** Public path — must match files under `playable/public/assets/soviet-uniform/`. */
 export const SOVIET_GUARD_GLB='/assets/soviet-uniform/ww2_soviet_uniform.glb';
+/** Retargeted Quaternius idle/walk/run clips (rotation tracks on this skeleton). */
+export const SOVIET_GUARD_LOCOMOTION='/assets/soviet-uniform/guard-locomotion.json';
+export const QUATERNIUS_UAL_SOURCE='https://quaternius.com/packs/universalanimationlibrary.html';
+export const QUATERNIUS_UAL_LICENSE='CC0 1.0';
+/** True when shipped clips are procedural (Mixamo retarget not yet viable on this rig). */
+export const GUARD_LOCO_PROCEDURAL=true;
 /**
- * Standing height in metres (feet → crown), matched to player eye (~WALK_EYE_Y)
- * and the hatch door (~2.6 m panels). Adult corridor scale.
+ * Standing height in metres (feet → crown) from **mesh** extent.
+ * Crown near player eye (`WALK_EYE_Y` = FLOOR_Y+1.6) and below hatch door (~2.3 m open).
+ * Prior 1.78 bone-norm still read toy in play — force adult mesh height.
  */
-export const SOVIET_GUARD_HEIGHT=1.78;
+export const SOVIET_GUARD_HEIGHT=1.90;
+
+/** Native clip travel speeds (m/s) used to match stride rate to AI move speed. */
+export const GUARD_WALK_CLIP_SPEED=1.2;
+export const GUARD_RUN_CLIP_SPEED=2.15;
+
+export type GuardLocomotionKind='idle'|'walk'|'run';
+
+export type SovietGuardLocomotion={
+ mixer:THREE.AnimationMixer;
+ actions:Record<GuardLocomotionKind,THREE.AnimationAction>;
+ current:GuardLocomotionKind;
+ skin:THREE.SkinnedMesh;
+};
 
 export type SovietGuardVisual={
  root:THREE.Group;
@@ -38,9 +60,12 @@ export type SovietGuardVisual={
  gun:THREE.Object3D;
  bottle:THREE.Object3D;
  coat:THREE.Object3D;
+ /** Skeletal idle/walk/run when clips + skinned mesh are ready. */
+ loco:SovietGuardLocomotion|null;
 };
 
 let loadPromise:Promise<THREE.Object3D>|null=null;
+let locoPromise:Promise<Record<GuardLocomotionKind,THREE.AnimationClip>|null>|null=null;
 
 function clothMat(color:number,rough=.82){
  return new THREE.MeshStandardMaterial({
@@ -108,7 +133,7 @@ function makeGearProps(root:THREE.Group){
  return{gun,bottle,coat};
 }
 
-/** Axis-aligned box of skeleton bones in world space (true posed height). */
+/** Axis-aligned box of skeleton bones in world space (posed height). */
 export function boneWorldBox(root:THREE.Object3D):THREE.Box3{
  root.updateMatrixWorld(true);
  const box=new THREE.Box3();
@@ -125,18 +150,27 @@ export function boneWorldBox(root:THREE.Object3D):THREE.Box3{
 }
 
 /**
- * Scale so bone-crown→bone-feet ≈ `targetHeight`, then put feet on local y=0.
- * Must run on the authored skinned graph (not a broken Object3D.clone).
+ * Visible mesh AABB. Sketchfab geometry is authored in a standing pose, so
+ * `Box3.setFromObject` reflects the drawn height (not the toy bind helper).
+ */
+export function meshWorldBox(root:THREE.Object3D):THREE.Box3{
+ root.updateMatrixWorld(true);
+ return new THREE.Box3().setFromObject(root);
+}
+
+/**
+ * Scale so **mesh** crown→feet ≈ `targetHeight`, then put feet on local y=0.
+ * Mesh-extent (not bone-only) so the drawn guard matches corridor eye/door scale.
  */
 export function normalizeHumanoid(scene:THREE.Object3D,targetHeight=SOVIET_GUARD_HEIGHT){
  scene.scale.set(1,1,1);
  scene.position.set(0,0,0);
  scene.rotation.set(0,0,0);
- const box=boneWorldBox(scene);
+ const box=meshWorldBox(scene);
  const height=Math.max(box.max.y-box.min.y,.001);
  const scale=targetHeight/height;
  scene.scale.setScalar(scale);
- const box2=boneWorldBox(scene);
+ const box2=meshWorldBox(scene);
  const center=box2.getCenter(new THREE.Vector3());
  scene.position.x-=center.x;
  scene.position.z-=center.z;
@@ -162,6 +196,14 @@ function litGuardMaterials(root:THREE.Object3D){
  });
 }
 
+function findSkinnedMesh(root:THREE.Object3D):THREE.SkinnedMesh|null{
+ let skin:THREE.SkinnedMesh|null=null;
+ root.traverse(o=>{
+  if(!skin&&(o as THREE.SkinnedMesh).isSkinnedMesh)skin=o as THREE.SkinnedMesh;
+ });
+ return skin;
+}
+
 function loadGuardObject(){
  if(loadPromise)return loadPromise;
  loadPromise=(async()=>{
@@ -180,6 +222,82 @@ function loadGuardObject(){
  return loadPromise;
 }
 
+function loadLocomotionClips(){
+ if(locoPromise)return locoPromise;
+ locoPromise=(async()=>{
+  try{
+   const res=await fetch(SOVIET_GUARD_LOCOMOTION);
+   if(!res.ok)throw new Error(`HTTP ${res.status}`);
+   const data=await res.json() as{
+    clips:{idle:object;walk:object;run:object};
+   };
+   const idle=THREE.AnimationClip.parse(data.clips.idle as THREE.AnimationClipJSON);
+   const walk=THREE.AnimationClip.parse(data.clips.walk as THREE.AnimationClipJSON);
+   const run=THREE.AnimationClip.parse(data.clips.run as THREE.AnimationClipJSON);
+   idle.name='idle';walk.name='walk';run.name='run';
+   return{idle,walk,run};
+  }catch(err){
+   console.warn('Guard locomotion clips failed to load.',err);
+   return null;
+  }
+ })();
+ return locoPromise;
+}
+
+/** Attach AnimationMixer + idle/walk/run actions to a skinned guard instance. */
+export function attachGuardLocomotion(
+ body:THREE.Object3D,
+ clips:Record<GuardLocomotionKind,THREE.AnimationClip>,
+):SovietGuardLocomotion|null{
+ const skin=findSkinnedMesh(body);
+ if(!skin)return null;
+ const mixer=new THREE.AnimationMixer(skin);
+ const actions={
+  idle:mixer.clipAction(clips.idle),
+  walk:mixer.clipAction(clips.walk),
+  run:mixer.clipAction(clips.run),
+ } as const;
+ for(const a of Object.values(actions)){
+  a.enabled=true;
+  a.setEffectiveWeight(0);
+  a.play();
+ }
+ actions.idle.setEffectiveWeight(1);
+ actions.idle.timeScale=1;
+ return{mixer,actions,current:'idle',skin};
+}
+
+/**
+ * Pick idle / walk / run from AI motion, crossfade, and match stride rate.
+ * `moving` false → idle (water edge / stand). Chase → run; other travel → walk.
+ */
+export function updateGuardLocomotion(
+ loco:SovietGuardLocomotion,
+ dt:number,
+ opts:{moving:boolean;speed:number;state:string},
+){
+ let want:GuardLocomotionKind='idle';
+ if(opts.moving&&opts.speed>.08){
+  want=(opts.state==='chase'&&opts.speed>=1.6)?'run':'walk';
+ }
+ if(want!==loco.current){
+  const fade=.28;
+  loco.actions[loco.current].fadeOut(fade);
+  const next=loco.actions[want];
+  next.reset().setEffectiveWeight(1).fadeIn(fade);
+  loco.current=want;
+ }
+ // Stride rate ≈ moveSpeed / clip reference speed (no skating).
+ if(loco.current==='walk'){
+  loco.actions.walk.timeScale=THREE.MathUtils.clamp(opts.speed/GUARD_WALK_CLIP_SPEED,.55,1.45);
+ }else if(loco.current==='run'){
+  loco.actions.run.timeScale=THREE.MathUtils.clamp(opts.speed/GUARD_RUN_CLIP_SPEED,.65,1.35);
+ }else{
+  loco.actions.idle.timeScale=1;
+ }
+ loco.mixer.update(dt);
+}
+
 /** Root group: feet sit on world y when `root.position.y = FLOOR_Y`. */
 export function createSovietGuardVisual():SovietGuardVisual{
  const root=new THREE.Group();
@@ -187,7 +305,7 @@ export function createSovietGuardVisual():SovietGuardVisual{
  const body=buildSovietGuardStub();
  root.add(body);
  const props=makeGearProps(root);
- return{root,body,ready:false,...props};
+ return{root,body,ready:false,loco:null,...props};
 }
 
 /**
@@ -205,6 +323,8 @@ export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
  visual.root.add(instance);
  visual.body=instance;
  visual.ready=true;
+ const clips=await loadLocomotionClips();
+ if(clips)visual.loco=attachGuardLocomotion(instance,clips);
  return visual;
 }
 

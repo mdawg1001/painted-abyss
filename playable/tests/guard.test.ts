@@ -21,7 +21,7 @@ test('Soviet guard asset is credited and the glb is present',()=>{
  assert.equal(SOVIET_GUARD_AUTHOR,'tnnv');
  assert.match(SOVIET_GUARD_LICENSE,/CC BY/);
  assert.equal(SOVIET_GUARD_GLB,'/assets/soviet-uniform/ww2_soviet_uniform.glb');
- assert.ok(SOVIET_GUARD_HEIGHT>=1.7&&SOVIET_GUARD_HEIGHT<=1.85);
+ assert.ok(SOVIET_GUARD_HEIGHT>=1.85&&SOVIET_GUARD_HEIGHT<=2.0);
  const glb=path.join(root,'public/assets/soviet-uniform/ww2_soviet_uniform.glb');
  assert.ok(fs.existsSync(glb),'glb must ship under public/assets');
  const buf=fs.readFileSync(glb);

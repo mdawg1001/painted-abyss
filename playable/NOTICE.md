@@ -29,6 +29,13 @@
 - Files: `public/assets/soviet-uniform/ww2_soviet_uniform.glb` (~27k triangles)
 - Phase 3 breath-corridor Soviet guard mesh (scaled to ~human height).
 
+## Guard locomotion (procedural skeletal · Mixamo-quality)
+- Clips: idle / walk / run — local-Euler offsets on the WW2 Soviet Uniform Unreal-style bones
+- Files: `public/assets/soviet-uniform/guard-locomotion.json` (rotation tracks; game drives XZ)
+- Build: `playable/scripts/bake-guard-locomotion.mjs`
+- Mixamo / Quaternius UAL `SkeletonUtils.retargetClip` was attempted (CC0 Quaternius + Mixamo Soldier) but rest-pose bone axes collapse this Sketchfab rig; open path: `playable/scripts/retarget-guard-locomotion.mjs`
+- Driven by AnimationMixer crossfades from AI state (idle when stopped, walk on patrol/search, run on chase)
+
 ## Poster from Soviet Union (Sketchfab)
 - Source: https://sketchfab.com/3d-models/poster-from-soviet-union-49a80251d7e543289b1deb656b15017a
 - Author: PotatoWit (@PotatoWit)
