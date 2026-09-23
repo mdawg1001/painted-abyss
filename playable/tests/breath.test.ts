@@ -4,7 +4,7 @@ import {
  Mission,cells,tile,fits,distance,world,FLOOR_Y,SURFACE_Y,AIR_MAIN_MAX,EXIT,RELIC,
  breathZone,breathHatchSpawn,breathTankMounts,breathFootprint,nextBreathTankIndex,
  riseBreathWater,canWalkBreath,inBreathCorridor,breathingFreeAir,effectiveDepth,gasDrainRateAt,
- BREATH_WATER_START,BREATH_WALK_WATER,BREATH_RESPAWN_LITRES,BREATH_ROW_HATCH,BREATH_ROW_FAR,BREATH_COLS,
+ BREATH_WATER_START,BREATH_WATER_FILL_START,BREATH_WALK_WATER,BREATH_RESPAWN_LITRES,BREATH_ROW_HATCH,BREATH_ROW_FAR,BREATH_COLS,
  WALK_EYE_Y,WALK_SPEED,WALK_SPRINT,
 } from '../src/simulation';
 
@@ -29,7 +29,10 @@ test('breath corridor is attached to the cave and does not replace it',()=>{
 test('first life is dry enough to walk and water rises only as corridor state',()=>{
  const m=new Mission(true);
  assert.equal(m.breathWaterY,BREATH_WATER_START);
- assert.ok(BREATH_WATER_START<FLOOR_Y,'water starts below the walk floor');
+ assert.equal(BREATH_WATER_FILL_START,.05);
+ assert.ok(Math.abs(BREATH_WATER_START-BREATH_WALK_WATER*BREATH_WATER_FILL_START)<1e-9,'first spawn is 5% of the swim flood line');
+ assert.ok(BREATH_WATER_START<BREATH_WALK_WATER);
+ assert.ok(BREATH_WATER_START<FLOOR_Y,'5% still sits under the walk floor so you start dry');
  assert.ok(canWalkBreath(m.position,m.breathWaterY));
  assert.equal(m.air,AIR_MAIN_MAX);
  assert.equal(m.position.y,WALK_EYE_Y);
