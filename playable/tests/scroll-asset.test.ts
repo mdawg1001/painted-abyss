@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {access,readFile} from 'node:fs/promises';
 import {join,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {SCROLL_AUTHOR,SCROLL_LICENSE,SCROLL_SOURCE,createScrollVisual,syncScrollPresent} from '../src/scrollAsset';
+import {SCROLL_AUTHOR,SCROLL_CAVITY,SCROLL_LICENSE,SCROLL_SOURCE,createScrollVisual,scrollFit,syncScrollPresent} from '../src/scrollAsset';
 
 const root=join(dirname(fileURLToPath(import.meta.url)),'..','public','assets','scroll');
 
@@ -27,13 +27,29 @@ test('scroll textures and authored Sketchfab mesh exist under public/assets/scro
  assert.match(SCROLL_SOURCE,/sketchfab\.com/);
 });
 
-test('scroll presents inside an open crate',()=>{
+test('scroll rests inside each crate and stays within the cavity',()=>{
+ const meshRad=.046;
+ const meshHalf=.20;
+ for(const kind of['military','plastic','suitcase'] as const){
+  const visual=createScrollVisual();
+  assert.equal(visual.root.visible,false);
+  syncScrollPresent(visual,true,1,kind);
+  const c=SCROLL_CAVITY[kind];
+  const fit=scrollFit(kind);
+  assert.ok(visual.present>.5,kind);
+  assert.equal(visual.root.visible,true);
+  const scale=visual.root.scale.x;
+  const rad=meshRad*scale;
+  const half=meshHalf*scale;
+  assert.ok(Math.abs(scale-fit.scale)<.02,kind+' scale');
+  assert.ok(visual.root.position.y-rad>=c.floor-.001,kind+' above floor');
+  assert.ok(visual.root.position.y+rad<=c.rim+.001,kind+' below rim');
+  assert.ok(half*2<=c.span+.001,kind+' length');
+  assert.ok(rad*2<=c.across+.001,kind+' width');
+  assert.ok(Math.abs(visual.root.position.x-fit.x)<.001,kind+' x');
+  assert.ok(Math.abs(visual.root.position.z-fit.z)<.001,kind+' z');
+ }
  const visual=createScrollVisual();
- assert.equal(visual.root.visible,false);
- syncScrollPresent(visual,true,1,'military',{x:0,y:.65,z:0},0);
- assert.ok(visual.present>.5);
- assert.equal(visual.root.visible,true);
- assert.ok(visual.root.position.y>.9);
- syncScrollPresent(visual,false,1,'military',{x:0,y:.65,z:0},0);
+ syncScrollPresent(visual,false,1,'military');
  assert.ok(visual.present<.2);
 });

@@ -136,29 +136,50 @@ export function createScrollVisual():ScrollVisual{
  return visual;
 }
 
+type ScrollKind='military'|'plastic'|'suitcase';
+
 /**
- * Present the scroll on the open crate mouth (world-space).
+ * Clear interior of each crate, in chest-local metres (origin on the floor centre).
+ * `span` is along the roll (local X), `across` is the tight plan width.
+ */
+export const SCROLL_CAVITY:Record<ScrollKind,{span:number;across:number;floor:number;rim:number;x:number;z:number}>={
+ military:{span:1.15,across:.42,floor:.055,rim:.46,x:0,z:0},
+ plastic:{span:.70,across:.48,floor:.04,rim:.40,x:0,z:0},
+ suitcase:{span:.28,across:.04,floor:.04,rim:.28,x:0,z:-.036},
+};
+/** Authored mesh extents before the per-crate fit (metres). */
+const MESH_LEN=.40;
+const MESH_RAD=.046;
+
+/** Scale and rest height so the roll lies inside the cavity, on its floor. */
+export function scrollFit(kind:ScrollKind){
+ const c=SCROLL_CAVITY[kind];
+ const scale=Math.min(
+  (c.span*.78)/MESH_LEN,
+  (c.across*.9)/(MESH_RAD*2),
+  ((c.rim-c.floor)*.85)/(MESH_RAD*2),
+ );
+ return{scale,y:c.floor+MESH_RAD*scale+.004,x:c.x,z:c.z};
+}
+
+/**
+ * Rest the scroll on the crate floor (crate-local — parent it to the chest pivot).
  * `want` true while the crate is open and the scrap has not been taken.
  */
 export function syncScrollPresent(
  visual:ScrollVisual,
  want:boolean,
  dt:number,
- kind:'military'|'plastic'|'suitcase',
- chestPos:{x:number;y:number;z:number},
- chestYaw:number,
+ kind:ScrollKind,
 ){
  const target=want?1:0;
  const k=1-Math.exp(-(want?5:7)*dt);
  visual.present+=(target-visual.present)*k;
  const t=visual.present;
  visual.root.visible=t>.02;
- const lift=kind==='suitcase'?.5:kind==='plastic'?.58:.74;
- const forward=kind==='plastic'?.16:.24;
- const fx=Math.sin(chestYaw)*forward;
- const fz=Math.cos(chestYaw)*forward;
- visual.root.position.set(chestPos.x+fx,chestPos.y+lift+.06*t,chestPos.z+fz);
- // Roll lies across the rim, seal facing the diver.
- visual.root.rotation.set(-.35+.1*t,chestYaw+.15,.15);
- visual.root.scale.setScalar(1.35+.4*t);
+ const fit=scrollFit(kind);
+ visual.root.position.set(fit.x,fit.y,fit.z);
+ // Long axis along the crate; a small roll turns the seal without leaving the box.
+ visual.root.rotation.set(.55,0,0);
+ visual.root.scale.setScalar(fit.scale*(.94+.06*t));
 }
