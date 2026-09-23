@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {
  Mission,distance,tile,world,visible,FLOOR_Y,WALK_EYE_Y,
  breathZone,breathHatchSpawn,inBreathCorridor,canWalkBreath,BREATH_WALK_WATER,
- guardSpawnPoint,guardPatrolPoints,pathBreath,breathCell,
+ guardSpawnPoint,guardPatrolPoints,guardPatrolAxisX,pathBreath,breathCell,
  GUARD_MELEE_RANGE,GUARD_MELEE_DAMAGE,GUARD_COAT_DAMAGE_MULT,GUARD_GUN_DAMAGE,
- GUARD_BOTTLE_AIR,GUARD_LOOT_RANGE,SPARE_BOTTLE_LITRES,
+ GUARD_BOTTLE_AIR,GUARD_LOOT_RANGE,SPARE_BOTTLE_LITRES,GUARD_SPEED,
 } from '../src/simulation';
 import {
  SOVIET_GUARD_SOURCE,SOVIET_GUARD_AUTHOR,SOVIET_GUARD_LICENSE,SOVIET_GUARD_GLB,SOVIET_GUARD_HEIGHT,
@@ -46,6 +46,52 @@ test('guard spawns and patrols only inside the breath corridor',()=>{
  assert.equal(m.guard.gun,false);
  assert.equal(m.guard.bottle,false);
  assert.equal(m.guard.coat,false);
+});
+
+test('guard patrol is a straight out-and-back on the corridor axis',()=>{
+ const axis=guardPatrolAxisX();
+ const posts=guardPatrolPoints();
+ assert.equal(posts.length,2,'two posts only (out and back)');
+ assert.equal(posts[0].x,axis);
+ assert.equal(posts[1].x,axis);
+ assert.equal(guardSpawnPoint().x,axis);
+ assert.notEqual(posts[0].z,posts[1].z,'posts differ along Z');
+ // Simulate a dry patrol with the player far away / no LOS alert.
+ const m=new Mission(true);
+ m.breathWaterY=FLOOR_Y-.1;
+ m.position={...breathHatchSpawn()};
+ m.position.z+=40; // well clear so sense stays off
+ m.guard.state='patrol';
+ m.guard.waypoint=0;
+ m.guard.position={x:axis,y:WALK_EYE_Y,z:(posts[0].z+posts[1].z)/2};
+ let maxAbsDx=0;
+ let sawProgress=false;
+ let turned=false;
+ let prevZ=m.guard.position.z;
+ let prevWp=m.guard.waypoint;
+ const dt=.05;
+ for(let i=0;i<500;i++){
+  m.update(dt,false);
+  assert.equal(m.guard.state,'patrol');
+  maxAbsDx=Math.max(maxAbsDx,Math.abs(m.guard.position.x-axis));
+  if(Math.abs(m.guard.position.z-prevZ)>1e-4)sawProgress=true;
+  if(m.guard.waypoint!==prevWp)turned=true;
+  // While marching one leg, Z must not reverse (no circling / weave).
+  if(m.guard.waypoint===prevWp){
+   const toward=posts[m.guard.waypoint].z-prevZ;
+   const step=m.guard.position.z-prevZ;
+   if(Math.abs(toward)>.1&&Math.abs(step)>1e-4){
+    assert.equal(Math.sign(step),Math.sign(toward),'no mid-leg Z reverse');
+   }
+  }
+  prevZ=m.guard.position.z;
+  prevWp=m.guard.waypoint;
+ }
+ assert.ok(sawProgress,'moves along the segment');
+ assert.ok(turned,'reaches a post and turns around');
+ assert.ok(maxAbsDx<1e-6,`stays on centerline (max |dx|=${maxAbsDx})`);
+ // Cover roughly patrol speed along Z (feet should track a constant stride).
+ assert.ok(GUARD_SPEED.patrol>1);
 });
 
 test('pathBreath stays on corridor cells and never enters the cave',()=>{
