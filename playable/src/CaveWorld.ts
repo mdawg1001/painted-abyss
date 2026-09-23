@@ -21,7 +21,8 @@ import {
 import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLight } from './sconceAsset';
 import { createWallPosters, upgradeWallPosters, type WallPosters } from './posterAsset';
 import {
- createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, type SovietGuardVisual,
+ createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardAnimation,
+ type SovietGuardVisual,
 } from './sovietGuardAsset';
 import { mountTt33 } from './gunAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, inBreathCorridor, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, type BreathFootprint, type BreathTankMount } from './simulation';
@@ -847,11 +848,16 @@ export class CaveWorld extends OceanWorld {
  syncSovietGuard(_dt:number){
   const visual=this.sovietGuard;if(!visual)return;
   const g=this.mission.guard;
+  const prev=visual.lastXZ;
+  const moved=!!prev&&Math.hypot(g.position.x-prev.x,g.position.z-prev.z)>0.002;
+  visual.lastXZ={x:g.position.x,z:g.position.z};
   visual.root.position.set(g.position.x,FLOOR_Y,g.position.z);
   // Heading in sim is atan2(-dz, dx); Three.js Yaw faces −Z at 0.
   const yaw=g.heading-Math.PI/2;
   const diff=Math.atan2(Math.sin(yaw-visual.root.rotation.y),Math.cos(yaw-visual.root.rotation.y));
   visual.root.rotation.y+=diff*Math.min(1,Math.max(.2,_dt*6));
+  // Walk cycle only while actually translating (stops at water / idle).
+  updateGuardAnimation(visual,_dt,moved);
   syncGuardGear(visual,{gun:g.gun,bottle:g.bottle,coat:g.coat});
  }
  beamMaterial(color:THREE.ColorRepresentation,opacity:number,beta=.38){

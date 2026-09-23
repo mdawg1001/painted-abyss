@@ -9,8 +9,11 @@
  *
  * Scale note: this is a skinned Sketchfab FBX. `Object3D.clone` breaks the
  * skeleton so the mesh sticks in bind pose (~toy height). Always clone with
- * `SkeletonUtils.clone`, and size from bone world extents (not the inflated
- * bind-pose / helper AABB).
+ * `SkeletonUtils.clone`. Size from **visible mesh** world height (not bone
+ * helpers alone) to match corridor door panels / player eye.
+ *
+ * Animation: the authored glTF has no clips — drive a procedural idle/walk
+ * on the Unreal-style skeleton so patrol is clearly alive.
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -23,11 +26,30 @@ export const SOVIET_GUARD_LICENSE='CC BY 4.0';
 export const SOVIET_GUARD_ZENODO='https://doi.org/10.5281/zenodo.10237261';
 /** Public path — must match files under `playable/public/assets/soviet-uniform/`. */
 export const SOVIET_GUARD_GLB='/assets/soviet-uniform/ww2_soviet_uniform.glb';
+
 /**
- * Standing height in metres (feet → crown), matched to player eye (~WALK_EYE_Y)
- * and the hatch door (~2.6 m panels). Adult corridor scale.
+ * Standing mesh height in metres (feet → crown).
+ * Corridor refs: hatch door panels are 2.6 m tall; player eye is FLOOR_Y+1.6.
+ * Prior 1.78 m bone-extent still read toy in play — size the **visible mesh**
+ * to a clear adult so the crown sits near eye height when feet are on FLOOR_Y.
  */
-export const SOVIET_GUARD_HEIGHT=1.78;
+export const SOVIET_GUARD_HEIGHT=1.85;
+/** Hatch door panel height (CaveWorld breath hatch BoxGeometry y). */
+export const CORRIDOR_DOOR_PANEL_H=2.6;
+/** Standing eye height above FLOOR_Y (simulation WALK_EYE_Y − FLOOR_Y). */
+export const CORRIDOR_EYE_ABOVE_FLOOR=1.6;
+
+type GuardBones={
+ thighL:THREE.Bone|null;
+ thighR:THREE.Bone|null;
+ calfL:THREE.Bone|null;
+ calfR:THREE.Bone|null;
+ spine:THREE.Bone|null;
+ spine2:THREE.Bone|null;
+ upperL:THREE.Bone|null;
+ upperR:THREE.Bone|null;
+ rest:Map<THREE.Bone,THREE.Quaternion>;
+};
 
 export type SovietGuardVisual={
  root:THREE.Group;
@@ -38,6 +60,12 @@ export type SovietGuardVisual={
  gun:THREE.Object3D;
  bottle:THREE.Object3D;
  coat:THREE.Object3D;
+ /** Procedural stride phase (radians). */
+ animPhase:number;
+ /** Cached skeleton handles for idle/walk. */
+ bones:GuardBones|null;
+ /** Last sim XZ — used to detect real movement vs water stop. */
+ lastXZ:{x:number;z:number}|null;
 };
 
 let loadPromise:Promise<THREE.Object3D>|null=null;
@@ -108,7 +136,7 @@ function makeGearProps(root:THREE.Group){
  return{gun,bottle,coat};
 }
 
-/** Axis-aligned box of skeleton bones in world space (true posed height). */
+/** Axis-aligned box of skeleton bones in world space. */
 export function boneWorldBox(root:THREE.Object3D):THREE.Box3{
  root.updateMatrixWorld(true);
  const box=new THREE.Box3();
@@ -124,24 +152,118 @@ export function boneWorldBox(root:THREE.Object3D):THREE.Box3{
  return box;
 }
 
+/** Visible mesh AABB in world space (what the player actually sees). */
+export function meshWorldBox(root:THREE.Object3D):THREE.Box3{
+ root.updateMatrixWorld(true);
+ const box=new THREE.Box3();
+ let any=false;
+ root.traverse(o=>{
+  if(!(o instanceof THREE.Mesh))return;
+  const b=new THREE.Box3().setFromObject(o);
+  if(b.isEmpty())return;
+  if(!any){box.copy(b);any=true;}
+  else box.union(b);
+ });
+ if(!any)return boneWorldBox(root);
+ return box;
+}
+
 /**
- * Scale so bone-crown→bone-feet ≈ `targetHeight`, then put feet on local y=0.
+ * Scale so **visible mesh** feet→crown ≈ `targetHeight`, then put feet on local y=0.
  * Must run on the authored skinned graph (not a broken Object3D.clone).
  */
 export function normalizeHumanoid(scene:THREE.Object3D,targetHeight=SOVIET_GUARD_HEIGHT){
  scene.scale.set(1,1,1);
  scene.position.set(0,0,0);
  scene.rotation.set(0,0,0);
- const box=boneWorldBox(scene);
+ const box=meshWorldBox(scene);
  const height=Math.max(box.max.y-box.min.y,.001);
- const scale=targetHeight/height;
- scene.scale.setScalar(scale);
- const box2=boneWorldBox(scene);
+ scene.scale.setScalar(targetHeight/height);
+ const box2=meshWorldBox(scene);
  const center=box2.getCenter(new THREE.Vector3());
  scene.position.x-=center.x;
  scene.position.z-=center.z;
  scene.position.y-=box2.min.y;
  scene.updateMatrixWorld(true);
+}
+
+function findBone(root:THREE.Object3D,re:RegExp):THREE.Bone|null{
+ let hit:THREE.Bone|null=null;
+ root.traverse(o=>{
+  if(hit||!(o as THREE.Bone).isBone)return;
+  if(re.test(o.name))hit=o as THREE.Bone;
+ });
+ return hit;
+}
+
+function captureRest(bones:GuardBones){
+ bones.rest.clear();
+ for(const b of [bones.thighL,bones.thighR,bones.calfL,bones.calfR,bones.spine,bones.spine2,bones.upperL,bones.upperR]){
+  if(b)bones.rest.set(b,b.quaternion.clone());
+ }
+}
+
+/** Bind procedural idle/walk handles after the skinned mesh is mounted. */
+export function bindGuardBones(body:THREE.Object3D):GuardBones{
+ const bones:GuardBones={
+  thighL:findBone(body,/thigh_l/i),
+  thighR:findBone(body,/thigh_r/i),
+  calfL:findBone(body,/calf_l/i),
+  calfR:findBone(body,/calf_r/i),
+  spine:findBone(body,/spine_01/i),
+  spine2:findBone(body,/spine_02/i),
+  upperL:findBone(body,/upperarm_l/i),
+  upperR:findBone(body,/upperarm_r/i),
+  rest:new Map(),
+ };
+ captureRest(bones);
+ return bones;
+}
+
+function applyBone(b:THREE.Bone|null,rest:Map<THREE.Bone,THREE.Quaternion>,euler:THREE.Euler){
+ if(!b)return;
+ const base=rest.get(b);if(!base)return;
+ const q=new THREE.Quaternion().setFromEuler(euler);
+ b.quaternion.copy(base).multiply(q);
+}
+
+/**
+ * Procedural idle / walk. The WW2 Soviet Uniform GLB ships with **zero** clips;
+ * this drives the Unreal-style skeleton so he is clearly alive on patrol and
+ * settles to a breathing idle when stopped (water edge / alert).
+ */
+export function updateGuardAnimation(visual:SovietGuardVisual,dt:number,walking:boolean){
+ if(!visual.bones){
+  if(visual.ready)visual.bones=bindGuardBones(visual.body);
+  else return;
+ }
+ const b=visual.bones;
+ const rate=walking?7.2:2.4;
+ visual.animPhase+=dt*rate;
+ const t=visual.animPhase;
+ if(walking){
+  const swing=.55;
+  const calf=.7;
+  applyBone(b.thighL,b.rest,new THREE.Euler(Math.sin(t)*swing,0,0));
+  applyBone(b.thighR,b.rest,new THREE.Euler(Math.sin(t+Math.PI)*swing,0,0));
+  applyBone(b.calfL,b.rest,new THREE.Euler(Math.max(0,-Math.sin(t))*calf,0,0));
+  applyBone(b.calfR,b.rest,new THREE.Euler(Math.max(0,-Math.sin(t+Math.PI))*calf,0,0));
+  applyBone(b.spine,b.rest,new THREE.Euler(Math.sin(t*2)*.04,Math.sin(t)*.06,0));
+  applyBone(b.spine2,b.rest,new THREE.Euler(0,Math.sin(t)*.05,0));
+  applyBone(b.upperL,b.rest,new THREE.Euler(Math.sin(t+Math.PI)*.35,0,.12));
+  applyBone(b.upperR,b.rest,new THREE.Euler(Math.sin(t)*.35,0,-.12));
+ }else{
+  const breath=Math.sin(t)*.025;
+  applyBone(b.thighL,b.rest,new THREE.Euler(.04,0,.02));
+  applyBone(b.thighR,b.rest,new THREE.Euler(.04,0,-.02));
+  applyBone(b.calfL,b.rest,new THREE.Euler(.08,0,0));
+  applyBone(b.calfR,b.rest,new THREE.Euler(.08,0,0));
+  applyBone(b.spine,b.rest,new THREE.Euler(breath,.0,0));
+  applyBone(b.spine2,b.rest,new THREE.Euler(breath*.6,0,0));
+  applyBone(b.upperL,b.rest,new THREE.Euler(.08,0,.15));
+  applyBone(b.upperR,b.rest,new THREE.Euler(.08,0,-.15));
+ }
+ visual.body.updateMatrixWorld(true);
 }
 
 function litGuardMaterials(root:THREE.Object3D){
@@ -169,6 +291,10 @@ function loadGuardObject(){
    const gltf=await new GLTFLoader().loadAsync(SOVIET_GUARD_GLB);
    const scene=gltf.scene;
    scene.name='sovietGuardMesh';
+   // Authored archive has no AnimationClips — procedural idle/walk instead.
+   if(gltf.animations?.length){
+    console.info('Soviet guard glTF clips:',gltf.animations.map(a=>a.name));
+   }
    normalizeHumanoid(scene,SOVIET_GUARD_HEIGHT);
    litGuardMaterials(scene);
    return scene;
@@ -187,7 +313,7 @@ export function createSovietGuardVisual():SovietGuardVisual{
  const body=buildSovietGuardStub();
  root.add(body);
  const props=makeGearProps(root);
- return{root,body,ready:false,...props};
+ return{root,body,ready:false,animPhase:0,bones:null,lastXZ:null,...props};
 }
 
 /**
@@ -205,6 +331,8 @@ export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
  visual.root.add(instance);
  visual.body=instance;
  visual.ready=true;
+ visual.bones=bindGuardBones(instance);
+ visual.animPhase=0;
  return visual;
 }
 
