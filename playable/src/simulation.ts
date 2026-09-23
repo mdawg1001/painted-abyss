@@ -45,8 +45,6 @@ export const BREATH_HATCH_ROWS=1;
 export const BREATH_FAR_ROWS=1;
 /** Metres the corridor water climbs each second. Head-height in about two minutes. */
 export const BREATH_RISE_MPS=0.016;
-/** Starts under the floor mesh so the first life is dry enough to walk. */
-export const BREATH_WATER_START=0.08;
 /** Standing eye height on the dry corridor floor. */
 export const WALK_EYE_Y=FLOOR_Y+1.6;
 export const WALK_SPEED=2.35;
@@ -60,6 +58,12 @@ export const SPARE_BOTTLE_LITRES=40;
  * Above this the player leaves the floor and uses the swim stack.
  */
 export const BREATH_WALK_WATER=WALK_EYE_Y-.05;
+/**
+ * First spawn only (menu restart resets). Five percent of the walk→swim flood height
+ * so the corridor starts nearly dry and you walk / run for a long stretch.
+ */
+export const BREATH_WATER_FILL_START=.05;
+export const BREATH_WATER_START=BREATH_WALK_WATER*BREATH_WATER_FILL_START;
 /** Head clears the corridor waterline — free air, no tank drain. */
 export const BREATH_AIR_MARGIN=.12;
 /** Phase 3 Soviet guard — melee reach on dry corridor floor. */
