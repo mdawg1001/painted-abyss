@@ -133,8 +133,10 @@ export async function upgradeWallPosters(visual:WallPosters):Promise<boolean>{
     alphaTest:.4,
     roughness:.82,
     metalness:0,
-    emissive:new THREE.Color(0x4a3020),
-    emissiveIntensity:.42,
+    // Warm lift so the propaganda art reads in cave murk without a dedicated lamp.
+    emissive:new THREE.Color(0xffffff),
+    emissiveMap:s.tex,
+    emissiveIntensity:.55,
     side:THREE.DoubleSide,
     depthWrite:true,
    });
