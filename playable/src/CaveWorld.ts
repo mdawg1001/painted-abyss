@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ShaderChunk } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -7,18 +8,44 @@ import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath } from './diveAudio';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
-import { createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, knifeMeshReady, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
+import { createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, knifeMeshReady, HELD_VIEW_POS, HELD_VIEW_ROT, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
 import { loadCausticAtlas, makeCausticFallbackTexture } from './causticAsset';
 import { createChestVisual, upgradeChestVisual, syncChestOpen, type ChestVisual } from './chestAsset';
+import { createScrollVisual, syncScrollPresent, type ScrollVisual } from './scrollAsset';
 import {
  createLifebuoyVisual, upgradeLifebuoyVisual,
  LIFEBUOY_POS, LIFEBUOY_YAW, type LifebuoyVisual,
 } from './lifebuoyAsset';
 import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLight } from './sconceAsset';
-import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, canWalkBreath, inBreathCorridor, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number};
+/** Point lights packed per cave chunk. 24 covers every light whose range reaches a chunk; the rest of the set still exists in the scene for spots/shadows. */
+const POINT_CULL_MAX=24;
+type PointCull={box:THREE.Box3;count:{value:number};pos:THREE.Vector3[];col:THREE.Vector3[];dist:Float32Array;decay:Float32Array};
+function pointCullLightsChunk(){
+  const src=ShaderChunk.lights_fragment_begin;
+  const start=src.indexOf('#if ( NUM_POINT_LIGHTS > 0 ) && defined( RE_Direct )');
+  const end=src.indexOf('#if ( NUM_SPOT_LIGHTS > 0 ) && defined( RE_Direct )');
+  if(start<0||end<0) throw new Error('Three.js light chunk layout changed');
+  const block=`#if ( NUM_POINT_LIGHTS > 0 ) && defined( RE_Direct )
+	PointLight pointLight;
+	for ( int i = 0; i < ${POINT_CULL_MAX}; i ++ ) {
+		if ( i >= uCullCount ) break;
+		pointLight.position = ( viewMatrix * vec4( uCullPos[ i ], 1.0 ) ).xyz;
+		pointLight.color = uCullCol[ i ];
+		pointLight.distance = uCullDist[ i ];
+		pointLight.decay = uCullDecay[ i ];
+		getPointLightInfo( pointLight, geometryPosition, directLight );
+		RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
+	}
+#endif
+
+`;
+  return src.slice(0,start)+block+src.slice(end);
+}
+const POINT_CULL_LIGHTS=pointCullLightsChunk();
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
 /** Soft underwater blood: droplets + plume (Kenney alpha maps, not square Points). */
 type BloodLayer={points:THREE.Points;vel:Float32Array;baseSize:number;uniforms:{uMap:{value:THREE.Texture};uColor:{value:THREE.Color};uOpacity:{value:number};uSize:{value:number};uPixelRatio:{value:number}}};
@@ -141,11 +168,15 @@ export class CaveWorld extends OceanWorld {
  torchLight=new THREE.SpotLight(0xeaf6ff,210,34,.38,.55,1.05);
  beam!:THREE.Mesh;torchBody!:THREE.Group;torchLensMat!:THREE.MeshStandardMaterial;
  /** Rest pose for the camera-parented lantern (local space). */
- torchRestPos=V(.44,-.4,-.62);torchRestRot=new THREE.Euler(.18,-.22,.32);
+ torchRestPos=V(HELD_VIEW_POS.x,HELD_VIEW_POS.y,HELD_VIEW_POS.z);torchRestRot=new THREE.Euler(HELD_VIEW_ROT.x,HELD_VIEW_ROT.y,HELD_VIEW_ROT.z);
  composer!:EffectComposer;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  /** World crates / suitcase (Poly Haven) keyed by mission chest id. */
  chestVisuals=new Map<number,ChestVisual>();
+ /** Chart-scrap scrolls nested in each crate (visible until taken). */
+ scrollVisuals=new Map<number,ScrollVisual>();
+ /** QA: when true, animate() leaves camera pose alone (Playwright framing). */
+ holdCamera=false;
  /** Decorative Poly Haven life ring on the start-chamber floor. */
  lifebuoyVisual:LifebuoyVisual|null=null;
  /** Poly Haven caged sconces mounted on the cave walls; their warm point lights flicker. */
@@ -157,6 +188,26 @@ export class CaveWorld extends OceanWorld {
  shakeAmp=0;
  /** Soft additive caustic floor pools under major light shafts. */
  causticPools:THREE.Mesh[]=[];
+ /** Rising water in the breath corridor only. */
+ breathWater!:THREE.Mesh;
+ breathVolume!:THREE.Mesh;
+ breathTank!:THREE.Group;
+ /** True while the corridor is still dry enough to walk. */
+ onFoot=false;
+ /** Per-chunk point-light lists. Same BRDF as the full set, only lights that can reach the chunk. */
+ pointCullTargets:PointCull[]=[];
+ pointCullSyncs:(()=>void)[]=[];
+ pointCullSaturated=false;
+ _cullLights:THREE.PointLight[]=[];
+ _cullWp:THREE.Vector3[]=[];
+ /** World box around the held torch / knife. Refreshed every frame. */
+ heldLightBox=new THREE.Box3();
+ /** World box around the guardian. Refreshed every frame. */
+ guardianLightBox=new THREE.Box3();
+ _adoptTmp=new THREE.Box3();
+ fogDeep=new THREE.Color(0x0c3540);
+ fogMurk=new THREE.Color(0x062430);
+ fogExit=new THREE.Color(0x1a5a62);
  /** Soft blood cloud group (droplets + plume); hidden until hit/kill. */
  bloodGroup:THREE.Group|null=null;
  bloodLayers:BloodLayer[]=[];
@@ -177,7 +228,7 @@ export class CaveWorld extends OceanWorld {
   this.scene.add(new THREE.HemisphereLight(0x5a9eae,0x081820,.42));
   this.scene.add(new THREE.AmbientLight(0x123840,.22));
   const skyFill=new THREE.DirectionalLight(0x7ec8d4,.55);skyFill.position.set(-8,30,-20);this.scene.add(skyFill);
-  this.buildCave();this.buildLights();this.buildComposer();
+  this.buildCave();this.buildBreath();this.buildLights();this.buildComposer();
   loadCausticAtlas().then(tex=>{
    if(!this.alive)return;
    for(const pool of this.causticPools){
@@ -223,10 +274,23 @@ export class CaveWorld extends OceanWorld {
    poseKnife(this.knifeVisual);
    this.knifeVisual.visible=this.holdingKnife();
    this.syncHeldTorch();
+   this.adoptPointCull(this.knifeVisual,this.heldLightBox,false,false);
   });
   this.mountChests();
   this.mountLifebuoy();
   this.mountWallSconces();
+  this.pointCullSyncs.push(()=>{
+   const p=this.camera.position;
+   this.heldLightBox.min.set(p.x-2.2,p.y-2.2,p.z-2.2);
+   this.heldLightBox.max.set(p.x+2.2,p.y+2.2,p.z+2.2);
+  });
+  this.pointCullSyncs.push(()=>{
+   const p=this.guardian.group.position;
+   this.guardianLightBox.min.set(p.x-6,p.y-4,p.z-6);
+   this.guardianLightBox.max.set(p.x+6,p.y+4,p.z+6);
+  });
+  this.adoptPointCull(this.torchBody,this.heldLightBox,false,false);
+  this.adoptPointCull(this.guardian.group,this.guardianLightBox,false,true);
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
  }
  /** Place the Poly Haven lifebuoy on the start-chamber floor and upgrade in the background. */
@@ -236,7 +300,10 @@ export class CaveWorld extends OceanWorld {
   visual.root.rotation.y=LIFEBUOY_YAW;
   this.scene.add(visual.root);
   this.lifebuoyVisual=visual;
-  upgradeLifebuoyVisual(visual);
+  upgradeLifebuoyVisual(visual).then(ok=>{
+   if(!ok||!this.alive)return;
+   this.adoptPointCull(visual.root,this.worldBox(visual.root),false,true);
+  });
  }
  /** Bolt Poly Haven caged sconces to spaced wall faces; warm lights show at once, meshes upgrade in. */
  mountWallSconces(){
@@ -244,7 +311,13 @@ export class CaveWorld extends OceanWorld {
   const {group,lights}=createWallSconces(mounts);
   this.scene.add(group);
   this.wallSconceLights=lights;
-  upgradeWallSconces(group,mounts,lights);
+  upgradeWallSconces(group,mounts,lights).then(ok=>{
+   if(!ok||!this.alive)return;
+   for(const child of group.children){
+    if((child as THREE.Light).isLight||child.name==='sconceStub')continue;
+    this.adoptPointCull(child,this.worldBox(child),true,true);
+   }
+  });
  }
  /** Place the three Poly Haven chests and upgrade stubs to glTF in the background. */
  mountChests(){
@@ -252,13 +325,17 @@ export class CaveWorld extends OceanWorld {
    const visual=createChestVisual(chest.kind);
    visual.root.position.set(chest.position.x,chest.position.y,chest.position.z);
    visual.root.rotation.y=chest.yaw;
+   const scroll=createScrollVisual();
    this.scene.add(visual.root);
+   this.scene.add(scroll.root);
    this.chestVisuals.set(chest.id,visual);
-   upgradeChestVisual(visual).then(()=>{
+   this.scrollVisuals.set(chest.id,scroll);
+   upgradeChestVisual(visual).then(ok=>{
     if(!this.alive)return;
     // Re-assert closed pose after swap in case open was toggled during load.
     const live=this.mission.chests.find(c=>c.id===chest.id);
     if(visual.lid)visual.lid.rotation.copy(live?.open?visual.openRot:visual.closedRot);
+    if(ok)this.adoptPointCull(visual.root,this.worldBox(visual.root),false,true);
    });
   }
  }
@@ -268,6 +345,11 @@ export class CaveWorld extends OceanWorld {
    visual.root.position.set(chest.position.x,chest.position.y,chest.position.z);
    visual.root.rotation.y=chest.yaw;
    syncChestOpen(visual,chest.open,dt);
+   const scroll=this.scrollVisuals.get(chest.id);
+   if(scroll){
+    const want=chest.open&&!this.mission.hasMapFragment(chest.fragment);
+    syncScrollPresent(scroll,want,dt,chest.kind,chest.position,chest.yaw);
+   }
   }
  }
  /** Soft blood Points (shader discs × Kenney maps — never square sprites). */
@@ -362,32 +444,273 @@ export class CaveWorld extends OceanWorld {
    for(const layer of this.bloodLayers)layer.uniforms.uOpacity.value=0;
   }
  }
+ /** Pack only point lights that reach this chunk. Spot/hemi/ambient/shadows stay on the shared shader. */
+ trackPointCull(mat:THREE.Material,box:THREE.Box3){
+  if(mat.userData.pointCulled)return;
+  const count={value:0};
+  const pos=Array.from({length:POINT_CULL_MAX},()=>new THREE.Vector3());
+  const col=Array.from({length:POINT_CULL_MAX},()=>new THREE.Vector3());
+  const dist=new Float32Array(POINT_CULL_MAX);
+  const decay=new Float32Array(POINT_CULL_MAX);
+  const prev=mat.onBeforeCompile?.bind(mat);
+  const prevKey=mat.customProgramCacheKey.bind(mat);
+  mat.onBeforeCompile=(shader,renderer)=>{
+   prev?.(shader,renderer);
+   shader.uniforms.uCullCount=count;
+   shader.uniforms.uCullPos={value:pos};
+   shader.uniforms.uCullCol={value:col};
+   shader.uniforms.uCullDist={value:dist};
+   shader.uniforms.uCullDecay={value:decay};
+   shader.fragmentShader=`uniform int uCullCount;uniform vec3 uCullPos[${POINT_CULL_MAX}];uniform vec3 uCullCol[${POINT_CULL_MAX}];uniform float uCullDist[${POINT_CULL_MAX}];uniform float uCullDecay[${POINT_CULL_MAX}];\n`+shader.fragmentShader;
+   shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_begin>',POINT_CULL_LIGHTS);
+  };
+  mat.customProgramCacheKey=()=>prevKey()+':pt'+POINT_CULL_MAX;
+  mat.userData.pointCulled=true;
+  this.pointCullTargets.push({box,count,pos,col,dist,decay});
+ }
+ /** World AABB of every mesh under root. Lights that miss this box cannot shade it. */
+ worldBox(root:THREE.Object3D){
+  root.updateWorldMatrix(true,true);
+  const box=new THREE.Box3();
+  const tmp=this._adoptTmp;
+  root.traverse(o=>{
+   if(!(o instanceof THREE.Mesh))return;
+   const geo=o.geometry;
+   if(!geo.boundingBox)geo.computeBoundingBox();
+   if(!geo.boundingBox)return;
+   tmp.copy(geo.boundingBox).applyMatrix4(o.matrixWorld);
+   box.union(tmp);
+  });
+  if(box.isEmpty())box.setFromObject(root);
+  return box.expandByScalar(.25);
+ }
+ /**
+  * Same BRDF, but the material only loops point lights that reach `box`.
+  * Shared glTF materials must be cloned per instance or every copy would share one box.
+  */
+ adoptPointCull(root:THREE.Object3D,box:THREE.Box3,cloneMats=false,frustum=true){
+  const seen=new Map<THREE.Material,THREE.Material>();
+  root.traverse(o=>{
+   if(!(o instanceof THREE.Mesh))return;
+   const src=Array.isArray(o.material)?o.material:[o.material];
+   const out=src.map(m=>{
+    if(!m||!(m as THREE.MeshStandardMaterial).isMeshStandardMaterial)return m;
+    const std=m as THREE.MeshStandardMaterial;
+    if(std.userData.pointCulled&&!cloneMats)return std;
+    if(!cloneMats){this.trackPointCull(std,box);return std;}
+    let copy=seen.get(std);
+    if(!copy){
+     copy=std.clone();
+     if(std.onBeforeCompile)copy.onBeforeCompile=std.onBeforeCompile;
+     copy.customProgramCacheKey=std.customProgramCacheKey.bind(std);
+     this.trackPointCull(copy,box);
+     seen.set(std,copy);
+    }
+    return copy;
+   });
+   if(cloneMats)o.material=Array.isArray(o.material)?out as THREE.Material[]:out[0];
+   if(frustum){
+    if(!o.geometry.boundingSphere)o.geometry.computeBoundingSphere();
+    o.frustumCulled=true;
+   }
+  });
+ }
+ /** Refresh packed point lights. A light outside its cutoff cannot change a pixel inside the chunk box. */
+ updatePointCull(){
+  for(const sync of this.pointCullSyncs)sync();
+  const lights=this._cullLights;lights.length=0;
+  const wp=this._cullWp;
+  this.scene.traverse(o=>{
+   const light=o as THREE.PointLight;
+   if(!light.isPointLight)return;
+   for(let p:THREE.Object3D|null=light;p;p=p.parent)if(!p.visible)return;
+   const i=lights.length;
+   lights.push(light);
+   const v=wp[i]??(wp[i]=new THREE.Vector3());
+   light.getWorldPosition(v);
+  });
+  for(const t of this.pointCullTargets){
+   let n=0;
+   for(let i=0;i<lights.length;i++){
+    const light=lights[i];
+    const dist=light.distance;
+    if(dist>0&&t.box.distanceToPoint(wp[i])>=dist-1e-3)continue;
+    if(n>=POINT_CULL_MAX){
+     if(!this.pointCullSaturated){this.pointCullSaturated=true;console.warn('Point-light cull hit the cap; a chunk is missing a light.');}
+     break;
+    }
+    t.pos[n].copy(wp[i]);
+    t.col[n].set(light.color.r*light.intensity,light.color.g*light.intensity,light.color.b*light.intensity);
+    t.dist[n]=dist;
+    t.decay[n]=light.decay;
+    n++;
+   }
+   t.count.value=n;
+  }
+ }
  buildCave(){
   const {rock:rockMaps,sand:sandMaps,moss:mossMaps}=this.rockMaps;
-  // Near-white tints so Poly Haven albedo dominates; ceiling kept cooler/darker
-  const floor=this.material(0xc9c4b8,'sand',.88,0,sandMaps,mossMaps);
-  const rock=this.material(0xb4c0c4,'rock',.86,1.6,rockMaps,mossMaps);
-  const ceiling=this.material(0x6a7882,'rock',.9,.6,rockMaps,mossMaps);
-  const floors:THREE.BufferGeometry[]=[],roofs:THREE.BufferGeometry[]=[],walls:THREE.BufferGeometry[]=[],details:THREE.BufferGeometry[]=[];
+  // Same meshes as one merged cave, split on a 2-cell grid so each draw only shades point lights that reach it.
+  type Bucket={floors:THREE.BufferGeometry[];roofs:THREE.BufferGeometry[];walls:THREE.BufferGeometry[];details:THREE.BufferGeometry[]};
+  const buckets=new Map<string,Bucket>();
+  const take=(c:number,r:number)=>{
+   const key=`${c>>2},${r>>2}`;
+   let b=buckets.get(key);
+   if(!b){b={floors:[],roofs:[],walls:[],details:[]};buckets.set(key,b);}
+   return b;
+  };
   for(const key of cells){const [c,r]=key.split(',').map(Number),p=world(c,r);
-   const fg=new THREE.PlaneGeometry(CELL,CELL,2,2);fg.rotateX(-Math.PI/2);fg.translate(p.x,0,p.z);floors.push(fg);
-   if(!(c===19&&r===3)){const cg=fg.clone();cg.rotateZ(Math.PI);cg.translate(p.x*2,8,0);roofs.push(cg);}
+   const b=take(c,r);
+   const fg=new THREE.PlaneGeometry(CELL,CELL,2,2);fg.rotateX(-Math.PI/2);fg.translate(p.x,0,p.z);b.floors.push(fg);
+   if(!(c===19&&r===3)){const cg=fg.clone();cg.rotateZ(Math.PI);cg.translate(p.x*2,8,0);b.roofs.push(cg);}
    for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]])if(!cells.has(`${c+dc},${r+dr}`)){
-    const g=new THREE.BoxGeometry(dc?1:CELL+.05,8.5,dr?1:CELL+.05);g.translate(p.x+dc*2.5,4,p.z-dr*2.5);walls.push(g);
-    for(let n=0;n<3;n++){const stone=new THREE.IcosahedronGeometry(1,1);stone.scale(dc?.7:1.7,1.3+(n%2)*.5,dr?.7:1.7);stone.translate(p.x+dc*2.45,1.3+n*2.5,p.z-dr*2.45);details.push(stone);}
+    const g=new THREE.BoxGeometry(dc?1:CELL+.05,8.5,dr?1:CELL+.05);g.translate(p.x+dc*2.5,4,p.z-dr*2.5);b.walls.push(g);
+    for(let n=0;n<3;n++){const stone=new THREE.IcosahedronGeometry(1,1);stone.scale(dc?.7:1.7,1.3+(n%2)*.5,dr?.7:1.7);stone.translate(p.x+dc*2.45,1.3+n*2.5,p.z-dr*2.45);b.details.push(stone);}
    }
   }
-  for(const [geos,mat] of [[floors,floor],[roofs,ceiling],[walls,rock],[details,rock]] as const){
-   const merged=mergeGeometries(geos);if(!merged)continue;
-   const mesh=new THREE.Mesh(merged,mat);mesh.castShadow=true;mesh.receiveShadow=true;this.scene.add(mesh);
-   geos.forEach(g=>g.dispose());
+  for(const b of buckets.values()){
+   const floor=this.material(0xc9c4b8,'sand',.88,0,sandMaps,mossMaps);
+   const rock=this.material(0xb4c0c4,'rock',.86,1.6,rockMaps,mossMaps);
+   const ceiling=this.material(0x6a7882,'rock',.9,.6,rockMaps,mossMaps);
+   const box=new THREE.Box3();
+   const add=(geos:THREE.BufferGeometry[],mat:THREE.Material)=>{
+    if(!geos.length)return;
+    const merged=mergeGeometries(geos);if(!merged)return;
+    merged.computeBoundingBox();merged.computeBoundingSphere();
+    if(merged.boundingBox)box.union(merged.boundingBox);
+    const mesh=new THREE.Mesh(merged,mat);mesh.castShadow=true;mesh.receiveShadow=true;
+    mesh.matrixAutoUpdate=false;mesh.updateMatrix();
+    this.scene.add(mesh);
+    geos.forEach(g=>g.dispose());
+   };
+   add(b.floors,floor);add(b.roofs,ceiling);add(b.walls,rock);add(b.details,rock);
+   box.expandByScalar(.05);
+   this.trackPointCull(floor,box);this.trackPointCull(rock,box);this.trackPointCull(ceiling,box);
   }
-  const bone=this.material(0xc8c0a8,'rock',.82,1.5,rockMaps,mossMaps);for(let i=0;i<6;i++)for(const s of [-1,1]){
+  const bone=this.material(0xc8c0a8,'rock',.82,1.5,rockMaps,mossMaps);
+  const boneBox=new THREE.Box3();
+  for(let i=0;i<6;i++)for(const s of [-1,1]){
    const rib=this.tube([V(-3+i*.75,.25,-113),V(-3+i*.75,1.3,-113+s*1.2),V(-3+i*.75,.3,-113+s*2.2)],[.12,.09,.025],bone,12,5);
-   rib.castShadow=true;rib.receiveShadow=true;this.scene.add(rib);
+   rib.castShadow=true;rib.receiveShadow=true;rib.geometry.computeBoundingBox();
+   if(rib.geometry.boundingBox)boneBox.union(rib.geometry.boundingBox);
+   this.scene.add(rib);
   }
-  const plinth=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.5,1.2,7),rock);plinth.position.set(RELIC.x,.6,RELIC.z);
-  plinth.castShadow=true;plinth.receiveShadow=true;this.scene.add(plinth);
+  boneBox.expandByScalar(.05);this.trackPointCull(bone,boneBox);
+  const plinthMat=this.material(0xb4c0c4,'rock',.86,1.6,rockMaps,mossMaps);
+  const plinth=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.5,1.2,7),plinthMat);plinth.position.set(RELIC.x,.6,RELIC.z);
+  plinth.castShadow=true;plinth.receiveShadow=true;plinth.updateMatrixWorld();
+  plinth.geometry.computeBoundingBox();
+  const pbox=plinth.geometry.boundingBox?.clone().applyMatrix4(plinth.matrixWorld).expandByScalar(.05)??new THREE.Box3();
+  this.trackPointCull(plinthMat,pbox);this.scene.add(plinth);
+ }
+ /** Hatch, far-end marks, wall tank, and the corridor water volume. Cave meshes stay as built. */
+ buildBreath(){
+  const foot=breathFootprint();
+  const waterMat=new THREE.MeshStandardMaterial({
+   color:0x9fd4d8,transparent:true,opacity:.55,roughness:.08,metalness:.15,
+   depthWrite:false,side:THREE.DoubleSide,
+  });
+  const volMat=new THREE.MeshStandardMaterial({
+   color:0x0a3e48,transparent:true,opacity:.42,roughness:.2,metalness:.05,
+   depthWrite:false,side:THREE.BackSide,
+  });
+  this.breathWater=new THREE.Mesh(new THREE.PlaneGeometry(foot.width*.96,foot.depth*.98),waterMat);
+  this.breathWater.rotation.x=-Math.PI/2;
+  this.breathWater.position.set(foot.cx,0,foot.cz);
+  this.breathWater.visible=false;
+  this.breathWater.renderOrder=2;
+  this.breathVolume=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),volMat);
+  this.breathVolume.visible=false;
+  this.breathVolume.renderOrder=1;
+  this.scene.add(this.breathVolume,this.breathWater);
+
+  const steel=new THREE.MeshStandardMaterial({color:0x8a9298,metalness:.72,roughness:.32});
+  const ring=new THREE.MeshBasicMaterial({color:0xf0d48a});
+  const blaze=new THREE.MeshBasicMaterial({color:0xc8d4d2});
+  const hatch=new THREE.Group();
+  const door=new THREE.Mesh(new THREE.BoxGeometry(3.6,2.6,.22),steel);
+  door.position.y=1.65;
+  const wheel=new THREE.Mesh(new THREE.TorusGeometry(.42,.055,8,18),ring);
+  wheel.position.set(0,1.7,.16);
+  const rim=new THREE.Mesh(new THREE.TorusGeometry(.95,.04,8,24),ring);
+  rim.position.set(0,1.65,.13);
+  hatch.add(door,wheel,rim);
+  const spawn=breathHatchSpawn();
+  hatch.position.set(spawn.x,0,spawn.z+2.2);
+  this.scene.add(hatch);
+  // Unlit floor blazes so the dry corridor reads with the knife out (torch is off).
+  for(let i=0;i<8;i++){
+   const dash=new THREE.Mesh(new THREE.BoxGeometry(1.1,.04,1.6),blaze);
+   dash.position.set(foot.cx,.06,spawn.z-3.2-i*3.4);
+   this.scene.add(dash);
+  }
+
+  const mark=new THREE.MeshBasicMaterial({color:0xffb04a});
+  const far=new THREE.Group();
+  for(let i=0;i<4;i++){
+   const stripe=new THREE.Mesh(new THREE.BoxGeometry(6.4,.05,.22),mark);
+   stripe.position.set(0,.08,i*.85);
+   far.add(stripe);
+  }
+  const band=new THREE.Mesh(new THREE.BoxGeometry(.1,1.4,2.6),mark);
+  band.position.set(-3.85,1.7,1.2);
+  const bandEast=band.clone();
+  bandEast.position.x=3.85;
+  far.add(band,bandEast);
+  far.position.set(foot.cx,0,foot.minZ+2.4);
+  this.scene.add(far);
+
+  const tank=new THREE.Group();
+  tank.name='breathTank';
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(.17,.17,.74,14),new THREE.MeshBasicMaterial({color:0x3dce6a}));
+  const stripe=new THREE.Mesh(new THREE.CylinderGeometry(.178,.178,.14,14),new THREE.MeshBasicMaterial({color:0xf4ffc8}));
+  stripe.position.y=.08;
+  const valve=new THREE.Mesh(new THREE.BoxGeometry(.14,.16,.14),new THREE.MeshStandardMaterial({color:0xd5dde2,metalness:.82,roughness:.22}));
+  valve.position.y=.44;
+  const collar=new THREE.Mesh(new THREE.TorusGeometry(.2,.035,6,12),new THREE.MeshBasicMaterial({color:0xf2f6c8}));
+  collar.rotation.x=Math.PI/2;collar.position.y=.22;
+  tank.add(body,stripe,valve,collar);
+  this.breathTank=tank;
+  this.scene.add(tank);
+  // Short-range practicals. Distances stay inside corridor chunks so the cave sconce budget is left alone.
+  const lamps=[{z:spawn.z-2,d:12},{z:16,d:11},{z:8,d:5}];
+  for(const lamp of lamps){
+   const light=new THREE.PointLight(0xffc48a,14,lamp.d,2);
+   light.position.set(foot.cx,2.4,lamp.z);
+   this.scene.add(light);
+  }
+  this.syncBreathProps();
+ }
+ syncBreathProps(){
+  const y=this.mission.breathWaterY;
+  const foot=breathFootprint();
+  const show=y>0.32;
+  this.breathWater.visible=show;
+  this.breathVolume.visible=show;
+  if(show){
+   this.breathWater.position.set(foot.cx,y+.02,foot.cz);
+   const h=Math.max(.08,y);
+   this.breathVolume.scale.set(foot.width*.94,h,foot.depth*.96);
+   this.breathVolume.position.set(foot.cx,h*.5,foot.cz);
+  }
+  const mounts=breathTankMounts();
+  const mount=mounts[this.mission.breathTankIndex%mounts.length];
+  if(mount){
+   this.breathTank.position.set(mount.x,mount.y,mount.z);
+   this.breathTank.rotation.set(0,mount.yaw,0);
+  }
+ }
+ applyBreathRespawn(){
+  this.mission.respawnAtHatch();
+  this.mission.mapOpen=false;
+  this.position.copy(this.mission.position);
+  this.velocity.set(0,0,0);
+  this.yaw=this.targetYaw=0;
+  this.pitch=this.targetPitch=0;
+  this.camera.rotation.set(0,0,0);
+  this.camera.position.copy(this.position);
+  this.onFoot=true;
+  this.syncBreathProps();
  }
  beamMaterial(color:THREE.ColorRepresentation,opacity:number,beta=.38){
   return new THREE.ShaderMaterial({
@@ -424,14 +747,14 @@ export class CaveWorld extends OceanWorld {
    new THREE.CylinderGeometry(topR*1.18,botR*1.22,len,28,1,true),
    this.beamMaterial(color,opacity*.42,.32),
   );
-  haze.renderOrder=1;haze.frustumCulled=false;
+  haze.renderOrder=1;haze.frustumCulled=true;
   // Inner core — tighter, brighter cyan-white.
   const coreCol=new THREE.Color(color).lerp(new THREE.Color(0xeafdff),.45).getHex();
   const core=new THREE.Mesh(
    new THREE.CylinderGeometry(topR*.55,botR*.62,len,24,1,true),
    this.beamMaterial(coreCol,opacity*.9,.45),
   );
-  core.renderOrder=2;core.frustumCulled=false;
+  core.renderOrder=2;core.frustumCulled=true;
   // Ceiling aperture disc — additive halo so openings bloom without UnrealBloomPass.
   const discMat=new THREE.MeshBasicMaterial({
    color:0xe8fff9,transparent:true,opacity:Math.min(.72,opacity*2.4),
@@ -470,7 +793,7 @@ export class CaveWorld extends OceanWorld {
   const mesh=new THREE.Mesh(new THREE.PlaneGeometry(radius*2,radius*2),mat);
   mesh.rotation.x=-Math.PI/2;
   mesh.position.set(x,FLOOR_Y+.05,z);
-  mesh.renderOrder=1;mesh.frustumCulled=false;
+  mesh.renderOrder=1;mesh.frustumCulled=true;
   this.scene.add(mesh);
   this.causticPools.push(mesh);
   return mesh;
@@ -643,14 +966,14 @@ export class CaveWorld extends OceanWorld {
   if(!this.knifeVisual)return;
   const s=bobBlend;
   this.knifeVisual.position.set(
-   KNIFE_HOLD_POS.x+Math.sin(this.time*.7)*.024*s,
-   KNIFE_HOLD_POS.y+Math.sin(this.time*1.05)*.03*s,
-   KNIFE_HOLD_POS.z+Math.cos(this.time*.55)*.018*s,
+   KNIFE_HOLD_POS.x+Math.sin(this.time*.7)*.028*s,
+   KNIFE_HOLD_POS.y+Math.sin(this.time*1.05)*.036*s,
+   KNIFE_HOLD_POS.z+Math.cos(this.time*.55)*.02*s,
   );
   this.knifeVisual.rotation.set(
-   KNIFE_HOLD_ROT.x+Math.sin(this.time*.9)*.045*s,
-   KNIFE_HOLD_ROT.y+Math.sin(this.time*.45)*.025*s,
-   KNIFE_HOLD_ROT.z+Math.cos(this.time*.75)*.05*s,
+   KNIFE_HOLD_ROT.x+Math.sin(this.time*.9)*.055*s,
+   KNIFE_HOLD_ROT.y+Math.sin(this.time*.45)*.03*s,
+   KNIFE_HOLD_ROT.z+Math.cos(this.time*.75)*.065*s,
   );
  }
  buildLights(){
@@ -704,23 +1027,15 @@ export class CaveWorld extends OceanWorld {
   const poolFill=new THREE.PointLight(0xa8f0e8,34,16,1.1);poolFill.position.set(32,5,-12);this.scene.add(poolFill);
   this.addShaft(32,5.2,-12,9,.75,2.9,0xe0fdf8,.3,0,0,{caustic:true,causticR:5.2});
 
-  // Main cavern ceiling shaft
-  const cavern:[number,number,number,number,number,number,number][]=[
-   [6,6,-64,9.5,.55,2.6,.18],
-  ];
-  for(const [x,y,z,len,top,bot,op] of cavern){
-   this.addShaft(x,y,z,len,top,bot,0xc4f2ea,op,(Math.random()-.5)*.12,(Math.random()-.5)*.1,{caustic:true,causticR:bot*2.6});
-   const spot=new THREE.SpotLight(0xb8f0e8,70+op*520,15,.5,.85,1.15);
-   spot.position.set(x,8.2,z);spot.target.position.set(x,0,z);this.scene.add(spot,spot.target);
-  }
+  // Cavern ceiling fill + floor caustic. No volumetric column — the only god ray is the exit.
+  const cavernX=6,cavernZ=-64,cavernOp=.18,cavernBot=2.6;
+  this.addCausticPool(cavernX,cavernZ,cavernBot*2.6,cavernOp);
+  const spot=new THREE.SpotLight(0xb8f0e8,70+cavernOp*520,15,.5,.85,1.15);
+  spot.position.set(cavernX,8.2,cavernZ);spot.target.position.set(cavernX,0,cavernZ);this.scene.add(spot,spot.target);
 
-  // Entrance corridor soft shaft (no floor caustic — tight tunnel)
-  this.addShaft(0,6.3,-22,8,.45,2.2,0xb0e8e0,.12,0,0,{caustic:false});
+  // Entrance corridor fill. No god ray in the tight tunnel.
   const entrance=new THREE.SpotLight(0xa8e4dc,80,13,.48,.8,1.1);
   entrance.position.set(0,8.5,-22);entrance.target.position.set(0,0,-22);this.scene.add(entrance,entrance.target);
-
-  // Relic alcove pale shaft
-  this.addShaft(0,5.8,-110,7.5,.3,1.5,0xd0e0c8,.1,0,0,{caustic:false});
  }
  buildComposer(){
   this.composer=new EffectComposer(this.renderer);
@@ -746,6 +1061,13 @@ export class CaveWorld extends OceanWorld {
   for(const p of this.mission.pickups){let group=this.pickupMeshes.get(p.id);if(!group){group=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:p.item==='relic'?0xe2b65e:0x82c8b7,emissive:p.item==='relic'?0x6b3c07:0x153c36,emissiveIntensity:.7,metalness:.4,roughness:.45});
     if(p.item==='relic'){const points:THREE.Vector3[]=[],radii:number[]=[];for(let i=0;i<=72;i++){const t=i/72,a=t*Math.PI*4.5,r=.03+t*t*.62;points.push(V(Math.cos(a)*r,Math.sin(a)*r,0));radii.push(.01+t*.12);}group.add(this.tube(points,radii,mat,90,8));group.add(new THREE.PointLight(0xefbb68,3.5,7));}else group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.3,1),mat));
     group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
+    const pickup=group;
+    const box=new THREE.Box3();
+    this.pointCullSyncs.push(()=>{
+     box.min.set(pickup.position.x-1,pickup.position.y-1,pickup.position.z-1);
+     box.max.set(pickup.position.x+1,pickup.position.y+1,pickup.position.z+1);
+    });
+    this.adoptPointCull(pickup,box,false,true);
     this.scene.add(group);this.pickupMeshes.set(p.id,group);
    }group.position.set(p.position.x,p.position.y+Math.sin(this.time*1.7+p.id)*.12,p.position.z);group.rotation.y=this.time*.45;
   }
@@ -928,16 +1250,36 @@ export class CaveWorld extends OceanWorld {
    const pressed=(...keys:string[])=>keys.some(k=>this.keys.has(k))?1:0;
    if(m.mapOpen){
     // Chart reading: hold still, but the dive clock / gas / predator keep running.
+    this.onFoot=false;
     this.velocity.set(0,0,0);this.keys.clear();
     m.update(dt,false);this.position.copy(m.position);
     this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
-   }else{
+   }else if(!this.holdCamera){
    if(!this.pointerLocked&&this.lookPointer){const bounds=this.renderer.domElement.getBoundingClientRect();this.fallbackTurn=edgeTurn(this.lookPointer.x,bounds.left,bounds.width);}
    else if(!this.pointerLocked&&!this.lookPointer)this.fallbackTurn=0;
    const horizontalLook=pressed('ArrowRight')-pressed('ArrowLeft')+(!this.pointerLocked?this.fallbackTurn*FREE_LOOK_RATE:0);
    const delta=lookDelta(this.targetYaw,this.targetPitch,horizontalLook*dt*650,(pressed('ArrowDown')-pressed('ArrowUp'))*dt*650);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;
    this.yaw=THREE.MathUtils.lerp(this.yaw,this.targetYaw,1-Math.exp(-16*dt));this.pitch=THREE.MathUtils.lerp(this.pitch,this.targetPitch,1-Math.exp(-16*dt));this.camera.rotation.set(this.pitch,this.yaw,0);
    this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
+   const walking=canWalkBreath(m.position,m.breathWaterY);
+   this.onFoot=walking;
+   if(walking){
+    // Dry corridor: walk the floor. Look pitch does not lift you off it.
+    const flat=Math.hypot(this.forward.x,this.forward.z)||1;
+    const fx=this.forward.x/flat,fz=this.forward.z/flat;
+    this.right.set(-fz,0,fx);
+    this.move.set(fx,0,fz).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));
+    const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.01;
+    const speed=sprint?WALK_SPRINT:WALK_SPEED;
+    const wishX=this.move.x*speed,wishZ=this.move.z*speed;
+    const blend=1-Math.exp(-10*dt);
+    this.velocity.x+=(wishX-this.velocity.x)*blend;
+    this.velocity.z+=(wishZ-this.velocity.z)*blend;
+    this.velocity.y=0;
+    moveBody(m.position,this.velocity.x*dt,0,this.velocity.z*dt);
+    m.position.y=WALK_EYE_Y;
+    m.update(dt,sprint);this.position.copy(m.position);
+   }else{
    // Kick = look / strafe only. Space/Q drive BCD buoyancy, not equal XYZ thrust.
    this.move.copy(this.forward).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));
    const bcd=pressed('Space')-pressed('KeyQ','ControlLeft','ControlRight');
@@ -951,15 +1293,29 @@ export class CaveWorld extends OceanWorld {
    const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.01;
    stepSwimVelocity(this.velocity,this.move,m.buoyancy,sprint,dt);
    moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);
+   // Corridor flood is a local ceiling. The cave column is unchanged.
+   if(inBreathCorridor(m.position)&&m.breathWaterY<SURFACE_Y-.35){
+    const cap=Math.max(FLOOR_Y+.35,m.breathWaterY-.28);
+    if(m.position.y>cap){m.position.y=cap;if(this.velocity.y>0)this.velocity.y=0;}
+   }
    m.update(dt,sprint);this.position.copy(m.position);
+   }
+   }else{
+    // holdCamera: keep mission clock + chests syncing, but leave look/swim alone.
+    this.onFoot=false;
+    this.velocity.set(0,0,0);
+    m.update(dt,false);this.position.copy(m.position);
+    this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
    }
    // Presentation-only hover bob when nearly still — never moves mission.position.
    // ~2.6× 0.1.18 amplitudes so the murk drift reads; torch gets extra local sway (mesh+light+beam).
+   if(!this.holdCamera){
    const speed=this.velocity.length();
    const bobBlend=1-THREE.MathUtils.smoothstep(speed,.06,.5);
-   const bobY=Math.sin(this.time*1.1)*.13*bobBlend;
-   const bobSide=Math.sin(this.time*.65)*.065*bobBlend;
-   const bobFwd=Math.cos(this.time*.5)*.065*bobBlend;
+   const bobScale=this.onFoot?.22:1;
+   const bobY=Math.sin(this.time*1.1)*.13*bobBlend*bobScale;
+   const bobSide=Math.sin(this.time*.65)*.065*bobBlend*bobScale;
+   const bobFwd=Math.cos(this.time*.5)*.065*bobBlend*bobScale;
    const eyeX=this.position.x+this.upAxis.x*bobY+this.right.x*bobSide+this.forward.x*bobFwd;
    const eyeY=this.position.y+this.upAxis.y*bobY+this.right.y*bobSide+this.forward.y*bobFwd;
    const eyeZ=this.position.z+this.upAxis.z*bobY+this.right.z*bobSide+this.forward.z*bobFwd;
@@ -995,15 +1351,24 @@ export class CaveWorld extends OceanWorld {
     }
    }
    this.updateBlood(dt);
+   }
 
-   if(m.outcome!=='playing')this.pause();
+   if(m.outcome==='lost')this.applyBreathRespawn();
+   else if(m.outcome!=='playing')this.pause();
   }
-  // Atmosphere: cyan-teal murk, denser in deep chambers, clears at exit
+  // Atmosphere: cyan-teal murk, denser in deep chambers, clears at exit.
+  // Head above the corridor waterline reads as air; the cave stays submerged.
   const deep=THREE.MathUtils.smoothstep(-this.position.z,35,100);
   const nearExit=1-THREE.MathUtils.smoothstep(distance(this.position,EXIT),4,22);
   const fog=this.scene.fog as THREE.FogExp2;
-  fog.color.set(0x0c3540).lerp(new THREE.Color(0x062430),deep).lerp(new THREE.Color(0x1a5a62),nearExit*.65);
-  fog.density=.032+.022*deep-.014*nearExit;
+  const corridorAir=inBreathCorridor(this.position)&&this.position.y>this.mission.breathWaterY+.12;
+  if(corridorAir){
+   fog.color.set(0x243238);
+   fog.density=.012;
+  }else{
+   fog.color.copy(this.fogDeep).lerp(this.fogMurk,deep).lerp(this.fogExit,nearExit*.65);
+   fog.density=.032+.022*deep-.014*nearExit;
+  }
   (this.scene.background as THREE.Color).copy(fog.color);
   this.uniforms.uTime.value=this.time;
   for(const s of this.wallSconceLights){
@@ -1061,8 +1426,10 @@ export class CaveWorld extends OceanWorld {
    this.guardian.fins.forEach(f=>f.rotation.x=Math.sin(this.time*2*thrash+(f.userData.phase||0))*.25*(f.userData.side||1)*thrash);
    this.guardian.tail.rotation.y=Math.sin(this.time*3*thrash)*.22*thrash;
   }
+  this.syncBreathProps();
   this.syncPickups();this.syncChests(dt);this.decoyMesh.visible=!!this.mission.decoy;if(this.mission.decoy)this.decoyMesh.position.copy(this.mission.decoy.position);
   if(this.time-this.lastSent>.05){this.lastSent=this.time;this.publish();}
+  this.updatePointCull();
   this.composer.render();
  }
  dispose(){window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}

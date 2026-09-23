@@ -84,73 +84,64 @@ export class OceanWorld {
       shader.fragmentShader=fragHead+shader.fragmentShader;
       let detailCode='';
       if(usePbr){
-        // Albedo + AO only here; roughness/metalness applied after their map chunks.
+        // Sample triplanar maps once. Later chunks reuse g* so the picture matches with fewer taps.
         detailCode=`{
-          vec3 wn=normalize(vOceanWNormal);
-          vec3 b=triBlend(wn);
-          vec3 albedo=triAlbedo(uPbrDiff,vOceanWorld,b,uPbrScale);
-          vec3 arm=triArm(uPbrArm,vOceanWorld,b,uPbrScale);
+          gWn=normalize(vOceanWNormal);
+          gB=triBlend(gWn);
+          gAlb=triAlbedo(uPbrDiff,vOceanWorld,gB,uPbrScale);
+          gRockArm=triArm(uPbrArm,vOceanWorld,gB,uPbrScale);
+          gMossArm=vec3(0.);
+          gMoss=0.;
           float wet=${detail==='sand'?'0.5':'0.62'};
-          albedo*=mix(1.,.62,wet);
+          gAlb*=mix(1.,.62,wet);
           ${useMoss?`
-          vec3 mossAlb=triAlbedo(uMossDiff,vOceanWorld,b,uMossScale);
-          vec3 mossArm=triArm(uMossArm,vOceanWorld,b,uMossScale);
-          // Sparse accent — up to 35% over base stone
-          float moss=min(mossCoverage(vOceanWorld,wn,arm.r,${mossAmount}),.35);
+          vec3 mossAlb=triAlbedo(uMossDiff,vOceanWorld,gB,uMossScale);
+          gMossArm=triArm(uMossArm,vOceanWorld,gB,uMossScale);
+          gMoss=min(mossCoverage(vOceanWorld,gWn,gRockArm.r,${mossAmount}),.35);
           mossAlb*=mix(1.,.9,wet*.35);
-          albedo=mix(albedo,mossAlb,moss);
-          arm=mix(arm,mossArm,moss);
-          `:''}
-          diffuseColor.rgb*=albedo*mix(.62,1.,arm.r);
+          gAlb=mix(gAlb,mossAlb,gMoss);
+          vec3 arm=mix(gRockArm,gMossArm,gMoss);
+          diffuseColor.rgb*=gAlb*mix(.62,1.,arm.r);
+          `:`
+          diffuseColor.rgb*=gAlb*mix(.62,1.,gRockArm.r);
+          `}
         }`;
       }else{
         if(detail==='sand')detailCode=`float grain=valueNoise(vOceanWorld.xz*15.);float ripple=sin(vOceanWorld.x*.7+vOceanWorld.z*3.+valueNoise(vOceanWorld.xz*.11)*5.);diffuseColor.rgb*=.82+grain*.22+ripple*.07;`;
         if(detail==='rock')detailCode=`float n=valueNoise(vOceanWorld.xz*1.7+vOceanWorld.y*.8);float layer=sin(vOceanWorld.y*5.+valueNoise(vOceanWorld.xz)*3.);diffuseColor.rgb*=.67+n*.5+layer*.075;diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.12,.22,.16),smoothstep(.57,.84,n)*.6);`;
       }
       if(detail==='skin')detailCode=`float blot=valueNoise(vOceanLocal.xz*5.+vOceanLocal.y*2.);float fine=valueNoise(vOceanLocal.xy*48.);float bands=sin(vOceanLocal.x*5.5+vOceanLocal.z*3.+blot*4.);diffuseColor.rgb*=.6+blot*.5+fine*.15;diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*.42,smoothstep(.5,.9,bands)*.45);diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.54,.62,.49),(1.-smoothstep(-.75,.0,vOceanLocal.y))*.65);`;
-      shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>\n${detailCode}`);
       if(usePbr){
+        shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`vec3 gWn;vec3 gB;vec3 gAlb;vec3 gRockArm;vec3 gMossArm;float gMoss;\n#include <color_fragment>\n${detailCode}`);
         const wet=detail==='sand'?'0.5':'0.62';
         shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
           {
-            vec3 wn=normalize(vOceanWNormal);vec3 b=triBlend(wn);
-            vec3 arm=triArm(uPbrArm,vOceanWorld,b,uPbrScale);
+            vec3 arm=gRockArm;
             float wet=${wet};
             ${useMoss?`
-            vec3 mossArm=triArm(uMossArm,vOceanWorld,b,uMossScale);
-            float moss=min(mossCoverage(vOceanWorld,wn,arm.r,${mossAmount}),.35);
-            arm.g=mix(arm.g,mossArm.g,moss);
-            roughnessFactor=clamp(mix(arm.g*roughnessFactor,mix(arm.g*roughnessFactor*.35,arm.g*roughnessFactor*.78,moss),wet),.06,.98);
+            arm.g=mix(arm.g,gMossArm.g,gMoss);
+            roughnessFactor=clamp(mix(arm.g*roughnessFactor,mix(arm.g*roughnessFactor*.35,arm.g*roughnessFactor*.78,gMoss),wet),.06,.98);
             `:`
             roughnessFactor=clamp(mix(arm.g*roughnessFactor,arm.g*roughnessFactor*.35,wet),.06,.95);
             `}
           }`);
         shader.fragmentShader=shader.fragmentShader.replace('#include <metalnessmap_fragment>',`#include <metalnessmap_fragment>
           {
-            vec3 wn=normalize(vOceanWNormal);vec3 b=triBlend(wn);
-            vec3 arm=triArm(uPbrArm,vOceanWorld,b,uPbrScale);
-            ${useMoss?`
-            vec3 mossArm=triArm(uMossArm,vOceanWorld,b,uMossScale);
-            float moss=min(mossCoverage(vOceanWorld,wn,arm.r,${mossAmount}),.35);
-            arm.b=mix(arm.b,mossArm.b,moss);
-            `:''}
+            vec3 arm=gRockArm;
+            ${useMoss?`arm.b=mix(arm.b,gMossArm.b,gMoss);`:''}
             metalnessFactor=clamp(arm.b,.0,.35);
           }`);
         shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
           {
-            vec3 wn=normalize(vOceanWNormal);
-            vec3 b=triBlend(wn);
-            vec3 nRock=triNormalView(uPbrNor,vOceanWorld,wn,b,uPbrScale,viewMatrix);
+            vec3 nRock=triNormalView(uPbrNor,vOceanWorld,gWn,gB,uPbrScale,viewMatrix);
             ${useMoss?`
-            vec3 arm=triArm(uPbrArm,vOceanWorld,b,uPbrScale);
-            float moss=min(mossCoverage(vOceanWorld,wn,arm.r,${mossAmount}),.35);
-            vec3 nMoss=triNormalView(uMossNor,vOceanWorld,wn,b,uMossScale,viewMatrix);
-            normal=normalize(mix(nRock,nMoss,moss));
+            vec3 nMoss=triNormalView(uMossNor,vOceanWorld,gWn,gB,uMossScale,viewMatrix);
+            normal=normalize(mix(nRock,nMoss,gMoss));
             `:`
             normal=nRock;
             `}
           }`);
-      }
+      }else shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>\n${detailCode}`);
       if(gain>0){
         if(usePbr){
           // Soft caustics only — strong procedural caustics fight photographic albedo

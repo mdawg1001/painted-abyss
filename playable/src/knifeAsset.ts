@@ -16,13 +16,21 @@ export const KNIFE_ASSET_URL='/assets/knife/fish_knife_1k.gltf';
 export const KNIFE_THUMB_URL='/assets/knife/thumb.png';
 
 /**
- * Camera-local pose. Grip sits in the lower-right corner; the tip angles
- * inward toward screen center. Tuned for fov 64 so the blade stays on screen.
+ * Camera-local corner shared with the dive torch (CaveWorld torchRest*).
+ * The knife grip uses that position. Its rotation is its own: the blade stands
+ * up (tip toward the top of the view) instead of aiming forward with the lantern.
  */
-export const KNIFE_HOLD_POS={x:.28,y:-.22,z:-.6} as const;
-export const KNIFE_HOLD_ROT={x:-.2,y:.55,z:.12} as const;
-export const KNIFE_HOLD_SCALE=1.5;
-export const KNIFE_STAB_Z=-.82;
+export const HELD_VIEW_POS={x:.44,y:-.4,z:-.62} as const;
+export const HELD_VIEW_ROT={x:.18,y:-.22,z:.32} as const;
+export const KNIFE_HOLD_POS=HELD_VIEW_POS;
+/** Pitch stands the blade up; yaw leans the tip slightly toward center. */
+export const KNIFE_HOLD_ROT={x:1.2,y:.25,z:-.25} as const;
+/**
+ * Fish-knife glTF is a ~22cm prop (blade along local Z, width along X).
+ * Scaled so the upright blade stays large in the corner, face toward the camera.
+ */
+export const KNIFE_HOLD_SCALE={x:8,y:5,z:4.8} as const;
+export const KNIFE_STAB_Z=-1.05;
 
 const stubMetal=()=>new THREE.MeshStandardMaterial({
  color:0x6a7078,metalness:.55,roughness:.55,envMapIntensity:.35,
@@ -156,7 +164,7 @@ export function createKnifeStub():THREE.Group{
 
 /** Camera-local rest pose for the held diving knife. */
 export function poseKnife(g:THREE.Group){
- g.scale.setScalar(KNIFE_HOLD_SCALE);
+ g.scale.set(KNIFE_HOLD_SCALE.x,KNIFE_HOLD_SCALE.y,KNIFE_HOLD_SCALE.z);
  g.position.set(KNIFE_HOLD_POS.x,KNIFE_HOLD_POS.y,KNIFE_HOLD_POS.z);
  g.rotation.set(KNIFE_HOLD_ROT.x,KNIFE_HOLD_ROT.y,KNIFE_HOLD_ROT.z);
 }

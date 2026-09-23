@@ -12,7 +12,14 @@
 - Plastic Crate 02 — https://polyhaven.com/a/plastic_crate_02 — Fabi_G — CC0 1.0
 - Vintage Suitcase — https://polyhaven.com/a/vintage_suitcase — Maximilian Schuster — CC0 1.0
 - Files: `public/assets/chests/<kind>/` (1k glTF + textures) with notes under `src/assets/chests/`
-- Floor props in the cavern; press E to open — each yields one map fragment for the Tab chart.
+- Floor props in the cavern; press E to open — a chart scrap scroll rests inside; E again takes it for the Tab chart.
+
+## Map scrap scroll (Sketchfab)
+- Source: https://sketchfab.com/3d-models/scroll-game-ready-asset-c1503d2292c74faebf83a5937646c1c7
+- Author: Aparicio Silva 3D (@apariciosilva3D)
+- License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
+- Files: `public/assets/scroll/scroll.gltf` (authored mesh, 7,444 triangles) and `textures/` (albedo, normal, roughness, metallic, AO, emissive)
+- Nested in each open crate until the scrap is taken.
 
 ## Lifebuoy (Poly Haven)
 - Source: https://polyhaven.com/a/lifebuoy
