@@ -18,8 +18,8 @@
 - Source: https://sketchfab.com/3d-models/scroll-game-ready-asset-c1503d2292c74faebf83a5937646c1c7
 - Author: Aparicio Silva 3D (@apariciosilva3D)
 - License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
-- Files: `public/assets/scroll/textures/` (albedo, normal, roughness, metallic, AO, emissive)
-- Sketchfab requires an account to download the authored mesh; First Dive maps those public PBR textures onto a dive-tuned scroll mesh in `src/scrollAsset.ts`. Nested in each open crate until the scrap is taken.
+- Files: `public/assets/scroll/scroll.gltf` (authored mesh, 7,444 triangles) and `textures/` (albedo, normal, roughness, metallic, AO, emissive)
+- Nested in each open crate until the scrap is taken.
 
 ## Lifebuoy (Poly Haven)
 - Source: https://polyhaven.com/a/lifebuoy

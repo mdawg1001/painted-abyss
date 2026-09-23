@@ -109,7 +109,7 @@ New mission rules live in `playable/src/simulation.ts`; cave rendering and input
 
 - **Fish Knife** ([Poly Haven](https://polyhaven.com/a/fish_knife)) by Mateusz Sadek — CC0 1.0. Used as the diving-knife inventory icon and held FPS prop when the knife slot is selected (`playable/public/assets/knife/`). Other slots restore the dive torch as the held object.
 - **Dive chests** (CC0 1.0): [Wooden Military Crate](https://polyhaven.com/a/wooden_military_crate) (Prabhjinder Singh), [Plastic Crate 02](https://polyhaven.com/a/plastic_crate_02) (Fabi_G), [Vintage Suitcase](https://polyhaven.com/a/vintage_suitcase) (Maximilian Schuster). Floor props under `playable/public/assets/chests/`; press **E** to open, then **E** again to take the chart scrap.
-- **Map scrap scroll** (CC BY 4.0): [Scroll (game ready asset)](https://sketchfab.com/3d-models/scroll-game-ready-asset-c1503d2292c74faebf83a5937646c1c7) (Aparicio Silva 3D). PBR maps under `playable/public/assets/scroll/`; physical scrap visible inside open crates.
+- **Map scrap scroll** (CC BY 4.0): [Scroll (game ready asset)](https://sketchfab.com/3d-models/scroll-game-ready-asset-c1503d2292c74faebf83a5937646c1c7) (Aparicio Silva 3D). Authored mesh and PBR maps under `playable/public/assets/scroll/`; the scrap sits inside an open crate.
 
 ## Validation and limits
 
