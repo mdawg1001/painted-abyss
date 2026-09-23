@@ -5,7 +5,8 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
-import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath } from './diveAudio';
+import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep } from './diveAudio';
+import { Gait, wadingDrag, runWeight, type GaitEvent } from './gait';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
 import { createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, knifeMeshReady, HELD_VIEW_POS, HELD_VIEW_ROT, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_Z } from './knifeAsset';
@@ -25,7 +26,7 @@ import {
  type SovietGuardVisual,
 } from './sovietGuardAsset';
 import { mountTt33 } from './gunAsset';
-import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, type BreathFootprint, type BreathTankMount } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
  airborne:boolean};
@@ -208,6 +209,8 @@ export class CaveWorld extends OceanWorld {
  breathTank!:THREE.Group;
  /** True while the corridor is still dry enough to walk. */
  onFoot=false;
+ /** Human gait: stride phase, speed controller, and the head pose the camera rides on. */
+ gait=new Gait();
  /** Head above the bunker waterline last frame (drives fog, music filter, HUD). */
  airborne=true;
  /** Lights near the camera that may shade the bunker-wide water surface. Moves with the player. */
@@ -867,6 +870,7 @@ export class CaveWorld extends OceanWorld {
   this.pitch=this.targetPitch=0;
   this.camera.rotation.set(0,0,0);
   this.camera.position.copy(this.position);
+  this.gait.reset();
   this.onFoot=true;
   this.wasOnFoot=true;
   this.syncBreathProps();
@@ -1110,17 +1114,38 @@ export class CaveWorld extends OceanWorld {
  }
  /** Presentation-only hand/lantern drift in camera space (torch is a camera child — camera bob alone leaves it screen-locked). */
  applyTorchHover(bobBlend:number){
-  const s=bobBlend;
+  const s=bobBlend,a=this.heldArmOffset();
   this.torchBody.position.set(
-   this.torchRestPos.x+Math.sin(this.time*.7)*.028*s,
-   this.torchRestPos.y+Math.sin(this.time*1.05)*.036*s,
-   this.torchRestPos.z+Math.cos(this.time*.55)*.02*s,
+   this.torchRestPos.x+Math.sin(this.time*.7)*.028*s+a.x,
+   this.torchRestPos.y+Math.sin(this.time*1.05)*.036*s+a.y,
+   this.torchRestPos.z+Math.cos(this.time*.55)*.02*s+a.z,
   );
   this.torchBody.rotation.set(
-   this.torchRestRot.x+Math.sin(this.time*.9)*.055*s,
-   this.torchRestRot.y+Math.sin(this.time*.45)*.03*s,
-   this.torchRestRot.z+Math.cos(this.time*.75)*.065*s,
+   this.torchRestRot.x+Math.sin(this.time*.9)*.055*s+a.pitch,
+   this.torchRestRot.y+Math.sin(this.time*.45)*.03*s+a.yaw,
+   this.torchRestRot.z+Math.cos(this.time*.75)*.065*s+a.roll,
   );
+ }
+ /** Latest gait pose while on foot (null when swimming). Drives the held item's arm motion. */
+ handSwing:ReturnType<Gait['pose']>|null=null;
+ /**
+  * Camera-space offset for the object in the right hand while walking.
+  * A held object damps the natural arm swing, but the hand still carries the
+  * shoulder's fore-aft swing, the trunk's counter-rotation and the step impact.
+  */
+ heldArmOffset(){
+  const p=this.handSwing;
+  if(!p)return{x:0,y:0,z:0,pitch:0,yaw:0,roll:0};
+  const sh=p.shoulderRight*.35;           // carried object: about a third of free arm swing
+  const impact=Math.min(0,p.pelvis.y)*.5; // hand dips a little with each loading response
+  return{
+   x:-p.thoraxYaw*.12,
+   y:impact+Math.abs(sh)*.02,
+   z:-sh*.12,
+   pitch:sh*.35,
+   yaw:p.thoraxYaw*.35,
+   roll:p.pelvis.obliquity*.25,
+  };
  }
  holdingKnife(){return this.mission.inventory[this.mission.selected]==='knife';}
  holdingGun(){return this.mission.inventory[this.mission.selected]==='gun';}
@@ -1194,16 +1219,16 @@ export class CaveWorld extends OceanWorld {
  /** Knife sway — same spirit as torch hover, only while the knife is the held prop. */
  applyKnifeHover(bobBlend:number){
   if(!this.knifeVisual)return;
-  const s=bobBlend;
+  const s=bobBlend,a=this.heldArmOffset();
   this.knifeVisual.position.set(
-   KNIFE_HOLD_POS.x+Math.sin(this.time*.7)*.028*s,
-   KNIFE_HOLD_POS.y+Math.sin(this.time*1.05)*.036*s,
-   KNIFE_HOLD_POS.z+Math.cos(this.time*.55)*.02*s,
+   KNIFE_HOLD_POS.x+Math.sin(this.time*.7)*.028*s+a.x,
+   KNIFE_HOLD_POS.y+Math.sin(this.time*1.05)*.036*s+a.y,
+   KNIFE_HOLD_POS.z+Math.cos(this.time*.55)*.02*s+a.z,
   );
   this.knifeVisual.rotation.set(
-   KNIFE_HOLD_ROT.x+Math.sin(this.time*.9)*.055*s,
-   KNIFE_HOLD_ROT.y+Math.sin(this.time*.45)*.03*s,
-   KNIFE_HOLD_ROT.z+Math.cos(this.time*.75)*.065*s,
+   KNIFE_HOLD_ROT.x+Math.sin(this.time*.9)*.055*s+a.pitch,
+   KNIFE_HOLD_ROT.y+Math.sin(this.time*.45)*.03*s+a.yaw,
+   KNIFE_HOLD_ROT.z+Math.cos(this.time*.75)*.065*s+a.roll,
   );
  }
  buildLights(){
@@ -1391,6 +1416,13 @@ export class CaveWorld extends OceanWorld {
    this.publish();
   }).catch(()=>{if(this.alive){this.audioNotice='Sound is blocked. Pause and choose Test sound.';this.publish();}});
  }
+ /** Footfalls: heel strikes play a step matched to speed, gait and water depth. */
+ onGaitEvent(e:GaitEvent,waterDepth:number){
+  if(e.kind!=='heel-strike'||!this.playing||!this.sound)return;
+  const ctx=this.audioContext,master=this.master;
+  if(!ctx||!master||ctx.state!=='running')return;
+  playFootstep(ctx,master,{speed:e.speed,run:e.run,waterDepth,foot:e.foot});
+ }
  playSelectClick(){
   if(!this.playing||!this.sound)return;
   const ctx=this.audioContext,master=this.master;
@@ -1450,7 +1482,7 @@ export class CaveWorld extends OceanWorld {
   // One-time tip is already on this mission when tipsSeen is false; persist so the next launch stays quiet.
   if(!this.mission.tipsSeen)writeInventoryTipsSeen();
   this.playing=true;this.started=true;this.keys.clear();this.clock.getDelta();this.testingAudio=false;
-  this.onFoot=canWalkBreath(this.mission.position,this.mission.breathWaterY);
+  this.onFoot=canWalk(this.mission.position,this.mission.breathWaterY);
   this.wasOnFoot=this.onFoot;
   this.airborne=breathingFreeAir(this.mission.position,this.mission.breathWaterY);
   this.backgroundMusic?.setDry(this.airborne);
@@ -1473,7 +1505,7 @@ export class CaveWorld extends OceanWorld {
  reset(){
   this.backgroundMusic?.reset();this.mission=new Mission(readInventoryTipsSeen());
   this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();
-  this.onFoot=true;this.wasOnFoot=true;
+  this.onFoot=true;this.wasOnFoot=true;this.gait.reset();
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
   this.shakeAmp=0;this.knifeFlashUntil=0;
   if(this.knifeVisual){poseKnife(this.knifeVisual);this.knifeVisual.visible=this.holdingKnife()&&knifeMeshReady(this.knifeVisual);}
@@ -1491,8 +1523,9 @@ export class CaveWorld extends OceanWorld {
    const pressed=(...keys:string[])=>keys.some(k=>this.keys.has(k))?1:0;
    if(m.mapOpen){
     // Chart reading: hold still, but the dive clock / gas / predator keep running.
-    this.onFoot=canWalkBreath(m.position,m.breathWaterY);
+    this.onFoot=canWalk(m.position,m.breathWaterY);
     this.velocity.set(0,0,0);this.keys.clear();
+    this.gait.step(0,0,false,dt);
     m.update(dt,false);this.position.copy(m.position);
     this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
    }else if(!this.holdCamera){
@@ -1502,7 +1535,7 @@ export class CaveWorld extends OceanWorld {
    const delta=lookDelta(this.targetYaw,this.targetPitch,horizontalLook*dt*650,(pressed('ArrowDown')-pressed('ArrowUp'))*dt*650);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;
    this.yaw=THREE.MathUtils.lerp(this.yaw,this.targetYaw,1-Math.exp(-16*dt));this.pitch=THREE.MathUtils.lerp(this.pitch,this.targetPitch,1-Math.exp(-16*dt));this.camera.rotation.set(this.pitch,this.yaw,0);
    this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
-   const walking=canWalkBreath(m.position,m.breathWaterY);
+   const walking=canWalk(m.position,m.breathWaterY);
    this.onFoot=walking;
    // Flood forces swim: sink the eye under the waterline and clear walk velocity.
    if(this.wasOnFoot&&!walking){
@@ -1515,27 +1548,32 @@ export class CaveWorld extends OceanWorld {
     }
    }else if(!this.wasOnFoot&&walking){
     this.velocity.set(0,0,0);
+    this.gait.reset();
     m.buoyancy=0;m.buoyancyTrim=0;
     m.position.y=WALK_EYE_Y;
    }
    this.wasOnFoot=walking;
    if(walking){
-    // Dry corridor: walk / run on the floor. Look pitch does not lift you off it.
+    // On foot (corridor or cave): a human gait drives speed, stride and the head.
+    // Look pitch never lifts you off the floor; W/S/A/D are intent, not velocity.
     const flat=Math.hypot(this.forward.x,this.forward.z)||1;
     const fx=this.forward.x/flat,fz=this.forward.z/flat;
     this.right.set(-fz,0,fx);
-    this.move.set(fx,0,fz).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));
-    if(this.move.lengthSq()>1)this.move.normalize();
-    const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.01;
-    const speed=sprint?WALK_SPRINT:WALK_SPEED;
-    const wishX=this.move.x*speed,wishZ=this.move.z*speed;
-    const blend=1-Math.exp(-10*dt);
-    this.velocity.x+=(wishX-this.velocity.x)*blend;
-    this.velocity.z+=(wishZ-this.velocity.z)*blend;
-    this.velocity.y=0;
+    const localZ=pressed('KeyW')-pressed('KeyS'),localX=pressed('KeyD')-pressed('KeyA');
+    const wantRun=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&localZ>0;
+    const wadeDepth=Math.max(0,m.breathWaterY-FLOOR_Y);
+    const events=this.gait.step(localX,localZ,wantRun,dt,wadingDrag(wadeDepth));
+    const v=this.gait.instantaneousSpeed(),d=this.gait.dir;
+    // Body frame → world: x = right, z = forward.
+    this.velocity.set((this.right.x*d.x+fx*d.z)*v,0,(this.right.z*d.x+fz*d.z)*v);
+    const before=m.position.x,beforeZ=m.position.z;
     moveBody(m.position,this.velocity.x*dt,0,this.velocity.z*dt);
+    // Pushing into a wall: feet stop stepping instead of treading in place at full cadence.
+    const moved=Math.hypot(m.position.x-before,m.position.z-beforeZ),meant=v*dt;
+    if(meant>1e-4&&moved<meant*.35)this.gait.speed=Math.max(0,this.gait.speed-6*dt);
     m.position.y=WALK_EYE_Y;
-    m.update(dt,sprint);this.position.copy(m.position);
+    for(const e of events)this.onGaitEvent(e,wadeDepth);
+    m.update(dt,runWeight(this.gait.speed)>.5);this.position.copy(m.position);
    }else{
    // Kick = look / strafe only. Space/Q drive BCD buoyancy, not equal XYZ thrust.
    this.move.copy(this.forward).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));
@@ -1559,8 +1597,9 @@ export class CaveWorld extends OceanWorld {
    }
    }else{
     // holdCamera: keep mission clock + chests syncing, but leave look/swim alone.
-    this.onFoot=canWalkBreath(m.position,m.breathWaterY);
+    this.onFoot=canWalk(m.position,m.breathWaterY);
     this.velocity.set(0,0,0);
+    this.gait.step(0,0,false,dt);
     m.update(dt,false);this.position.copy(m.position);
     this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
    }
@@ -1568,17 +1607,36 @@ export class CaveWorld extends OceanWorld {
    // Walk bob is a light stride; swim keeps the stronger murk drift.
    if(!this.holdCamera){
    const speed=this.velocity.length();
-   const bobBlend=1-THREE.MathUtils.smoothstep(speed,.06,.5);
-   const walkStride=this.onFoot&&speed>.15?1:0;
-   const bobScale=this.onFoot?(.18+.55*walkStride):1;
-   const bobY=Math.sin(this.time*(this.onFoot?7.2:1.1))*(this.onFoot?.045:.13)*bobBlend*bobScale;
-   const bobSide=Math.sin(this.time*(this.onFoot?3.6:.65))*(this.onFoot?.02:.065)*bobBlend*bobScale;
-   const bobFwd=Math.cos(this.time*(this.onFoot?3.6:.5))*(this.onFoot?.015:.065)*bobBlend*bobScale;
-   const eyeX=this.position.x+this.upAxis.x*bobY+this.right.x*bobSide+this.forward.x*bobFwd;
-   const eyeY=this.position.y+this.upAxis.y*bobY+this.right.y*bobSide+this.forward.y*bobFwd;
-   const eyeZ=this.position.z+this.upAxis.z*bobY+this.right.z*bobSide+this.forward.z*bobFwd;
+   let bobBlend=1-THREE.MathUtils.smoothstep(speed,.06,.5);
+   let eyeX:number,eyeY:number,eyeZ:number;
+   if(this.onFoot){
+    // The eye rides the gait: pelvis rise/fall and sway through the trunk and neck,
+    // with gaze stabilisation leaving only a small residual nod, roll and yaw.
+    const pose=this.gait.pose();
+    const h=pose.head;
+    // Quiet standing: slow breathing (~0.25 Hz) and a few millimetres of postural sway.
+    const still=1-this.gait.moving;
+    const breathe=Math.sin(this.time*1.6)*.004*still;
+    const sway=Math.sin(this.time*.45)*.003*still;
+    const flat=Math.hypot(this.forward.x,this.forward.z)||1;
+    const fx=this.forward.x/flat,fz=this.forward.z/flat;
+    eyeX=this.position.x+(-fz)*(h.x+sway)+fx*h.z;
+    eyeY=this.position.y+h.y+breathe;
+    eyeZ=this.position.z+fx*(h.x+sway)+fz*h.z;
+    this.camera.rotation.set(this.pitch+h.pitch,this.yaw+h.yaw,h.roll);
+    this.handSwing=pose;
+    bobBlend=still;
+   }else{
+    this.handSwing=null;
+    const bobY=Math.sin(this.time*1.1)*.13*bobBlend;
+    const bobSide=Math.sin(this.time*.65)*.065*bobBlend;
+    const bobFwd=Math.cos(this.time*.5)*.065*bobBlend;
+    eyeX=this.position.x+this.upAxis.x*bobY+this.right.x*bobSide+this.forward.x*bobFwd;
+    eyeY=this.position.y+this.upAxis.y*bobY+this.right.y*bobSide+this.forward.y*bobFwd;
+    eyeZ=this.position.z+this.upAxis.z*bobY+this.right.z*bobSide+this.forward.z*bobFwd;
+   }
    // Translation only — look-stick (yaw/pitch) stays as-is. Cap follow-dt so a hitch frame cannot teleport the eye.
-   const follow=1-Math.exp(-80*Math.min(dt,.018));
+   const follow=this.onFoot?1:1-Math.exp(-80*Math.min(dt,.018));
    this.camera.position.x=THREE.MathUtils.lerp(this.camera.position.x,eyeX,follow);
    this.camera.position.y=THREE.MathUtils.lerp(this.camera.position.y,eyeY,follow);
    this.camera.position.z=THREE.MathUtils.lerp(this.camera.position.z,eyeZ,follow);

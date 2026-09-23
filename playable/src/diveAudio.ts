@@ -129,3 +129,71 @@ export function playInventoryClick(ctx: AudioContext, master: GainNode) {
   snap.stop(start + .022);
   snap.onended = () => { snap.disconnect(); snapEnv.disconnect(); };
 }
+
+/**
+ * One footfall: booted heel strike, then the forefoot rolling down (walking),
+ * or a single forefoot strike (running). Wading swaps grit for a splash.
+ * Every step is slightly different so the cadence never sounds machine-made.
+ */
+export function playFootstep(
+  ctx: AudioContext,
+  master: GainNode,
+  opts: { speed: number; run: number; waterDepth: number; foot: 'left' | 'right' },
+) {
+  const start = ctx.currentTime + .005;
+  const jitter = (k: number) => 1 + (Math.random() * 2 - 1) * k;
+  const intensity = Math.min(1.25, .45 + .22 * opts.speed) * jitter(.14) * (opts.foot === 'left' ? 1 : .94);
+  const wet = Math.min(1, Math.max(0, opts.waterDepth / .45));
+  const dry = 1 - Math.min(1, opts.waterDepth / .12);
+  const nodes: AudioNode[] = [];
+  const done = () => nodes.forEach(n => n.disconnect());
+
+  const noiseBurst = (at: number, dur: number, freq: number, q: number, gain: number) => {
+    const buf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * dur)), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq * jitter(.1); bp.Q.value = q;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, at);
+    env.gain.linearRampToValueAtTime(gain, at + .003);
+    env.gain.exponentialRampToValueAtTime(.0008, at + dur);
+    src.connect(bp).connect(env).connect(master);
+    nodes.push(src, bp, env);
+    src.start(at); src.stop(at + dur + .01);
+    return src;
+  };
+  const thump = (at: number, freq: number, dur: number, gain: number) => {
+    const osc = ctx.createOscillator(); osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq * jitter(.08), at);
+    osc.frequency.exponentialRampToValueAtTime(freq * .55, at + dur);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, at);
+    env.gain.linearRampToValueAtTime(gain, at + .004);
+    env.gain.exponentialRampToValueAtTime(.0008, at + dur);
+    osc.connect(env).connect(master);
+    nodes.push(osc, env);
+    osc.start(at); osc.stop(at + dur + .01);
+    return osc;
+  };
+
+  let last: AudioScheduledSourceNode;
+  if (opts.run < .5) {
+    // Walking: heel contact, then the forefoot slaps down ~10 % of the cycle later.
+    const flat = .06 / Math.max(.6, opts.speed / 1.4);
+    thump(start, 120, .07, .22 * intensity * (dry * .9 + .1));
+    noiseBurst(start, .045, 2600, 1.4, .12 * intensity * dry);
+    last = noiseBurst(start + flat, .05, 1500, 1.1, .08 * intensity * dry);
+  } else {
+    // Running: single, heavier forefoot/midfoot strike plus a scuff at push-off.
+    thump(start, 105, .09, .32 * intensity * (dry * .9 + .1));
+    noiseBurst(start, .06, 2200, 1.2, .16 * intensity * dry);
+    last = noiseBurst(start + .09, .04, 3400, 1.6, .05 * intensity * dry);
+  }
+  if (wet > 0.01) {
+    // Water: broad splash that gets bigger and longer as the water deepens.
+    last = noiseBurst(start + .01, .16 + .22 * wet, 1100, .7, (.1 + .22 * wet) * intensity);
+    noiseBurst(start + .05, .12 + .1 * wet, 3200, .9, .06 * wet * intensity);
+  }
+  last.onended = done;
+}
