@@ -8,4 +8,4 @@ Runtime files live in `playable/public/assets/chests/` (copied into `dist/assets
 | plastic | [Plastic Crate 02](https://polyhaven.com/a/plastic_crate_02) | Fabi_G | CC0 1.0 |
 | suitcase | [Vintage Suitcase](https://polyhaven.com/a/vintage_suitcase) | Maximilian Schuster | CC0 1.0 |
 
-Loaded via `src/chestAsset.ts` as floor props. Press E to open — each yields one map fragment; Tab reviews the field chart.
+Loaded via `src/chestAsset.ts` as floor props. The military crate and suitcase open with E, then E takes the map fragment. The plastic crate has no lid — the scrap is already visible and E grabs it. Tab reviews the field chart.

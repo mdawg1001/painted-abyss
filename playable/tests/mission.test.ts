@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,PREDATOR_HP_MAX,PREDATOR_BREAK_HP,createDiveChests,CHEST_LABEL,MAP_FRAGMENT_ORDER,MAP_FRAGMENT_LABEL,torchShouldShine,holdingTorchItem,occupiesFpsHand,predatorSpawnCandidates,randomPredatorSpawn,PREDATOR_SPAWN_CELLS,playerSpawnCandidates,randomPlayerSpawn,PLAYER_SPAWN_CELLS,SPAWN_SEPARATION,breathHatchSpawn} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,PREDATOR_HP_MAX,PREDATOR_BREAK_HP,createDiveChests,CHEST_LABEL,chestHasLid,chestInteractPrompt,MAP_FRAGMENT_ORDER,MAP_FRAGMENT_LABEL,torchShouldShine,holdingTorchItem,occupiesFpsHand,predatorSpawnCandidates,randomPredatorSpawn,PREDATOR_SPAWN_CELLS,playerSpawnCandidates,randomPlayerSpawn,PLAYER_SPAWN_CELLS,SPAWN_SEPARATION,breathHatchSpawn} from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{for(let i=0;i<seconds*60;i++)m.update(1/60);};
 test('hydrostatic depth and ata share one surface plane',()=>{
  assert.equal(hydrostaticDepth(SURFACE_Y),0);
@@ -375,6 +375,30 @@ test('three distinct Poly Haven chests sit in the cavern and open with E',()=>{
  assert.equal(fresh.mapFragmentCount,0);
  assert.equal(CHEST_LABEL.suitcase,'vintage suitcase');
 });
+test('plastic crate is grab-only: one E takes the scrap and the crate stays shut',()=>{
+ const m=new Mission(true);
+ const chest=m.chests.find(c=>c.kind==='plastic')!;
+ assert.equal(chestHasLid('plastic'),false);
+ assert.equal(chestHasLid('military'),true);
+ assert.equal(chestHasLid('suitcase'),true);
+ assert.equal(chest.open,false);
+ m.position={x:chest.position.x,y:3,z:chest.position.z};
+ assert.equal(chestInteractPrompt(chest,false),'E · Grab chart scrap');
+ m.interact();
+ assert.equal(chest.open,false);
+ assert.ok(m.hasMapFragment('east'));
+ assert.equal(m.mapFragmentCount,1);
+ assert.doesNotMatch(m.notice,/Opened/i);
+ assert.match(m.notice,/east shelf/i);
+ assert.equal(chestInteractPrompt(chest,m.hasMapFragment(chest.fragment)),'The plastic crate is empty');
+ m.interact();
+ assert.match(m.notice,/empty/i);
+ assert.equal(chest.open,false);
+ const military=m.chests.find(c=>c.kind==='military')!;
+ assert.equal(chestInteractPrompt(military,false),'E · Open military crate');
+ military.open=true;
+ assert.equal(chestInteractPrompt(military,false),'E · Take chart scrap');
+});
 test('opening all three crates fits the cave chart and Tab toggles the overlay',()=>{
  const m=new Mission(true);
  assert.equal(m.mapOpen,false);
@@ -385,11 +409,17 @@ test('opening all three crates fits the cave chart and Tab toggles the overlay',
  for(const id of MAP_FRAGMENT_ORDER){
   const chest=m.chests.find(c=>c.fragment===id)!;
   m.position={x:chest.position.x,y:3,z:chest.position.z};
-  m.interact(); // open
-  assert.equal(chest.open,true);
-  assert.equal(m.hasMapFragment(id),false);
-  m.interact(); // take scrap
-  assert.ok(m.hasMapFragment(id));
+  if(!chestHasLid(chest.kind)){
+   m.interact();
+   assert.equal(chest.open,false);
+   assert.ok(m.hasMapFragment(id));
+  }else{
+   m.interact();
+   assert.equal(chest.open,true);
+   assert.equal(m.hasMapFragment(id),false);
+   m.interact();
+   assert.ok(m.hasMapFragment(id));
+  }
  }
  assert.equal(m.mapFragmentCount,3);
  assert.equal(m.mapComplete,true);

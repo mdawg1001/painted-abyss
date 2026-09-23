@@ -67,6 +67,17 @@ export const MAP_FRAGMENT_LABEL:Record<MapFragmentId,string>={
  deep:'bone alcove',
 };
 export const MAP_FRAGMENT_ORDER:MapFragmentId[]=['west','east','deep'];
+/** Lidless crates show the scrap immediately; E grabs it instead of opening a lid. */
+export function chestHasLid(kind:ChestKind){return kind!=='plastic';}
+
+/** HUD line for the chest currently in reach. */
+export function chestInteractPrompt(chest:Chest,taken:boolean){
+ const label=CHEST_LABEL[chest.kind];
+ if(!chestHasLid(chest.kind))return taken?`The ${label} is empty`:'E · Grab chart scrap';
+ if(!chest.open)return `E · Open ${label}`;
+ return taken?`The ${label} is empty`:'E · Take chart scrap';
+}
+
 export function createDiveChests():Chest[]{
  return [
   // West shelf — west cavern fragment.
@@ -514,7 +525,7 @@ export function writeInventoryTipsSeen(){
  inventory:(Item|null)[]=['knife','wood','flare','air','bandage'];selected=0;
  pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},{id:2,item:'flare',position:{x:-20,y:2,z:-56}},...corridorGearPickups()];nextId=6;
  chests:Chest[]=createDiveChests();
- /** Collected cave-chart scraps (from opened chests). */
+ /** Collected cave-chart scraps (taken from the crates). */
  mapFragments:MapFragmentId[]=[];
  /** Dive HUD chart overlay (Tab). */
  mapOpen=false;
@@ -626,6 +637,14 @@ export function writeInventoryTipsSeen(){
   this.pending=null;
   this.say('You wake at the hatch with empty hands. What you carried is on the corpse. The water stayed. The air tank has moved.','blocked');
  }
+ private takeChestScrap(chest:Chest){
+  const got=this.collectMapFragment(chest.fragment);
+  if(!got)return;
+  const n=this.mapFragmentCount;
+  const label=MAP_FRAGMENT_LABEL[chest.fragment];
+  if(this.mapComplete)this.say(`Map complete — ${label} fitted. Tab opens the chart; exits are marked.`,'ok');
+  else this.say(`Map fragment (${n}/3): ${label}. Tab reviews the chart.`,'ok');
+ }
  interact(){
   if(this.outcome!=='playing')return;
   if(this.nearBreathTank()){
@@ -637,22 +656,22 @@ export function writeInventoryTipsSeen(){
   if(distance(this.position,EXIT)<4){if(this.hasRelic){this.outcome='won';this.reason='Relic secured. You made it back to the light.';}else this.say('Extraction needs the ammonite relic. Follow the turquoise markers.','blocked');return;}
   const chest=this.pending===null?this.nearestChest():undefined;
   const pickup=this.pending===null?this.nearest():this.pickups.find(p=>p.id===this.pending);
+  const chestCloser=!!chest&&(!pickup||distance(chest.position,this.position)<=distance(pickup.position,this.position)+.15);
+  // Open-top plastic crate: one E grabs the scrap that is already visible.
+  if(chestCloser&&chest&&!chestHasLid(chest.kind)){
+   if(!this.hasMapFragment(chest.fragment)){this.takeChestScrap(chest);return;}
+   if(!pickup){this.say(`The ${CHEST_LABEL[chest.kind]} is empty.`,'blocked');return;}
+  }
   // Prefer a closed chest when it is at least as close as the nearest pickup.
-  if(chest&&!chest.open&&(!pickup||distance(chest.position,this.position)<=distance(pickup.position,this.position)+.15)){
+  if(chestCloser&&chest&&!chest.open){
    // First E only opens — the chart scrap stays visible inside until taken.
    chest.open=true;
    this.say(`Opened the ${CHEST_LABEL[chest.kind]}. A chart scrap rests inside.`,'ok');
    return;
   }
   // Second E: take the physical scroll from an open crate.
-  if(chest?.open&&!this.hasMapFragment(chest.fragment)&&(!pickup||distance(chest.position,this.position)<=distance(pickup.position,this.position)+.15)){
-   const got=this.collectMapFragment(chest.fragment);
-   if(got){
-    const n=this.mapFragmentCount;
-    const label=MAP_FRAGMENT_LABEL[chest.fragment];
-    if(this.mapComplete)this.say(`Map complete — ${label} fitted. Tab opens the chart; exits are marked.`,'ok');
-    else this.say(`Map fragment (${n}/3): ${label}. Tab reviews the chart.`,'ok');
-   }
+  if(chestCloser&&chest?.open&&!this.hasMapFragment(chest.fragment)){
+   this.takeChestScrap(chest);
    return;
   }
   if(chest?.open&&!pickup){this.say(`The ${CHEST_LABEL[chest.kind]} is empty.`,'blocked');return;}
