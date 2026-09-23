@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {
- KNIFE_HOLD_SCALE,KNIFE_HOLD_POS,KNIFE_HOLD_ROT,KNIFE_STAB_Z,KNIFE_THUMB_URL,KNIFE_ASSET_URL,
+ KNIFE_HOLD_SCALE,KNIFE_HOLD_POS,KNIFE_HOLD_ROT,HELD_VIEW_POS,HELD_VIEW_ROT,KNIFE_STAB_Z,KNIFE_THUMB_URL,KNIFE_ASSET_URL,
  createKnifeStub,poseKnife,alignKnifeBladeForward,prepareKnifeMaterials,knifeMeshReady,
 } from '../src/knifeAsset.ts';
 import {readFileSync,statSync} from 'node:fs';
@@ -13,7 +13,9 @@ const knifeDir=path.join(path.dirname(fileURLToPath(import.meta.url)),'../public
 
 test('knife hold pose thrusts farther than rest along −Z',()=>{
  assert.ok(KNIFE_STAB_Z<KNIFE_HOLD_POS.z);
- assert.ok(KNIFE_HOLD_SCALE>=1.4);
+ assert.ok(KNIFE_HOLD_SCALE.z>=4,'blade stays long enough to read upright');
+ assert.ok(KNIFE_HOLD_SCALE.x>=KNIFE_HOLD_SCALE.z,'blade must be widened so it is not a sliver');
+ assert.ok(KNIFE_HOLD_ROT.x>1,'pitch stands the blade up');
 });
 
 test('knife public assets exist (glTF + square HUD thumb)',()=>{
@@ -38,27 +40,48 @@ test('stub knife is the blade only, parked in the lower-right',()=>{
  assert.ok(g.getObjectByName('knifeGrip'));
  assert.ok(g.getObjectByName('knifeMesh'));
  poseKnife(g);
- assert.equal(g.scale.x,KNIFE_HOLD_SCALE);
+ assert.equal(g.scale.x,KNIFE_HOLD_SCALE.x);
+ assert.equal(g.scale.y,KNIFE_HOLD_SCALE.y);
+ assert.equal(g.scale.z,KNIFE_HOLD_SCALE.z);
  assert.equal(g.position.x,KNIFE_HOLD_POS.x);
- assert.ok(KNIFE_HOLD_POS.x>0.35,'knife sits in the right corner');
- assert.ok(KNIFE_HOLD_POS.y<-0.2,'knife sits low in the frame');
+ assert.deepEqual(KNIFE_HOLD_POS,HELD_VIEW_POS);
+ assert.notDeepEqual(KNIFE_HOLD_ROT,HELD_VIEW_ROT);
+ assert.equal(KNIFE_HOLD_POS.x,.44);
+ assert.equal(KNIFE_HOLD_POS.y,-.4);
+ assert.equal(KNIFE_HOLD_POS.z,-.62);
 });
 
-test('hold pose puts tip up-left of the butt (CS corner diagonal)',()=>{
- // Tip is local −Z after alignKnifeBladeForward; project the rest pose.
- const tipL=new THREE.Vector3(0,0,-.156);
- const buttL=new THREE.Vector3(0,0,.06);
+test('knife stands upright in the torch corner',()=>{
  const cam=new THREE.PerspectiveCamera(64,16/9,.12,130);
- const g=createKnifeStub();
- poseKnife(g);
- g.updateMatrixWorld(true);
- const tip=tipL.applyMatrix4(g.matrixWorld).project(cam);
- const butt=buttL.applyMatrix4(g.matrixWorld).project(cam);
- assert.ok(tip.x<butt.x-0.08,'tip left of grip');
- assert.ok(tip.y>butt.y+0.2,'tip above grip');
- assert.ok(butt.x>0.55&&butt.y<-0.55,'grip in the lower-right');
- assert.ok(tip.y<0.05,'tip stays below the crosshair');
- assert.ok(KNIFE_HOLD_ROT.x>0.5,'pitch tips the blade up for a steep diagonal');
+ const project=(rot:{x:number;y:number;z:number},scale:{x:number;y:number;z:number},local:THREE.Vector3)=>{
+  const g=new THREE.Group();
+  g.position.set(HELD_VIEW_POS.x,HELD_VIEW_POS.y,HELD_VIEW_POS.z);
+  g.rotation.set(rot.x,rot.y,rot.z);
+  g.scale.set(scale.x,scale.y,scale.z);
+  g.updateMatrixWorld(true);
+  return local.clone().applyMatrix4(g.matrixWorld).project(cam);
+ };
+ const span=(a:THREE.Vector3,b:THREE.Vector3)=>Math.hypot(a.x-b.x,a.y-b.y);
+ const torchScale={x:1.15,y:1.15,z:1.15};
+ const torchWide=span(
+  project(HELD_VIEW_ROT,torchScale,new THREE.Vector3(-.122,0,-.38)),
+  project(HELD_VIEW_ROT,torchScale,new THREE.Vector3(.122,0,-.38)),
+ );
+ const tip=project(KNIFE_HOLD_ROT,KNIFE_HOLD_SCALE,new THREE.Vector3(0,0,-.1556));
+ const butt=project(KNIFE_HOLD_ROT,KNIFE_HOLD_SCALE,new THREE.Vector3(0,0,.0604));
+ const knifeWide=span(
+  project(KNIFE_HOLD_ROT,KNIFE_HOLD_SCALE,new THREE.Vector3(-.0157,0,-.05)),
+  project(KNIFE_HOLD_ROT,KNIFE_HOLD_SCALE,new THREE.Vector3(.0157,0,-.05)),
+ );
+ const grip=project(KNIFE_HOLD_ROT,KNIFE_HOLD_SCALE,new THREE.Vector3(0,0,0));
+ const rise=tip.y-butt.y;
+ const lean=Math.abs(tip.x-butt.x);
+ assert.ok(rise>1.2,'tip rises well above the handle');
+ assert.ok(rise>lean*2,'blade is nearer vertical than diagonal');
+ assert.ok(tip.y>0.25,'tip reaches the upper half of the view');
+ assert.ok(tip.x<butt.x,'tip leans toward center from the handle');
+ assert.ok(knifeWide>=torchWide*.7,'flat of the blade stays readable');
+ assert.ok(grip.x>.45&&grip.y<-.6,'grip stays in the torch corner');
 });
 
 test('alignKnifeBladeForward puts tip on −Z and pivots on butt',()=>{
