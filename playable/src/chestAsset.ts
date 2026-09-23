@@ -176,9 +176,18 @@ export async function upgradeChestVisual(visual:ChestVisual):Promise<boolean>{
   const gltf=await loader.loadAsync(meta.gltf);
   const scene=gltf.scene;
   litChestMaterials(scene,visual.kind);
+  // The file ships a second suitcase. Drop it before fitting, or the visible
+  // case is left off-centre and the scroll sits on the rim.
+  if(visual.kind==='suitcase'){
+   for(const name of ['vintage_suitcase_02_bottom','vintage_suitcase_02_clasp','vintage_suitcase_02_handle','vintage_suitcase_02_top']){
+    scene.getObjectByName(name)?.removeFromParent();
+   }
+  }
   normalizeToFloor(scene,meta.targetHeight);
+  const kept=visual.pivot.children.filter(c=>c.name==='scrollVisual');
   while(visual.pivot.children.length)visual.pivot.remove(visual.pivot.children[0]);
   visual.pivot.add(scene);
+  for(const child of kept)visual.pivot.add(child);
   const lid=pickLid(visual.kind,scene);
   const pose=openPose(visual.kind,lid);
   visual.lid=visual.kind==='plastic'?visual.pivot:lid;
