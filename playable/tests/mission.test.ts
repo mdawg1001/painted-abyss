@@ -122,7 +122,7 @@ test('unlocked free look supports continuous 360-degree rotation without pressin
  let yaw=0;for(let i=0;i<360;i++)yaw=lookDelta(yaw,0,edgeTurn(900,0,1000)*FREE_LOOK_RATE/60*650,0).yaw;assert.ok(yaw<-Math.PI*2);
  for(let i=0;i<720;i++)yaw=lookDelta(yaw,0,edgeTurn(100,0,1000)*FREE_LOOK_RATE/60*650,0).yaw;assert.ok(yaw>Math.PI*2);
 });
-test('five slots: pickup asks before replacing, displaced item is recoverable',()=>{const m=new Mission();m.position={...RELIC};m.interact();assert.equal(m.pending,1);assert.equal(m.hasRelic,false);m.selected=1;m.interact();assert.equal(m.inventory.length,5);assert.equal(m.inventory[1],'relic');assert.equal(m.pickups.filter(x=>x.item==='wood').length,1);m.drop();assert.equal(m.hasRelic,false);m.position={...RELIC};m.interact();assert.equal(m.inventory.length,5);assert.equal(m.pickups.length,2);});
+test('five slots: pickup asks before replacing, displaced item is recoverable',()=>{const m=new Mission();m.position={...RELIC};m.interact();assert.equal(m.pending,1);assert.equal(m.hasRelic,false);m.selected=1;m.interact();assert.equal(m.inventory.length,5);assert.equal(m.inventory[1],'relic');assert.equal(m.pickups.filter(x=>x.item==='wood').length,1);m.drop();assert.equal(m.hasRelic,false);m.position={...RELIC};m.interact();assert.equal(m.inventory.length,5);assert.equal(m.pickups.length,5);assert.equal(m.pickups.filter(p=>p.item==='gun'||p.item==='bottle'||p.item==='coat').length,3);});
 test('extraction requires currently carried objective, dropping it revokes win',()=>{const m=new Mission();m.position={...EXIT};m.interact();assert.equal(m.outcome,'playing');m.position={...RELIC};m.interact();m.interact();assert.ok(m.hasRelic);m.position={...EXIT};m.interact();assert.equal(m.outcome,'won');const elapsed=m.elapsed;m.update(.05);assert.equal(m.elapsed,elapsed);});
 test('cancelled / out of range swap cannot remotely collect objective',()=>{const m=new Mission();m.position={...RELIC};m.interact();m.position={...START};m.interact();assert.equal(m.pending,null);assert.equal(m.hasRelic,false);});
 test('world collision stops walls, floor, roof, and large movement tunnelling',()=>{const p={...START};moveBody(p,400,0,0);assert.ok(p.x<14);assert.ok(fits(p));moveBody(p,0,100,0);assert.ok(p.y<=SURFACE_Y);moveBody(p,0,-200,0);assert.ok(p.y>=FLOOR_Y);const pillar=world(8,17);moveBody(pillar,20,0,0);assert.ok(pillar.x<-10);assert.ok(fits(pillar));});
@@ -271,6 +271,9 @@ test('inventory select/use stay quiet after the one-time first-play tip',()=>{
 });
 test('torch shine follows the held prop, not merely the F flag',()=>{
  assert.equal(occupiesFpsHand('knife'),true);
+ assert.equal(occupiesFpsHand('gun'),true);
+ assert.equal(occupiesFpsHand('bottle'),false);
+ assert.equal(occupiesFpsHand('coat'),false);
  assert.equal(occupiesFpsHand('wood'),false);
  assert.equal(occupiesFpsHand(null),false);
  assert.equal(holdingTorchItem('knife'),false);
@@ -285,6 +288,7 @@ test('torch shine follows the held prop, not merely the F flag',()=>{
  assert.equal(torchShouldShine(true,null),true);
  // Knife (or any hand-prop) out → no beam, no SpotLight, no lens glow.
  assert.equal(torchShouldShine(true,'knife'),false);
+ assert.equal(torchShouldShine(true,'gun'),false);
  // F off → dark even with torch in hand.
  assert.equal(torchShouldShine(false,'wood'),false);
  assert.equal(torchShouldShine(false,'knife'),false);
