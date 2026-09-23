@@ -48,7 +48,7 @@ const BASE='/assets/chests';
 export function litChestMaterials(root:THREE.Object3D,kind?:ChestKind){
  root.traverse(o=>{
   if(!(o instanceof THREE.Mesh))return;
-  o.castShadow=false;o.receiveShadow=false;o.frustumCulled=true;
+  o.castShadow=true;o.receiveShadow=true;o.frustumCulled=false;
   const mats=Array.isArray(o.material)?o.material:[o.material];
   for(const m of mats){
    if(!m||!('roughness' in m))continue;

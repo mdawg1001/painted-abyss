@@ -14,6 +14,12 @@ export const SCONCE_LICENSE='CC0 1.0 Universal (public domain dedication)';
 /** Height of the mounted fixture in metres/world-units, and where its centre sits on the wall. */
 export const SCONCE_TARGET_HEIGHT=1.3;
 export const SCONCE_MOUNT_Y=4.4;
+/** Warm incandescent glow for the caged bulb. */
+export const SCONCE_LIGHT_COLOR=0xffb066;
+const SCONCE_LIGHT_INTENSITY=11;
+const SCONCE_LIGHT_DISTANCE=12;
+const SCONCE_LIGHT_DECAY=1.6;
+
 const BASE='/assets/industrial_caged_sconce/';
 const GLB='industrial_caged_sconce.glb';
 
@@ -46,7 +52,7 @@ export function wallSconceMounts(minDistance=14,max=26):SconceMount[]{
 export function litSconceMaterials(root:THREE.Object3D){
  root.traverse(o=>{
   if(!(o instanceof THREE.Mesh))return;
-  o.castShadow=false;o.receiveShadow=false;o.frustumCulled=true;
+  o.castShadow=false;o.receiveShadow=false;o.frustumCulled=false;
   const mats=Array.isArray(o.material)?o.material:[o.material];
   for(const m of mats){
    if(!(m instanceof THREE.MeshStandardMaterial))continue;
@@ -60,22 +66,26 @@ export function litSconceMaterials(root:THREE.Object3D){
 const inwardVec=(yaw:number)=>new THREE.Vector3(Math.sin(yaw),0,Math.cos(yaw));
 
 /**
- * Emissive stub bulbs only. Real point lights are omitted: each one is evaluated
- * in every cave fragment, which dropped the dive to a few frames per second.
+ * Warm point light (+ a tiny emissive stub bulb) per mount, added immediately so the
+ * cave is lit even before the glTF finishes loading. Returns the group and the lights
+ * (for per-frame flicker).
  */
 export function createWallSconces(mounts:SconceMount[]):WallSconces{
  const group=new THREE.Group();
  group.name='wallSconces';
  const lights:SconceLight[]=[];
- const stubGeo=new THREE.SphereGeometry(.09,6,5);
+ const stubGeo=new THREE.SphereGeometry(.09,8,6);
  const stubMat=new THREE.MeshBasicMaterial({color:0xffca7a});
  for(const m of mounts){
   const inward=inwardVec(m.yaw);
   const stub=new THREE.Mesh(stubGeo,stubMat);
   stub.name='sconceStub';
-  stub.frustumCulled=true;
   stub.position.set(m.x,SCONCE_MOUNT_Y+.45,m.z).addScaledVector(inward,.28);
   group.add(stub);
+  const light=new THREE.PointLight(SCONCE_LIGHT_COLOR,SCONCE_LIGHT_INTENSITY,SCONCE_LIGHT_DISTANCE,SCONCE_LIGHT_DECAY);
+  light.position.set(m.x,SCONCE_MOUNT_Y+.55,m.z).addScaledVector(inward,.5);
+  group.add(light);
+  lights.push({light,base:light.intensity,phase:Math.random()*Math.PI*2});
  }
  return{group,lights};
 }
