@@ -5,7 +5,7 @@
  */
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {writeFileSync, mkdirSync} from 'node:fs';
+import {writeFileSync, mkdirSync, readFileSync} from 'node:fs';
 import {
  Mission,START,RELIC,EXIT,moveBody,distance,CELL,torchModulation,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,
  stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,updateBuoyancy,PREDATOR_SPEED,SWIM_THRUST_CRUISE,SWIM_THRUST_SPRINT,SWIM_DRAG_K,
@@ -199,7 +199,16 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
 
  mkdirSync('/opt/cursor/artifacts',{recursive:true});
  writeFileSync('/opt/cursor/artifacts/physics_reality_measurements.json',JSON.stringify(report,null,2));
- writeFileSync(new URL('../../docs/verification/physics-reality.json',import.meta.url),JSON.stringify(report,null,2));
+ const realityUrl=new URL('../../docs/verification/physics-reality.json',import.meta.url);
+ // Keep the previous stamp when the measurements did not change, so a test run
+ // does not fight another branch over generatedAt alone.
+ try{
+  const prev=JSON.parse(readFileSync(realityUrl,'utf8'));
+  const {generatedAt:prevAt,...prevRest}=prev;
+  const {generatedAt:_nextAt,...nextRest}=report;
+  if(JSON.stringify(prevRest)===JSON.stringify(nextRest))report.generatedAt=prevAt;
+ }catch{/* missing or conflicted — write a fresh stamp */}
+ writeFileSync(realityUrl,JSON.stringify(report,null,2)+'\n');
 
  assert.ok(CRUISE<REAL.hardKickMs[1]*3.2,'cruise raised for gameplay, still below old arcade 2.8');
  assert.ok(SPRINT<4.5,'sprint below old arcade 4.8');
