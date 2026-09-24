@@ -13,7 +13,7 @@ import {
 } from '../src/sovietGuardAsset';
 import {
  Mission,FLOOR_Y,WALK_EYE_Y,breathFootprint,
- GUARD_CHASE_STANDOFF,GUARD_SPEED,
+ GUARD_CHASE_STANDOFF,GUARD_SPEED,isolateGuards,
 } from '../src/simulation';
 import {GUARD_STEER_RUN,GUARD_STEER_WALK,forwardOf,wrapAngle} from '../src/guardSteering';
 
@@ -131,6 +131,7 @@ function assertTurnRate(s:Sample[],dt:number,max:number,label:string){
 }
 function dryMission(){
  const m=new Mission(true);
+ isolateGuards(m,0);
  m.breathWaterY=FLOOR_Y-.1;
  return m;
 }

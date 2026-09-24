@@ -10,7 +10,7 @@ import {
  Mission,START,RELIC,EXIT,moveBody,distance,CELL,torchModulation,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,
  stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,updateBuoyancy,PREDATOR_SPEED,SWIM_THRUST_CRUISE,SWIM_THRUST_SPRINT,SWIM_DRAG_K,
  SWIM_KICK_VERTICAL_SCALE,SWIM_BUOYANCY_ACCEL,
- AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,gasDrainRate,
+ AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,gasDrainRate,isolateGuards,
 } from '../src/simulation';
 
 const CRUISE=terminalSwimSpeed(false);
@@ -59,6 +59,7 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  const coast=coastFrom(CRUISE);
 
  const m=new Mission(true);
+ isolateGuards(m);
  let sprintSeconds=0;
  while(m.stamina>3&&sprintSeconds<30){m.update(1/60,true);sprintSeconds+=1/60;}
  const staminaEmpty=sprintSeconds;
@@ -66,10 +67,12 @@ test('measure locomotion, gas, stamina, and depth against real diving ranges',()
  while(m.stamina<99.5&&regen<30){m.update(1/60,false);regen+=1/60;}
 
  const airMission=new Mission(true);
+ isolateGuards(airMission);
  airMission.position={...START,y:0.8};airMission.breathWaterY=SURFACE_Y;
  for(let i=0;i<60;i++)airMission.update(1/60,true);
  const airAfterSprintDeep=airMission.air;
  const airMission2=new Mission(true);
+ isolateGuards(airMission2);
  airMission2.position={...START,y:6.5};airMission2.breathWaterY=SURFACE_Y;
  for(let i=0;i<60;i++)airMission2.update(1/60,false);
  const airAfterCruiseShallow=airMission2.air;
