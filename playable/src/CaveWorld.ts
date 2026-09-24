@@ -22,6 +22,7 @@ import {
 import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLight } from './sconceAsset';
 import { createWallPosters, upgradeWallPosters, type WallPosters } from './posterAsset';
 import { createWallPipe, upgradeWallPipe, type WallPipe } from './pipeAsset';
+import { createCopperPipe, upgradeCopperPipe, type CopperPipe } from './copperPipeAsset';
 import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion, applyGuardAim,
  type SovietGuardVisual,
@@ -200,6 +201,8 @@ export class CaveWorld extends OceanWorld {
  wallPosters:WallPosters|null=null;
  /** Sketchfab gleb_tihon pipe run hidden on the far south-west cavern wall. */
  wallPipe:WallPipe|null=null;
+ /** Sketchfab pixol3d copper section on the east breath-corridor wall. */
+ copperPipe:CopperPipe|null=null;
  /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
  knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
  /** Time the knife was last drawn (equip animation); null while holstered. */
@@ -340,6 +343,7 @@ export class CaveWorld extends OceanWorld {
   this.mountWallSconces();
   this.mountWallPosters();
   this.mountWallPipe();
+  this.mountCopperPipe();
   this.pointCullSyncs.push(()=>{
    const p=this.camera.position;
    this.heldLightBox.min.set(p.x-2.2,p.y-2.2,p.z-2.2);
@@ -386,6 +390,16 @@ export class CaveWorld extends OceanWorld {
   this.scene.add(visual.group);
   this.wallPosters=visual;
   upgradeWallPosters(visual).then(ok=>{
+   if(!ok||!this.alive)return;
+   this.adoptPointCull(visual.group,this.worldBox(visual.group),true,true);
+  });
+ }
+ /** Bolt the Sketchfab copper section to the east breath-corridor wall. */
+ mountCopperPipe(){
+  const visual=createCopperPipe();
+  this.scene.add(visual.group);
+  this.copperPipe=visual;
+  upgradeCopperPipe(visual,this.knifeEnvMap).then(ok=>{
    if(!ok||!this.alive)return;
    this.adoptPointCull(visual.group,this.worldBox(visual.group),true,true);
   });
