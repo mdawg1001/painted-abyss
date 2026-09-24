@@ -78,3 +78,10 @@
 - License: CC0 1.0 Universal (public domain dedication)
 - File: `public/assets/caustics/caustics_atlas.png` — 1024² RGBA, 16 frames in a 4×4 grid
 - Used as soft additive floor pools under ceiling light shafts (extraction + cavern).
+
+## 04_DOOM_pipe (detail) (Sketchfab)
+- Source: https://sketchfab.com/3d-models/04-doom-pipe-detail-41063ef623eb41f5a981fff8997e54b9
+- Author: gleb_tihon (@gleb_tihon)
+- License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
+- Files: `public/assets/doom-pipe/doom_pipe.glb` — official glTF (793,868 triangles) decimated to ~49k triangles and meshopt-compressed; nothing else altered
+- Floor-to-roof riser with hand-wheel valve on the blind south wall of the far south-west cavern corner (not interactable).
