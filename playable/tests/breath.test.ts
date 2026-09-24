@@ -5,7 +5,7 @@ import {
  breathZone,breathHatchSpawn,breathTankMounts,breathFootprint,nextBreathTankIndex,
  riseBreathWater,floodFraction,canWalk,BREATH_RISE_MPS,canWalkBreath,inBreathCorridor,breathingFreeAir,effectiveDepth,gasDrainRateAt,
  BREATH_WATER_START,BREATH_WATER_FILL_START,BREATH_WALK_WATER,BREATH_RESPAWN_LITRES,BREATH_ROW_HATCH,BREATH_ROW_FAR,BREATH_COLS,
- WALK_EYE_Y,WALK_SPEED,WALK_SPRINT,
+ WALK_EYE_Y,WALK_SPEED,WALK_SPRINT,isolateGuards,
 } from '../src/simulation';
 
 test('breath corridor is attached to the cave and does not replace it',()=>{
@@ -28,6 +28,7 @@ test('breath corridor is attached to the cave and does not replace it',()=>{
 
 test('first life is dry enough to walk and water rises only as corridor state',()=>{
  const m=new Mission(true);
+ isolateGuards(m);
  assert.equal(m.breathWaterY,BREATH_WATER_START);
  assert.equal(BREATH_WATER_FILL_START,.05);
  assert.ok(Math.abs(BREATH_WATER_START-BREATH_WALK_WATER*BREATH_WATER_FILL_START)<1e-9,'first spawn is 5% of the swim flood line');
@@ -59,6 +60,7 @@ test('wall tank mounts stay in the middle and move on death',()=>{
   assert.notEqual(breathZone(t.col,t.row),'far');
  }
  const m=new Mission(true);
+ isolateGuards(m);
  const startIndex=m.breathTankIndex;
  const waterMark=2.4;
  m.breathWaterY=waterMark;
@@ -118,6 +120,7 @@ test('every new life spawns at the hatch, never the far end or the old random se
 
 test('dry corridor walk: free air, zero depth, no tank burn; flood forces swim',()=>{
  const m=new Mission(true);
+ isolateGuards(m);
  assert.ok(canWalkBreath(m.position,m.breathWaterY));
  assert.ok(breathingFreeAir(m.position,m.breathWaterY));
  assert.equal(effectiveDepth(m.position,m.breathWaterY),0);
@@ -161,7 +164,7 @@ test('walk sprint uses WALK_SPRINT and walk cruise uses WALK_SPEED',()=>{
 
 test('the leak floods the whole bunker from nearly dry: no cave water at spawn',()=>{
  const m=new Mission(true);
- m.guard.position={x:500,y:2.25,z:500}; // the armed guard is not part of this water test
+ isolateGuards(m);
  // Spawn: water sits below the floor everywhere, so every head position in the cave is in free air.
  assert.ok(m.breathWaterY<FLOOR_Y,'bunker starts dry');
  assert.equal(floodFraction(m.breathWaterY),0);

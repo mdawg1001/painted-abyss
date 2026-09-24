@@ -28,7 +28,7 @@ import {
  type SovietGuardVisual,
 } from './sovietGuardAsset';
 import { mountTt33 } from './gunAsset';
-import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, type BreathFootprint, type BreathTankMount } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_COUNT, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
  airborne:boolean};
@@ -182,10 +182,11 @@ export class CaveWorld extends OceanWorld {
  torchRestPos=V(HELD_VIEW_POS.x,HELD_VIEW_POS.y,HELD_VIEW_POS.z);torchRestRot=new THREE.Euler(HELD_VIEW_ROT.x,HELD_VIEW_ROT.y,HELD_VIEW_ROT.z);
  composer!:EffectComposer;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
- /** Phase 3 Soviet corridor guard (Sketchfab WW2 uniform). */
- sovietGuard:SovietGuardVisual|null=null;
- /** Muzzle flash light + glow at the guard's pistol; `guardShotsSeen` spots new shots. */
- guardFlash!:THREE.PointLight;guardFlashGlow!:THREE.Sprite;guardFlashT=0;guardRecoil=0;guardShotsSeen=0;
+ /** Five Soviet guards (Quaternius soldier, dyed kits). */
+ sovietGuards:SovietGuardVisual[]=[];
+ get sovietGuard(){return this.sovietGuards[0]??null;}
+ /** Muzzle flash light + glow at the firing guard's pistol; per-guard shot counters. */
+ guardFlash!:THREE.PointLight;guardFlashGlow!:THREE.Sprite;guardFlashT=0;guardRecoil:number[]=[];guardShotsSeen:number[]=[];
  private _aimTarget=new THREE.Vector3();private _muzzle=new THREE.Vector3();
  /** World crates / suitcase (Poly Haven) keyed by mission chest id. */
  chestVisuals=new Map<number,ChestVisual>();
@@ -288,16 +289,18 @@ export class CaveWorld extends OceanWorld {
   this.guardian.group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
   const eyeMat=new THREE.MeshBasicMaterial({color:0xe0a772});
   for(const side of [-1,1])this.ellipsoid(this.guardian.group,eyeMat,1.8,.27,side*.5,.1,.1,.04);
-  this.sovietGuard=createSovietGuardVisual();
-  this.scene.add(this.sovietGuard.root);
+  this.sovietGuards=Array.from({length:GUARD_COUNT},(_,i)=>createSovietGuardVisual(i));
+  for(const visual of this.sovietGuards)this.scene.add(visual.root);
+  this.guardRecoil=this.sovietGuards.map(()=>0);
+  this.guardShotsSeen=this.sovietGuards.map(()=>0);
   // Muzzle flash: a short, hot point light and an additive glow card at the barrel.
   this.guardFlash=new THREE.PointLight(0xffb45a,0,7,1.8);this.guardFlash.castShadow=false;
   const flashTex=(()=>{const c=document.createElement('canvas');c.width=c.height=64;const g=c.getContext('2d')!;const gr=g.createRadialGradient(32,32,0,32,32,32);gr.addColorStop(0,'rgba(255,245,210,1)');gr.addColorStop(.35,'rgba(255,170,70,.8)');gr.addColorStop(1,'rgba(255,120,30,0)');g.fillStyle=gr;g.fillRect(0,0,64,64);return new THREE.CanvasTexture(c);})();
   this.guardFlashGlow=new THREE.Sprite(new THREE.SpriteMaterial({map:flashTex,color:0xffffff,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0}));
   this.guardFlashGlow.scale.setScalar(.55);this.guardFlashGlow.visible=false;
   this.scene.add(this.guardFlash,this.guardFlashGlow);
-  upgradeSovietGuardVisual(this.sovietGuard).then(()=>{
-   if(!this.alive||!this.sovietGuard)return;
+  Promise.all(this.sovietGuards.map(v=>upgradeSovietGuardVisual(v))).then(()=>{
+   if(!this.alive)return;
    this.syncSovietGuard(0);
   });
   this.suspendedParticles();const positions=this.particles.geometry.attributes.position;
@@ -916,41 +919,41 @@ export class CaveWorld extends OceanWorld {
   this.syncSovietGuard(0);
   this.backgroundMusic?.setDry(true);
  }
- /** Place the Soviet guard mesh on the corridor floor from sim state. */
+ /** Place each Soviet guard mesh on the bunker floor from sim state. */
  syncSovietGuard(dt:number){
-  const visual=this.sovietGuard;if(!visual)return;
-  const g=this.mission.guard;
-  visual.root.position.set(g.position.x,FLOOR_Y,g.position.z);
-  // The sim owns facing (rate-limited, human turn speed). Yaw 0 faces +Z, which is
-  // the Quaternius rig's forward, so the body always points the way it travels.
-  visual.root.rotation.set(0,g.heading,0);
-  syncGuardGear(visual,{gun:g.gun,bottle:g.bottle,coat:g.coat});
-  if(visual.loco){
-   // Stride rate follows the sim's real ground speed, so feet plant without skating.
-   updateGuardLocomotion(visual.loco,dt,{moving:g.speed>.02,speed:g.speed,state:g.state,turnRate:g.turnRate});
-  }
-  // New shot: flash, report, recoil, and what happened to you.
-  if(g.shots!==this.guardShotsSeen){
-   const fresh=g.shots>this.guardShotsSeen;
-   this.guardShotsSeen=g.shots;
-   if(fresh&&dt>0){
-    this.guardFlashT=1;this.guardRecoil=1;
-    const ctx=this.audioContext,master=this.master;
-    if(this.sound&&ctx&&master&&ctx.state==='running'){
-     playGunshot(ctx,master,Math.hypot(g.position.x-this.position.x,g.position.z-this.position.z));
-     if(!g.lastShotHit)playRicochet(ctx,master);
+  if(!this.sovietGuards.length)return;
+  this._aimTarget.set(this.position.x,this.position.y-.15,this.position.z);
+  let flashFrom=-1;
+  for(let i=0;i<this.sovietGuards.length;i++){
+   const visual=this.sovietGuards[i];
+   const g=this.mission.guards[i];if(!visual||!g)continue;
+   visual.root.position.set(g.position.x,FLOOR_Y,g.position.z);
+   visual.root.rotation.set(0,g.heading,0);
+   syncGuardGear(visual,{gun:g.gun,bottle:g.bottle,coat:g.coat});
+   if(visual.loco){
+    updateGuardLocomotion(visual.loco,dt,{moving:g.speed>.02,speed:g.speed,state:g.state,turnRate:g.turnRate});
+   }
+   if(g.shots!==this.guardShotsSeen[i]){
+    const fresh=g.shots>this.guardShotsSeen[i];
+    this.guardShotsSeen[i]=g.shots;
+    if(fresh&&dt>0){
+     this.guardFlashT=1;this.guardRecoil[i]=1;flashFrom=i;
+     const ctx=this.audioContext,master=this.master;
+     if(this.sound&&ctx&&master&&ctx.state==='running'){
+      playGunshot(ctx,master,Math.hypot(g.position.x-this.position.x,g.position.z-this.position.z));
+      if(!g.lastShotHit)playRicochet(ctx,master);
+     }
+     this.shakeAmp=Math.max(this.shakeAmp,g.lastShotHit?.5:.12);
     }
-    this.shakeAmp=Math.max(this.shakeAmp,g.lastShotHit?.5:.12);
+   }
+   this.guardRecoil[i]=Math.max(0,(this.guardRecoil[i]??0)-dt*6);
+   applyGuardAim(visual,this._aimTarget,g.aim,this.guardRecoil[i]??0);
+   if(flashFrom===i||(flashFrom<0&&i===0)){
+    visual.gun.getWorldPosition(this._muzzle);
+    this._muzzle.addScaledVector(this._aimTarget.clone().sub(this._muzzle).normalize(),.28);
+    this.guardFlash.position.copy(this._muzzle);this.guardFlashGlow.position.copy(this._muzzle);
    }
   }
-  this.guardRecoil=Math.max(0,this.guardRecoil-dt*6);
-  // Arm and pistol track your eye while he is aiming.
-  this._aimTarget.set(this.position.x,this.position.y-.15,this.position.z);
-  applyGuardAim(visual,this._aimTarget,g.aim,this.guardRecoil);
-  // Flash sits just past the muzzle along the barrel.
-  visual.gun.getWorldPosition(this._muzzle);
-  this._muzzle.addScaledVector(this._aimTarget.clone().sub(this._muzzle).normalize(),.28);
-  this.guardFlash.position.copy(this._muzzle);this.guardFlashGlow.position.copy(this._muzzle);
   const f=this.guardFlashT;
   this.guardFlash.intensity=f>0?40*f*f:0;
   this.guardFlashGlow.visible=f>0;

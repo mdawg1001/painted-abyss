@@ -5,7 +5,10 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
  SOVIET_GUARD_GLB,SOVIET_GUARD_SOURCE,SOVIET_GUARD_LICENSE,GUARD_LOCO_PROCEDURAL,
+ createSovietGuardVisual,
 } from '../src/sovietGuardAsset';
+import {GUARD_COUNT,GUARD_OUTFIT_COLORS} from '../src/simulation';
+import * as THREE from 'three';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 
@@ -24,4 +27,24 @@ test('Quaternius soldier GLB with authored loco clips is credited and present',(
  assert.match(notice,/Quaternius/);
  assert.match(notice,/CC0/);
  assert.match(notice,/idle|Idle/);
+});
+
+test('five stub kits wear distinct cloth dyes',()=>{
+ assert.equal(GUARD_COUNT,5);
+ assert.equal(GUARD_OUTFIT_COLORS.length,GUARD_COUNT);
+ const hexes=new Set<number>();
+ for(let i=0;i<GUARD_COUNT;i++){
+  const visual=createSovietGuardVisual(i);
+  assert.equal(visual.outfit,i);
+  assert.match(visual.root.name,new RegExp(`:${i}$`));
+  let cloth=-1;
+  visual.body.traverse(o=>{
+   if(o instanceof THREE.Mesh&&(o.geometry as THREE.BufferGeometry).type==='CapsuleGeometry'){
+    cloth=(o.material as THREE.MeshStandardMaterial).color.getHex();
+   }
+  });
+  assert.equal(cloth,GUARD_OUTFIT_COLORS[i]);
+  hexes.add(cloth);
+ }
+ assert.equal(hexes.size,GUARD_COUNT);
 });

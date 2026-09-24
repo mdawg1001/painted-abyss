@@ -108,6 +108,15 @@ export const GUARD_PATROL_PAUSE=2.4;
 export const GUARD_CHASE_STANDOFF=1.15;
 /** Half arc of the look-around at the end of a search (radians, ~52°). */
 export const GUARD_SCAN_ARC=.9;
+/** How many Soviet guards walk the bunker at once. */
+export const GUARD_COUNT=5;
+/** Adjacent beats share this fraction of their waypoints (~one room of overlap). */
+export const GUARD_PATROL_OVERLAP=.25;
+/**
+ * Cloth dyes — same cut, five colours so they read as a squad, not clones.
+ * Olive, khaki, steel-blue, brown, field-teal.
+ */
+export const GUARD_OUTFIT_COLORS=[0x4a5a3a,0x8b6b32,0x3d5a6c,0x6a3c28,0x2f5d4a] as const;
 const TAU_GUARD=Math.PI*2;
 /** Floor-sitting interactables — each chest hides one map fragment. */
 export const CHEST_LABEL:Record<ChestKind,string>={
@@ -282,9 +291,9 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  air:{name:'Pony bottle',short:'Pony',description:`R · Arm a separate bailout cylinder (~${AIR_BAILOUT_LITRES} L). Drains after the main tank.`,hint:'R arm bailout · consumed'},
  bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
- gun:{name:'Gun',short:'Gun',description:'Carry it in the hand. It does not fire for you. If the corridor guard kills you, he will take it and shoot.',hint:'Carry · death drops it'},
- bottle:{name:'Spare air bottle',short:'Bottle',description:`R · Add ${SPARE_BOTTLE_LITRES} L to the main cylinder (consumed). The corridor guard will drink it as his air if he takes it from your corpse.`,hint:'R use · consumed'},
- coat:{name:'Coat',short:'Coat',description:'Carry it. It does not soften guardian bites. If the corridor guard takes it from your corpse, his strikes hurt less.',hint:'Carry · death drops it'},
+ gun:{name:'Gun',short:'Gun',description:'Carry it in the hand. It does not fire for you. If a corridor guard kills you, he will take it and shoot.',hint:'Carry · death drops it'},
+ bottle:{name:'Spare air bottle',short:'Bottle',description:`R · Add ${SPARE_BOTTLE_LITRES} L to the main cylinder (consumed). A corridor guard will drink it as his air if he takes it from your corpse.`,hint:'R use · consumed'},
+ coat:{name:'Coat',short:'Coat',description:'Carry it. It does not soften guardian bites. If a corridor guard takes it from your corpse, his strikes hurt less.',hint:'Carry · death drops it'},
 };
 /**
  * Inventory items that occupy the FPS hand instead of the dive torch.
@@ -643,14 +652,49 @@ export function guardNavTarget(from:{x:number;z:number},to:{x:number;z:number}):
  return{...path[0],final:path.length===1};
 }
 /**
- * Pick where the guard starts a life: a random stop on the perimeter, well away
- * from the player and never the same stop as last time.
+ * Pick where a guard starts a life: a random stop on the perimeter (or `allowed`
+ * beat), well away from the player and never the same stop as last time.
  */
-export function pickGuardSpawn(rand:()=>number,avoid:Point,previous=-1,minDistance=30){
+export function pickGuardSpawn(rand:()=>number,avoid:Point,previous=-1,minDistance=30,allowed?:number[]){
  const route=guardPerimeterRoute();
- const ok=route.map((w,i)=>i).filter(i=>i!==previous&&route[i].pause>0&&Math.hypot(route[i].x-avoid.x,route[i].z-avoid.z)>=minDistance);
- const pool=ok.length?ok:route.map((w,i)=>i).filter(i=>i!==previous);
- return pool[Math.min(pool.length-1,Math.floor(rand()*pool.length))];
+ const idxs=allowed&&allowed.length?allowed:route.map((_,i)=>i);
+ const farEnough=idxs.filter(i=>i!==previous&&route[i].pause>0&&Math.hypot(route[i].x-avoid.x,route[i].z-avoid.z)>=minDistance);
+ const pool=farEnough.length?farEnough:idxs.filter(i=>i!==previous&&route[i].pause>0);
+ const pickFrom=pool.length?pool:idxs.filter(i=>i!==previous);
+ const list=pickFrom.length?pickFrom:idxs;
+ return list[Math.min(list.length-1,Math.floor(rand()*list.length))];
+}
+/** One overlapping arc of the perimeter that a single guard walks. */
+export function guardBeat(index:number,n=guardPerimeterRoute().length){
+ const stride=n/GUARD_COUNT;
+ const len=Math.max(4,Math.round(stride/(1-GUARD_PATROL_OVERLAP)));
+ const start=((Math.round(index*stride)%n)+n)%n;
+ return{start,len};
+}
+export function beatIndices(start:number,len:number,n:number){
+ return Array.from({length:len},(_,k)=>(start+k)%n);
+}
+export function beatNext(wp:number,start:number,len:number,n:number){
+ const rel=((wp-start)%n+n)%n;
+ return(start+(rel+1)%len)%n;
+}
+/** Step along a beat and reverse at the ends so he does not cut across the bunker. */
+export function beatStep(wp:number,start:number,len:number,n:number,dir:1|-1){
+ if(len<=1)return{wp:start,dir};
+ const rel=((wp-start)%n+n)%n;
+ let r=rel+dir,d=dir;
+ if(r>=len){d=-1;r=Math.max(0,len-2);}
+ if(r<0){d=1;r=Math.min(len-1,1);}
+ return{wp:(start+r)%n,dir:d as 1|-1};
+}
+export function nearestBeatStop(from:{x:number;z:number},start:number,len:number){
+ const route=guardPerimeterRoute(),n=route.length;
+ let best=start,bd=Infinity;
+ for(const i of beatIndices(start,len,n)){
+  const d=Math.hypot(route[i].x-from.x,route[i].z-from.z);
+  if(d<bd){bd=d;best=i;}
+ }
+ return best;
 }
 export type BreathTankMount={x:number;y:number;z:number;yaw:number;row:number;col:number};
 /**
@@ -818,6 +862,49 @@ export function readInventoryTipsSeen(){
 export function writeInventoryTipsSeen(){
  try{globalThis.localStorage?.setItem(INVENTORY_TIPS_KEY,'1');}catch{/* private mode */}
 }
+export type Guard={
+ position:Point;
+ state:GuardState;
+ timer:number;lost:number;lastKnown:Point;waypoint:number;spawnIndex:number;
+ heading:number;speed:number;turnRate:number;pause:number;
+ arrived:boolean;scanBase:number;scanTime:number;scanArc:number;scanTurn:number;
+ scanAlt:number|null;lastState:GuardState;
+ meleeCool:number;shootCool:number;
+ ammo:number;reload:number;firstShot:boolean;
+ shots:number;lastShotHit:boolean;aim:number;
+ gun:boolean;bottle:boolean;coat:boolean;air:number;
+ beatStart:number;beatLen:number;beatDir:1|-1;outfit:number;
+};
+export function makeGuard(outfit=0):Guard{
+ const beat=guardBeat(outfit);
+ return{
+  position:{x:0,y:WALK_EYE_Y,z:0},
+  state:'patrol',
+  timer:0,lost:0,lastKnown:{x:0,y:WALK_EYE_Y,z:0},waypoint:0,spawnIndex:-1,
+  heading:0,speed:0,turnRate:0,pause:0,
+  arrived:false,scanBase:0,scanTime:0,scanArc:GUARD_SCAN_ARC,scanTurn:0,
+  scanAlt:null,lastState:'patrol',
+  meleeCool:0,shootCool:0,
+  ammo:GUARD_MAGAZINE,reload:0,firstShot:true,
+  shots:0,lastShotHit:false,aim:0,
+  gun:true,bottle:false,coat:false,air:0,
+  beatStart:beat.start,beatLen:beat.len,beatDir:1,outfit,
+ };
+}
+/**
+ * Park sentries off the map so tests that are not about them stay quiet.
+ * `keep` is the squad index to leave in play, or −1 to park them all.
+ */
+export function isolateGuards(m:{guards:Guard[]},keep=-1){
+ for(let i=0;i<m.guards.length;i++){
+  if(i===keep)continue;
+  const g=m.guards[i];
+  g.position={x:500,y:WALK_EYE_Y,z:500};
+  g.lastKnown={...g.position};
+  g.state='patrol';g.pause=1e9;g.speed=0;g.turnRate=0;
+  g.meleeCool=1e9;g.shootCool=1e9;g.gun=false;
+ }
+}
  export class Mission {
  position={...breathHatchSpawn()};health=100;air=AIR_MAIN_MAX;bailout=0;elapsed=0;stamina=100;torch=true;
  /** Bunker waterline (metres), shared by corridor and cave. The leak raises it over time; it is kept across death. */
@@ -846,43 +933,16 @@ export function writeInventoryTipsSeen(){
   hp:PREDATOR_HP_MAX,raged:false,flinch:0,stabCool:0,
  };
  /**
-  * Soviet guard. Patrols the perimeter of the whole bunker, inspecting each corner
-  * and long wall, and starts each of the player's lives somewhere new on that loop.
-  * On kill he claims dropped gun / bottle / coat and uses them.
+  * Five Soviet guards. Same AI; each walks an overlapping beat of the perimeter
+  * in a different cloth colour. `guard` is the first (kept for existing tests).
   */
- guard={
-  position:{x:0,y:WALK_EYE_Y,z:0} as Point,
-  state:'patrol' as GuardState,
-  /** waypoint indexes guardPerimeterRoute(); spawnIndex is where this life began. */
-  timer:0,lost:0,lastKnown:{x:0,y:WALK_EYE_Y,z:0} as Point,waypoint:0,spawnIndex:-1,
-  /** Facing yaw, radians: 0 faces world +Z, π/2 faces +X. The mesh uses it as rotation.y. */
-  heading:0,
-  /** Ground speed along the heading (m/s). Drives stride rate; never negative. */
-  speed:0,
-  /** Signed yaw rate last tick (rad/s). Drives on-the-spot turning footwork. */
-  turnRate:0,
-  /** Seconds left standing at a patrol post. */
-  pause:0,
-  /** Search reached the last sighting and is scanning. */
-  arrived:false,scanBase:0,scanTime:0,
-  /** Half-width of the current sweep (rad) and the time budgeted to turn to face it (s). */
-  scanArc:GUARD_SCAN_ARC,scanTurn:0,
-  /** A second bearing worth checking at this stop (null when the room only opens one way). */
-  scanAlt:null as number|null,
-  lastState:'patrol' as GuardState,
-  meleeCool:0,shootCool:0,
-  /** Rounds left in the magazine, reload countdown, and whether the next shot is the snap shot. */
-  ammo:GUARD_MAGAZINE,reload:0,firstShot:true,
-  /** Increments on every shot fired (the renderer flashes the muzzle / plays the report on change). */
-  shots:0,lastShotHit:false,
-  /** 0..1 how far the pistol is raised toward you. */
-  aim:0,
-  gun:true,bottle:false,coat:false,
-  /** Remaining “air” from a stolen spare bottle. */
-  air:0,
- };
- /** Set when the corridor guard deals the killing blow — triggers corpse loot claim. */
+ guards:Guard[]=Array.from({length:GUARD_COUNT},(_,i)=>makeGuard(i));
+ get guard(){return this.guards[0];}
+ set guard(g:Guard){this.guards[0]=g;}
+ /** Set when a corridor guard deals the killing blow — triggers corpse loot claim. */
  killedByGuard=false;
+ /** Which squad member claimed the kill (index into `guards`). */
+ lootGuardIndex=0;
  /** Latest combat cue for audio / camera (cleared by the renderer when consumed). */
  combatCue:''|'stab-hit'|'stab-miss'|'flinch'|'break'|'kill'|'guard-shot'|'guard-miss'|'guard-melee'='';
  decoy:{position:Point;until:number}|null=null;
@@ -904,7 +964,7 @@ export function writeInventoryTipsSeen(){
    if(d<bestD){bestD=d;best=i;}
   }
   this.predator.waypoint=best;
-  this.spawnGuard();
+  this.spawnGuards();
   this.killedByGuard=false;
   if(!tipsSeen){
    this.notice='The bunker is leaking. The water is rising. WASD walk · Shift run · 1–5 select · click stabs.';
@@ -912,21 +972,32 @@ export function writeInventoryTipsSeen(){
   }
  }
  /**
-  * Place the guard at a fresh perimeter stop, away from the player and different
-  * from his last start, facing on to the next stop. Keeps any gear he looted.
+  * Place each guard on his overlapping perimeter beat, away from the player
+  * and different from his last start. Keeps any gear he looted.
   */
- spawnGuard(){
-  const g=this.guard,route=guardPerimeterRoute();
-  const i=pickGuardSpawn(this.rand,this.position,g.spawnIndex);
-  const at=route[i],next=route[(i+1)%route.length];
-  g.spawnIndex=i;g.waypoint=(i+1)%route.length;
-  g.position={x:at.x,y:WALK_EYE_Y,z:at.z};g.lastKnown={...g.position};
-  g.heading=Math.atan2(next.x-at.x,next.z-at.z);
-  g.state='patrol';g.lastState='patrol';g.timer=0;g.lost=0;
-  g.speed=0;g.turnRate=0;g.pause=0;g.arrived=false;g.scanBase=g.heading;g.scanTime=0;
-  g.meleeCool=0;g.shootCool=0;g.ammo=GUARD_MAGAZINE;g.reload=0;g.firstShot=true;g.aim=0;
-  g.gun=true; // the TT-33 is his own sidearm
+ spawnGuards(){
+  const route=guardPerimeterRoute();
+  const n=route.length;
+  const taken=new Set<number>();
+  this.guards.forEach((g,outfit)=>{
+   const beat=guardBeat(outfit,n);
+   g.beatStart=beat.start;g.beatLen=beat.len;g.outfit=outfit;
+   const onBeat=beatIndices(beat.start,beat.len,n);
+   const free=onBeat.filter(i=>!taken.has(i));
+   const i=pickGuardSpawn(this.rand,this.position,g.spawnIndex,30,free.length?free:onBeat);
+   taken.add(i);
+   const at=route[i],step=beatStep(i,beat.start,beat.len,n,1),next=route[step.wp];
+   g.spawnIndex=i;g.waypoint=step.wp;g.beatDir=step.dir;
+   g.position={x:at.x,y:WALK_EYE_Y,z:at.z};g.lastKnown={...g.position};
+   g.heading=Math.atan2(next.x-at.x,next.z-at.z);
+   g.state='patrol';g.lastState='patrol';g.timer=0;g.lost=0;
+   g.speed=0;g.turnRate=0;g.pause=0;g.arrived=false;g.scanBase=g.heading;g.scanTime=0;
+   g.meleeCool=0;g.shootCool=0;g.ammo=GUARD_MAGAZINE;g.reload=0;g.firstShot=true;g.aim=0;
+   g.gun=true;
+  });
  }
+ /** Tests / older call sites still say `spawnGuard()`. */
+ spawnGuard(){this.spawnGuards();}
  get hasRelic(){return this.inventory.includes('relic');}
  get mapComplete(){return MAP_FRAGMENT_ORDER.every(id=>this.mapFragments.includes(id));}
  get mapFragmentCount(){return this.mapFragments.length;}
@@ -1009,7 +1080,7 @@ export function writeInventoryTipsSeen(){
   this.outcome='playing';
   this.reason='';
   this.pending=null;
-  this.spawnGuard();
+  this.spawnGuards();
   this.say('You wake at the hatch with empty hands. What you carried is on the corpse. The water stayed. The air tank has moved.','blocked');
  }
  /**
@@ -1017,20 +1088,21 @@ export function writeInventoryTipsSeen(){
   * Untaken corridor gear farther away stays on the floor.
   */
  claimGuardLoot(corpse:Point){
+  const g=this.guards[this.lootGuardIndex]??this.guard;
   const keep:Pickup[]=[];
   for(const p of this.pickups){
    const near=distance(p.position,corpse)<=GUARD_LOOT_RANGE;
-   if(near&&p.item==='gun'){this.guard.gun=true;continue;}
+   if(near&&p.item==='gun'){g.gun=true;continue;}
    if(near&&p.item==='bottle'){
-    this.guard.bottle=true;
-    this.guard.air=Math.max(this.guard.air,GUARD_BOTTLE_AIR);
+    g.bottle=true;
+    g.air=Math.max(g.air,GUARD_BOTTLE_AIR);
     continue;
    }
-   if(near&&p.item==='coat'){this.guard.coat=true;continue;}
+   if(near&&p.item==='coat'){g.coat=true;continue;}
    keep.push(p);
   }
   this.pickups=keep;
-  if(this.guard.gun||this.guard.bottle||this.guard.coat){
+  if(g.gun||g.bottle||g.coat){
    this.say('The guard took what you dropped.','blocked');
   }
  }
@@ -1175,18 +1247,21 @@ export function writeInventoryTipsSeen(){
   this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?(onFoot?-8:-18):17)*dt));
   if(this.air<=0&&this.bailout<=0){this.outcome='lost';this.reason='Your air ran out. Arm the pony earlier or climb and calm your kick.';return;}
   if(this.pending!==null&&!this.pickups.some(p=>p.id===this.pending&&distance(p.position,this.position)<3.2))this.pending=null;
-  // Corridor guard runs even while the cave guardian is dead / flinching.
-  this.updateGuard(dt,sprinting);
-  if(this.outcome!=='playing')return;
+  // Corridor guards run even while the cave guardian is dead / flinching.
+  const playerSpeed=this.lastPlayerPos&&dt>0?Math.hypot(this.position.x-this.lastPlayerPos.x,this.position.z-this.lastPlayerPos.z)/dt:0;
+  for(const g of this.guards){
+   this.updateGuard(dt,sprinting,g,playerSpeed);
+   if(this.outcome!=='playing')return;
+  }
+  this.lastPlayerPos={...this.position};
   this.updatePredator(dt,sprinting);
  }
  /**
-  * Phase 3 Soviet guard: patrol / chase on dry breath-corridor floor only.
+  * One Soviet guard: patrol / chase on dry bunker floor.
   * Stops where water is too deep. No see-through-walls (uses `visible`).
   * Stolen gun shoots; stolen bottle fuels his chase; stolen coat softens his damage.
   */
- private updateGuard(dt:number,sprinting:boolean){
-  const g=this.guard;
+ private updateGuard(dt:number,sprinting:boolean,g:Guard,playerSpeed:number){
   g.timer+=dt;
   g.meleeCool=Math.max(0,g.meleeCool-dt);
   g.shootCool=Math.max(0,g.shootCool-dt);
@@ -1216,20 +1291,17 @@ export function writeInventoryTipsSeen(){
   }else if(g.state==='search'){
    if(sense){g.state='alert';g.timer=GUARD_DRAW_SECONDS*.5;g.lost=0;}
    else if(g.timer>8){
-    // Give up and rejoin the perimeter loop at the nearest stop.
-    const route=guardPerimeterRoute();let best=0,bd=Infinity;
-    route.forEach((w,i)=>{const dd=Math.hypot(w.x-g.position.x,w.z-g.position.z);if(dd<bd){bd=dd;best=i;}});
-    g.state='patrol';g.timer=0;g.waypoint=best;g.pause=0;
+    // Give up and rejoin his own beat at the nearest stop.
+    g.state='patrol';g.timer=0;g.pause=0;
+    g.waypoint=nearestBeatStop(g.position,g.beatStart,g.beatLen);
    }
   }
-  this.steerGuard(dt);
+  this.steerGuard(dt,g);
 
   // Pistol raise: up while engaged, down otherwise (~0.25 s either way).
   g.aim=Math.max(0,Math.min(1,g.aim+(engaged||g.state==='chase'?1:-1)*dt/.25));
   // Reload when the magazine runs dry.
   if(g.reload>0){g.reload=Math.max(0,g.reload-dt);if(g.reload===0)g.ammo=GUARD_MAGAZINE;}
-  const playerSpeed=this.lastPlayerPos&&dt>0?Math.hypot(this.position.x-this.lastPlayerPos.x,this.position.z-this.lastPlayerPos.z)/dt:0;
-  this.lastPlayerPos={...this.position};
   // Combat — only with LOS (no wall shots / stabs).
   if(canSee&&d<GUARD_MELEE_RANGE&&g.meleeCool<=0&&(g.state==='chase'||g.state==='alert'||g.state==='search')){
    let dmg=GUARD_MELEE_DAMAGE;
@@ -1241,12 +1313,13 @@ export function writeInventoryTipsSeen(){
    this.say(g.coat?'Heavy coat — the blow is softer.':'The guard strikes!');
    if(this.health<=0){
     this.killedByGuard=true;
+    this.lootGuardIndex=this.guards.indexOf(g);
     this.outcome='lost';
     this.reason='The guard finished you. He takes your dropped gear.';
    }
    return;
   }
-  if(g.state==='chase'&&this.guardHasShot()&&g.shootCool<=0){
+  if(g.state==='chase'&&this.guardHasShot(g)&&g.shootCool<=0){
    const aimErr=Math.abs(wrapAngle(Math.atan2(this.position.x-g.position.x,this.position.z-g.position.z)-g.heading));
    if(aimErr<=GUARD_AIM_TOLERANCE&&g.aim>=.99){
     const hit=this.rand()<guardHitChance(d,playerSpeed,g.firstShot);
@@ -1263,6 +1336,7 @@ export function writeInventoryTipsSeen(){
     this.say(g.coat?'Hit — the coat took some of it.':'You are hit!');
     if(this.health<=0){
      this.killedByGuard=true;
+     this.lootGuardIndex=this.guards.indexOf(g);
      this.outcome='lost';
      this.reason='The guard shot you. He will take what you dropped.';
     }
@@ -1271,30 +1345,30 @@ export function writeInventoryTipsSeen(){
   }
  }
  /** Armed, clear line, in range, outside arm's reach: he holds a firing stance (and reloads there). */
- guardInFiringStance(){
-  const g=this.guard,d=distance(g.position,this.position);
+ guardInFiringStance(g:Guard=this.guard){
+  const d=distance(g.position,this.position);
   return g.gun&&d<=GUARD_GUN_RANGE&&d>GUARD_MELEE_RANGE*.85&&visible(g.position,this.position);
  }
  /** In a firing stance with a round ready. */
- guardHasShot(){
-  const g=this.guard;
-  return this.guardInFiringStance()&&g.reload===0&&g.ammo>0;
+ guardHasShot(g:Guard=this.guard){
+  return this.guardInFiringStance(g)&&g.reload===0&&g.ammo>0;
  }
  /** Begin a look-around here: face the most open view into the room and sweep across it. */
- private startLookout(pause:number){
-  const g=this.guard,l=guardLookout(g.position);
+ private startLookout(g:Guard,pause:number){
+  const l=guardLookout(g.position);
   const turn=Math.abs(wrapAngle(l.yaw-g.heading));
   g.pause=pause;g.scanTime=0;g.scanBase=l.yaw;g.scanArc=Math.max(.35,l.arc);g.scanAlt=l.alt;
   // Budget the turn the long way round too, since he turns through the room, not the wall.
   g.scanTurn=Math.max(turn,Math.PI*2-turn)/GUARD_STEER_WALK.turnRateStanding*.6;
  }
- private steerGuard(dt:number){
-  const g=this.guard;
+ private steerGuard(dt:number,g:Guard){
   if(g.lastState!==g.state){g.lastState=g.state;g.arrived=false;g.scanTime=0;}
   const water=this.breathWaterY;
   const dry=water<BREATH_WALK_WATER;
   const canMove=(x:number,z:number)=>dry&&fits({x,y:3,z},GUARD_BODY_RADIUS);
   const tired=!g.bottle||g.air<=0;
+  const n=guardPerimeterRoute().length;
+  const nextWp=()=>{const s=beatStep(g.waypoint,g.beatStart,g.beatLen,n,g.beatDir);g.waypoint=s.wp;g.beatDir=s.dir;};
   if(!dry){
    // Flooded past the walk line: he holds his ground and keeps watching.
    faceStanding(g,g.heading,GUARD_STEER_WALK,dt,()=>false);
@@ -1311,19 +1385,19 @@ export function writeInventoryTipsSeen(){
     const look=second?g.scanAlt!:wrapAngle(g.scanBase+g.scanArc*Math.sin(TAU_GUARD*Math.min(1,t/(g.scanAlt!==null?.6:1))));
     faceStanding(g,turnThroughRoom(g.position,g.heading,look),GUARD_STEER_WALK,dt,canMove);
     g.pause=Math.max(0,g.pause-dt);
-    if(g.pause===0)g.waypoint=(g.waypoint+1)%route.length;
+    if(g.pause===0)nextWp();
    }else{
     const nav=guardNavTarget(g.position,wp);
     const left=steerToward(g,nav,{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.patrol,stopDistance:0,pivotAngle:1e-3},dt,canMove);
     if(nav.final&&left<.02&&g.speed===0){
-     if(wp.pause>0){this.startLookout(wp.pause);}
-     else g.waypoint=(g.waypoint+1)%route.length; // detour point round a prop: keep walking
+     if(wp.pause>0){this.startLookout(g,wp.pause);}
+     else nextWp(); // detour point round a prop: keep walking
     }
    }
   }else if(g.state==='alert'){
    // Freeze, then square up to where the noise came from.
    faceStanding(g,yawToward(g.position,g.lastKnown),GUARD_STEER_WALK,dt,canMove);
-  }else if(g.state==='chase'&&this.guardInFiringStance()){
+  }else if(g.state==='chase'&&this.guardInFiringStance(g)){
    // Firing stance: stop, square up and shoot rather than running at you.
    faceStanding(g,yawToward(g.position,this.position),GUARD_STEER_RUN,dt,canMove);
   }else if(g.state==='chase'){
@@ -1339,7 +1413,7 @@ export function writeInventoryTipsSeen(){
    if(!g.arrived){
     const nav=guardNavTarget(g.position,g.lastKnown);
     const left=steerToward(g,nav,{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.search,stopDistance:nav.final?.3:0},dt,canMove);
-    if(nav.final&&left<.02&&g.speed===0){g.arrived=true;this.startLookout(0);}
+    if(nav.final&&left<.02&&g.speed===0){g.arrived=true;this.startLookout(g,0);}
    }else{
     g.scanTime+=dt;
     faceStanding(g,wrapAngle(g.scanBase+Math.sin(Math.max(0,g.scanTime-g.scanTurn)*.7)*g.scanArc),GUARD_STEER_WALK,dt,canMove);
