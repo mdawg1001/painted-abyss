@@ -4,7 +4,7 @@ import {
  Mission,distance,tile,world,visible,FLOOR_Y,WALK_EYE_Y,
  breathZone,breathHatchSpawn,inBreathCorridor,canWalkBreath,BREATH_WALK_WATER,
  guardPerimeterRoute,guardClearLine,guardNavTarget,pickGuardSpawn,fits,cells,breathFootprint,
- GUARD_MAGAZINE,GUARD_RELOAD_SECONDS,GUARD_GUN_COOLDOWN,guardHitChance,
+ GUARD_MAGAZINE,GUARD_RELOAD_SECONDS,GUARD_GUN_COOLDOWN,guardHitChance,guardLookout,clearDistance,
  GUARD_WALL_CLEARANCE,GUARD_INSPECT_SPACING,GUARD_CORNER_PAUSE,GUARD_BODY_RADIUS,GUARD_FOV_HALF,createDiveChests,
  GUARD_MELEE_RANGE,GUARD_MELEE_DAMAGE,GUARD_COAT_DAMAGE_MULT,GUARD_GUN_DAMAGE,
  GUARD_BOTTLE_AIR,GUARD_LOOT_RANGE,SPARE_BOTTLE_LITRES,GUARD_SPEED,
@@ -281,4 +281,26 @@ test('no line of sight, no shot; hit chance falls with range and a moving target
  assert.ok(guardHitChance(20,0,false)<guardHitChance(6,0,false));
  assert.ok(guardHitChance(8,3.4,false)<guardHitChance(8,0,false)-.2,'running is hard to hit');
  assert.ok(guardHitChance(8,0,true)<guardHitChance(8,0,false),'the snap shot is rushed');
+});
+
+test('at every stop he looks out into the room, never at the wall',()=>{
+ const m=new Mission(true);m.breathWaterY=FLOOR_Y-.1;m.position={...FAR};
+ const route=guardPerimeterRoute();
+ const dt=1/20;let checked=0,worst=Infinity,stopsSeen=new Set<number>();
+ for(let i=0;i<Math.round(16*60/dt);i++){
+  m.breathWaterY=FLOOR_Y-.1;
+  m.update(dt,false);
+  const g=m.guard;
+  if(g.state!=='patrol'||g.pause<=0)continue;
+  stopsSeen.add(g.waypoint);
+  // Once he has had time to turn round, every glance has open floor in front of it.
+  if(g.scanTime<g.scanTurn+.35)continue;
+  const view=clearDistance(g.position,g.heading);
+  worst=Math.min(worst,view);checked++;
+ }
+ assert.ok(stopsSeen.size>=route.filter(w=>w.pause>0).length-1,`visited the stops (${stopsSeen.size})`);
+ assert.ok(checked>500);
+ assert.ok(worst>=2.5,`closest wall he stared at was ${worst.toFixed(2)} m away`);
+ // The best view at each stop is a real view down the room.
+ for(const w of route)if(w.pause>0)assert.ok(guardLookout(w).view>=8,'faces a long view');
 });
