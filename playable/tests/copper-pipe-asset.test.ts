@@ -25,10 +25,11 @@ function glbJson(file:string){
  return JSON.parse(buf.subarray(20,20+jsonLen).toString('utf8'));
 }
 
-/** Box whose local AABB matches the official copper-pipe world size. Rear face at max X. */
+/** Box whose local AABB matches the official copper-pipe world size. Rear face at max X, position left at the origin. */
 function authoredSection(size:{x:number;y:number;z:number}){
- const mesh=new THREE.Mesh(new THREE.BoxGeometry(size.x,size.y,size.z));
- mesh.position.set(-size.x/2,size.y/2,0);
+ const geo=new THREE.BoxGeometry(size.x,size.y,size.z);
+ geo.translate(-size.x/2,size.y/2,0);
+ const mesh=new THREE.Mesh(geo);
  mesh.name='section';
  return mesh;
 }
@@ -68,14 +69,14 @@ test('copper pipe glb is the Sketchfab download and NOTICE credits it',()=>{
 });
 
 test('fitted section is a human pipe on the east corridor wall, off the hatch and the guard lane',()=>{
- // Official world AABB of copper_pipe.glb (metres in the glTF, before our scale).
- const authored={x:5.793,y:11.924,z:48.792};
+ // World AABB of copper_pipe.glb after the Sketchfab node transforms (before our scale).
+ const authored={x:11.338,y:11.924,z:48.792};
  const fitted=fitCopperPipe(authoredSection(authored),COPPER_MOUNT);
  fitted.updateMatrixWorld(true);
  const box=new THREE.Box3().setFromObject(fitted);
  const size=box.getSize(new THREE.Vector3());
  assert.ok(Math.abs(size.z-COPPER_LENGTH_M)<.02,`length ${size.z}`);
- assert.ok(size.y>.4&&size.y<1.2,`height ${size.y} is a pipe section, not a room`);
+ assert.ok(size.y>.3&&size.y<1.2,`height ${size.y} is a pipe section, not a room`);
  assert.ok(size.x>.15&&size.x<.5,`depth ${size.x} stays on the wall`);
  // Rear face (max X) is the clearance off the east wall plane.
  assert.ok(Math.abs(box.max.x-(COPPER_MOUNT.x-COPPER_WALL_CLEARANCE))<.02,`rear ${box.max.x}`);

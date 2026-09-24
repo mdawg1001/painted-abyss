@@ -11,4 +11,4 @@ This work is based on "Copper Pipe Section" (https://sketchfab.com/3d-models/cop
 First Dive ships:
 - `copper_pipe.glb` — the official Sketchfab glTF download (48,634 triangles). Mesh and textures are unchanged.
 
-Wired in `src/copperPipeAsset.ts`. Scaled to a 2.4 m copper section and mounted flush on the east wall of the Soviet breath corridor (not interactable).
+Wired in `src/copperPipeAsset.ts`. Scaled to a 1.6 m copper section and mounted flush on the east wall of the Soviet breath corridor (not interactable).

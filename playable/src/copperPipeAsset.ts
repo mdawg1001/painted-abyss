@@ -3,10 +3,10 @@
  * https://sketchfab.com/3d-models/copper-pipe-section-91807ce330af449bbd3c59b5ede8ce67
  *
  * Official Sketchfab glTF (48,634 triangles), unchanged. The authored run is
- * ~49 units long, ~12 tall and ~6 deep; scaled so the long axis is a 2.4 m
- * copper section (thin lines land near 15–25 mm, a real pipe, not a toy and
- * not a room). Mounted on the east wall of the breath corridor, rear face
- * against that wall, clear of the hatch, the tank mounts and the guard's lane.
+ * ~49 units long and ~12 in each cross-axis; scaled so the long axis is a
+ * 1.6 m copper section (a real run, not a toy and not a room). Mounted on the
+ * east wall of the breath corridor, rear face against that wall, clear of the
+ * hatch, the tank mounts and the guard's patrol line.
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -17,14 +17,14 @@ export const COPPER_SOURCE='https://sketchfab.com/3d-models/copper-pipe-section-
 export const COPPER_AUTHOR='pixol3d';
 export const COPPER_LICENSE='CC BY 4.0';
 /** Along-wall length in metres. Authored glTF long axis is ~49 units. */
-export const COPPER_LENGTH_M=2.4;
+export const COPPER_LENGTH_M=1.6;
 /**
  * Rear face inset from the wall plane. Corridor rock blobs bulge ~0.25 m
  * past that plane; 0.30 m keeps the mesh on the wall without burying it.
  */
 export const COPPER_WALL_CLEARANCE=.3;
-/** Bottom of the section — waist height above the walk floor (FLOOR_Y is 0.65). */
-export const COPPER_BOTTOM_Y=1.25;
+/** Bottom of the section — chest height above the walk floor (FLOOR_Y is 0.65). */
+export const COPPER_BOTTOM_Y=1.4;
 /**
  * East inner face of breath cell (11, −4): x = 2, z = 16, facing −X into the
  * corridor. Middle of the run, between the east-wall tanks, off the hatch.
