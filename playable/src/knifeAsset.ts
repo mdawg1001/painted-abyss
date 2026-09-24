@@ -64,8 +64,10 @@ export const KNIFE_HOLD_SCALE={x:1,y:1,z:1} as const;
 export const KNIFE_STAB_REACH=.15;
 export const KNIFE_STAB_Z=KNIFE_HOLD_POS.z-KNIFE_STAB_REACH;
 /** Stab / equip timings (seconds). */
-export const KNIFE_STAB_TIME=.32;
+export const KNIFE_STAB_TIME=.26;
 export const KNIFE_EQUIP_TIME=.38;
+/** Clicks remembered while a stab is still recovering (click ×3 fast = three stabs). */
+export const KNIFE_CLICK_BUFFER=3;
 
 export type ViewOffset={x:number;y:number;z:number;pitch:number;yaw:number;roll:number};
 const ZERO:ViewOffset={x:0,y:0,z:0,pitch:0,yaw:0,roll:0};
@@ -76,7 +78,7 @@ const ZERO:ViewOffset={x:0,y:0,z:0,pitch:0,yaw:0,roll:0};
  */
 export function stabOffset(t:number):ViewOffset{
  if(t<=0||t>=1)return {...ZERO};
- const wind=.14,drive=.34;
+ const wind=.1,drive=.34;
  let k:number;          // thrust amount, −0.18 (wound) … 1 (full reach)
  if(t<wind){const u=t/wind;k=-.18*Math.sin(u*Math.PI*.5);}
  else if(t<drive){const u=(t-wind)/(drive-wind);k=-.18+1.18*(1-Math.pow(1-u,3));}

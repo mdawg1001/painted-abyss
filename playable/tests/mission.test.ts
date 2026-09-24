@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,PREDATOR_HP_MAX,PREDATOR_BREAK_HP,createDiveChests,CHEST_LABEL,chestHasLid,chestInteractPrompt,MAP_FRAGMENT_ORDER,MAP_FRAGMENT_LABEL,torchShouldShine,holdingTorchItem,occupiesFpsHand,predatorSpawnCandidates,randomPredatorSpawn,PREDATOR_SPAWN_CELLS,playerSpawnCandidates,randomPlayerSpawn,PLAYER_SPAWN_CELLS,SPAWN_SEPARATION,breathHatchSpawn} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,KNIFE_COOLDOWN,PREDATOR_HP_MAX,PREDATOR_BREAK_HP,createDiveChests,CHEST_LABEL,chestHasLid,chestInteractPrompt,MAP_FRAGMENT_ORDER,MAP_FRAGMENT_LABEL,torchShouldShine,holdingTorchItem,occupiesFpsHand,predatorSpawnCandidates,randomPredatorSpawn,PREDATOR_SPAWN_CELLS,playerSpawnCandidates,randomPlayerSpawn,PLAYER_SPAWN_CELLS,SPAWN_SEPARATION,breathHatchSpawn} from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{for(let i=0;i<seconds*60;i++)m.update(1/60);};
 test('hydrostatic depth and ata share one surface plane',()=>{
  assert.equal(hydrostaticDepth(SURFACE_Y),0);
@@ -429,4 +429,28 @@ test('opening all three crates fits the cave chart and Tab toggles the overlay',
  // Duplicate scrap is ignored.
  assert.equal(m.collectMapFragment('west'),false);
  assert.equal(m.mapFragmentCount,3);
+});
+
+test('rapid clicks become rapid stabs: the arm recovers in about a quarter second',()=>{
+ assert.ok(KNIFE_COOLDOWN<=.3,'three clicks in under a second can all land');
+ const m=new Mission(true);
+ m.position=world(16,16);m.predator.position={...m.position,z:m.position.z-1.2};
+ m.selected=0;const look={x:0,y:0,z:-1};
+ let hits=0;
+ for(let t=0;t<.85;t+=.05){
+  if(m.stab(look)==='hit')hits++;
+  m.predator.flinch=0;m.predator.position={...m.position,z:m.position.z-1.2};
+  m.update(.05,false);
+ }
+ assert.ok(hits>=3,`three stabs land inside 0.85 s (got ${hits})`);
+});
+
+test('the knife keeps working after the guardian is dead',()=>{
+ const m=new Mission(true);
+ m.position=world(16,16);m.predator.position={...m.position,z:m.position.z-1.2};
+ m.selected=0;m.predator.hp=0;m.predator.state='dead';
+ const look={x:0,y:0,z:-1};
+ assert.equal(m.stab(look),'miss');
+ for(let i=0;i<8;i++)m.update(.05,false);
+ assert.notEqual(m.stab(look),'cooldown','arm recovers even with no living guardian');
 });

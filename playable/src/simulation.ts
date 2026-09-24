@@ -23,8 +23,8 @@ export const PREDATOR_HP_MAX=100;
 export const KNIFE_DAMAGE=30;
 /** Remaining HP at which a living guardian breaks off the chase (85% damage taken). */
 export const PREDATOR_BREAK_HP=PREDATOR_HP_MAX*.15;
-/** Seconds before another stab can apply damage. */
-export const KNIFE_COOLDOWN=.55;
+/** Seconds between stabs. Short enough that rapid clicks land as rapid stabs. */
+export const KNIFE_COOLDOWN=.26;
 /** Brief AI interrupt after a wound. */
 export const PREDATOR_FLINCH=.42;
 /** Playable water column: floor → surface (ceiling of `fits`). World Y is metres. */
@@ -442,7 +442,11 @@ export type GuardWaypoint={x:number;z:number;
  /** corner = a turn in the wall; inspect = a stop partway along a long wall. */
  kind:'corner'|'inspect';
  /** Seconds he stands here looking around. */
- pause:number};
+ pause:number;
+ /** Yaw he faces while standing here: out into the open room, never at the wall. */
+ lookYaw?:number;
+ /** Half-arc of his look-around from lookYaw (radians), trimmed so it stops short of the walls. */
+ scanArc?:number};
 /** How far the guard's patrol line keeps off the walls (m). Leaves room for rock and fittings. */
 export const GUARD_WALL_CLEARANCE=1.3;
 /** Longest stretch he walks before stopping to look around (m). */
@@ -563,8 +567,61 @@ export function guardPerimeterRoute():GuardWaypoint[]{
    i+=2;
   }
  }
+ // 7. Where to look at each stop: the open-room bisector of the two walls he
+ // stands between, and a sweep that stops before the beam hits either wall.
+ for(let i=0;i<route.length;i++){
+  const w=route[i];if(w.pause<=0)continue;
+  const pv=route[(i-1+route.length)%route.length],nx=route[(i+1)%route.length];
+  w.lookYaw=guardRoomLook(w,pv,nx);
+  w.scanArc=guardScanArc(w,w.lookYaw);
+ }
  guardRouteCache=route;
  return route;
+}
+/** Clear sightline (m) from p along yaw before rock or wall (0 = +Z, π/2 = +X). */
+export function guardSightline(p:{x:number;z:number},yaw:number,max=24){
+ const dx=Math.sin(yaw),dz=Math.cos(yaw);
+ for(let d=.25;d<=max;d+=.25)if(!fits({x:p.x+dx*d,y:3,z:p.z+dz*d},.2))return d-.25;
+ return max;
+}
+/**
+ * Facing for a patrol stop: bisect the two wall normals either side of him
+ * (both walls' interior sides), picking whichever sense looks into open space.
+ * At an inside corner that is the diagonal across the room; along a straight
+ * wall it is square out from the wall.
+ */
+export function guardRoomLook(w:{x:number;z:number},prev:{x:number;z:number},next:{x:number;z:number}){
+ const n=(a:{x:number;z:number},b:{x:number;z:number})=>{const l=Math.hypot(b.x-a.x,b.z-a.z)||1;return{x:(b.x-a.x)/l,z:(b.z-a.z)/l};};
+ const d1=n(prev,w),d2=n(w,next);
+ let bx=-d1.z-d2.z,bz=d1.x+d2.x;
+ if(Math.hypot(bx,bz)<1e-3){bx=-d1.z;bz=d1.x;}
+ const yaw=Math.atan2(bx,bz),flip=wrapAngle(yaw+Math.PI);
+ const a=guardSightline(w,yaw),b=guardSightline(w,flip);
+ const best=a>=b?yaw:flip;
+ // Tight pocket (the bisector runs into rock within a few metres): look down
+ // the longest open line near it instead — usually back out along the passage.
+ if(Math.max(a,b)>=6)return best;
+ return guardOpenLook(w,best);
+}
+/** Widest symmetric sweep about lookYaw (≤ ~70°) that keeps ≥ 3 m of open view. */
+export function guardScanArc(p:{x:number;z:number},lookYaw:number){
+ const step=Math.PI/36,limit=GUARD_SCAN_ARC*1.35;
+ let arc=0;
+ for(let a=step;a<=limit+1e-6;a+=step){
+  if(guardSightline(p,lookYaw+a,6)<3||guardSightline(p,lookYaw-a,6)<3)break;
+  arc=a;
+ }
+ return Math.max(.25,arc*.9);
+}
+/** Open direction to look toward from p, biased to stay near `prefer`. */
+export function guardOpenLook(p:{x:number;z:number},prefer:number){
+ let best=prefer,score=-1;
+ for(let k=0;k<32;k++){
+  const y=wrapAngle(prefer+k*Math.PI/16);
+  const s=guardSightline(p,y,16)*(.55+.45*Math.cos(wrapAngle(y-prefer)));
+  if(s>score){score=s;best=y;}
+ }
+ return best;
 }
 /** Every point along a→b leaves room for a body of radius r inside open cells. */
 export function guardClearLine(a:{x:number;z:number},b:{x:number;z:number},r=GUARD_BODY_RADIUS){
@@ -1108,6 +1165,8 @@ export function writeInventoryTipsSeen(){
  }
  update(dt:number,sprinting=false){
   if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;
+  // Knife recovery is the diver's arm, not the guardian: it runs whatever state the guardian is in.
+  this.predator.stabCool=Math.max(0,this.predator.stabCool-dt);
   this.breathWaterY=riseBreathWater(this.breathWaterY,dt);
   const panic=this.elapsed<this.gasPanicUntil;
   const onFoot=canWalk(this.position,this.breathWaterY);
@@ -1242,7 +1301,7 @@ export function writeInventoryTipsSeen(){
     // Inspect: stand at the stop and sweep the room, left then right, back to centre.
     g.scanTime+=dt;
     const t=Math.min(1,g.scanTime/Math.max(.1,wp.pause));
-    const look=wrapAngle(g.scanBase+GUARD_SCAN_ARC*1.35*Math.sin(TAU_GUARD*t));
+    const look=wrapAngle(g.scanBase+(wp.scanArc??GUARD_SCAN_ARC)*Math.sin(TAU_GUARD*t));
     faceStanding(g,look,GUARD_STEER_WALK,dt,canMove);
     g.pause=Math.max(0,g.pause-dt);
     if(g.pause===0)g.waypoint=(g.waypoint+1)%route.length;
@@ -1250,7 +1309,8 @@ export function writeInventoryTipsSeen(){
     const nav=guardNavTarget(g.position,wp);
     const left=steerToward(g,nav,{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.patrol,stopDistance:0,pivotAngle:1e-3},dt,canMove);
     if(nav.final&&left<.02&&g.speed===0){
-     if(wp.pause>0){g.pause=wp.pause;g.scanBase=g.heading;g.scanTime=0;}
+     // Turn out to the room before sweeping — never stare at the wall he walked up to.
+     if(wp.pause>0){g.pause=wp.pause;g.scanBase=wp.lookYaw??guardOpenLook(g.position,g.heading);g.scanTime=0;}
      else g.waypoint=(g.waypoint+1)%route.length; // detour point round a prop: keep walking
     }
    }
@@ -1273,7 +1333,7 @@ export function writeInventoryTipsSeen(){
    if(!g.arrived){
     const nav=guardNavTarget(g.position,g.lastKnown);
     const left=steerToward(g,nav,{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.search,stopDistance:nav.final?.3:0},dt,canMove);
-    if(nav.final&&left<.02&&g.speed===0){g.arrived=true;g.scanBase=g.heading;g.scanTime=0;}
+    if(nav.final&&left<.02&&g.speed===0){g.arrived=true;g.scanBase=guardOpenLook(g.position,g.heading);g.scanTime=0;}
    }else{
     g.scanTime+=dt;
     faceStanding(g,wrapAngle(g.scanBase+Math.sin(g.scanTime*.7)*GUARD_SCAN_ARC),GUARD_STEER_WALK,dt,canMove);
@@ -1285,7 +1345,7 @@ export function writeInventoryTipsSeen(){
   const p=this.predator;const d=distance(p.position,this.position);const canSee=visible(p.position,this.position);
   const sense=canSee&&(d<4.5||d<(this.torch?16:sprinting?13:8));
   const safe=!predatorCell(tile(this.position).col,tile(this.position).row);
-  p.timer+=dt;p.bite=Math.max(0,p.bite-dt);p.flinch=Math.max(0,p.flinch-dt);p.stabCool=Math.max(0,p.stabCool-dt);
+  p.timer+=dt;p.bite=Math.max(0,p.bite-dt);p.flinch=Math.max(0,p.flinch-dt);
 
   // Dead: leave the FSM, stop biting, sink toward the cave floor.
   if(p.state==='dead'){

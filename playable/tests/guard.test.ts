@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
  Mission,distance,tile,world,visible,FLOOR_Y,WALK_EYE_Y,
  breathZone,breathHatchSpawn,inBreathCorridor,canWalkBreath,BREATH_WALK_WATER,
- guardPerimeterRoute,guardClearLine,guardNavTarget,pickGuardSpawn,fits,cells,breathFootprint,
+ guardPerimeterRoute,guardClearLine,guardNavTarget,pickGuardSpawn,fits,cells,breathFootprint,guardSightline,
  GUARD_MAGAZINE,GUARD_RELOAD_SECONDS,GUARD_GUN_COOLDOWN,guardHitChance,
  GUARD_WALL_CLEARANCE,GUARD_INSPECT_SPACING,GUARD_CORNER_PAUSE,GUARD_BODY_RADIUS,GUARD_FOV_HALF,createDiveChests,
  GUARD_MELEE_RANGE,GUARD_MELEE_DAMAGE,GUARD_COAT_DAMAGE_MULT,GUARD_GUN_DAMAGE,
@@ -281,4 +281,36 @@ test('no line of sight, no shot; hit chance falls with range and a moving target
  assert.ok(guardHitChance(20,0,false)<guardHitChance(6,0,false));
  assert.ok(guardHitChance(8,3.4,false)<guardHitChance(8,0,false)-.2,'running is hard to hit');
  assert.ok(guardHitChance(8,0,true)<guardHitChance(8,0,false),'the snap shot is rushed');
+});
+
+test('every patrol stop faces out into the room, and the sweep never reaches a wall',()=>{
+ const route=guardPerimeterRoute();
+ let arriveIntoWall=0;
+ route.forEach((w,i)=>{
+  if(w.pause<=0)return;
+  assert.equal(typeof w.lookYaw,'number',`stop ${i} has a look direction`);
+  const pv=route[(i-1+route.length)%route.length];
+  if(guardSightline(w,Math.atan2(w.x-pv.x,w.z-pv.z))<3)arriveIntoWall++;
+  assert.ok(guardSightline(w,w.lookYaw!)>=3,`stop ${i} looks at open floor`);
+  assert.ok(guardSightline(w,w.lookYaw!+w.scanArc!)>=3&&guardSightline(w,w.lookYaw!-w.scanArc!)>=3,`stop ${i} sweep stays off the walls`);
+ });
+ assert.ok(arriveIntoWall>5,'sanity: many stops are walked up to face-first against a wall');
+});
+
+test('standing at a corner he turns away from the wall and sweeps the room',()=>{
+ const m=new Mission(true);m.breathWaterY=FLOOR_Y-.1;m.position={...FAR};
+ const route=guardPerimeterRoute();
+ const i=route.findIndex((w,k)=>w.kind==='corner'&&guardSightline(w,Math.atan2(w.x-route[(k-1+route.length)%route.length].x,w.z-route[(k-1+route.length)%route.length].z))<2);
+ assert.ok(i>=0);
+ const w=route[i],pv=route[(i-1+route.length)%route.length];
+ const g=m.guard;
+ g.position={x:w.x,y:WALK_EYE_Y,z:w.z};g.heading=Math.atan2(w.x-pv.x,w.z-pv.z);
+ g.state='patrol';g.lastState='patrol';g.waypoint=i;g.pause=0;g.speed=0;g.turnRate=0;g.gun=false;
+ let open=0,samples=0;
+ for(let t=0;t<w.pause+.5;t+=.05){
+  m.update(.05,false);
+  if(g.pause>0&&t>.9){samples++;if(guardSightline(g.position,g.heading)>=3)open++;}
+ }
+ assert.ok(samples>10);
+ assert.equal(open,samples,'after turning round, his lamp never points at the wall');
 });
