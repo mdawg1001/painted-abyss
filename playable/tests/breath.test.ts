@@ -161,6 +161,7 @@ test('walk sprint uses WALK_SPRINT and walk cruise uses WALK_SPEED',()=>{
 
 test('the leak floods the whole bunker from nearly dry: no cave water at spawn',()=>{
  const m=new Mission(true);
+ m.guard.position={x:500,y:2.25,z:500}; // the armed guard is not part of this water test
  // Spawn: water sits below the floor everywhere, so every head position in the cave is in free air.
  assert.ok(m.breathWaterY<FLOOR_Y,'bunker starts dry');
  assert.equal(floodFraction(m.breathWaterY),0);

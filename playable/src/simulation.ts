@@ -442,17 +442,62 @@ export type GuardWaypoint={x:number;z:number;
  /** corner = a turn in the wall; inspect = a stop partway along a long wall. */
  kind:'corner'|'inspect';
  /** Seconds he stands here looking around. */
- pause:number;
- /** Yaw he faces while standing here: out into the open room, never at the wall. */
- lookYaw?:number;
- /** Half-arc of his look-around from lookYaw (radians), trimmed so it stops short of the walls. */
- scanArc?:number};
+ pause:number};
 /** How far the guard's patrol line keeps off the walls (m). Leaves room for rock and fittings. */
 export const GUARD_WALL_CLEARANCE=1.3;
 /** Longest stretch he walks before stopping to look around (m). */
 export const GUARD_INSPECT_SPACING=16;
-export const GUARD_CORNER_PAUSE=2.6;
-export const GUARD_INSPECT_PAUSE=1.8;
+export const GUARD_CORNER_PAUSE=3.4;
+export const GUARD_INSPECT_PAUSE=2.4;
+/** How far the look-out survey reaches (m). */
+const LOOKOUT_RANGE=28;
+/** Clear floor distance along one bearing from `p` (m), stopping at the first wall. */
+export function clearDistance(p:{x:number;z:number},yaw:number,max=LOOKOUT_RANGE){
+ const sx=Math.sin(yaw),sz=Math.cos(yaw);
+ for(let d=.25;d<=max;d+=.25)if(!isOpen(p.x+sx*d,p.z+sz*d))return d-.25;
+ return max;
+}
+/**
+ * Where a sentry standing at `p` should look: out into the room, not at the wall.
+ * Surveys 72 bearings, smooths them over ±15°, and takes the bearing with the
+ * longest open view. The sweep arc is the span around it that still looks into
+ * open floor (at least 45 % of the best view, never under 3 m), capped at ±75°.
+ */
+/**
+ * Next heading to aim for when turning from `from` to `to` on the spot: go round
+ * whichever way keeps his eyes on open floor, so a sentry turning at a corner
+ * swings his view across the room rather than across the wall beside him.
+ */
+export function turnThroughRoom(p:{x:number;z:number},from:number,to:number){
+ const d=wrapAngle(to-from);
+ if(Math.abs(d)<.05)return to;
+ const ways=[d,d>0?d-Math.PI*2:d+Math.PI*2];
+ let best=ways[0],bestScore=-1;
+ for(const w of ways){
+  let worst=Infinity;const steps=Math.max(2,Math.ceil(Math.abs(w)/.17));
+  for(let k=1;k<steps;k++)worst=Math.min(worst,clearDistance(p,from+w*k/steps,8));
+  if(worst>bestScore+.25||(Math.abs(worst-bestScore)<=.25&&Math.abs(w)<Math.abs(best))){bestScore=worst;best=w;}
+ }
+ // Lead the turn by at most ~50° so the rate-limited pivot keeps to the chosen side.
+ const lead=Math.sign(best)*Math.min(Math.abs(best),.9);
+ return wrapAngle(from+lead);
+}
+export function guardLookout(p:{x:number;z:number}){
+ const n=72,dist:number[]=[];
+ for(let i=0;i<n;i++)dist.push(clearDistance(p,i/n*Math.PI*2));
+ const smooth=dist.map((_,i)=>{let s=0;for(let k=-3;k<=3;k++)s+=dist[(i+k+n)%n];return s/7;});
+ let best=0;for(let i=1;i<n;i++)if(smooth[i]>smooth[best])best=i;
+ const keep=(i:number)=>dist[(i+n)%n]>=Math.max(3,.45*dist[best]);
+ let lo=0,hi=0;const cap=Math.round(75/360*n);
+ while(lo<cap&&keep(best-lo-1))lo++;
+ while(hi<cap&&keep(best+hi+1))hi++;
+ // Centre the sweep on the open span so both ends look into the room.
+ const centre=best+(hi-lo)/2;
+ // A second open view well away from the first (the other way down a corridor, or
+ // across to another doorway) gets a look too.
+ let alt=-1;for(let i=0;i<n;i++){const sep=Math.min(Math.abs(i-best),n-Math.abs(i-best));if(sep>=n/4&&smooth[i]>=Math.max(6,.5*smooth[best])&&(alt<0||smooth[i]>smooth[alt]))alt=i;}
+ return{yaw:wrapAngle(centre/n*Math.PI*2),arc:(lo+hi)/2/n*Math.PI*2,view:dist[best],alt:alt<0?null:wrapAngle(alt/n*Math.PI*2)};
+}
 /** Half-angle of the guard's field of view (radians, ~65°). */
 export const GUARD_FOV_HALF=65*Math.PI/180;
 let guardRouteCache:GuardWaypoint[]|null=null;
@@ -567,61 +612,8 @@ export function guardPerimeterRoute():GuardWaypoint[]{
    i+=2;
   }
  }
- // 7. Where to look at each stop: the open-room bisector of the two walls he
- // stands between, and a sweep that stops before the beam hits either wall.
- for(let i=0;i<route.length;i++){
-  const w=route[i];if(w.pause<=0)continue;
-  const pv=route[(i-1+route.length)%route.length],nx=route[(i+1)%route.length];
-  w.lookYaw=guardRoomLook(w,pv,nx);
-  w.scanArc=guardScanArc(w,w.lookYaw);
- }
  guardRouteCache=route;
  return route;
-}
-/** Clear sightline (m) from p along yaw before rock or wall (0 = +Z, π/2 = +X). */
-export function guardSightline(p:{x:number;z:number},yaw:number,max=24){
- const dx=Math.sin(yaw),dz=Math.cos(yaw);
- for(let d=.25;d<=max;d+=.25)if(!fits({x:p.x+dx*d,y:3,z:p.z+dz*d},.2))return d-.25;
- return max;
-}
-/**
- * Facing for a patrol stop: bisect the two wall normals either side of him
- * (both walls' interior sides), picking whichever sense looks into open space.
- * At an inside corner that is the diagonal across the room; along a straight
- * wall it is square out from the wall.
- */
-export function guardRoomLook(w:{x:number;z:number},prev:{x:number;z:number},next:{x:number;z:number}){
- const n=(a:{x:number;z:number},b:{x:number;z:number})=>{const l=Math.hypot(b.x-a.x,b.z-a.z)||1;return{x:(b.x-a.x)/l,z:(b.z-a.z)/l};};
- const d1=n(prev,w),d2=n(w,next);
- let bx=-d1.z-d2.z,bz=d1.x+d2.x;
- if(Math.hypot(bx,bz)<1e-3){bx=-d1.z;bz=d1.x;}
- const yaw=Math.atan2(bx,bz),flip=wrapAngle(yaw+Math.PI);
- const a=guardSightline(w,yaw),b=guardSightline(w,flip);
- const best=a>=b?yaw:flip;
- // Tight pocket (the bisector runs into rock within a few metres): look down
- // the longest open line near it instead — usually back out along the passage.
- if(Math.max(a,b)>=6)return best;
- return guardOpenLook(w,best);
-}
-/** Widest symmetric sweep about lookYaw (≤ ~70°) that keeps ≥ 3 m of open view. */
-export function guardScanArc(p:{x:number;z:number},lookYaw:number){
- const step=Math.PI/36,limit=GUARD_SCAN_ARC*1.35;
- let arc=0;
- for(let a=step;a<=limit+1e-6;a+=step){
-  if(guardSightline(p,lookYaw+a,6)<3||guardSightline(p,lookYaw-a,6)<3)break;
-  arc=a;
- }
- return Math.max(.25,arc*.9);
-}
-/** Open direction to look toward from p, biased to stay near `prefer`. */
-export function guardOpenLook(p:{x:number;z:number},prefer:number){
- let best=prefer,score=-1;
- for(let k=0;k<32;k++){
-  const y=wrapAngle(prefer+k*Math.PI/16);
-  const s=guardSightline(p,y,16)*(.55+.45*Math.cos(wrapAngle(y-prefer)));
-  if(s>score){score=s;best=y;}
- }
- return best;
 }
 /** Every point along a→b leaves room for a body of radius r inside open cells. */
 export function guardClearLine(a:{x:number;z:number},b:{x:number;z:number},r=GUARD_BODY_RADIUS){
@@ -873,6 +865,10 @@ export function writeInventoryTipsSeen(){
   pause:0,
   /** Search reached the last sighting and is scanning. */
   arrived:false,scanBase:0,scanTime:0,
+  /** Half-width of the current sweep (rad) and the time budgeted to turn to face it (s). */
+  scanArc:GUARD_SCAN_ARC,scanTurn:0,
+  /** A second bearing worth checking at this stop (null when the room only opens one way). */
+  scanAlt:null as number|null,
   lastState:'patrol' as GuardState,
   meleeCool:0,shootCool:0,
   /** Rounds left in the magazine, reload countdown, and whether the next shot is the snap shot. */
@@ -1284,6 +1280,14 @@ export function writeInventoryTipsSeen(){
   const g=this.guard;
   return this.guardInFiringStance()&&g.reload===0&&g.ammo>0;
  }
+ /** Begin a look-around here: face the most open view into the room and sweep across it. */
+ private startLookout(pause:number){
+  const g=this.guard,l=guardLookout(g.position);
+  const turn=Math.abs(wrapAngle(l.yaw-g.heading));
+  g.pause=pause;g.scanTime=0;g.scanBase=l.yaw;g.scanArc=Math.max(.35,l.arc);g.scanAlt=l.alt;
+  // Budget the turn the long way round too, since he turns through the room, not the wall.
+  g.scanTurn=Math.max(turn,Math.PI*2-turn)/GUARD_STEER_WALK.turnRateStanding*.6;
+ }
  private steerGuard(dt:number){
   const g=this.guard;
   if(g.lastState!==g.state){g.lastState=g.state;g.arrived=false;g.scanTime=0;}
@@ -1298,19 +1302,21 @@ export function writeInventoryTipsSeen(){
    const route=guardPerimeterRoute();
    const wp=route[g.waypoint%route.length];
    if(g.pause>0){
-    // Inspect: stand at the stop and sweep the room, left then right, back to centre.
+    // Inspect: turn to face out into the room, then sweep it left, right and back to centre.
     g.scanTime+=dt;
-    const t=Math.min(1,g.scanTime/Math.max(.1,wp.pause));
-    const look=wrapAngle(g.scanBase+(wp.scanArc??GUARD_SCAN_ARC)*Math.sin(TAU_GUARD*t));
-    faceStanding(g,look,GUARD_STEER_WALK,dt,canMove);
+    const sweep=Math.max(.1,wp.pause-g.scanTurn);
+    const t=Math.max(0,Math.min(1,(g.scanTime-g.scanTurn)/sweep));
+    // With a second open view he sweeps the first for 60 % of the stop, then checks the other.
+    const second=g.scanAlt!==null&&t>.6;
+    const look=second?g.scanAlt!:wrapAngle(g.scanBase+g.scanArc*Math.sin(TAU_GUARD*Math.min(1,t/(g.scanAlt!==null?.6:1))));
+    faceStanding(g,turnThroughRoom(g.position,g.heading,look),GUARD_STEER_WALK,dt,canMove);
     g.pause=Math.max(0,g.pause-dt);
     if(g.pause===0)g.waypoint=(g.waypoint+1)%route.length;
    }else{
     const nav=guardNavTarget(g.position,wp);
     const left=steerToward(g,nav,{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.patrol,stopDistance:0,pivotAngle:1e-3},dt,canMove);
     if(nav.final&&left<.02&&g.speed===0){
-     // Turn out to the room before sweeping — never stare at the wall he walked up to.
-     if(wp.pause>0){g.pause=wp.pause;g.scanBase=wp.lookYaw??guardOpenLook(g.position,g.heading);g.scanTime=0;}
+     if(wp.pause>0){this.startLookout(wp.pause);}
      else g.waypoint=(g.waypoint+1)%route.length; // detour point round a prop: keep walking
     }
    }
@@ -1333,10 +1339,10 @@ export function writeInventoryTipsSeen(){
    if(!g.arrived){
     const nav=guardNavTarget(g.position,g.lastKnown);
     const left=steerToward(g,nav,{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.search,stopDistance:nav.final?.3:0},dt,canMove);
-    if(nav.final&&left<.02&&g.speed===0){g.arrived=true;g.scanBase=guardOpenLook(g.position,g.heading);g.scanTime=0;}
+    if(nav.final&&left<.02&&g.speed===0){g.arrived=true;this.startLookout(0);}
    }else{
     g.scanTime+=dt;
-    faceStanding(g,wrapAngle(g.scanBase+Math.sin(g.scanTime*.7)*GUARD_SCAN_ARC),GUARD_STEER_WALK,dt,canMove);
+    faceStanding(g,wrapAngle(g.scanBase+Math.sin(Math.max(0,g.scanTime-g.scanTurn)*.7)*g.scanArc),GUARD_STEER_WALK,dt,canMove);
    }
   }
   g.position.y=WALK_EYE_Y;
