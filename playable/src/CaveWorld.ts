@@ -201,7 +201,7 @@ export class CaveWorld extends OceanWorld {
  wallPosters:WallPosters|null=null;
  /** Sketchfab gleb_tihon pipe run hidden on the far south-west cavern wall. */
  wallPipe:WallPipe|null=null;
- /** Sketchfab pixol3d copper section on the east breath-corridor wall. */
+ /** Tiled pixol3d copper run along the hand-wheel wall in the far south-west cavern. */
  copperPipe:CopperPipe|null=null;
  /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
  knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
@@ -394,7 +394,7 @@ export class CaveWorld extends OceanWorld {
    this.adoptPointCull(visual.group,this.worldBox(visual.group),true,true);
   });
  }
- /** Bolt the Sketchfab copper section to the east breath-corridor wall. */
+ /** Repeat the Sketchfab copper section along the hand-wheel wall. */
  mountCopperPipe(){
   const visual=createCopperPipe();
   this.scene.add(visual.group);

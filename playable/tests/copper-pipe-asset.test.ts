@@ -7,13 +7,11 @@ import {fileURLToPath} from 'node:url';
 import * as THREE from 'three';
 import {
  COPPER_PIPE_URL,COPPER_SOURCE,COPPER_AUTHOR,COPPER_LICENSE,
- COPPER_LENGTH_M,COPPER_WALL_CLEARANCE,COPPER_BOTTOM_Y,COPPER_MOUNT,
- fitCopperPipe,
+ COPPER_SECTION_COUNT,COPPER_JOINT_OVERLAP,COPPER_WALL_CLEARANCE,COPPER_AXIS_Y,
+ copperWallSpan,copperSectionLength,copperMounts,fitCopperRun,
 } from '../src/copperPipeAsset';
-import {
- cells,world,breathZone,breathHatchSpawn,breathTankMounts,tile,
- GUARD_WALL_CLEARANCE,GUARD_BODY_RADIUS,
-} from '../src/simulation';
+import { PIPE_MOUNT, PIPE_WALL_CLEARANCE, fitPipeToWall } from '../src/pipeAsset';
+import { breathZone, tile } from '../src/simulation';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const GLB_SHA='bc2cb52aed8220b5aded1df516303e4f8b60d3226be5c5303cfc2cf688bfff30';
@@ -68,47 +66,98 @@ test('copper pipe glb is the Sketchfab download and NOTICE credits it',()=>{
  assert.match(extras,/pixol3d/);
 });
 
-test('fitted section is a human pipe on the east corridor wall, off the hatch and the guard lane',()=>{
+test('tiled run spans the hand-wheel wall and tees into that pipe',()=>{
  // World AABB of copper_pipe.glb after the Sketchfab node transforms (before our scale).
  const authored={x:11.338,y:11.924,z:48.792};
- const fitted=fitCopperPipe(authoredSection(authored),COPPER_MOUNT);
- fitted.updateMatrixWorld(true);
- const box=new THREE.Box3().setFromObject(fitted);
- const size=box.getSize(new THREE.Vector3());
- assert.ok(Math.abs(size.z-COPPER_LENGTH_M)<.02,`length ${size.z}`);
- assert.ok(size.y>.3&&size.y<1.2,`height ${size.y} is a pipe section, not a room`);
- assert.ok(size.x>.15&&size.x<.5,`depth ${size.x} stays on the wall`);
- // Rear face (max X) is the clearance off the east wall plane.
- assert.ok(Math.abs(box.max.x-(COPPER_MOUNT.x-COPPER_WALL_CLEARANCE))<.02,`rear ${box.max.x}`);
- assert.ok(Math.abs(box.min.y-COPPER_BOTTOM_Y)<.02);
- assert.ok(Math.abs((box.min.z+box.max.z)*.5-COPPER_MOUNT.z)<.02);
- // Into the room, but short of the guard's body on the 1.3 m patrol line.
- const intoRoom=COPPER_MOUNT.x-box.min.x;
- assert.ok(intoRoom<GUARD_WALL_CLEARANCE-GUARD_BODY_RADIUS,`reach ${intoRoom} blocks the guard`);
- // Centre of the corridor is x = -2. The pipe stays on the east side.
- assert.ok(box.min.x>-1,'pipe stays off the guard centerline');
+ const span=copperWallSpan();
+ assert.equal(span.z,PIPE_MOUNT.z);
+ assert.ok(span.x0<PIPE_MOUNT.x&&span.x1>PIPE_MOUNT.x,'span contains the hand-wheel riser');
+ assert.ok(span.length>20,'the wheel wall is the long blind face, not one cell');
+ assert.equal(COPPER_WALL_CLEARANCE,PIPE_WALL_CLEARANCE);
+ assert.ok(COPPER_SECTION_COUNT>=2,'the section is repeated, not stretched');
 
- // Mount is the east inner face of an open breath cell, not hatch or far end.
- let onWall=false;
- for(const key of cells){
-  const [c,r]=key.split(',').map(Number);
-  if(breathZone(c,r)==='')continue;
-  const p=world(c,r);
-  for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]] as const){
-   if(cells.has(`${c+dc},${r+dr}`))continue;
-   const nx=-dc,nz=dr;
-   const x=p.x+dc*2.5+nx*.5,z=p.z-dr*2.5+nz*.5;
-   if(Math.hypot(x-COPPER_MOUNT.x,z-COPPER_MOUNT.z)<.05)onWall=true;
-  }
+ const mounts=copperMounts(span);
+ assert.equal(mounts.length,COPPER_SECTION_COUNT);
+ const len=copperSectionLength(span);
+ assert.ok(len>4,'each copy is much longer than the old 1.6 m section');
+ // Outer ends sit on the wall corners; inner joints overlap instead of gaping.
+ assert.ok(Math.abs((mounts[0].x-len/2)-span.x0)<1e-6);
+ assert.ok(Math.abs((mounts[mounts.length-1].x+len/2)-span.x1)<1e-6);
+ for(let i=1;i<mounts.length;i++){
+  const gap=(mounts[i].x-len/2)-(mounts[i-1].x+len/2);
+  assert.ok(Math.abs(gap+COPPER_JOINT_OVERLAP)<1e-6,`joint gap ${gap}`);
  }
- assert.ok(onWall,'mount sits on a breath-corridor wall face');
- const at=tile({x:COPPER_MOUNT.x-.4,y:0,z:COPPER_MOUNT.z});
- assert.equal(breathZone(at.col,at.row),'middle');
- const hatch=breathHatchSpawn();
- assert.ok(Math.abs(COPPER_MOUNT.z-hatch.z)-COPPER_LENGTH_M/2>8,'clear of the hatch');
- for(const tank of breathTankMounts()){
-  const along=Math.abs(tank.z-COPPER_MOUNT.z);
-  const sameWall=Math.abs(tank.x-COPPER_MOUNT.x)<1.2;
-  if(sameWall)assert.ok(along>COPPER_LENGTH_M/2+.6,`tank at z=${tank.z} overlaps the pipe`);
+
+ const run=fitCopperRun(authoredSection(authored),span);
+ run.updateMatrixWorld(true);
+ const box=new THREE.Box3().setFromObject(run);
+ const size=box.getSize(new THREE.Vector3());
+ assert.ok(Math.abs(box.min.x-span.x0)<.02&&Math.abs(box.max.x-span.x1)<.02,`run x ${box.min.x}..${box.max.x}`);
+ assert.ok(Math.abs(size.x-span.length)<.02,`run length ${size.x} should be the whole wall`);
+ // Uniform scale keeps the authored proportions, just much bigger than the 0.39 m corridor pipe.
+ const sectionHeight=len*(authored.y/authored.z);
+ assert.ok(sectionHeight>1.2&&sectionHeight<3,`height ${sectionHeight} is a big pipe, not a toy or a room`);
+ assert.ok(Math.abs(size.y-sectionHeight)<.02);
+ assert.ok(size.z>1&&size.z<sectionHeight+0.2,`depth ${size.z} stays a pipe against the wall`);
+ // Rear face is the same plane as the doom pipe's back. Axis crosses the wheel.
+ assert.ok(Math.abs(box.min.z-(span.z+COPPER_WALL_CLEARANCE))<.02,`rear ${box.min.z}`);
+ assert.ok(Math.abs((box.min.y+box.max.y)*.5-COPPER_AXIS_Y)<.02);
+ assert.ok(box.min.x<=PIPE_MOUNT.x&&box.max.x>=PIPE_MOUNT.x,'run crosses the riser, so the joint is not a gap');
+ assert.ok(box.min.y<COPPER_AXIS_Y&&box.max.y>COPPER_AXIS_Y);
+
+ // Not the old east breath-corridor cell. Step into the room off the wall plane.
+ for(const mount of mounts){
+  const at=tile({x:mount.x,y:0,z:mount.z+0.6});
+  assert.equal(breathZone(at.col,at.row),'');
  }
+
+ // Each copy is the same mesh proportions (uniform scale), lined up on one axis.
+ const parts=run.children.map(child=>{
+  child.updateMatrixWorld(true);
+  const b=new THREE.Box3().setFromObject(child);
+  const s=b.getSize(new THREE.Vector3());
+  return {b,s};
+ });
+ assert.equal(parts.length,COPPER_SECTION_COUNT);
+ for(const {s} of parts){
+  assert.ok(Math.abs(s.x/s.y-authored.z/authored.y)<.02,'section is not squashed');
+ }
+ for(let i=1;i<parts.length;i++){
+  const overlap=parts[i-1].b.max.x-parts[i].b.min.x;
+  assert.ok(overlap>COPPER_JOINT_OVERLAP-.02&&overlap<COPPER_JOINT_OVERLAP+.02,`overlap ${overlap}`);
+  assert.ok(Math.abs(parts[i].b.min.y-parts[0].b.min.y)<.02);
+  assert.ok(Math.abs(parts[i].b.min.z-parts[0].b.min.z)<.02);
+ }
+});
+
+test('fitted copper volume meets the loaded hand-wheel pipe',async()=>{
+ const {GLTFLoader}=await import('three/examples/jsm/loaders/GLTFLoader.js');
+ const {MeshoptDecoder}=await import('three/examples/jsm/libs/meshopt_decoder.module.js');
+ const buf=fs.readFileSync(path.join(root,'public/assets/doom-pipe/doom_pipe.glb'));
+ const ab=buf.buffer.slice(buf.byteOffset,buf.byteOffset+buf.byteLength);
+ const loader=new GLTFLoader();
+ loader.setMeshoptDecoder(MeshoptDecoder);
+ const gltf=await new Promise<import('three/examples/jsm/loaders/GLTFLoader.js').GLTF>((res,rej)=>loader.parse(ab,'',res,rej));
+ const wheelPipe=fitPipeToWall(gltf.scene,PIPE_MOUNT);
+ wheelPipe.updateMatrixWorld(true);
+ const wheelBox=new THREE.Box3().setFromObject(wheelPipe);
+ const authored={x:11.338,y:11.924,z:48.792};
+ const run=fitCopperRun(authoredSection(authored));
+ run.updateMatrixWorld(true);
+ const copper=new THREE.Box3().setFromObject(run);
+ assert.ok(copper.intersectsBox(wheelBox),'copper intersects the hand-wheel pipe');
+ // Shared rear plane: the joint is not floating off the wall ahead of the riser.
+ assert.ok(Math.abs(copper.min.z-wheelBox.min.z)<.02,`rear ${copper.min.z} vs pipe ${wheelBox.min.z}`);
+ // The wheel disc (furthest mesh into the room) sits inside the copper's height.
+ let wheel:THREE.Mesh|null=null;
+ let wheelZ=-Infinity;
+ wheelPipe.traverse(o=>{
+  if(!(o instanceof THREE.Mesh))return;
+  const b=new THREE.Box3().setFromObject(o);
+  if(b.max.z>wheelZ){wheelZ=b.max.z;wheel=o;}
+ });
+ assert.ok(wheel);
+ const disc=new THREE.Box3().setFromObject(wheel);
+ assert.ok(copper.min.y<disc.min.y&&copper.max.y>disc.max.y,'copper surrounds the wheel height');
+ assert.ok(copper.min.x<disc.min.x&&copper.max.x>disc.max.x,'copper crosses the wheel along the wall');
 });

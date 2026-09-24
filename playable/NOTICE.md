@@ -85,7 +85,7 @@
 - License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
 - Files: `public/assets/copper-pipe/copper_pipe.glb` — official Sketchfab glTF (48,634 triangles), unchanged
 - This work is based on "Copper Pipe Section" (https://sketchfab.com/3d-models/copper-pipe-section-91807ce330af449bbd3c59b5ede8ce67) by pixol3d (https://sketchfab.com/pixol3d) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
-- 1.6 m copper section on the east wall of the breath corridor, between the wall tanks (not interactable).
+- Repeated along the full blind south wall of the far south-west cavern and joined to the hand-wheel riser on that wall (not interactable). The glTF is unchanged; the run is copies of that one section.
 
 ## 04_DOOM_pipe (detail) (Sketchfab)
 - Source: https://sketchfab.com/3d-models/04-doom-pipe-detail-41063ef623eb41f5a981fff8997e54b9
