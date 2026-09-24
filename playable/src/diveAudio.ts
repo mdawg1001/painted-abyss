@@ -197,3 +197,73 @@ export function playFootstep(
   }
   last.onended = done;
 }
+
+/**
+ * TT-33 report in a concrete-and-rock bunker: a hard supersonic crack, a short
+ * chest thump, then a long dark tail as the sound rolls round the chambers.
+ * `distance` (m) softens and darkens it; the tail stays so far shots still carry.
+ */
+export function playGunshot(ctx: AudioContext, master: GainNode, distance: number) {
+  const start = ctx.currentTime + .004;
+  const near = 1 / (1 + Math.max(0, distance) / 7);
+  const nodes: AudioNode[] = [];
+  const noise = (dur: number) => {
+    const buf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * dur)), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource(); src.buffer = buf; nodes.push(src); return src;
+  };
+  // Crack: broadband, very fast, brighter up close.
+  const crack = noise(.09);
+  const crackHp = ctx.createBiquadFilter(); crackHp.type = 'highpass'; crackHp.frequency.value = 900 + 2200 * near;
+  const crackEnv = ctx.createGain();
+  crackEnv.gain.setValueAtTime(0, start);
+  crackEnv.gain.linearRampToValueAtTime(.9 * near + .08, start + .002);
+  crackEnv.gain.exponentialRampToValueAtTime(.001, start + .09);
+  crack.connect(crackHp).connect(crackEnv).connect(master); nodes.push(crackHp, crackEnv);
+  crack.start(start); crack.stop(start + .1);
+  // Thump: the muzzle blast body.
+  const thump = ctx.createOscillator(); thump.type = 'sine';
+  thump.frequency.setValueAtTime(95, start); thump.frequency.exponentialRampToValueAtTime(42, start + .16);
+  const thumpEnv = ctx.createGain();
+  thumpEnv.gain.setValueAtTime(0, start);
+  thumpEnv.gain.linearRampToValueAtTime(.6 * near + .05, start + .004);
+  thumpEnv.gain.exponentialRampToValueAtTime(.001, start + .18);
+  thump.connect(thumpEnv).connect(master); nodes.push(thump, thumpEnv);
+  thump.start(start); thump.stop(start + .2);
+  // Tail: low-passed noise decaying over ~1.4 s (the bunker ringing).
+  const tail = noise(1.5);
+  const tailLp = ctx.createBiquadFilter(); tailLp.type = 'lowpass'; tailLp.frequency.value = 700 + 500 * near; tailLp.Q.value = .4;
+  const tailEnv = ctx.createGain();
+  tailEnv.gain.setValueAtTime(0, start + .02);
+  tailEnv.gain.linearRampToValueAtTime(.18 + .12 * near, start + .05);
+  tailEnv.gain.exponentialRampToValueAtTime(.001, start + 1.45);
+  tail.connect(tailLp).connect(tailEnv).connect(master); nodes.push(tailLp, tailEnv);
+  tail.start(start + .02); tail.stop(start + 1.5);
+  tail.onended = () => nodes.forEach(n => n.disconnect());
+}
+
+/** A round passing close and striking rock: a whine that drops in pitch, then a chip. */
+export function playRicochet(ctx: AudioContext, master: GainNode) {
+  const start = ctx.currentTime + .03;
+  const whine = ctx.createOscillator(); whine.type = 'sine';
+  const f0 = 2600 + Math.random() * 900;
+  whine.frequency.setValueAtTime(f0, start); whine.frequency.exponentialRampToValueAtTime(f0 * .45, start + .28);
+  const wEnv = ctx.createGain();
+  wEnv.gain.setValueAtTime(0, start);
+  wEnv.gain.linearRampToValueAtTime(.09, start + .01);
+  wEnv.gain.exponentialRampToValueAtTime(.001, start + .3);
+  whine.connect(wEnv).connect(master);
+  whine.start(start); whine.stop(start + .32);
+  const buf = ctx.createBuffer(1, Math.round(ctx.sampleRate * .05), ctx.sampleRate);
+  const d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const chip = ctx.createBufferSource(); chip.buffer = buf;
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 3800; bp.Q.value = 1.3;
+  const cEnv = ctx.createGain();
+  cEnv.gain.setValueAtTime(0, start - .02);
+  cEnv.gain.linearRampToValueAtTime(.22, start - .018);
+  cEnv.gain.exponentialRampToValueAtTime(.001, start + .03);
+  chip.connect(bp).connect(cEnv).connect(master);
+  chip.start(start - .02); chip.stop(start + .04);
+  whine.onended = () => { whine.disconnect(); wEnv.disconnect(); chip.disconnect(); bp.disconnect(); cEnv.disconnect(); };
+}

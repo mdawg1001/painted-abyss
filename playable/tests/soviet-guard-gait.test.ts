@@ -142,7 +142,7 @@ test('chase: squares up, closes in one straight line, stops at arm\'s length wit
  m.guard.heading=Math.PI; // facing away: he must pivot first, not moonwalk
  m.position={x:fp.maxX-1.5,y:WALK_EYE_Y,z:fp.cz+5};
  m.guard.state='chase';m.guard.lastState='chase';
- m.guard.bottle=true;m.guard.air=999;
+ m.guard.bottle=true;m.guard.air=999;m.guard.gun=false; // unarmed chase: movement only
  m.guard.lastKnown={...m.position};
  const start={...m.guard.position};
  const dt=1/60;

@@ -33,6 +33,10 @@ export const GUARD_LOCO_PROCEDURAL=false;
  * Crown near player eye (`WALK_EYE_Y` = FLOOR_Y+1.6) and below hatch door (~2.3 m open).
  */
 export const SOVIET_GUARD_HEIGHT=1.90;
+/** Guard readability (tuned so face and uniform read without blowing out). */
+export const GUARD_EMISSIVE_LIFT=.2;
+export const GUARD_KEY_INTENSITY=6;
+export const GUARD_RIM_INTENSITY=2.5;
 
 /**
  * Ground speed baked into each authored clip at SOVIET_GUARD_HEIGHT (m/s).
@@ -73,6 +77,10 @@ export type SovietGuardVisual={
  coat:THREE.Object3D;
  /** Skeletal idle/walk/run when clips + skinned mesh are ready. */
  loco:SovietGuardLocomotion|null;
+ /** Warm key light carried with him (his own lamp) so he reads clearly in the dark. */
+ fill:THREE.PointLight;
+ /** Cool rim light behind him that separates his silhouette from the rock. */
+ rim:THREE.PointLight;
 };
 
 type GuardGltfBundle={
@@ -224,9 +232,11 @@ function litGuardMaterials(root:THREE.Object3D){
    const sm=m as THREE.MeshStandardMaterial;
    sm.envMapIntensity=.35;
    if(!sm.emissive)sm.emissive=new THREE.Color(0x000000);
-   // Soft lift so olive cloth reads under corridor murk.
-   sm.emissive.lerp(new THREE.Color(0x2a3220),.15);
-   sm.emissiveIntensity=Math.max(sm.emissiveIntensity,.18);
+   // A gentle lift in the material's own colour so cloth and skin keep their hue in the
+   // murk. Kept low: the key/rim lights do the modelling, this only stops pure-black shadows.
+   const base=sm.color?sm.color.clone():new THREE.Color(0x4a5a3a);
+   sm.emissive.copy(base);
+   sm.emissiveIntensity=GUARD_EMISSIVE_LIFT;
    sm.needsUpdate=true;
   }
  });
@@ -361,7 +371,16 @@ export function createSovietGuardVisual():SovietGuardVisual{
  const body=buildSovietGuardStub();
  root.add(body);
  const props=makeGearProps(root);
- return{root,body,ready:false,loco:null,...props};
+ // Key: in front of his chest, like a lamp clipped to the webbing (he faces +Z).
+ // Set at face height and a little high so the face and chest model with soft shadow
+ // under the helmet brim instead of flattening out.
+ const fill=new THREE.PointLight(0xffe4c8,GUARD_KEY_INTENSITY,3.6,2);
+ fill.name='guardFill';fill.position.set(.25,1.75,.9);fill.castShadow=false;
+ // Rim: behind and above, cooler, just enough to outline shoulders and helmet.
+ const rim=new THREE.PointLight(0xa8c8ff,GUARD_RIM_INTENSITY,3,2);
+ rim.name='guardRim';rim.position.set(-.3,2.1,-.7);rim.castShadow=false;
+ root.add(fill,rim);
+ return{root,body,ready:false,loco:null,fill,rim,...props};
 }
 
 /**
@@ -393,4 +412,50 @@ export function syncGuardGear(
  visual.gun.visible=!!inv.gun;
  visual.bottle.visible=!!inv.bottle;
  visual.coat.visible=!!inv.coat;
+}
+
+
+const _bp=new THREE.Vector3(),_cp=new THREE.Vector3(),_cur=new THREE.Vector3(),_want=new THREE.Vector3();
+const _qFull=new THREE.Quaternion(),_qDelta=new THREE.Quaternion(),_qWorld=new THREE.Quaternion(),_qParent=new THREE.Quaternion(),_qId=new THREE.Quaternion();
+const _m=new THREE.Matrix4(),_up=new THREE.Vector3(0,1,0);
+/** Rotate `bone` (weighted) so the direction bone→child points at `target`. */
+function aimSegment(bone:THREE.Object3D,child:THREE.Object3D,target:THREE.Vector3,w:number){
+ bone.updateWorldMatrix(true,false);child.updateWorldMatrix(false,false);
+ bone.getWorldPosition(_bp);child.getWorldPosition(_cp);
+ _cur.subVectors(_cp,_bp).normalize();_want.subVectors(target,_bp).normalize();
+ if(_cur.lengthSq()<1e-8||_want.lengthSq()<1e-8)return;
+ // (slerpQuaternions copies its first argument into `this`, so the full turn needs its own slot.)
+ _qFull.setFromUnitVectors(_cur,_want);
+ _qDelta.slerpQuaternions(_qId,_qFull,w);
+ bone.getWorldQuaternion(_qWorld);
+ _qWorld.premultiply(_qDelta);
+ if(bone.parent){bone.parent.getWorldQuaternion(_qParent);_qParent.invert();_qWorld.premultiply(_qParent);}
+ bone.quaternion.copy(_qWorld);
+ bone.updateMatrixWorld(true);
+}
+/**
+ * Pistol aim layered over the walk/idle clips: the right arm straightens toward the
+ * target and the TT-33's barrel lines up on it. `w` 0..1 raises the gun; `recoil`
+ * 0..1 kicks the muzzle up after a shot (decays in the caller).
+ */
+export function applyGuardAim(visual:SovietGuardVisual,target:THREE.Vector3,w:number,recoil=0){
+ const body=visual.body;
+ const upper=findNamedBone(body,['UpperArmR']),lower=findNamedBone(body,['LowerArmR']),fist=findNamedBone(body,['FistR']);
+ if(!upper||!lower||!fist||w<=1e-3){
+  visual.gun.quaternion.identity();
+  return;
+ }
+ visual.root.updateMatrixWorld(true);
+ // Kick: aim a little above the target while recoil is high.
+ const kick=_want.set(0,.35*recoil,0);
+ const t=target.clone().add(kick);
+ aimSegment(upper,lower,t,w);
+ aimSegment(lower,fist,t,w);
+ // Barrel (−Z of the gun group) straight at the target.
+ visual.gun.updateWorldMatrix(true,false);
+ visual.gun.getWorldPosition(_bp);
+ _m.lookAt(_bp,t,_up);
+ _qWorld.setFromRotationMatrix(_m);
+ if(visual.gun.parent){visual.gun.parent.getWorldQuaternion(_qParent);_qParent.invert();_qWorld.premultiply(_qParent);}
+ visual.gun.quaternion.slerpQuaternions(_qId,_qWorld,w);
 }
