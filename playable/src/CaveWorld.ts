@@ -1493,11 +1493,13 @@ export class CaveWorld extends OceanWorld {
  }
  /** Clicks that arrived while the arm was still recovering; each becomes its own stab. */
  stabQueue=0;
- /** Click handler: stab now, or buffer the click so click-click-click = stab-stab-stab. */
+ /** Click handler: land a stab now if ready; otherwise buffer so click-click-click = stab-stab-stab. */
  tryStab(){
   if(!this.playing||this.mission.outcome!=='playing')return;
   if(this.mission.inventory[this.mission.selected]!=='knife')return;
-  if(this.stabQueue>0||!this.fireStab())this.stabQueue=Math.min(KNIFE_CLICK_BUFFER,this.stabQueue+1);
+  // Always try to fire on the click itself — never wait a frame because the queue is non-empty.
+  if(this.fireStab())return;
+  this.stabQueue=Math.min(KNIFE_CLICK_BUFFER,this.stabQueue+1);
  }
  /** Drain buffered clicks as soon as the arm is ready. Called every frame. */
  drainStabQueue(){

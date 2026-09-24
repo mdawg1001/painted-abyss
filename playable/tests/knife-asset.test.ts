@@ -86,13 +86,13 @@ test('wrist stays inside a human range of motion',()=>{
  assert.ok(bend<=WRIST_MAX_BEND+1e-6,`wrist bend ${THREE.MathUtils.radToDeg(bend).toFixed(1)}°`);
 });
 
-test('stab: wind-up, drive toward the crosshair, recover to rest',()=>{
+test('stab: thrusts forward on the click, peaks early, recovers to rest',()=>{
  const zero={x:0,y:0,z:0,pitch:0,yaw:0,roll:0};
  assert.deepEqual(stabOffset(0),zero);
  assert.deepEqual(stabOffset(1),zero);
- assert.ok(stabOffset(.1).z>0,'fist draws back first');
- const peak=stabOffset(.34);
- assert.ok(Math.abs(peak.z+KNIFE_STAB_REACH)<1e-6,'full reach at the end of the drive');
+ assert.ok(stabOffset(.05).z<0,'fist drives forward immediately — no wind-up');
+ const peak=stabOffset(.2);
+ assert.ok(Math.abs(peak.z+KNIFE_STAB_REACH)<1e-6,'full reach early in the animation');
  assert.ok(peak.x<0,'thrust converges on the crosshair');
  assert.ok(Math.abs(stabOffset(.97).z)<.01,'back near rest by the end');
  assert.ok(KNIFE_STAB_TIME>.2&&KNIFE_STAB_TIME<.5);

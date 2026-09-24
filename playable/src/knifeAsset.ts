@@ -73,19 +73,18 @@ export type ViewOffset={x:number;y:number;z:number;pitch:number;yaw:number;roll:
 const ZERO:ViewOffset={x:0,y:0,z:0,pitch:0,yaw:0,roll:0};
 
 /**
- * Stab pose offset at normalised time t∈[0,1]: short wind-up (fist draws back
- * and cocks), fast drive forward toward the crosshair, slower recovery.
+ * Stab pose offset at normalised time t∈[0,1]: thrust starts on the click
+ * (no wind-up), peaks early toward the crosshair, then recovers.
  */
 export function stabOffset(t:number):ViewOffset{
  if(t<=0||t>=1)return {...ZERO};
- const wind=.1,drive=.34;
- let k:number;          // thrust amount, −0.18 (wound) … 1 (full reach)
- if(t<wind){const u=t/wind;k=-.18*Math.sin(u*Math.PI*.5);}
- else if(t<drive){const u=(t-wind)/(drive-wind);k=-.18+1.18*(1-Math.pow(1-u,3));}
- else{const u=(t-drive)/(1-drive);k=1-(u*u*(3-2*u));}
+ const peak=.2; // full reach ~20% in — reads as instant on the click
+ let k:number;
+ if(t<peak){const u=t/peak;k=1-Math.pow(1-u,3);}
+ else{const u=(t-peak)/(1-peak);k=1-(u*u*(3-2*u));}
  return {
-  x:-.05*Math.max(0,k),
-  y:.035*Math.max(0,k)+.03*Math.min(0,k),
+  x:-.05*k,
+  y:.035*k,
   z:-KNIFE_STAB_REACH*k,
   pitch:-.25*k,       // tip drops onto the aim line as the arm extends
   yaw:.12*k,
