@@ -73,9 +73,27 @@ export const GUARD_MELEE_RANGE=1.85;
 export const GUARD_MELEE_DAMAGE=22;
 /** When the guard wears the stolen coat, his strike damage is multiplied by this. */
 export const GUARD_COAT_DAMAGE_MULT=.55;
-export const GUARD_GUN_RANGE=12;
+/** TT-33 engagement range in the bunker murk (m). */
+export const GUARD_GUN_RANGE=22;
 export const GUARD_GUN_DAMAGE=30;
-export const GUARD_GUN_COOLDOWN=1.35;
+/** Aimed semi-automatic cadence (s between shots, before jitter). */
+export const GUARD_GUN_COOLDOWN=.75;
+/** TT-33 box magazine and a practised reload. */
+export const GUARD_MAGAZINE=8;
+export const GUARD_RELOAD_SECONDS=2.2;
+/** Time from spotting you to the first shot: turn, raise, aim (s). Human visual reaction ≈ 0.25–0.35 s. */
+export const GUARD_DRAW_SECONDS=.35;
+/** He only fires once the muzzle is within this of you (radians, ~10°). */
+export const GUARD_AIM_TOLERANCE=10*Math.PI/180;
+/**
+ * Chance a shot hits: steady close shots almost always land, long ones in the dark
+ * often miss, a running target is much harder, and the first snap shot is rushed.
+ */
+export function guardHitChance(distance:number,targetSpeed:number,firstShot:boolean){
+ const base=Math.max(.3,Math.min(.95,.98-.03*Math.max(0,distance-2)));
+ const moving=targetSpeed>2.4?.28:targetSpeed>.6?.12:0;
+ return Math.max(.08,Math.min(.95,base-moving-(firstShot?.15:0)));
+}
 export const GUARD_MELEE_COOLDOWN=1.55;
 /** Bottle fuel the guard drinks as “his air” while chasing. */
 export const GUARD_BOTTLE_AIR=SPARE_BOTTLE_LITRES;
@@ -800,16 +818,24 @@ export function writeInventoryTipsSeen(){
   arrived:false,scanBase:0,scanTime:0,
   lastState:'patrol' as GuardState,
   meleeCool:0,shootCool:0,
-  gun:false,bottle:false,coat:false,
+  /** Rounds left in the magazine, reload countdown, and whether the next shot is the snap shot. */
+  ammo:GUARD_MAGAZINE,reload:0,firstShot:true,
+  /** Increments on every shot fired (the renderer flashes the muzzle / plays the report on change). */
+  shots:0,lastShotHit:false,
+  /** 0..1 how far the pistol is raised toward you. */
+  aim:0,
+  gun:true,bottle:false,coat:false,
   /** Remaining “air” from a stolen spare bottle. */
   air:0,
  };
  /** Set when the corridor guard deals the killing blow — triggers corpse loot claim. */
  killedByGuard=false;
  /** Latest combat cue for audio / camera (cleared by the renderer when consumed). */
- combatCue:''|'stab-hit'|'stab-miss'|'flinch'|'break'|'kill'|'guard-shot'|'guard-melee'='';
+ combatCue:''|'stab-hit'|'stab-miss'|'flinch'|'break'|'kill'|'guard-shot'|'guard-miss'|'guard-melee'='';
  decoy:{position:Point;until:number}|null=null;
  patrol=[world(16,22),world(6,22),world(6,13),world(16,13)];
+ /** Player position last tick, for the guard's read on how fast you are moving. */
+ lastPlayerPos:Point|null=null;
  /** Random source for spawns (swappable in tests). */
  rand:()=>number=Math.random;
  constructor(tipsSeen=false){
@@ -845,7 +871,8 @@ export function writeInventoryTipsSeen(){
   g.heading=Math.atan2(next.x-at.x,next.z-at.z);
   g.state='patrol';g.lastState='patrol';g.timer=0;g.lost=0;
   g.speed=0;g.turnRate=0;g.pause=0;g.arrived=false;g.scanBase=g.heading;g.scanTime=0;
-  g.meleeCool=0;g.shootCool=0;
+  g.meleeCool=0;g.shootCool=0;g.ammo=GUARD_MAGAZINE;g.reload=0;g.firstShot=true;g.aim=0;
+  g.gun=true; // the TT-33 is his own sidearm
  }
  get hasRelic(){return this.inventory.includes('relic');}
  get mapComplete(){return MAP_FRAGMENT_ORDER.every(id=>this.mapFragments.includes(id));}
@@ -1120,16 +1147,19 @@ export function writeInventoryTipsSeen(){
   const toward=Math.atan2(this.position.x-g.position.x,this.position.z-g.position.z);
   const inView=Math.abs(wrapAngle(toward-g.heading))<=GUARD_FOV_HALF;
   const sense=canSee&&(d<2.5||(inView&&d<(this.torch?16:9))||(sprinting&&d<11));
-  // FSM
-  if(g.state==='patrol'&&sense){g.state='alert';g.timer=0;g.lastKnown={...this.position};}
+  // Once he has you, he keeps you while he can see you at all.
+  const tracking=canSee&&d<GUARD_GUN_RANGE+8;
+  const engaged=g.state==='alert'||g.state==='chase';
+  // FSM: spotting you goes straight to drawing and firing — no hesitation.
+  if(g.state==='patrol'&&sense){g.state='alert';g.timer=0;g.lastKnown={...this.position};g.firstShot=true;}
   else if(g.state==='alert'){
-   if(sense)g.lastKnown={...this.position};
-   if(g.timer>1.1){g.state=sense?'chase':'search';g.timer=0;g.lost=0;}
+   if(sense||tracking)g.lastKnown={...this.position};
+   if(g.timer>=GUARD_DRAW_SECONDS){g.state=(sense||tracking)?'chase':'search';g.timer=0;g.lost=0;}
   }else if(g.state==='chase'){
-   if(sense){g.lastKnown={...this.position};g.lost=0;}else g.lost+=dt;
+   if(tracking){g.lastKnown={...this.position};g.lost=0;}else g.lost+=dt;
    if(g.lost>2.8){g.state='search';g.timer=0;}
   }else if(g.state==='search'){
-   if(sense){g.state='chase';g.timer=0;g.lost=0;}
+   if(sense){g.state='alert';g.timer=GUARD_DRAW_SECONDS*.5;g.lost=0;}
    else if(g.timer>8){
     // Give up and rejoin the perimeter loop at the nearest stop.
     const route=guardPerimeterRoute();let best=0,bd=Infinity;
@@ -1139,22 +1169,13 @@ export function writeInventoryTipsSeen(){
   }
   this.steerGuard(dt);
 
+  // Pistol raise: up while engaged, down otherwise (~0.25 s either way).
+  g.aim=Math.max(0,Math.min(1,g.aim+(engaged||g.state==='chase'?1:-1)*dt/.25));
+  // Reload when the magazine runs dry.
+  if(g.reload>0){g.reload=Math.max(0,g.reload-dt);if(g.reload===0)g.ammo=GUARD_MAGAZINE;}
+  const playerSpeed=this.lastPlayerPos&&dt>0?Math.hypot(this.position.x-this.lastPlayerPos.x,this.position.z-this.lastPlayerPos.z)/dt:0;
+  this.lastPlayerPos={...this.position};
   // Combat — only with LOS (no wall shots / stabs).
-  if(canSee&&g.gun&&d<=GUARD_GUN_RANGE&&d>GUARD_MELEE_RANGE*.85&&g.shootCool<=0&&(g.state==='chase'||g.state==='alert')){
-   let dmg=GUARD_GUN_DAMAGE;
-   if(g.coat)dmg=Math.round(dmg*GUARD_COAT_DAMAGE_MULT);
-   this.health=Math.max(0,this.health-dmg);
-   g.shootCool=GUARD_GUN_COOLDOWN;
-   this.gasPanicUntil=this.elapsed+AIR_PANIC_SECONDS;
-   this.combatCue='guard-shot';
-   this.say(g.coat?'Coat-muffled shot!':'The guard fires!');
-   if(this.health<=0){
-    this.killedByGuard=true;
-    this.outcome='lost';
-    this.reason='The guard shot you. He will take what you dropped.';
-   }
-   return;
-  }
   if(canSee&&d<GUARD_MELEE_RANGE&&g.meleeCool<=0&&(g.state==='chase'||g.state==='alert'||g.state==='search')){
    let dmg=GUARD_MELEE_DAMAGE;
    if(g.coat)dmg=Math.round(dmg*GUARD_COAT_DAMAGE_MULT);
@@ -1168,15 +1189,42 @@ export function writeInventoryTipsSeen(){
     this.outcome='lost';
     this.reason='The guard finished you. He takes your dropped gear.';
    }
+   return;
+  }
+  if(g.state==='chase'&&this.guardHasShot()&&g.shootCool<=0){
+   const aimErr=Math.abs(wrapAngle(Math.atan2(this.position.x-g.position.x,this.position.z-g.position.z)-g.heading));
+   if(aimErr<=GUARD_AIM_TOLERANCE&&g.aim>=.99){
+    const hit=this.rand()<guardHitChance(d,playerSpeed,g.firstShot);
+    g.firstShot=false;
+    g.shots+=1;g.lastShotHit=hit;g.ammo-=1;
+    g.shootCool=GUARD_GUN_COOLDOWN*(.85+.3*this.rand());
+    if(g.ammo<=0){g.reload=GUARD_RELOAD_SECONDS;}
+    this.gasPanicUntil=this.elapsed+AIR_PANIC_SECONDS;
+    if(!hit){this.combatCue='guard-miss';this.say('Shots! Get out of his line of fire.','blocked');return;}
+    let dmg=GUARD_GUN_DAMAGE;
+    if(g.coat)dmg=Math.round(dmg*GUARD_COAT_DAMAGE_MULT);
+    this.health=Math.max(0,this.health-dmg);
+    this.combatCue='guard-shot';
+    this.say(g.coat?'Hit — the coat took some of it.':'You are hit!');
+    if(this.health<=0){
+     this.killedByGuard=true;
+     this.outcome='lost';
+     this.reason='The guard shot you. He will take what you dropped.';
+    }
+    return;
+   }
   }
  }
- /**
-  * Corridor guard locomotion. Every state moves him only along his facing
-  * (see `guardSteering.ts`): patrol is a straight out-and-back on the centre
-  * line with a stop, a pause and an on-the-spot about-turn at each post;
-  * alert halts and turns to the noise; chase closes in a straight line and
-  * stops at arm's length; search walks to the last sighting and scans.
-  */
+ /** Armed, clear line, in range, outside arm's reach: he holds a firing stance (and reloads there). */
+ guardInFiringStance(){
+  const g=this.guard,d=distance(g.position,this.position);
+  return g.gun&&d<=GUARD_GUN_RANGE&&d>GUARD_MELEE_RANGE*.85&&visible(g.position,this.position);
+ }
+ /** In a firing stance with a round ready. */
+ guardHasShot(){
+  const g=this.guard;
+  return this.guardInFiringStance()&&g.reload===0&&g.ammo>0;
+ }
  private steerGuard(dt:number){
   const g=this.guard;
   if(g.lastState!==g.state){g.lastState=g.state;g.arrived=false;g.scanTime=0;}
@@ -1209,6 +1257,9 @@ export function writeInventoryTipsSeen(){
   }else if(g.state==='alert'){
    // Freeze, then square up to where the noise came from.
    faceStanding(g,yawToward(g.position,g.lastKnown),GUARD_STEER_WALK,dt,canMove);
+  }else if(g.state==='chase'&&this.guardInFiringStance()){
+   // Firing stance: stop, square up and shoot rather than running at you.
+   faceStanding(g,yawToward(g.position,this.position),GUARD_STEER_RUN,dt,canMove);
   }else if(g.state==='chase'){
    const params=tired
     ?{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.chaseTired}

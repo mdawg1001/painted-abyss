@@ -4,6 +4,7 @@ import {
  Mission,distance,tile,world,visible,FLOOR_Y,WALK_EYE_Y,
  breathZone,breathHatchSpawn,inBreathCorridor,canWalkBreath,BREATH_WALK_WATER,
  guardPerimeterRoute,guardClearLine,guardNavTarget,pickGuardSpawn,fits,cells,breathFootprint,
+ GUARD_MAGAZINE,GUARD_RELOAD_SECONDS,GUARD_GUN_COOLDOWN,guardHitChance,
  GUARD_WALL_CLEARANCE,GUARD_INSPECT_SPACING,GUARD_CORNER_PAUSE,GUARD_BODY_RADIUS,GUARD_FOV_HALF,createDiveChests,
  GUARD_MELEE_RANGE,GUARD_MELEE_DAMAGE,GUARD_COAT_DAMAGE_MULT,GUARD_GUN_DAMAGE,
  GUARD_BOTTLE_AIR,GUARD_LOOT_RANGE,SPARE_BOTTLE_LITRES,GUARD_SPEED,
@@ -148,6 +149,7 @@ test('after losing the player he rejoins the loop at the nearest stop',()=>{
 test('guard walks dry floor and stops where water is too deep',()=>{
  const m=new Mission(true);
  m.guard.position={...CORRIDOR};
+ m.guard.gun=false; // unarmed: this checks how he moves, not how he shoots
  m.guard.state='chase';
  m.guard.lastKnown={...m.position};
  m.breathWaterY=BREATH_WALK_WATER+.2;
@@ -158,7 +160,7 @@ test('guard walks dry floor and stops where water is too deep',()=>{
  // With dry water he can close distance along the corridor.
  m.breathWaterY=FLOOR_Y-.1;
  m.position={x:m.guard.position.x,y:WALK_EYE_Y,z:m.guard.position.z+6};
- m.guard.state='chase';
+ m.guard.state='chase';m.guard.gun=false;
  m.guard.lastKnown={...m.position};
  m.guard.meleeCool=9;
  m.guard.shootCool=9;
@@ -223,6 +225,8 @@ test('guard melee kills, claims corpse gear, and uses gun / bottle / coat',()=>{
  m.position={...m.guard.position};
  m.position.z+=6;
  m.guard.state='chase';
+ m.guard.heading=0;m.guard.aim=1;m.lastPlayerPos={...m.position};
+ m.rand=()=>0; // every shot lands
  m.guard.lastKnown={...m.position};
  // Ensure LOS along open corridor
  assert.ok(visible(m.guard.position,m.position));
@@ -245,4 +249,36 @@ test('player coat still does not reduce a guardian bite',()=>{
  coated.guard.shootCool=99;
  coated.update(.05);
  assert.equal(coated.health,75);
+});
+
+test('spotting you, he draws and fires almost at once, from a standing firing stance',()=>{
+ const m=new Mission(true);m.breathWaterY=FLOOR_Y-.1;m.rand=()=>.99; // every shot misses: keep the player alive
+ m.guard.position={...CORRIDOR};m.guard.heading=0;m.guard.state='patrol';m.guard.pause=5;
+ m.position={x:CORRIDOR.x,y:WALK_EYE_Y,z:CORRIDOR.z+10};m.torch=true;
+ const dt=1/60;let t=0,firstShotAt=-1;const shotTimes:number[]=[];let moved=0;let prev={...m.guard.position};
+ for(let i=0;i<60*14;i++){
+  m.update(dt,false);t+=dt;
+  if(m.guard.shots>shotTimes.length){shotTimes.push(t);if(firstShotAt<0)firstShotAt=t;}
+  if(firstShotAt>0)moved+=Math.hypot(m.guard.position.x-prev.x,m.guard.position.z-prev.z);
+  prev={...m.guard.position};
+ }
+ assert.ok(firstShotAt>0&&firstShotAt<.8,`first shot ${firstShotAt.toFixed(2)} s after he sees you`);
+ assert.ok(moved<.05,'stands his ground while shooting');
+ // Semi-automatic cadence, then a reload after the 8-round magazine.
+ const gaps=shotTimes.slice(1).map((s,i)=>s-shotTimes[i]);
+ for(const g of gaps.slice(0,GUARD_MAGAZINE-1))assert.ok(g>=GUARD_GUN_COOLDOWN*.85-.02&&g<=GUARD_GUN_COOLDOWN*1.15+.05,`gap ${g.toFixed(2)}`);
+ assert.ok(gaps[GUARD_MAGAZINE-1]>=GUARD_RELOAD_SECONDS,'reloads after eight rounds');
+ assert.ok(shotTimes.length>GUARD_MAGAZINE,'keeps firing after reloading');
+});
+
+test('no line of sight, no shot; hit chance falls with range and a moving target',()=>{
+ const m=new Mission(true);m.breathWaterY=FLOOR_Y-.1;m.rand=()=>0;
+ m.guard.position={...CORRIDOR};m.guard.state='chase';m.guard.aim=1;
+ m.position={x:20,y:3,z:-60}; // through rock
+ for(let i=0;i<60;i++)m.update(1/60,false);
+ assert.equal(m.guard.shots,0);
+ assert.ok(guardHitChance(3,0,false)>.9);
+ assert.ok(guardHitChance(20,0,false)<guardHitChance(6,0,false));
+ assert.ok(guardHitChance(8,3.4,false)<guardHitChance(8,0,false)-.2,'running is hard to hit');
+ assert.ok(guardHitChance(8,0,true)<guardHitChance(8,0,false),'the snap shot is rushed');
 });

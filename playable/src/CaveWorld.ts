@@ -5,7 +5,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
-import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep } from './diveAudio';
+import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet } from './diveAudio';
 import { Gait, wadingDrag, runWeight, WALK_CAMERA_MOTION, type GaitEvent } from './gait';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
@@ -23,7 +23,7 @@ import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLig
 import { createWallPosters, upgradeWallPosters, type WallPosters } from './posterAsset';
 import { createWallPipe, upgradeWallPipe, type WallPipe } from './pipeAsset';
 import {
- createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion,
+ createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion, applyGuardAim,
  type SovietGuardVisual,
 } from './sovietGuardAsset';
 import { mountTt33 } from './gunAsset';
@@ -183,6 +183,9 @@ export class CaveWorld extends OceanWorld {
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  /** Phase 3 Soviet corridor guard (Sketchfab WW2 uniform). */
  sovietGuard:SovietGuardVisual|null=null;
+ /** Muzzle flash light + glow at the guard's pistol; `guardShotsSeen` spots new shots. */
+ guardFlash!:THREE.PointLight;guardFlashGlow!:THREE.Sprite;guardFlashT=0;guardRecoil=0;guardShotsSeen=0;
+ private _aimTarget=new THREE.Vector3();private _muzzle=new THREE.Vector3();
  /** World crates / suitcase (Poly Haven) keyed by mission chest id. */
  chestVisuals=new Map<number,ChestVisual>();
  /** Chart-scrap scrolls nested in each crate (visible until taken). */
@@ -284,6 +287,12 @@ export class CaveWorld extends OceanWorld {
   for(const side of [-1,1])this.ellipsoid(this.guardian.group,eyeMat,1.8,.27,side*.5,.1,.1,.04);
   this.sovietGuard=createSovietGuardVisual();
   this.scene.add(this.sovietGuard.root);
+  // Muzzle flash: a short, hot point light and an additive glow card at the barrel.
+  this.guardFlash=new THREE.PointLight(0xffb45a,0,7,1.8);this.guardFlash.castShadow=false;
+  const flashTex=(()=>{const c=document.createElement('canvas');c.width=c.height=64;const g=c.getContext('2d')!;const gr=g.createRadialGradient(32,32,0,32,32,32);gr.addColorStop(0,'rgba(255,245,210,1)');gr.addColorStop(.35,'rgba(255,170,70,.8)');gr.addColorStop(1,'rgba(255,120,30,0)');g.fillStyle=gr;g.fillRect(0,0,64,64);return new THREE.CanvasTexture(c);})();
+  this.guardFlashGlow=new THREE.Sprite(new THREE.SpriteMaterial({map:flashTex,color:0xffffff,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0}));
+  this.guardFlashGlow.scale.setScalar(.55);this.guardFlashGlow.visible=false;
+  this.scene.add(this.guardFlash,this.guardFlashGlow);
   upgradeSovietGuardVisual(this.sovietGuard).then(()=>{
    if(!this.alive||!this.sovietGuard)return;
    this.syncSovietGuard(0);
@@ -906,6 +915,34 @@ export class CaveWorld extends OceanWorld {
    // Stride rate follows the sim's real ground speed, so feet plant without skating.
    updateGuardLocomotion(visual.loco,dt,{moving:g.speed>.02,speed:g.speed,state:g.state,turnRate:g.turnRate});
   }
+  // New shot: flash, report, recoil, and what happened to you.
+  if(g.shots!==this.guardShotsSeen){
+   const fresh=g.shots>this.guardShotsSeen;
+   this.guardShotsSeen=g.shots;
+   if(fresh&&dt>0){
+    this.guardFlashT=1;this.guardRecoil=1;
+    const ctx=this.audioContext,master=this.master;
+    if(this.sound&&ctx&&master&&ctx.state==='running'){
+     playGunshot(ctx,master,Math.hypot(g.position.x-this.position.x,g.position.z-this.position.z));
+     if(!g.lastShotHit)playRicochet(ctx,master);
+    }
+    this.shakeAmp=Math.max(this.shakeAmp,g.lastShotHit?.5:.12);
+   }
+  }
+  this.guardRecoil=Math.max(0,this.guardRecoil-dt*6);
+  // Arm and pistol track your eye while he is aiming.
+  this._aimTarget.set(this.position.x,this.position.y-.15,this.position.z);
+  applyGuardAim(visual,this._aimTarget,g.aim,this.guardRecoil);
+  // Flash sits just past the muzzle along the barrel.
+  visual.gun.getWorldPosition(this._muzzle);
+  this._muzzle.addScaledVector(this._aimTarget.clone().sub(this._muzzle).normalize(),.28);
+  this.guardFlash.position.copy(this._muzzle);this.guardFlashGlow.position.copy(this._muzzle);
+  const f=this.guardFlashT;
+  this.guardFlash.intensity=f>0?40*f*f:0;
+  this.guardFlashGlow.visible=f>0;
+  (this.guardFlashGlow.material as THREE.SpriteMaterial).opacity=f;
+  this.guardFlashGlow.scale.setScalar(.18+.24*f);
+  this.guardFlashT=Math.max(0,f-dt/.06);
  }
  beamMaterial(color:THREE.ColorRepresentation,opacity:number,beta=.38){
   return new THREE.ShaderMaterial({
