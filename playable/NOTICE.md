@@ -79,6 +79,14 @@
 - File: `public/assets/caustics/caustics_atlas.png` — 1024² RGBA, 16 frames in a 4×4 grid
 - Used as soft additive floor pools under ceiling light shafts (extraction + cavern).
 
+## Copper Pipe Section (Sketchfab)
+- Source: https://sketchfab.com/3d-models/copper-pipe-section-91807ce330af449bbd3c59b5ede8ce67
+- Author: pixol3d (https://sketchfab.com/pixol3d)
+- License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
+- Files: `public/assets/copper-pipe/copper_pipe.glb` — official Sketchfab glTF (48,634 triangles), unchanged
+- This work is based on "Copper Pipe Section" (https://sketchfab.com/3d-models/copper-pipe-section-91807ce330af449bbd3c59b5ede8ce67) by pixol3d (https://sketchfab.com/pixol3d) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- 1.6 m copper section on the east wall of the breath corridor, between the wall tanks (not interactable).
+
 ## 04_DOOM_pipe (detail) (Sketchfab)
 - Source: https://sketchfab.com/3d-models/04-doom-pipe-detail-41063ef623eb41f5a981fff8997e54b9
 - Author: gleb_tihon (@gleb_tihon)
