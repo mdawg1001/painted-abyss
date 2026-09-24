@@ -26,7 +26,7 @@
 - Author: Quaternius
 - License: CC0 1.0 — https://creativecommons.org/publicdomain/zero/1.0/
 - Files: `public/assets/soviet-uniform/quaternius_soldier_male.glb` — Soldier_Male + authored **idle / walk / run** skeletal clips
-- Phase 3 breath-corridor guard (runtime mesh height ≈ 1.90 m). Olive low-poly military; TT-33 parents to `FistR`.
+- Phase 3 breath-corridor guards (runtime mesh height ≈ 1.90 m). Five sentries, same cut dyed olive / khaki / steel / brown / teal; TT-33 parents to `FistR`.
 - AnimationMixer crossfades from AI (idle at water/stop, walk patrol/search, run chase); stride `timeScale` matched to move speed.
 
 ### Prior mesh / Mixamo (not shipped)

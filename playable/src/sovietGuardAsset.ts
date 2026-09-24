@@ -17,6 +17,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mountTt33 } from './gunAsset';
+import { GUARD_OUTFIT_COLORS } from './simulation';
 
 export const SOVIET_GUARD_SOURCE='https://quaternius.com/packs/ultimateanimatedcharacter.html';
 export const SOVIET_GUARD_AUTHOR='Quaternius';
@@ -71,7 +72,7 @@ export type SovietGuardVisual={
  /** Mesh pivot with feet on local y=0. */
  body:THREE.Object3D;
  ready:boolean;
- /** Child props toggled from mission.guard inventory. */
+ /** Child props toggled from this sentry's inventory. */
  gun:THREE.Object3D;
  bottle:THREE.Object3D;
  coat:THREE.Object3D;
@@ -79,8 +80,9 @@ export type SovietGuardVisual={
  loco:SovietGuardLocomotion|null;
  /** Warm key light carried with him (his own lamp) so he reads clearly in the dark. */
  fill:THREE.PointLight;
- /** Cool rim light behind him that separates his silhouette from the rock. */
  rim:THREE.PointLight;
+ /** Index into GUARD_OUTFIT_COLORS. */
+ outfit:number;
 };
 
 type GuardGltfBundle={
@@ -98,11 +100,11 @@ function clothMat(color:number,rough=.82){
 }
 
 /** Capsule stand-in while the glTF loads (or if it fails). */
-export function buildSovietGuardStub(){
+export function buildSovietGuardStub(cloth=0x4a5a3a){
  const body=new THREE.Group();
  body.name='sovietGuardBody';
  const h=SOVIET_GUARD_HEIGHT;
- const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.28,h*.42,6,10),clothMat(0x4a5a3a));
+ const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.28,h*.42,6,10),clothMat(cloth));
  torso.position.y=h*.58;
  torso.castShadow=true;torso.receiveShadow=true;
  body.add(torso);
@@ -242,6 +244,40 @@ function litGuardMaterials(root:THREE.Object3D){
  });
 }
 
+/**
+ * Dye cloth (not skin or metal) so five clones read as a squad in different kits.
+ * Materials are cloned so instances do not share a tint.
+ */
+export function tintGuardOutfit(root:THREE.Object3D,hex:number){
+ const tint=new THREE.Color(hex);
+ const olive=new THREE.Color(0x4a5a3a);
+ root.traverse(o=>{
+  if(!(o instanceof THREE.Mesh))return;
+  const src=Array.isArray(o.material)?o.material:[o.material];
+  const next=src.map(m=>{
+   const sm=m.clone() as THREE.MeshStandardMaterial;
+   if(!('color' in sm)||!sm.color)return sm;
+   const name=`${sm.name||''} ${o.name||''}`.toLowerCase();
+   if(/skin|face|head|hand|flesh|body/.test(name))return sm;
+   const c=sm.color;
+   const luma=.2126*c.r+.7152*c.g+.0722*c.b;
+   if(luma>.42&&c.r>c.b+.05&&c.r>c.g*.8)return sm; // skin
+   if('metalness' in sm&&(sm.metalness??0)>.45)return sm;
+   // Keep value; shift hue toward this outfit from the authored olive.
+   const dyed=c.clone().lerp(tint,.62);
+   if(hex!==0x4a5a3a)c.copy(dyed);
+   else c.lerp(olive,.15);
+   if(sm.emissive){
+    sm.emissive.copy(c);
+    sm.emissiveIntensity=GUARD_EMISSIVE_LIFT;
+   }
+   sm.needsUpdate=true;
+   return sm;
+  });
+  o.material=next.length===1?next[0]:next;
+ });
+}
+
 function findSkinnedMesh(root:THREE.Object3D):THREE.SkinnedMesh|null{
  let skin:THREE.SkinnedMesh|null=null;
  root.traverse(o=>{
@@ -365,22 +401,20 @@ export function updateGuardLocomotion(
 }
 
 /** Root group: feet sit on world y when `root.position.y = FLOOR_Y`. */
-export function createSovietGuardVisual():SovietGuardVisual{
+export function createSovietGuardVisual(outfit=0):SovietGuardVisual{
  const root=new THREE.Group();
- root.name='sovietGuard';
- const body=buildSovietGuardStub();
+ root.name=`sovietGuard:${outfit}`;
+ const cloth=GUARD_OUTFIT_COLORS[outfit]??GUARD_OUTFIT_COLORS[0];
+ const body=buildSovietGuardStub(cloth);
  root.add(body);
  const props=makeGearProps(root);
  // Key: in front of his chest, like a lamp clipped to the webbing (he faces +Z).
- // Set at face height and a little high so the face and chest model with soft shadow
- // under the helmet brim instead of flattening out.
  const fill=new THREE.PointLight(0xffe4c8,GUARD_KEY_INTENSITY,3.6,2);
  fill.name='guardFill';fill.position.set(.25,1.75,.9);fill.castShadow=false;
- // Rim: behind and above, cooler, just enough to outline shoulders and helmet.
  const rim=new THREE.PointLight(0xa8c8ff,GUARD_RIM_INTENSITY,3,2);
  rim.name='guardRim';rim.position.set(-.3,2.1,-.7);rim.castShadow=false;
  root.add(fill,rim);
- return{root,body,ready:false,loco:null,fill,rim,...props};
+ return{root,body,ready:false,loco:null,fill,rim,outfit,...props};
 }
 
 /**
@@ -394,6 +428,7 @@ export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
   visual.root.remove(visual.body);
   const instance=cloneSkinned(scene);
   instance.name='sovietGuardMesh';
+  tintGuardOutfit(instance,GUARD_OUTFIT_COLORS[visual.outfit]??GUARD_OUTFIT_COLORS[0]);
   visual.root.add(instance);
   visual.body=instance;
   visual.ready=true;

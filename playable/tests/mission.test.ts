@@ -1,8 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,KNIFE_COOLDOWN,PREDATOR_HP_MAX,PREDATOR_BREAK_HP,createDiveChests,CHEST_LABEL,chestHasLid,chestInteractPrompt,MAP_FRAGMENT_ORDER,MAP_FRAGMENT_LABEL,torchShouldShine,holdingTorchItem,occupiesFpsHand,predatorSpawnCandidates,randomPredatorSpawn,PREDATOR_SPAWN_CELLS,playerSpawnCandidates,randomPlayerSpawn,PLAYER_SPAWN_CELLS,SPAWN_SEPARATION,breathHatchSpawn} from '../src/simulation';
-const advance=(m:Mission,seconds:number)=>{for(let i=0;i<seconds*60;i++)m.update(1/60);};
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,KNIFE_COOLDOWN,PREDATOR_HP_MAX,PREDATOR_BREAK_HP,createDiveChests,CHEST_LABEL,chestHasLid,chestInteractPrompt,MAP_FRAGMENT_ORDER,MAP_FRAGMENT_LABEL,torchShouldShine,holdingTorchItem,occupiesFpsHand,predatorSpawnCandidates,randomPredatorSpawn,PREDATOR_SPAWN_CELLS,playerSpawnCandidates,randomPlayerSpawn,PLAYER_SPAWN_CELLS,SPAWN_SEPARATION,breathHatchSpawn,isolateGuards} from '../src/simulation';
+const advance=(m:Mission,seconds:number)=>{isolateGuards(m);for(let i=0;i<seconds*60;i++)m.update(1/60);};
 test('hydrostatic depth and ata share one surface plane',()=>{
  assert.equal(hydrostaticDepth(SURFACE_Y),0);
  assert.equal(hydrostaticDepth(FLOOR_Y),SURFACE_Y-FLOOR_Y);
@@ -196,7 +196,7 @@ test('each new mission rolls diver and predator spawns with separation',()=>{
   assert.ok(predatorSpawnCandidates(m.position).length>=1);
  }
 });
-test('predator transitions patrol → alert → chase → search → patrol',()=>{const m=new Mission();m.guard.position={x:500,y:2.25,z:500}; /* keep the randomly spawned, armed guard out of this predator-only test */m.predator.position=world(16,19);m.position=world(16,16);advance(m,.2);assert.equal(m.predator.state,'alert');advance(m,2);assert.equal(m.predator.state,'chase');m.position={...START};advance(m,3);assert.equal(m.predator.state,'search');advance(m,8);assert.equal(m.predator.state,'patrol');});
+test('predator transitions patrol → alert → chase → search → patrol',()=>{const m=new Mission();isolateGuards(m); /* keep the armed corridor squad out of this predator-only test */m.predator.position=world(16,19);m.position=world(16,16);advance(m,.2);assert.equal(m.predator.state,'alert');advance(m,2);assert.equal(m.predator.state,'chase');m.position={...START};advance(m,3);assert.equal(m.predator.state,'search');advance(m,8);assert.equal(m.predator.state,'patrol');});
 test('predator cannot see or bite through rock',()=>{const m=new Mission();m.predator.position=world(8,17);m.position=world(13,17);advance(m,.2);assert.equal(m.predator.state,'patrol');assert.equal(m.health,100);});
 test('four bites lose the mission; fresh mission resets every system',()=>{const m=new Mission();m.position=world(16,19);m.predator.position={...m.position};m.predator.state='chase';advance(m,6);assert.equal(m.outcome,'lost');assert.equal(m.health,0);const fresh=new Mission();assert.equal(fresh.health,100);assert.equal(fresh.air,AIR_MAIN_MAX);assert.equal(fresh.bailout,0);assert.equal(fresh.outcome,'playing');assert.equal(fresh.pending,null);assert.equal(fresh.pickups[0].item,'relic');assert.ok(fits(fresh.position,.48));assert.equal(fresh.position.x,breathHatchSpawn().x);assert.equal(fresh.position.z,breathHatchSpawn().z);assert.ok(distance(fresh.predator.position,fresh.position)>SPAWN_SEPARATION);});
 test('air loss, pony bailout, sealant and distraction have tangible effects',()=>{
@@ -207,10 +207,10 @@ test('air loss, pony bailout, sealant and distraction have tangible effects',()=
  m.health=30;m.selected=4;m.use();assert.equal(m.health,75);
  m.selected=2;m.use();assert.ok(m.decoy);assert.equal(m.predator.state,'search');advance(m,13);assert.equal(m.decoy,null);
  // Drown in the flooded cave — hatch free-air does not burn the tank.
- m.breathWaterY=SURFACE_Y;m.position={...START};m.air=.01;m.bailout=0;m.update(.05);assert.equal(m.outcome,'lost');
+ m.breathWaterY=SURFACE_Y;m.position={...START};m.air=.01;m.bailout=0;isolateGuards(m);m.update(.05);assert.equal(m.outcome,'lost');
 });
 test('main tank empties in well under four minutes at depth',()=>{
- const m=new Mission(true);m.position={...START,y:FLOOR_Y};m.breathWaterY=SURFACE_Y; // fully flooded bunker
+ const m=new Mission(true);isolateGuards(m);m.position={...START,y:FLOOR_Y};m.breathWaterY=SURFACE_Y; // fully flooded bunker
  // Floor cruise: ~1.65 ATA × 0.3 L/s → ~202 s of a 100 L surface tank.
  for(let i=0;i<Math.ceil(230*60);i++)m.update(1/60,false);
  assert.equal(m.outcome,'lost');
@@ -223,11 +223,11 @@ test('gas drain scales with ATA and sprint; bailout feeds after main',()=>{
  assert.ok(Math.abs(gasDrainRate(SURFACE_Y,false)-(SAC_CRUISE_LPM/60))<1e-9);
  assert.equal(AIR_MAIN_LITRES,100);
  assert.equal(AIR_BAILOUT_LITRES,9);
- const deep=new Mission(true);deep.position={...START,y:FLOOR_Y};deep.breathWaterY=SURFACE_Y;
- const shallow=new Mission(true);shallow.position={...START,y:SURFACE_Y};shallow.breathWaterY=SURFACE_Y;
+ const deep=new Mission(true);isolateGuards(deep);deep.position={...START,y:FLOOR_Y};deep.breathWaterY=SURFACE_Y;
+ const shallow=new Mission(true);isolateGuards(shallow);shallow.position={...START,y:SURFACE_Y};shallow.breathWaterY=SURFACE_Y;
  for(let i=0;i<60;i++){deep.update(1/60,true);shallow.update(1/60,false);}
  assert.ok(deep.air<shallow.air);
- const m=new Mission(true);m.position={...START};m.breathWaterY=SURFACE_Y;m.air=.2;m.bailout=AIR_BAILOUT_LITRES;
+ const m=new Mission(true);isolateGuards(m);m.position={...START};m.breathWaterY=SURFACE_Y;m.air=.2;m.bailout=AIR_BAILOUT_LITRES;
  for(let i=0;i<20;i++)m.update(.05,false);
  assert.equal(m.air,0);assert.ok(m.bailout<AIR_BAILOUT_LITRES);assert.equal(m.outcome,'playing');
  m.bailout=.01;m.update(.2,false);assert.equal(m.outcome,'lost');
@@ -245,12 +245,12 @@ test('player can lock a non-zero trim bias that idle buoyancy settles onto',()=>
  assert.equal(b,0);
 });
 test('guardian bite raises panic gas effort briefly',()=>{
- const m=new Mission(true);m.position=world(16,19);m.position.y=FLOOR_Y;m.breathWaterY=SURFACE_Y;
+ const m=new Mission(true);isolateGuards(m);m.position=world(16,19);m.position.y=FLOOR_Y;m.breathWaterY=SURFACE_Y;
  m.predator.position={...m.position};m.predator.state='chase';m.predator.bite=0;
  m.update(.05,false);
  assert.ok(m.gasPanicUntil>m.elapsed);assert.equal(m.health,75);
- const panic=new Mission(true);panic.position={...START,y:FLOOR_Y};panic.gasPanicUntil=1e9;panic.breathWaterY=SURFACE_Y;
- const calm=new Mission(true);calm.position={...START,y:FLOOR_Y};calm.breathWaterY=SURFACE_Y;
+ const panic=new Mission(true);isolateGuards(panic);panic.position={...START,y:FLOOR_Y};panic.gasPanicUntil=1e9;panic.breathWaterY=SURFACE_Y;
+ const calm=new Mission(true);isolateGuards(calm);calm.position={...START,y:FLOOR_Y};calm.breathWaterY=SURFACE_Y;
  for(let i=0;i<60;i++){panic.update(1/60,false);calm.update(1/60,false);}
  assert.ok(panic.air<calm.air);
 });
@@ -434,6 +434,7 @@ test('opening all three crates fits the cave chart and Tab toggles the overlay',
 test('rapid clicks become rapid stabs: the arm recovers in about a quarter second',()=>{
  assert.ok(KNIFE_COOLDOWN<=.3,'three clicks in under a second can all land');
  const m=new Mission(true);
+ isolateGuards(m);
  m.position=world(16,16);m.predator.position={...m.position,z:m.position.z-1.2};
  m.selected=0;const look={x:0,y:0,z:-1};
  let hits=0;
@@ -447,6 +448,7 @@ test('rapid clicks become rapid stabs: the arm recovers in about a quarter secon
 
 test('the knife keeps working after the guardian is dead',()=>{
  const m=new Mission(true);
+ isolateGuards(m);
  m.position=world(16,16);m.predator.position={...m.position,z:m.position.z-1.2};
  m.selected=0;m.predator.hp=0;m.predator.state='dead';
  const look={x:0,y:0,z:-1};

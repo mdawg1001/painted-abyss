@@ -4,7 +4,7 @@ import {
  Mission,distance,tile,world,AIR_MAIN_MAX,PREDATOR_HP_MAX,
  breathZone,breathHatchSpawn,inBreathCorridor,corridorGearPickups,
  occupiesFpsHand,torchShouldShine,SPARE_BOTTLE_LITRES,BREATH_RESPAWN_LITRES,
- WALK_EYE_Y,nextBreathTankIndex,
+ WALK_EYE_Y,nextBreathTankIndex,isolateGuards,
 } from '../src/simulation';
 
 test('gun, spare bottle, and coat lie in the corridor and not at the hatch',()=>{
@@ -102,6 +102,7 @@ test('spare bottle fills the main cylinder and is consumed; gun and coat do not 
 
 test('the coat does not reduce a guardian bite',()=>{
  const bare=new Mission(true);
+ isolateGuards(bare);
  bare.position=world(16,19);
  bare.predator.position={...bare.position};
  bare.predator.state='chase';
@@ -109,6 +110,7 @@ test('the coat does not reduce a guardian bite',()=>{
  bare.update(.05);
  assert.equal(bare.health,75);
  const coated=new Mission(true);
+ isolateGuards(coated);
  coated.inventory=['coat','knife','wood','flare','air'];
  coated.selected=0;
  coated.position=world(16,19);
