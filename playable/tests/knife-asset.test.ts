@@ -2,19 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import {
- KNIFE_HOLD_SCALE,KNIFE_HOLD_POS,KNIFE_HOLD_ROT,HELD_VIEW_POS,HELD_VIEW_ROT,KNIFE_STAB_Z,KNIFE_THUMB_URL,KNIFE_ASSET_URL,
- createKnifeStub,poseKnife,alignKnifeBladeForward,prepareKnifeMaterials,knifeMeshReady,
+ KNIFE_HOLD_SCALE,KNIFE_HOLD_POS,KNIFE_STAB_Z,KNIFE_THUMB_URL,KNIFE_ASSET_URL,KNIFE_MESH_SCALE,KNIFE_STAB_REACH,KNIFE_STAB_TIME,
+ createKnifeStub,poseKnife,alignKnifeBladeForward,prepareKnifeMaterials,knifeMeshReady,forearmInFist,stabOffset,equipOffset,
 } from '../src/knifeAsset.ts';
+import {WRIST_POS,FOREARM_LEN,WRIST_MAX_BEND,clampForearm} from '../src/diverHand.ts';
 import {readFileSync,statSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 
 const knifeDir=path.join(path.dirname(fileURLToPath(import.meta.url)),'../public/assets/knife');
 
-test('knife hold pose thrusts farther than rest along −Z',()=>{
+test('knife hold pose thrusts farther than rest along −Z, at real scale',()=>{
  assert.ok(KNIFE_STAB_Z<KNIFE_HOLD_POS.z);
- assert.ok(KNIFE_HOLD_SCALE.x>=KNIFE_HOLD_SCALE.z,'blade must be widened so it is not a sliver');
- assert.ok(KNIFE_HOLD_ROT.x>1,'pitch stands the blade up');
+ assert.deepEqual(KNIFE_HOLD_SCALE,{x:1,y:1,z:1},'viewmodel is real-world size, never stretched');
+ assert.ok(KNIFE_MESH_SCALE>=1&&KNIFE_MESH_SCALE<=1.4,'dive-knife size, not a cleaver');
 });
 
 test('knife public assets exist (glTF + square HUD thumb)',()=>{
@@ -30,58 +31,77 @@ test('knife public assets exist (glTF + square HUD thumb)',()=>{
  assert.ok(w>=64);
 });
 
-test('stub knife is the blade only, parked in the lower-right',()=>{
+test('stub viewmodel is a gloved hand gripping the knife',()=>{
  const g=createKnifeStub();
  assert.equal(g.name,'knifeVisual');
  assert.equal(knifeMeshReady(g),true);
- assert.equal(g.getObjectByName('knifeFill'),undefined);
- assert.equal(g.getObjectByName('knifeHand'),undefined);
- assert.ok(g.getObjectByName('knifeGrip'));
+ const grip=g.getObjectByName('knifeGrip')!;
+ assert.ok(grip);
+ assert.ok(grip.getObjectByName('knifeHand'),'a hand holds the knife');
+ assert.ok(grip.getObjectByName('knifeMount'));
  assert.ok(g.getObjectByName('knifeMesh'));
+ for(const n of ['handIndex','handMiddle','handRing','handPinky','handThumb','handForearm'])assert.ok(g.getObjectByName(n),n);
  poseKnife(g);
- assert.equal(g.scale.x,KNIFE_HOLD_SCALE.x);
- assert.equal(g.scale.y,KNIFE_HOLD_SCALE.y);
- assert.equal(g.scale.z,KNIFE_HOLD_SCALE.z);
+ assert.equal(g.scale.x,1);
  assert.equal(g.position.x,KNIFE_HOLD_POS.x);
- assert.deepEqual(KNIFE_HOLD_POS,HELD_VIEW_POS);
- assert.notDeepEqual(KNIFE_HOLD_ROT,HELD_VIEW_ROT);
- assert.equal(KNIFE_HOLD_POS.x,.44);
- assert.equal(KNIFE_HOLD_POS.y,-.4);
- assert.equal(KNIFE_HOLD_POS.z,-.62);
+ assert.equal(g.position.y,KNIFE_HOLD_POS.y);
+ assert.equal(g.position.z,KNIFE_HOLD_POS.z);
+ // Blade leaves the fist on the thumb side; the fingers close round the handle.
+ g.position.set(0,0,0);g.rotation.set(0,0,0);g.updateMatrixWorld(true);
+ const blade=new THREE.Box3().setFromObject(g.getObjectByName('fish_knife_blade')!);
+ const index=new THREE.Box3().setFromObject(g.getObjectByName('handIndex')!);
+ assert.ok(blade.max.y>index.max.y+.08,'blade projects ≥8 cm past the index finger');
+ const handle=new THREE.Box3().setFromObject(g.getObjectByName('fish_knife_handle')!);
+ const hc=handle.getCenter(new THREE.Vector3());
+ assert.ok(Math.hypot(hc.x,hc.z)<.02,'handle sits inside the fist');
 });
 
-test('knife stands upright in the torch corner',()=>{
+test('viewmodel sits like a shooter knife: fist low-right, tip toward crosshair, arm off-frame',()=>{
  const cam=new THREE.PerspectiveCamera(64,16/9,.12,130);
- const project=(rot:{x:number;y:number;z:number},scale:{x:number;y:number;z:number},local:THREE.Vector3)=>{
-  const g=new THREE.Group();
-  g.position.set(HELD_VIEW_POS.x,HELD_VIEW_POS.y,HELD_VIEW_POS.z);
-  g.rotation.set(rot.x,rot.y,rot.z);
-  g.scale.set(scale.x,scale.y,scale.z);
-  g.updateMatrixWorld(true);
-  return local.clone().applyMatrix4(g.matrixWorld).project(cam);
- };
- const screenBox=(rot:{x:number;y:number;z:number},scale:{x:number;y:number;z:number},box:THREE.Box3)=>{
-  const xs:number[]=[];const ys:number[]=[];
-  for(const x of [box.min.x,box.max.x])for(const y of [box.min.y,box.max.y])for(const z of [box.min.z,box.max.z]){
-   const p=project(rot,scale,new THREE.Vector3(x,y,z));
-   xs.push(Math.min(1,Math.max(-1,p.x)));
-   ys.push(Math.min(1,Math.max(-1,p.y)));
-  }
-  return {w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)};
- };
- const torch=screenBox(HELD_VIEW_ROT,{x:1.15,y:1.15,z:1.15},new THREE.Box3(new THREE.Vector3(-.13,-.2,-.44),new THREE.Vector3(.13,.18,.24)));
- const knife=screenBox(KNIFE_HOLD_ROT,KNIFE_HOLD_SCALE,new THREE.Box3(new THREE.Vector3(-.0157,-.0084,-.1556),new THREE.Vector3(.0157,.0084,.0604)));
- const tip=project(KNIFE_HOLD_ROT,KNIFE_HOLD_SCALE,new THREE.Vector3(0,0,-.1556));
- const butt=project(KNIFE_HOLD_ROT,KNIFE_HOLD_SCALE,new THREE.Vector3(0,0,.0604));
- const grip=project(KNIFE_HOLD_ROT,KNIFE_HOLD_SCALE,new THREE.Vector3(0,0,0));
- const rise=tip.y-butt.y;
- const lean=Math.abs(tip.x-butt.x);
- assert.ok(rise>lean*2,'blade is nearer vertical than diagonal');
- assert.ok(tip.y>butt.y,'tip is above the handle');
- assert.ok(tip.x<butt.x,'tip leans toward center from the handle');
- assert.ok(Math.abs(knife.w-torch.w)/torch.w<.08,'knife screen width matches the torch');
- assert.ok(Math.abs(knife.h-torch.h)/torch.h<.08,'knife screen height matches the torch');
- assert.ok(grip.x>.45&&grip.y<-.6,'grip stays in the torch corner');
+ cam.updateMatrixWorld(true);
+ const g=createKnifeStub();
+ poseKnife(g);
+ cam.add(g);g.updateMatrixWorld(true);
+ const gripObj=g.getObjectByName('knifeGrip')!;
+ const P=(local:THREE.Vector3)=>gripObj.localToWorld(local.clone()).project(cam);
+ const grip=P(new THREE.Vector3());
+ const tip=P(new THREE.Vector3(0,.16,0));
+ assert.ok(grip.x>.2&&grip.x<.85,'fist in the right half, inside the frame');
+ assert.ok(grip.y<-.15&&grip.y>-.8,'fist in the lower half, not hanging off the bottom');
+ assert.ok(tip.y>grip.y+.2,'blade rises from the fist');
+ assert.ok(tip.x<grip.x,'blade leans in toward the crosshair');
+ assert.ok(tip.x>-.2&&tip.y<.35,'blade does not cover the crosshair');
+ // The forearm connects the hand to the player: it runs out of the frame at the bottom-right.
+ const dir=clampForearm(forearmInFist());
+ const wrist=new THREE.Vector3(WRIST_POS.x,WRIST_POS.y,WRIST_POS.z);
+ const elbowCam=gripObj.localToWorld(wrist.clone().addScaledVector(dir,FOREARM_LEN));
+ const e=elbowCam.clone().project(cam);
+ assert.ok(e.x>1||e.y<-1||elbowCam.z>-.12,'forearm leaves the frame instead of ending on screen');
+ const mid=P(wrist.clone().addScaledVector(dir,.12));
+ assert.ok(mid.x>grip.x&&mid.y<grip.y,'forearm heads down-right from the wrist');
+});
+
+test('wrist stays inside a human range of motion',()=>{
+ const bend=clampForearm(forearmInFist()).angleTo(new THREE.Vector3(0,0,-1));
+ assert.ok(bend<=WRIST_MAX_BEND+1e-6,`wrist bend ${THREE.MathUtils.radToDeg(bend).toFixed(1)}°`);
+});
+
+test('stab: wind-up, drive toward the crosshair, recover to rest',()=>{
+ const zero={x:0,y:0,z:0,pitch:0,yaw:0,roll:0};
+ assert.deepEqual(stabOffset(0),zero);
+ assert.deepEqual(stabOffset(1),zero);
+ assert.ok(stabOffset(.1).z>0,'fist draws back first');
+ const peak=stabOffset(.34);
+ assert.ok(Math.abs(peak.z+KNIFE_STAB_REACH)<1e-6,'full reach at the end of the drive');
+ assert.ok(peak.x<0,'thrust converges on the crosshair');
+ assert.ok(Math.abs(stabOffset(.97).z)<.01,'back near rest by the end');
+ assert.ok(KNIFE_STAB_TIME>.2&&KNIFE_STAB_TIME<.5);
+});
+
+test('equip: fist rises into frame and settles',()=>{
+ assert.ok(equipOffset(0).y<-.15,'starts below the frame');
+ assert.deepEqual(equipOffset(1),{x:0,y:0,z:0,pitch:0,yaw:0,roll:0});
+ assert.ok(Math.abs(equipOffset(.9).y)<.01);
 });
 
 test('alignKnifeBladeForward puts tip on −Z and pivots on butt',()=>{
