@@ -23,8 +23,8 @@ export const PREDATOR_HP_MAX=100;
 export const KNIFE_DAMAGE=30;
 /** Remaining HP at which a living guardian breaks off the chase (85% damage taken). */
 export const PREDATOR_BREAK_HP=PREDATOR_HP_MAX*.15;
-/** Seconds before another stab can apply damage. */
-export const KNIFE_COOLDOWN=.55;
+/** Seconds between stabs. Short enough that rapid clicks land as rapid stabs. */
+export const KNIFE_COOLDOWN=.26;
 /** Brief AI interrupt after a wound. */
 export const PREDATOR_FLINCH=.42;
 /** Playable water column: floor → surface (ceiling of `fits`). World Y is metres. */
@@ -1161,6 +1161,8 @@ export function writeInventoryTipsSeen(){
  }
  update(dt:number,sprinting=false){
   if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;
+  // Knife recovery is the diver's arm, not the guardian: it runs whatever state the guardian is in.
+  this.predator.stabCool=Math.max(0,this.predator.stabCool-dt);
   this.breathWaterY=riseBreathWater(this.breathWaterY,dt);
   const panic=this.elapsed<this.gasPanicUntil;
   const onFoot=canWalk(this.position,this.breathWaterY);
@@ -1349,7 +1351,7 @@ export function writeInventoryTipsSeen(){
   const p=this.predator;const d=distance(p.position,this.position);const canSee=visible(p.position,this.position);
   const sense=canSee&&(d<4.5||d<(this.torch?16:sprinting?13:8));
   const safe=!predatorCell(tile(this.position).col,tile(this.position).row);
-  p.timer+=dt;p.bite=Math.max(0,p.bite-dt);p.flinch=Math.max(0,p.flinch-dt);p.stabCool=Math.max(0,p.stabCool-dt);
+  p.timer+=dt;p.bite=Math.max(0,p.bite-dt);p.flinch=Math.max(0,p.flinch-dt);
 
   // Dead: leave the FSM, stop biting, sink toward the cave floor.
   if(p.state==='dead'){

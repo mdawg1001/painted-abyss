@@ -9,7 +9,7 @@ import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playG
 import { Gait, wadingDrag, runWeight, WALK_CAMERA_MOTION, type GaitEvent } from './gait';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
-import { createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, knifeMeshReady, HELD_VIEW_POS, HELD_VIEW_ROT, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_TIME, KNIFE_EQUIP_TIME, stabOffset, equipOffset } from './knifeAsset';
+import { KNIFE_CLICK_BUFFER, createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, knifeMeshReady, HELD_VIEW_POS, HELD_VIEW_ROT, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_TIME, KNIFE_EQUIP_TIME, stabOffset, equipOffset } from './knifeAsset';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
 import { loadCausticAtlas, makeCausticFallbackTexture } from './causticAsset';
@@ -1491,15 +1491,30 @@ export class CaveWorld extends OceanWorld {
   if(!ctx||!master||ctx.state!=='running')return;
   playInventoryClick(ctx,master);
  }
+ /** Clicks that arrived while the arm was still recovering; each becomes its own stab. */
+ stabQueue=0;
+ /** Click handler: stab now, or buffer the click so click-click-click = stab-stab-stab. */
  tryStab(){
   if(!this.playing||this.mission.outcome!=='playing')return;
   if(this.mission.inventory[this.mission.selected]!=='knife')return;
+  if(this.stabQueue>0||!this.fireStab())this.stabQueue=Math.min(KNIFE_CLICK_BUFFER,this.stabQueue+1);
+ }
+ /** Drain buffered clicks as soon as the arm is ready. Called every frame. */
+ drainStabQueue(){
+  if(this.stabQueue<=0)return;
+  if(!this.playing||this.mission.outcome!=='playing'||this.mission.inventory[this.mission.selected]!=='knife'){this.stabQueue=0;return;}
+  if(this.fireStab())this.stabQueue--;
+ }
+ /** One stab. Returns false only while the arm is still recovering (click can be buffered). */
+ fireStab():boolean{
   this.camera.getWorldDirection(this.forward);
   const result=this.mission.stab({x:this.forward.x,y:this.forward.y,z:this.forward.z});
-  if(result==='blocked'||result==='cooldown'){this.publish();return;}
+  if(result==='cooldown')return false;
+  if(result==='blocked'){this.publish();return true;}
   this.flashKnife();
   this.consumeCombatCue(result==='hit');
   this.publish();
+  return true;
  }
  flashKnife(){
   if(!this.knifeVisual||!knifeMeshReady(this.knifeVisual))return;
@@ -1567,7 +1582,7 @@ export class CaveWorld extends OceanWorld {
   this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();
   this.onFoot=true;this.wasOnFoot=true;this.gait.reset();
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
-  this.shakeAmp=0;this.knifeFlashUntil=0;this.knifeEquipAt=null;
+  this.shakeAmp=0;this.knifeFlashUntil=0;this.knifeEquipAt=null;this.stabQueue=0;
   if(this.knifeVisual){poseKnife(this.knifeVisual);this.knifeVisual.visible=this.holdingKnife()&&knifeMeshReady(this.knifeVisual);}
   if(this.gunVisual)this.gunVisual.visible=this.holdingGun();
   this.syncHeldTorch();
@@ -1579,7 +1594,7 @@ export class CaveWorld extends OceanWorld {
  }
  animate=()=>{
   if(!this.alive)return;this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);
-  if(this.playing){this.time+=dt;const m=this.mission;
+  if(this.playing){this.time+=dt;const m=this.mission;this.drainStabQueue();
    const pressed=(...keys:string[])=>keys.some(k=>this.keys.has(k))?1:0;
    if(m.mapOpen){
     // Chart reading: hold still, but the dive clock / gas / predator keep running.
