@@ -263,6 +263,8 @@ export type GuardCombatPoseInput={
  /** Ground speed m/s. */
  speed:number;
  dt:number;
+ /** 0..1 once he is shot down: face goes slack, eyes close. */
+ down?:number;
 };
 
 const _S=new THREE.Vector3(),_SL=new THREE.Vector3(),_SR=new THREE.Vector3(),_dir=new THREE.Vector3(),_dirH=new THREE.Vector3();
@@ -403,8 +405,9 @@ export function applyGuardCombatPose(rig:GuardRig,st:GuardCombatState,gun:THREE.
   if(st.nextBlink<=0){st.blink=.14;st.nextBlink=2.2+((st.t*7.31)%1)*3.5;}
   st.blink=Math.max(0,st.blink-dt);
   const blink=st.blink>0?Math.sin(Math.PI*st.blink/.14):0;
-  rig.face.morphTargetInfluences[0]=st.anger;
-  rig.face.morphTargetInfluences[1]=Math.min(1,Math.max(blink,rec*.85));
+  const down=THREE.MathUtils.clamp(inp.down??0,0,1);
+  rig.face.morphTargetInfluences[0]=st.anger*(1-down);
+  rig.face.morphTargetInfluences[1]=Math.min(1,Math.max(blink,rec*.85,down));
  }
  return w>1e-3;
 }
