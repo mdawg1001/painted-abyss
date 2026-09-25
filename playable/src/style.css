@@ -270,6 +270,37 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   position:absolute;bottom:26px;left:50%;transform:translateX(-50%);
   pointer-events:none;
 }
+.stash-panel{
+  position:absolute;bottom:100px;left:50%;transform:translateX(-50%);
+  pointer-events:auto;
+  padding:10px 12px 12px;
+  background:rgba(8,14,16,.82);
+  border:1px solid rgba(180,160,110,.35);
+  border-radius:6px;
+  box-shadow:0 8px 28px rgba(0,0,0,.45);
+}
+.stash-title{
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:13px;font-weight:700;letter-spacing:.12em;
+  color:rgba(226,200,136,.9);
+  margin:0 0 8px;text-align:center;
+}
+.stash-title span{color:rgba(200,210,210,.7);letter-spacing:.06em;margin-left:8px;font-weight:600}
+.stash-slots .stash-slot{
+  cursor:pointer;
+  pointer-events:auto;
+  border:0;
+  font:inherit;color:inherit;
+  padding:0;
+}
+.stash-slots .stash-slot:focus{outline:1px solid rgba(226,200,136,.6)}
+.stash-amt{
+  position:absolute;right:4px;bottom:3px;
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:11px;font-style:normal;font-weight:700;
+  color:#d5e0a8;line-height:1;
+}
+.slot.ammo{color:#c8d0a8}
 .slots{display:flex;gap:8px}
 .slot{
   position:relative;width:58px;height:58px;

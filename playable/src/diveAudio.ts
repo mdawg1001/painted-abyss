@@ -505,3 +505,89 @@ export function playSupply(ctx: AudioContext, out: AudioNode, kind: 'ammo' | 'me
     o.connect(e).connect(out); o.start(t + dt); o.stop(t + dt + .4);
   }
 }
+
+/** Hatch stash lid / hinge: wooden scrape + soft latch. */
+export function playStashOpen(ctx: AudioContext, out: AudioNode) {
+  const t = ctx.currentTime;
+  const nBuf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * .12)), ctx.sampleRate);
+  const samples = nBuf.getChannelData(0);
+  for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+  const noise = ctx.createBufferSource();
+  noise.buffer = nBuf;
+  const band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.frequency.value = 420;
+  band.Q.value = .8;
+  const nEnv = ctx.createGain();
+  nEnv.gain.setValueAtTime(.35, t);
+  nEnv.gain.exponentialRampToValueAtTime(.001, t + .14);
+  noise.connect(band).connect(nEnv).connect(out);
+  noise.start(t);
+  noise.stop(t + .15);
+  const o = ctx.createOscillator();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(180, t);
+  o.frequency.exponentialRampToValueAtTime(90, t + .18);
+  const e = ctx.createGain();
+  e.gain.setValueAtTime(.22, t);
+  e.gain.exponentialRampToValueAtTime(.001, t + .2);
+  o.connect(e).connect(out);
+  o.start(t);
+  o.stop(t + .22);
+}
+
+/** Hatch stash lid settling shut. */
+export function playStashClose(ctx: AudioContext, out: AudioNode) {
+  const t = ctx.currentTime;
+  const o = ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(140, t);
+  o.frequency.exponentialRampToValueAtTime(70, t + .1);
+  const e = ctx.createGain();
+  e.gain.setValueAtTime(.28, t);
+  e.gain.exponentialRampToValueAtTime(.001, t + .12);
+  o.connect(e).connect(out);
+  o.start(t);
+  o.stop(t + .14);
+  const tick = ctx.createOscillator();
+  tick.type = 'square';
+  tick.frequency.value = 1100;
+  const te = ctx.createGain();
+  te.gain.setValueAtTime(.12, t + .04);
+  te.gain.exponentialRampToValueAtTime(.001, t + .07);
+  tick.connect(te).connect(out);
+  tick.start(t + .04);
+  tick.stop(t + .08);
+}
+
+/** Item settling into a stash slot. */
+export function playStashDeposit(ctx: AudioContext, out: AudioNode) {
+  const t = ctx.currentTime;
+  for (const [dt, freq, gain] of [[0, 520, .16], [.045, 380, .12]] as const) {
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.value = freq;
+    const e = ctx.createGain();
+    e.gain.setValueAtTime(gain, t + dt);
+    e.gain.exponentialRampToValueAtTime(.001, t + dt + .08);
+    o.connect(e).connect(out);
+    o.start(t + dt);
+    o.stop(t + dt + .1);
+  }
+}
+
+/** Item pulled from a stash slot. */
+export function playStashWithdraw(ctx: AudioContext, out: AudioNode) {
+  const t = ctx.currentTime;
+  for (const [dt, freq, gain] of [[0, 640, .14], [.05, 880, .1]] as const) {
+    const o = ctx.createOscillator();
+    o.type = 'square';
+    o.frequency.value = freq;
+    const e = ctx.createGain();
+    e.gain.setValueAtTime(gain, t + dt);
+    e.gain.exponentialRampToValueAtTime(.001, t + dt + .06);
+    o.connect(e).connect(out);
+    o.start(t + dt);
+    o.stop(t + dt + .08);
+  }
+}

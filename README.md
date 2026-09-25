@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.17.11
+# Painted Abyss — First Dive · 0.18.0
 
 ## Progressive prop loading (0.17.8)
 
@@ -59,7 +59,7 @@ The sepia is gone. Dry air is a dark cold teal-grey (fog and background), the ke
 
 ## Hanging tube lights (0.17.8)
 
-7 Poly Haven [Caged Hanging Light](https://polyhaven.com/a/caged_hanging_light) fixtures (CC0) hang on their chains from the bunker ceiling over open floor, at least 22 m apart (cut from 18 to 7 in 0.17.11). Each is a real pendulum (period from g and chain length); your shots, guard fire and bullet impacts within 9 m kick them, so the light pools and the shadows under them sway. 60% of tubes burn steady, 30% are failing (buzzing blackouts), 10% are dying (dark, then bursts); in the final wave every tube stutters, and the relic slam turns them red. A fixed pool of 5 downward spotlights follows the tubes nearest you (no shader recompiles); the nearest casts shadows. Tuning in `playable/src/hangingLightAsset.ts`.
+7 Poly Haven [Caged Hanging Light](https://polyhaven.com/a/caged_hanging_light) fixtures (CC0) hang on their chains from the bunker ceiling over open floor, at least 22 m apart (cut from 18 to 7 in 0.18.0). Each is a real pendulum (period from g and chain length); your shots, guard fire and bullet impacts within 9 m kick them, so the light pools and the shadows under them sway. 60% of tubes burn steady, 30% are failing (buzzing blackouts), 10% are dying (dark, then bursts); in the final wave every tube stutters, and the relic slam turns them red. A fixed pool of 5 downward spotlights follows the tubes nearest you (no shader recompiles); the nearest casts shadows. Tuning in `playable/src/hangingLightAsset.ts`.
 
 ## Frame grade (0.14.3)
 

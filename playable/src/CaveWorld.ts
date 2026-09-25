@@ -14,7 +14,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
-import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playSquadCall, pannedBus, playDoorBang, playSmokePop, playGrunt, playMeleeHit, playFleshHit, playSupply, playValveStroke, playValveSeat } from './diveAudio';
+import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playSquadCall, pannedBus, playDoorBang, playSmokePop, playGrunt, playMeleeHit, playFleshHit, playSupply, playValveStroke, playValveSeat, playStashOpen, playStashClose, playStashDeposit, playStashWithdraw } from './diveAudio';
 import { Gait, wadingDrag, runWeight, WALK_CAMERA_MOTION, type GaitEvent } from './gait';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
@@ -41,7 +41,7 @@ import {
  type SovietGuardVisual,
 } from './sovietGuardAsset';
 import { mountTt33 } from './gunAsset';
-import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_COUNT, type BreathFootprint, type BreathTankMount } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_COUNT, STASH_POSITION, STASH_YAW, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
  airborne:boolean;
@@ -222,6 +222,8 @@ export class CaveWorld extends OceanWorld {
  chestVisuals=new Map<number,ChestVisual>();
  /** Chart-scrap scrolls nested in each crate (visible until taken). */
  scrollVisuals=new Map<number,ScrollVisual>();
+ /** Persistent hatch stash (military crate, no chart scrap). */
+ stashVisual:ChestVisual|null=null;
  /** QA: when true, animate() leaves camera pose alone (Playwright framing). */
  holdCamera=false;
  /** Decorative Poly Haven life ring on the start-chamber floor. */
@@ -407,6 +409,7 @@ export class CaveWorld extends OceanWorld {
    this.adoptPointCull(this.knifeVisual,this.heldLightBox,false,false);
   });
   this.mountChests();
+  this.mountStash();
   this.mountLifebuoy();
   this.mountWallSconces();
   this.mountHangingLights();
@@ -554,6 +557,27 @@ export class CaveWorld extends OceanWorld {
     }
    }
   }
+  this.syncStash(dt);
+ }
+ /** Poly Haven military crate at the hatch — player bank, no chart scrap. */
+ mountStash(){
+  const visual=createChestVisual('military');
+  visual.root.position.set(STASH_POSITION.x,STASH_POSITION.y,STASH_POSITION.z);
+  visual.root.rotation.y=STASH_YAW;
+  visual.root.name='hatchStash';
+  this.scene.add(visual.root);
+  this.stashVisual=visual;
+  upgradeChestVisual(visual).then(ok=>{
+   if(!this.alive||!this.stashVisual)return;
+   if(visual.lid)visual.lid.rotation.copy(this.mission.stashOpen?visual.openRot:visual.closedRot);
+   if(ok)this.adoptPointCull(visual.root,this.worldBox(visual.root),false,true);
+  });
+ }
+ syncStash(dt:number){
+  const visual=this.stashVisual;if(!visual)return;
+  visual.root.position.set(STASH_POSITION.x,STASH_POSITION.y,STASH_POSITION.z);
+  visual.root.rotation.y=STASH_YAW;
+  syncChestOpen(visual,this.mission.stashOpen,dt);
  }
  /** Soft blood Points (shader discs × Kenney maps — never square sprites). */
  buildBlood(){
@@ -1057,6 +1081,16 @@ export class CaveWorld extends OceanWorld {
   }
   const sup=m.supplyTaken;
   if(sup&&sup.at!==this.supplySeen){this.supplySeen=sup.at;if(a)playSupply(ctx!,master!,sup.kind);}
+  const stashCue=m.stashCue;
+  if(stashCue){
+   m.stashCue='';
+   if(a&&ctx&&master){
+    if(stashCue==='open')playStashOpen(ctx,master);
+    else if(stashCue==='close')playStashClose(ctx,master);
+    else if(stashCue==='deposit')playStashDeposit(ctx,master);
+    else if(stashCue==='withdraw')playStashWithdraw(ctx,master);
+   }
+  }
   this.fx.syncCaches(m.caches,this.time,o=>this.adoptPointCull(o,this.worldBox(o),true,true),c=>m.canTakeCache(c));
   this.fx.update(dt,this.time,m.elapsed,this.camera,this.sovietGuards,m.guards,m.clouds,m.grenades);
  }
@@ -1636,6 +1670,7 @@ export class CaveWorld extends OceanWorld {
    if(this.valveStroke&&e.code!=='Escape'&&e.code!=='KeyM'){this.publish();return;}
    if(e.code==='Escape'){
     if(this.mission.mapOpen){this.mission.mapOpen=false;this.requestLookLock(false);this.publish();return;}
+    if(this.mission.stashOpen){this.mission.closeStash();this.publish();return;}
     if(this.mission.pending!==null){this.mission.pending=null;this.publish();}else this.pause();
    }
    // Inventory keys bind on window (not the canvas), so select/use/drop work without canvas focus.
