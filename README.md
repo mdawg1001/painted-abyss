@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.13.0
+# Painted Abyss — First Dive · 0.14.0
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -9,6 +9,15 @@ node playable/refresh.mjs
 That pulls `main`, stops the old server on port 5173, rebuilds, and serves. Agents must bump `playable/package.json` (and README / START-HERE) on every playable change — see `.cursor/rules/playable-version.mdc`. Do **not** commit `playable/dist/`; serve/refresh rebuild it when stale.
 
 Includes a clearly audible inventory select click/snap, quieter first-play tip, sound, and continuous 360° horizontal camera turning. When pointer lock is unavailable, hold the pointer near either edge to keep turning; move it back towards the centre to stop.
+
+## Survival firefight (0.14)
+
+The bunker is held by a garrison that escalates as you push for the relic: a quiet start, first contact in the entrance chamber, waves through steel bulkheads (red lamp + clank + shout before anyone steps through), a short lull to reload and resupply, harder waves, then a final push from the moment you lift the relic until you reach the extraction pool.
+
+- Guards: assault (advance + bursts), rusher (sprints in, telegraphed knife stab), flanker (comes round your side), heavy (helmet + long bursts). Standard guards take two head shots up close, three at range, about five body hits.
+- Controls: click fires the TT-33 (or stabs with the knife), R reloads, **T throws smoke**, E interacts, 1–5 select.
+- Smoke blocks sight for guards and for you. Walk over ammo boxes, field dressings and smoke tins to take them; a downed guard's pistol gives up its rounds when you walk over it.
+- Every balancing number (enemy counts, health, damage, accuracy, timings, supplies, smoke) lives in `playable/src/survivalConfig.ts`.
 
 ## Open in Cursor
 

@@ -1,7 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,KNIFE_COOLDOWN,PREDATOR_HP_MAX,PREDATOR_BREAK_HP,createDiveChests,CHEST_LABEL,chestHasLid,chestInteractPrompt,MAP_FRAGMENT_ORDER,MAP_FRAGMENT_LABEL,torchShouldShine,holdingTorchItem,occupiesFpsHand,predatorSpawnCandidates,randomPredatorSpawn,PREDATOR_SPAWN_CELLS,playerSpawnCandidates,randomPlayerSpawn,PLAYER_SPAWN_CELLS,SPAWN_SEPARATION,breathHatchSpawn,isolateGuards} from '../src/simulation';
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,KNIFE_COOLDOWN,PREDATOR_HP_MAX,PREDATOR_BREAK_HP,createDiveChests,CHEST_LABEL,chestHasLid,chestInteractPrompt,MAP_FRAGMENT_ORDER,MAP_FRAGMENT_LABEL,torchShouldShine,holdingTorchItem,occupiesFpsHand,predatorSpawnCandidates,randomPredatorSpawn,PREDATOR_SPAWN_CELLS,playerSpawnCandidates,randomPlayerSpawn,PLAYER_SPAWN_CELLS,SPAWN_SEPARATION,breathHatchSpawn,isolateGuards,PREDATOR_SWIM_DEPTH,
+} from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{isolateGuards(m);for(let i=0;i<seconds*60;i++)m.update(1/60);};
 test('hydrostatic depth and ata share one surface plane',()=>{
  assert.equal(hydrostaticDepth(SURFACE_Y),0);
@@ -122,7 +123,7 @@ test('unlocked free look supports continuous 360-degree rotation without pressin
  let yaw=0;for(let i=0;i<360;i++)yaw=lookDelta(yaw,0,edgeTurn(900,0,1000)*FREE_LOOK_RATE/60*650,0).yaw;assert.ok(yaw<-Math.PI*2);
  for(let i=0;i<720;i++)yaw=lookDelta(yaw,0,edgeTurn(100,0,1000)*FREE_LOOK_RATE/60*650,0).yaw;assert.ok(yaw>Math.PI*2);
 });
-test('five slots full: one E swaps into the selected slot, displaced item is recoverable',()=>{const m=new Mission();m.position={...RELIC};m.selected=1;m.interact();assert.equal(m.pending,null);assert.equal(m.inventory.length,5);assert.equal(m.inventory[1],'relic');assert.equal(m.pickups.filter(x=>x.item==='wood').length,1);m.drop();assert.equal(m.hasRelic,false);m.position={...RELIC};m.interact();assert.equal(m.inventory.length,5);assert.equal(m.pickups.length,5);assert.equal(m.pickups.filter(p=>p.item==='gun'||p.item==='bottle'||p.item==='coat').length,3);});
+test('five slots full: one E swaps into the selected slot, displaced item is recoverable',()=>{const m=new Mission();m.inventory=['knife','wood','flare','air','bandage'];m.selected=0;m.position={...RELIC};m.selected=1;m.interact();assert.equal(m.pending,null);assert.equal(m.inventory.length,5);assert.equal(m.inventory[1],'relic');assert.equal(m.pickups.filter(x=>x.item==='wood').length,1);m.drop();assert.equal(m.hasRelic,false);m.position={...RELIC};m.interact();assert.equal(m.inventory.length,5);assert.equal(m.pickups.length,5);assert.equal(m.pickups.filter(p=>p.item==='gun'||p.item==='bottle'||p.item==='coat').length,3);});
 test('extraction requires currently carried objective, dropping it revokes win',()=>{const m=new Mission();m.position={...EXIT};m.interact();assert.equal(m.outcome,'playing');m.position={...RELIC};m.interact();m.interact();assert.ok(m.hasRelic);m.position={...EXIT};m.interact();assert.equal(m.outcome,'won');const elapsed=m.elapsed;m.update(.05);assert.equal(m.elapsed,elapsed);});
 test('out of range E cannot remotely collect the objective',()=>{const m=new Mission();m.position={...START};m.interact();assert.equal(m.pending,null);assert.equal(m.hasRelic,false);});
 test('world collision stops walls, floor, roof, and large movement tunnelling',()=>{const p={...START};moveBody(p,400,0,0);assert.ok(p.x<14);assert.ok(fits(p));moveBody(p,0,100,0);assert.ok(p.y<=SURFACE_Y);moveBody(p,0,-200,0);assert.ok(p.y>=FLOOR_Y);const pillar=world(8,17);moveBody(pillar,20,0,0);assert.ok(pillar.x<-10);assert.ok(fits(pillar));});
@@ -196,11 +197,11 @@ test('each new mission rolls diver and predator spawns with separation',()=>{
   assert.ok(predatorSpawnCandidates(m.position).length>=1);
  }
 });
-test('predator transitions patrol → alert → chase → search → patrol',()=>{const m=new Mission();isolateGuards(m); /* keep the armed corridor squad out of this predator-only test */m.predator.position=world(16,19);m.position=world(16,16);advance(m,.2);assert.equal(m.predator.state,'alert');advance(m,2);assert.equal(m.predator.state,'chase');m.position={...START};advance(m,3);assert.equal(m.predator.state,'search');advance(m,8);assert.equal(m.predator.state,'patrol');});
+test('predator transitions patrol → alert → chase → search → patrol',()=>{const m=new Mission();m.breathWaterY=FLOOR_Y+PREDATOR_SWIM_DEPTH+.3;isolateGuards(m); /* keep the armed corridor squad out of this predator-only test */m.predator.position=world(16,19);m.position=world(16,16);advance(m,.2);assert.equal(m.predator.state,'alert');advance(m,2);assert.equal(m.predator.state,'chase');m.position={...START};advance(m,3);assert.equal(m.predator.state,'search');advance(m,8);assert.equal(m.predator.state,'patrol');});
 test('predator cannot see or bite through rock',()=>{const m=new Mission();m.predator.position=world(8,17);m.position=world(13,17);advance(m,.2);assert.equal(m.predator.state,'patrol');assert.equal(m.health,100);});
-test('four bites lose the mission; fresh mission resets every system',()=>{const m=new Mission();m.position=world(16,19);m.predator.position={...m.position};m.predator.state='chase';advance(m,6);assert.equal(m.outcome,'lost');assert.equal(m.health,0);const fresh=new Mission();assert.equal(fresh.health,100);assert.equal(fresh.air,AIR_MAIN_MAX);assert.equal(fresh.bailout,0);assert.equal(fresh.outcome,'playing');assert.equal(fresh.pending,null);assert.equal(fresh.pickups[0].item,'relic');assert.ok(fits(fresh.position,.48));assert.equal(fresh.position.x,breathHatchSpawn().x);assert.equal(fresh.position.z,breathHatchSpawn().z);assert.ok(distance(fresh.predator.position,fresh.position)>SPAWN_SEPARATION);});
+test('four bites lose the mission; fresh mission resets every system',()=>{const m=new Mission();m.breathWaterY=FLOOR_Y+PREDATOR_SWIM_DEPTH+.3;m.position=world(16,19);m.predator.position={...m.position};m.predator.state='chase';advance(m,6);assert.equal(m.outcome,'lost');assert.equal(m.health,0);const fresh=new Mission();fresh.breathWaterY=FLOOR_Y+PREDATOR_SWIM_DEPTH+.3;assert.equal(fresh.health,100);assert.equal(fresh.air,AIR_MAIN_MAX);assert.equal(fresh.bailout,0);assert.equal(fresh.outcome,'playing');assert.equal(fresh.pending,null);assert.equal(fresh.pickups[0].item,'relic');assert.ok(fits(fresh.position,.48));assert.equal(fresh.position.x,breathHatchSpawn().x);assert.equal(fresh.position.z,breathHatchSpawn().z);assert.ok(distance(fresh.predator.position,fresh.position)>SPAWN_SEPARATION);});
 test('air loss, pony bailout, sealant and distraction have tangible effects',()=>{
- const m=new Mission();m.air=20;m.selected=3;m.use();
+ const m=new Mission();m.breathWaterY=FLOOR_Y+PREDATOR_SWIM_DEPTH+.3;m.inventory=['knife','wood','flare','air','bandage'];m.selected=0;m.air=20;m.selected=3;m.use();
  assert.equal(m.air,20);assert.equal(m.bailout,AIR_BAILOUT_LITRES);assert.equal(m.inventory[3],null);assert.equal(m.feedbackKind,'ok');
  m.use();assert.equal(m.feedbackKind,'blocked'); // slot empty
  m.inventory[3]='air';m.use();assert.equal(m.bailout,AIR_BAILOUT_LITRES);assert.equal(m.feedbackKind,'blocked'); // pony already full
@@ -255,7 +256,7 @@ test('guardian bite raises panic gas effort briefly',()=>{
  assert.ok(panic.air<calm.air);
 });
 test('inventory select/use stay quiet after the one-time first-play tip',()=>{
- const first=new Mission(false);
+ const first=new Mission(false);first.inventory=['knife','wood','flare','air','bandage'];first.selected=0;
  assert.match(first.notice,/knife|1–5 select/i);
  assert.equal(first.tipsSeen,false);
  const opening=first.notice;
@@ -263,7 +264,7 @@ test('inventory select/use stay quiet after the one-time first-play tip',()=>{
  assert.equal(first.select(2),false);
  first.use();assert.equal(first.inventory[2],null);assert.equal(first.feedbackKind,'ok');assert.equal(first.notice,opening);
  first.select(0);first.use();assert.equal(first.inventory[0],'knife');assert.equal(first.feedbackKind,'blocked');assert.equal(first.notice,opening);
- const quiet=new Mission(true);
+ const quiet=new Mission(true);quiet.inventory=['knife','wood','flare','air','bandage'];quiet.selected=0;
  assert.equal(quiet.notice,'');assert.equal(quiet.noticeUntil,0);
  quiet.select(3);assert.equal(quiet.feedbackKind,'select');assert.equal(quiet.notice,'');
  quiet.air=100;quiet.use();assert.equal(quiet.inventory[3],null);assert.equal(quiet.feedbackKind,'ok');assert.equal(quiet.notice,'');
@@ -293,7 +294,7 @@ test('torch shine follows the held prop, not merely the F flag',()=>{
  // F off → dark even with torch in hand.
  assert.equal(torchShouldShine(false,'wood'),false);
  assert.equal(torchShouldShine(false,'knife'),false);
- const m=new Mission(true);
+ const m=new Mission(true);m.inventory=['knife','wood','flare','air','bandage'];m.selected=0;
  assert.equal(m.inventory[m.selected],'knife');
  assert.equal(m.torch,true);
  assert.equal(torchShouldShine(m.torch,m.inventory[m.selected]),false);
@@ -342,7 +343,7 @@ test('knife wound rages then breaks off at 85% damage; death sinks FSM',()=>{
  const health=m.health;m.position={...m.predator.position};advance(m,3);assert.equal(m.health,health);
  assert.equal(m.outcome,'playing');
 });
-test('safe narrow passage prevents bites and leaves an escape route',()=>{const m=new Mission();m.position=world(19,20);m.predator.position=world(18,20);m.predator.state='chase';m.predator.lastKnown={...m.position};advance(m,3);assert.equal(m.health,100);assert.equal(m.predator.state,'search');assert.ok(m.predator.position.x<30);});
+test('safe narrow passage prevents bites and leaves an escape route',()=>{const m=new Mission();m.breathWaterY=FLOOR_Y+PREDATOR_SWIM_DEPTH+.3;m.position=world(19,20);m.predator.position=world(18,20);m.predator.state='chase';m.predator.lastKnown={...m.position};advance(m,3);assert.equal(m.health,100);assert.equal(m.predator.state,'search');assert.ok(m.predator.position.x<30);});
 test('three distinct Poly Haven chests sit in the cavern and open with E',()=>{
  const chests=createDiveChests();
  assert.equal(chests.length,3);

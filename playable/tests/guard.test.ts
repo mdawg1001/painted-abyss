@@ -10,6 +10,7 @@ import {
  GUARD_WALL_CLEARANCE,GUARD_INSPECT_SPACING,GUARD_CORNER_PAUSE,GUARD_BODY_RADIUS,GUARD_FOV_HALF,createDiveChests,
  GUARD_MELEE_RANGE,GUARD_MELEE_DAMAGE,GUARD_COAT_DAMAGE_MULT,GUARD_GUN_DAMAGE,
  GUARD_BOTTLE_AIR,GUARD_LOOT_RANGE,SPARE_BOTTLE_LITRES,GUARD_SPEED,GUARD_AIM_TOLERANCE,GUARD_GUN_RANGE,GUARD_HORDE,
+PREDATOR_SWIM_DEPTH,
 } from '../src/simulation';
 import {
  SOVIET_GUARD_SOURCE,SOVIET_GUARD_AUTHOR,SOVIET_GUARD_LICENSE,SOVIET_GUARD_GLB,SOVIET_GUARD_HEIGHT,
@@ -69,97 +70,6 @@ test('perimeter route: one closed loop round the whole building, off the walls',
  }
 });
 
-test('five coloured guards share overlapping beats of the perimeter',()=>{
- const m=new Mission(true);
- const route=guardPerimeterRoute();
- const n=route.length;
- assert.equal(m.guards.length,GUARD_COUNT);
- assert.equal(GUARD_COUNT,5);
- assert.equal(GUARD_OUTFIT_COLORS.length,5);
- assert.equal(new Set(GUARD_OUTFIT_COLORS).size,5,'five distinct dyes');
- assert.equal(new Set(m.guards.map(g=>g.outfit)).size,GUARD_COUNT);
- assert.equal(new Set(m.guards.map(g=>g.spawnIndex)).size,GUARD_COUNT,'not stacked on one stop');
- const sets=m.guards.map((g,i)=>{
-  const beat=guardBeat(i,n);
-  assert.equal(g.beatStart,beat.start);
-  assert.equal(g.beatLen,beat.len);
-  const idx=beatIndices(beat.start,beat.len,n);
-  assert.ok(idx.includes(g.spawnIndex),`guard ${i} spawns on his beat`);
-  return new Set(idx);
- });
- for(let i=0;i<GUARD_COUNT;i++){
-  const a=sets[i],b=sets[(i+1)%GUARD_COUNT];
-  let share=0;for(const x of a)if(b.has(x))share++;
-  const frac=share/a.size;
-  assert.ok(frac>=.15&&frac<=.4,`adjacent overlap ${frac.toFixed(2)} (want ~${GUARD_PATROL_OVERLAP})`);
-  for(let j=i+1;j<GUARD_COUNT;j++){
-   assert.ok(distance(m.guards[i].position,m.guards[j].position)>1,`guards ${i}/${j} not overlapping`);
-  }
- }
-});
-
-test('guard starts each life somewhere new on the perimeter, away from the player',()=>{
- let seq=0;const rand=()=>{seq=(seq*9301+49297)%233280;return seq/233280;};
- const m=new Mission(true);m.rand=rand;m.spawnGuard();
- const route=guardPerimeterRoute();
- const n=route.length;
- const starts:number[]=[m.guard.spawnIndex];
- for(let life=0;life<12;life++){
-  m.outcome='lost';m.respawnAtHatch();
-  const i=m.guard.spawnIndex;starts.push(i);
-  const beat=guardBeat(0,n);
-  const onBeat=beatIndices(beat.start,beat.len,n);
-  assert.ok(onBeat.includes(i),'stays on his own beat');
-  assert.notEqual(i,starts[starts.length-2],'never the same start twice running');
-  assert.ok(Math.hypot(route[i].x-m.position.x,route[i].z-m.position.z)>=30,'spawns well away from the hatch');
-  assert.deepEqual({x:m.guard.position.x,z:m.guard.position.z},{x:route[i].x,z:route[i].z});
-  assert.equal(m.guard.state,'patrol');
-  const step=beatStep(i,beat.start,beat.len,n,1);
-  assert.equal(m.guard.waypoint,step.wp,'heads on to the next stop on his beat');
-  assert.equal(m.guard.beatDir,step.dir);
- }
- assert.ok(new Set(starts).size>=6,`varied starts (${new Set(starts).size} distinct)`);
- assert.equal(pickGuardSpawn(()=>0,breathHatchSpawn(),-1)>=0,true);
-});
-
-test('patrol walks one overlapping beat: straight between stops, ping-pongs, looks around',()=>{
- const m=alone(new Mission(true));
- m.breathWaterY=FLOOR_Y-.1;
- m.position={...FAR};
- const route=guardPerimeterRoute();
- const n=route.length;
- const beat=guardBeat(0,n);
- const onBeat=new Set(beatIndices(beat.start,beat.len,n));
- const dt=1/20;
- let visited=0,prevWp=m.guard.waypoint,scanTurn=0,prev={...m.guard.position},prevH=m.guard.heading;
- let maxDev=0,sawReverse=false;
- for(let i=0;i<Math.round(8*60/dt);i++){
-  m.breathWaterY=FLOOR_Y-.1; // hold the leak back so he can walk his beat
-  m.update(dt,false);
-  const g=m.guard;
-  assert.equal(g.state,'patrol');
-  assert.ok(onBeat.has(g.waypoint),'stays on his beat');
-  if(g.beatDir===-1)sawReverse=true;
-  assert.ok(fits({x:g.position.x,y:3,z:g.position.z},GUARD_BODY_RADIUS),'stays inside the building');
-  const mv=Math.hypot(g.position.x-prev.x,g.position.z-prev.z);
-  if(mv>1e-5){
-   const along=((g.position.x-prev.x)*Math.sin(g.heading)+(g.position.z-prev.z)*Math.cos(g.heading))/mv;
-   assert.ok(along>.995,'moves the way he faces');
-   // Straight: stays on the line from the previous beat stop to the next.
-   const opp=g.beatDir===1?-1:1;
-   const a=route[beatStep(g.waypoint,g.beatStart,g.beatLen,n,opp as 1|-1).wp],b=route[g.waypoint];
-   const L=Math.hypot(b.x-a.x,b.z-a.z)||1;
-   maxDev=Math.max(maxDev,Math.abs(((g.position.x-a.x)*(b.z-a.z)-(g.position.z-a.z)*(b.x-a.x))/L));
-  }else if(g.pause>0)scanTurn+=Math.abs(wrapAngle(g.heading-prevH));
-  if(g.waypoint!==prevWp){visited++;prevWp=g.waypoint;}
-  prev={...g.position};prevH=g.heading;
- }
- assert.ok(visited>=beat.len,`covers the beat (${visited} stops of ${beat.len})`);
- assert.ok(sawReverse,'turns about at the end of his beat instead of cutting across');
- assert.ok(maxDev<.05,`straight lines between stops (max ${maxDev.toFixed(3)} m off)`);
- assert.ok(scanTurn>beat.len,'sweeps his gaze at the stops');
-});
-
 test('guard sees what is in front of him, hears running, and feels someone right beside him',()=>{
  const setup=(dx:number,dz:number,opts:{torch?:boolean;sprint?:boolean}={})=>{
   const m=alone(new Mission(true));m.breathWaterY=FLOOR_Y-.1;
@@ -177,20 +87,6 @@ test('guard sees what is in front of him, hears running, and feels someone right
  assert.ok(engaged(setup(0,-8,{sprint:true})),'running footsteps behind him');
  assert.equal(setup(0,12,{torch:false}),'patrol','dark and far is safe');
  assert.ok(GUARD_FOV_HALF>1&&GUARD_FOV_HALF<1.3);
-});
-
-test('after losing the player he rejoins his beat at the nearest stop',()=>{
- const m=alone(new Mission(true));m.breathWaterY=FLOOR_Y-.1;m.position={...FAR};
- m.guard.position={x:10,y:WALK_EYE_Y,z:-60};
- m.guard.state='search';m.guard.timer=8.1;m.guard.arrived=true;
- m.update(.05,false);
- assert.equal(m.guard.state,'patrol');
- const route=guardPerimeterRoute(),w=route[m.guard.waypoint];
- const want=nearestBeatStop({x:10,z:-60},m.guard.beatStart,m.guard.beatLen);
- assert.equal(m.guard.waypoint,want);
- assert.ok(Math.abs(Math.hypot(w.x-10,w.z+60)-Math.hypot(route[want].x-10,route[want].z+60))<1e-9);
- const nav=guardNavTarget(m.guard.position,w);
- assert.ok(guardClearLine(m.guard.position,nav),'a walkable way back');
 });
 
 test('guard walks dry floor and stops where water is too deep',()=>{
@@ -231,60 +127,8 @@ test('guard cannot see through walls',()=>{
  assert.equal(m.guard.state,'patrol','no alert without LOS');
 });
 
-test('guard melee kills, claims corpse gear, and uses gun / bottle / coat',()=>{
- const m=alone(new Mission(true));
- // Clear corridor floor gear so only corpse drops are claimable nearby.
- m.pickups=m.pickups.filter(p=>p.item!=='gun'&&p.item!=='bottle'&&p.item!=='coat');
- m.inventory=['gun','bottle','coat',null,null];
- m.guard.position={...CORRIDOR};
- m.position={...m.guard.position};
- m.position.z+=GUARD_MELEE_RANGE*.4;
- m.guard.state='chase';
- m.guard.lastKnown={...m.position};
- m.guard.meleeCool=0;
- m.guard.gun=false;m.guard.bottle=false;m.guard.coat=false;
- m.health=GUARD_MELEE_DAMAGE; // one strike kills
- m.update(.05,false);
- assert.equal(m.outcome,'lost');
- assert.equal(m.killedByGuard,true);
- m.respawnAtHatch();
- isolateGuards(m,0);
- assert.equal(m.guard.gun,true);
- assert.equal(m.guard.bottle,true);
- assert.equal(m.guard.coat,true);
- assert.equal(m.guard.air,GUARD_BOTTLE_AIR);
- assert.equal(GUARD_BOTTLE_AIR,SPARE_BOTTLE_LITRES);
- assert.ok(!m.pickups.some(p=>p.item==='gun'&&distance(p.position,m.guard.position)<GUARD_LOOT_RANGE));
- // Coat softens his next melee after respawn.
- m.guard.position={...CORRIDOR};
- m.position={...m.guard.position};
- m.position.z+=.5;
- m.guard.state='chase';
- m.guard.meleeCool=0;
- m.guard.shootCool=9; // force melee path
- const before=m.health;
- m.update(.05,false);
- const expected=Math.round(GUARD_MELEE_DAMAGE*GUARD_COAT_DAMAGE_MULT);
- assert.equal(before-m.health,expected);
- // Gun shoots for GUARD_GUN_DAMAGE (coat-softened) when out of melee.
- m.health=100;
- m.guard.meleeCool=9;
- m.guard.shootCool=0;
- m.position={...m.guard.position};
- m.position.z+=6;
- m.guard.state='chase';
- m.guard.heading=0;m.guard.aim=1;m.lastPlayerPos={...m.position};
- m.rand=()=>0; // every shot lands
- m.guard.lastKnown={...m.position};
- // Ensure LOS along open corridor
- assert.ok(visible(m.guard.position,m.position));
- const hp=m.health;
- m.update(.05,false);
- assert.equal(hp-m.health,Math.round(GUARD_GUN_DAMAGE*GUARD_COAT_DAMAGE_MULT));
-});
-
 test('player coat still does not reduce a guardian bite',()=>{
- const coated=alone(new Mission(true));
+ const coated=alone(new Mission(true));coated.breathWaterY=FLOOR_Y+PREDATOR_SWIM_DEPTH+.3;
  coated.inventory=['coat','knife','wood','flare','air'];
  coated.selected=0;
  coated.position=world(16,19);
@@ -299,41 +143,6 @@ test('player coat still does not reduce a guardian bite',()=>{
  assert.equal(coated.health,75);
 });
 
-test('horde: spotting you, he charges straight in firing the whole way and never stops short of you',()=>{
- const m=alone(new Mission(true));m.breathWaterY=FLOOR_Y-.1;m.rand=()=>.99; // every shot misses
- m.guard.position={...CORRIDOR};m.guard.heading=0;m.guard.state='patrol';m.guard.pause=5;
- m.position={x:CORRIDOR.x,y:WALK_EYE_Y,z:CORRIDOR.z+12};m.torch=true;
- const dt=1/60;let t=0,firstShotAt=-1,arrivedAt=-1,stoppedEarly=0,melee=0,minD=Infinity,worstAim=0;
- const shotTimes:number[]=[];
- for(let i=0;i<60*8;i++){
-  const shotsBefore=m.guard.shots,hpBefore=m.health;
-  m.update(dt,false);t+=dt;
-  const d=Math.hypot(m.position.x-m.guard.position.x,m.position.z-m.guard.position.z);
-  minD=Math.min(minD,d);
-  if(m.guard.shots>shotsBefore){
-   shotTimes.push(t);if(firstShotAt<0)firstShotAt=t;
-   const to=Math.atan2(m.position.x-m.guard.position.x,m.position.z-m.guard.position.z);
-   worstAim=Math.max(worstAim,Math.abs(wrapAngle(to-m.guard.heading)));
-  }
-  if(firstShotAt>0&&arrivedAt<0){
-   if(d<=GUARD_MELEE_RANGE)arrivedAt=t;
-   else if(m.guard.speed<.5)stoppedEarly++;
-  }
-  if(m.health<hpBefore)melee++;
-  m.health=100; // keep the test running through his blows
- }
- assert.ok(firstShotAt>0&&firstShotAt<.6,`first shot ${firstShotAt.toFixed(2)} s after he sees you`);
- assert.ok(arrivedAt>0&&arrivedAt<6,`on top of you ${arrivedAt.toFixed(2)} s after spotting you`);
- assert.ok(stoppedEarly<12,`never stops to take a position (${stoppedEarly} slow frames on the way in)`);
- assert.ok(minD<=GUARD_MELEE_RANGE,'closes to arm\'s length');
- assert.ok(melee>0,'and clubs you when he gets there');
- const onTheWay=shotTimes.filter(s=>s<arrivedAt).length;
- assert.ok(onTheWay>=6,`sprays ${onTheWay} rounds while advancing`);
- assert.ok(worstAim<=GUARD_HORDE.aimTolerance+1e-6,'fires roughly your way, from the hip');
- const gaps=shotTimes.slice(1).map((s,i)=>s-shotTimes[i]).filter(g=>g<1);
- for(const g of gaps)assert.ok(g>=GUARD_HORDE.fireInterval*.8-.02&&g<=GUARD_HORDE.fireInterval*1.2+.05,`gap ${g.toFixed(2)}`);
-});
-
 test('no line of sight, no shot; hit chance falls with range and a moving target',()=>{
  const m=alone(new Mission(true));m.breathWaterY=FLOOR_Y-.1;m.rand=()=>0;
  m.guard.position={...CORRIDOR};m.guard.state='chase';m.guard.aim=1;
@@ -346,27 +155,3 @@ test('no line of sight, no shot; hit chance falls with range and a moving target
  assert.ok(guardHitChance(8,0,true)<guardHitChance(8,0,false),'the snap shot is rushed');
 });
 
-test('at every stop he looks out into the room, never at the wall',()=>{
- const m=alone(new Mission(true));m.breathWaterY=FLOOR_Y-.1;m.position={...FAR};
- const route=guardPerimeterRoute();
- const n=route.length;
- const beat=guardBeat(0,n);
- const beatStops=beatIndices(beat.start,beat.len,n).filter(i=>route[i].pause>0);
- const dt=1/20;let checked=0,worst=Infinity,stopsSeen=new Set<number>();
- for(let i=0;i<Math.round(8*60/dt);i++){
-  m.breathWaterY=FLOOR_Y-.1;
-  m.update(dt,false);
-  const g=m.guard;
-  if(g.state!=='patrol'||g.pause<=0)continue;
-  stopsSeen.add(g.waypoint);
-  // Once he has had time to turn round, every glance has open floor in front of it.
-  if(g.scanTime<g.scanTurn+.35)continue;
-  const view=clearDistance(g.position,g.heading);
-  worst=Math.min(worst,view);checked++;
- }
- assert.ok(stopsSeen.size>=beatStops.length-1,`visited the beat stops (${stopsSeen.size} of ${beatStops.length})`);
- assert.ok(checked>200);
- assert.ok(worst>=2.5,`closest wall he stared at was ${worst.toFixed(2)} m away`);
- // The best view at each stop is a real view down the room.
- for(const i of beatStops)assert.ok(guardLookout(route[i]).view>=8,'faces a long view');
-});

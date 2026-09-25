@@ -413,3 +413,22 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .ammo.empty strong{color:#ff6a55}
 .ammo.reloading em{color:#ffd27a;opacity:1}
 @media (max-width:720px){.ammo{right:16px;bottom:190px}.ammo strong{font-size:24px}}
+
+/* Survival firefight HUD: phase banner, threat and hit direction ring, smoke veil, objective. */
+.phase-banner{position:fixed;left:50%;top:64px;transform:translateX(-50%);padding:5px 14px;font-size:11px;letter-spacing:.2em;font-weight:600;color:#f1e6d2;background:rgba(40,8,4,.55);border:1px solid rgba(255,90,60,.45);pointer-events:none;z-index:5;white-space:nowrap}
+.phase-banner em{font-style:normal;opacity:.7;margin-left:12px;letter-spacing:.1em}
+.phase-banner.lull{background:rgba(8,30,24,.55);border-color:rgba(120,220,170,.45)}
+.phase-banner.final{background:rgba(70,10,4,.7);border-color:rgba(255,70,40,.8);animation:bannerPulse 1s ease-in-out infinite}
+@keyframes bannerPulse{50%{border-color:rgba(255,200,120,.9)}}
+.threat-ring{position:fixed;left:50%;top:50%;width:0;height:0;pointer-events:none;z-index:6}
+.hurt-arc{position:absolute;left:-60px;top:-150px;width:120px;height:44px;transform-origin:60px 150px;border-top:5px solid rgba(255,40,24,.85);border-radius:50% 50% 0 0/100% 100% 0 0;filter:drop-shadow(0 0 4px rgba(255,30,10,.7))}
+.threat-chevron{position:absolute;left:-12px;top:-190px;width:24px;height:24px;transform-origin:12px 190px;text-align:center;color:#ffb43a;font-size:20px;line-height:24px;text-shadow:0 0 6px rgba(0,0,0,.9);animation:threatBlink .35s steps(2) infinite}
+.threat-chevron.smoke{color:#c8d8c0}
+@keyframes threatBlink{50%{opacity:.35}}
+.smoke-veil{position:fixed;inset:0;pointer-events:none;z-index:4;background:radial-gradient(ellipse at center,rgba(150,156,146,.55),rgba(118,124,116,.95));transition:opacity .25s}
+.smoke-count{position:fixed;right:28px;bottom:300px;font-size:10px;letter-spacing:.14em;color:#d8e2d0;opacity:.85;pointer-events:none;z-index:5;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+.smoke-count kbd{margin-left:6px}
+.compass-objective{position:absolute;left:50%;top:-4px;margin-left:-40px;width:80px;text-align:center;color:#6fe0c8;font-size:10px;letter-spacing:.08em;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.9)}
+.compass-objective b{display:block;font-size:12px;line-height:12px}
+.compass-objective.edge{opacity:.7}
+@media (max-width:720px){.smoke-count{right:16px;bottom:218px}.phase-banner{top:56px;font-size:9px}}

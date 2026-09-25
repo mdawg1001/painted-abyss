@@ -404,3 +404,104 @@ export function playSquadCall(ctx: AudioContext, master: GainNode, distance: num
     if (f0 === 165) v.onended = () => nodes.forEach(n => n.disconnect());
   }
 }
+
+// ── Survival firefight cues ─────────────────────────────────────────────────────
+/** One white-noise buffer per context, reused by the short cues below. */
+const noiseCache = new WeakMap<BaseAudioContext, AudioBuffer>();
+function noiseBuffer(ctx: AudioContext) {
+  let b = noiseCache.get(ctx);
+  if (!b) {
+    b = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const d = b.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    noiseCache.set(ctx, b);
+  }
+  return b;
+}
+function noiseSrc(ctx: AudioContext) { const s = ctx.createBufferSource(); s.buffer = noiseBuffer(ctx); return s; }
+/**
+ * A short-lived stereo bus: sounds routed through it come from `pan` (−1 left … +1 right)
+ * at `gain`. It disconnects itself after `life` seconds.
+ */
+export function pannedBus(ctx: AudioContext, master: AudioNode, pan: number, gain = 1, life = 3): GainNode {
+  const g = ctx.createGain(); g.gain.value = gain;
+  const p = ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan));
+  g.connect(p).connect(master);
+  setTimeout(() => { try { g.disconnect(); p.disconnect(); } catch { /* already gone */ } }, life * 1000);
+  return g;
+}
+/** Steel bulkhead door slammed open: a clank with ringing partials. */
+export function playDoorBang(ctx: AudioContext, out: AudioNode) {
+  const t = ctx.currentTime + .01;
+  const n = noiseSrc(ctx);
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 520; bp.Q.value = 1.2;
+  const ne = ctx.createGain(); ne.gain.setValueAtTime(.9, t); ne.gain.exponentialRampToValueAtTime(.001, t + .18);
+  n.connect(bp).connect(ne).connect(out); n.start(t, Math.random()); n.stop(t + .2);
+  for (const [f, a, d] of [[176, .35, .9], [311, .25, .7], [527, .18, .5], [843, .1, .35]] as const) {
+    const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = f * (.97 + Math.random() * .06);
+    const e = ctx.createGain(); e.gain.setValueAtTime(a, t); e.gain.exponentialRampToValueAtTime(.001, t + d);
+    o.connect(e).connect(out); o.start(t); o.stop(t + d + .05);
+  }
+}
+/** Smoke grenade: a pop, then a hiss that thins out. */
+export function playSmokePop(ctx: AudioContext, out: AudioNode) {
+  const t = ctx.currentTime + .005;
+  const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(160, t); o.frequency.exponentialRampToValueAtTime(60, t + .12);
+  const oe = ctx.createGain(); oe.gain.setValueAtTime(.5, t); oe.gain.exponentialRampToValueAtTime(.001, t + .15);
+  o.connect(oe).connect(out); o.start(t); o.stop(t + .2);
+  const n = noiseSrc(ctx);
+  const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2400;
+  const ne = ctx.createGain(); ne.gain.setValueAtTime(0, t); ne.gain.linearRampToValueAtTime(.22, t + .1); ne.gain.exponentialRampToValueAtTime(.001, t + 1.9);
+  n.connect(hp).connect(ne).connect(out); n.start(t); n.stop(t + 2);
+}
+/** A guard's effort grunt as he winds up a blow. */
+export function playGrunt(ctx: AudioContext, out: AudioNode) {
+  const t = ctx.currentTime + .005;
+  const v = ctx.createOscillator(); v.type = 'sawtooth';
+  v.frequency.setValueAtTime(150, t); v.frequency.exponentialRampToValueAtTime(105, t + .22);
+  const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 620; f.Q.value = 2.5;
+  const e = ctx.createGain(); e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(.6, t + .03); e.gain.exponentialRampToValueAtTime(.001, t + .25);
+  v.connect(f).connect(e).connect(out); v.start(t); v.stop(t + .3);
+}
+/** The blow itself: a body thud when it lands, a swish of air when it misses. */
+export function playMeleeHit(ctx: AudioContext, out: AudioNode, landed: boolean) {
+  const t = ctx.currentTime + .005;
+  const n = noiseSrc(ctx);
+  const f = ctx.createBiquadFilter();
+  const e = ctx.createGain();
+  if (landed) {
+    f.type = 'lowpass'; f.frequency.value = 900;
+    e.gain.setValueAtTime(.9, t); e.gain.exponentialRampToValueAtTime(.001, t + .16);
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(45, t + .15);
+    const oe = ctx.createGain(); oe.gain.setValueAtTime(.8, t); oe.gain.exponentialRampToValueAtTime(.001, t + .18);
+    o.connect(oe).connect(out); o.start(t); o.stop(t + .2);
+  } else {
+    f.type = 'bandpass'; f.Q.value = 1.4; f.frequency.setValueAtTime(700, t); f.frequency.exponentialRampToValueAtTime(2600, t + .18);
+    e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(.35, t + .06); e.gain.exponentialRampToValueAtTime(.001, t + .22);
+  }
+  n.connect(f).connect(e).connect(out); n.start(t, Math.random()); n.stop(t + .25);
+}
+/** Your round striking a guard: a wet thwack; on a helmet, a sharp ping. */
+export function playFleshHit(ctx: AudioContext, out: AudioNode, helmet: boolean) {
+  const t = ctx.currentTime + .02;
+  const n = noiseSrc(ctx);
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1400;
+  const e = ctx.createGain(); e.gain.setValueAtTime(.55, t); e.gain.exponentialRampToValueAtTime(.001, t + .09);
+  n.connect(f).connect(e).connect(out); n.start(t, Math.random()); n.stop(t + .1);
+  if (helmet) {
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 2900;
+    const oe = ctx.createGain(); oe.gain.setValueAtTime(.2, t); oe.gain.exponentialRampToValueAtTime(.001, t + .25);
+    o.connect(oe).connect(out); o.start(t); o.stop(t + .3);
+  }
+}
+/** Taking a supply: ammo clacks, dressings rustle, smoke tins clink. */
+export function playSupply(ctx: AudioContext, out: AudioNode, kind: 'ammo' | 'medkit' | 'smoke') {
+  const t = ctx.currentTime + .005;
+  const hits = kind === 'ammo' ? [0, .07, .13] : kind === 'smoke' ? [0, .1] : [0];
+  for (const dt of hits) {
+    const o = ctx.createOscillator(); o.type = kind === 'medkit' ? 'sine' : 'square';
+    o.frequency.value = kind === 'medkit' ? 520 : kind === 'smoke' ? 1500 : 900 + dt * 900;
+    const e = ctx.createGain(); e.gain.setValueAtTime(kind === 'medkit' ? .18 : .07, t + dt); e.gain.exponentialRampToValueAtTime(.001, t + dt + (kind === 'medkit' ? .35 : .06));
+    o.connect(e).connect(out); o.start(t + dt); o.stop(t + dt + .4);
+  }
+}

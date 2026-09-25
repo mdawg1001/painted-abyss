@@ -413,7 +413,7 @@ export function updateGuardLocomotion(
 export function createSovietGuardVisual(outfit=0):SovietGuardVisual{
  const root=new THREE.Group();
  root.name=`sovietGuard:${outfit}`;
- const cloth=GUARD_OUTFIT_COLORS[outfit]??GUARD_OUTFIT_COLORS[0];
+ const cloth=GUARD_OUTFIT_COLORS[outfit%GUARD_OUTFIT_COLORS.length];
  const body=buildSovietGuardStub(cloth);
  root.add(body);
  const props=makeGearProps(root);
@@ -437,7 +437,7 @@ export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
   visual.root.remove(visual.body);
   const instance=cloneSkinned(scene);
   instance.name='sovietGuardMesh';
-  tintGuardOutfit(instance,GUARD_OUTFIT_COLORS[visual.outfit]??GUARD_OUTFIT_COLORS[0]);
+  tintGuardOutfit(instance,GUARD_OUTFIT_COLORS[visual.outfit%GUARD_OUTFIT_COLORS.length]);
   visual.root.add(instance);
   visual.body=instance;
   visual.ready=true;

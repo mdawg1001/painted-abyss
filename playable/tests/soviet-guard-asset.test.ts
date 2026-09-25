@@ -30,10 +30,10 @@ test('Quaternius soldier GLB with authored loco clips is credited and present',(
 });
 
 test('five stub kits wear distinct cloth dyes',()=>{
- assert.equal(GUARD_COUNT,5);
- assert.equal(GUARD_OUTFIT_COLORS.length,GUARD_COUNT);
+ assert.ok(GUARD_COUNT>=GUARD_OUTFIT_COLORS.length,'the pool reuses the five kits');
+ assert.equal(GUARD_OUTFIT_COLORS.length,5);
  const hexes=new Set<number>();
- for(let i=0;i<GUARD_COUNT;i++){
+ for(let i=0;i<GUARD_OUTFIT_COLORS.length;i++){
   const visual=createSovietGuardVisual(i);
   assert.equal(visual.outfit,i);
   assert.match(visual.root.name,new RegExp(`:${i}$`));
@@ -46,5 +46,5 @@ test('five stub kits wear distinct cloth dyes',()=>{
   assert.equal(cloth,GUARD_OUTFIT_COLORS[i]);
   hexes.add(cloth);
  }
- assert.equal(hexes.size,GUARD_COUNT);
+ assert.equal(hexes.size,GUARD_OUTFIT_COLORS.length);
 });
