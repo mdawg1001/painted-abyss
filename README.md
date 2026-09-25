@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.17.1
+# Painted Abyss — First Dive · 0.17.2
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -33,6 +33,10 @@ Brighter, louder, Overtide-style picture without touching the 2K rock, wall, sto
 ## Cardboard barricades (0.17.1)
 
 Cardboard cover is now clustered barricades: each footprint is **3–4 carton stacks** side-by-side (chest–head high) with a wider collision box, so you can actually hide behind them in a shootout. More barricades in the entrance, corridor, cavern, relic approach, and extraction.
+
+## Faster pistol reload (0.17.2)
+
+Player TT-33 magazine changes take **1.2 s** (was 1.9 s). Empty mags come back online quicker in a fight.
 
 ## Frame grade (0.14.3)
 
