@@ -3,7 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {CaveWorld,type Snapshot} from './CaveWorld';
 import {smokeAt} from './survival';
 import {SURVIVAL} from './survivalConfig';
-import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,MAP_FRAGMENT_ORDER,type Item} from './simulation';
+import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,MAP_FRAGMENT_ORDER,STASH_CAPACITY,type Item,type StashSlot} from './simulation';
 import {DiveMap} from './DiveMap';
 import {KNIFE_THUMB_URL} from './knifeAsset';
 import {APP_VERSION,APP_BUILD_LABEL,APP_BUILD_SHA} from './version';
@@ -25,6 +25,19 @@ function Icon({item}:{item:Item|null}){
   coat:<><path fill="#c49662" d="M14 16l10 5 10-5 6 7-5 18H13L8 23z"/><path fill="#6e5340" d="M20 20h8v8h-8z"/></>,
  };
  return <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">{item?paths[item]:null}</svg>;
+}
+
+function StashIcon({slot}:{slot:StashSlot}){
+ if(!slot)return null;
+ if(slot.kind==='ammo'){
+  return <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">
+   <rect x="10" y="14" width="28" height="20" rx="3" fill="#6b7a4a"/>
+   <rect x="14" y="18" width="6" height="12" rx="1" fill="#c8d0a8"/>
+   <rect x="22" y="18" width="6" height="12" rx="1" fill="#c8d0a8"/>
+   <rect x="30" y="18" width="6" height="12" rx="1" fill="#c8d0a8"/>
+  </svg>;
+ }
+ return <Icon item={slot.item}/>;
 }
 
 /** Compass bearing (degrees, 0 = north = −Z, 90 = east = +X) of a world offset. */
@@ -75,7 +88,9 @@ function App(){
  },[]);
  const m=snap?.mission,playing=!!snap?.playing,terminal=m?.outcome!=='playing'&&!!m;
  const nearest=m?.nearest();const nearChest=m?.nearestChest();const nearCache=m?.nearestTakeableCache();const extraction=m&&distance(m.position,EXIT)<4;
- const chestPrompt=nearChest
+ const nearStash=!!m?.nearStash();
+ const stashPrompt=nearStash&&m?stashInteractPrompt(m):'';
+ const chestPrompt=!nearStash&&nearChest
   ?chestInteractPrompt(nearChest,!!m?.hasMapFragment(nearChest.fragment))
   :'';
  // At the wheel the prompt shrinks to a flow read-out so the hands stay in view.
@@ -87,7 +102,7 @@ function App(){
   return `E · Pick up ${ITEMS[item].name}`;
  };
  const cachePrompt=nearCache?(nearCache.kind==='ammo'?`Walk over · Ammo box (+${SURVIVAL.supplies.ammo} rounds)`:nearCache.kind==='medkit'?`Walk over · Field dressing (+${SURVIVAL.supplies.medkit} suit)`:`Walk over · Smoke grenade`):'';
- const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':valvePrompt?valvePrompt:extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):chestPrompt?chestPrompt:nearest?pickupPrompt(m!,nearest.item):cachePrompt;
+ const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':valvePrompt?valvePrompt:extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):stashPrompt?stashPrompt:chestPrompt?chestPrompt:nearest?pickupPrompt(m!,nearest.item):cachePrompt;
  const heading=(((-(snap?.yaw??0)*180)/Math.PI)%360+360)%360;
  const goal=m?(m.hasRelic?{p:EXIT,label:'EXTRACT'}:{p:RELIC,label:'RELIC'}):null;
  const objective=m&&goal?{deg:compassDeg(goal.p.x-m.position.x,goal.p.z-m.position.z),label:`${goal.label} ${Math.round(Math.hypot(goal.p.x-m.position.x,goal.p.z-m.position.z))} m`}:undefined;
@@ -166,6 +181,21 @@ function App(){
    <div className="inventory" aria-label="Inventory">
     <div className="slots">{m.inventory.map((item,i)=>{const selected=i===m.selected;const pulse=selected&&m.feedbackKind?m.feedbackKind:'';return <div className={`slot ${selected?'selected':''} ${item==='relic'?'relic':''} ${item==='flare'?'flare':''} ${item==='knife'?'knife':''} ${item==='gun'?'gun':''} ${item==='bottle'?'bottle':''} ${item==='coat'?'coat':''} ${pulse?`pulse-${pulse}`:''}`} key={selected?`${i}-p${m.feedbackPulse}`:i}><kbd>{i+1}</kbd><Icon item={item}/>{selected&&<em className="slot-mark" aria-hidden="true">●</em>}</div>;})}</div>
    </div>
+   {m.stashOpen&&<div className="stash-panel" aria-label="Stash chest">
+    <div className="stash-title">STASH <span>{m.stash.filter(Boolean).length}/{STASH_CAPACITY}</span></div>
+    <div className="slots stash-slots">{m.stash.map((slot,i)=>{
+     const focused=i===m.stashFocus;
+     const kind=slot?.kind==='ammo'?'ammo':slot?.item??'';
+     return <button type="button" className={`slot stash-slot ${focused?'selected':''} ${kind}`} key={i} onClick={e=>{
+      e.preventDefault();
+      e.stopPropagation();
+      const eng=engine.current;if(!eng?.mission)return;
+      eng.mission.selectStashFocus(i);
+      eng.mission.interact();
+      eng.publish();
+     }}><kbd>{i+1}</kbd><StashIcon slot={slot}/>{slot?.kind==='ammo'&&<em className="stash-amt">{slot.amount}</em>}{slot?.kind==='item'&&slot.rounds?<em className="stash-amt">+{slot.rounds}</em>:null}</button>;
+    })}</div>
+   </div>}
    <aside className="keybinds" aria-hidden="true">
     <div><kbd>WASD</kbd><span>{onFoot?'Walk':'Swim'}</span></div>
     <div><kbd>Shift</kbd><span>{onFoot?'Run':'Sprint'}</span></div>
