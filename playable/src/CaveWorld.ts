@@ -1,5 +1,5 @@
 import { PALETTE } from './artPalette';
-import { DRY_DENSITY, DRY_FIELD, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type FrameGrade } from './frameGrade';
+import { DRY_DENSITY, DRY_FIELD, FLUORESCENT, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type FrameGrade } from './frameGrade';
 import * as THREE from 'three';
 import { applyGuardCombatPose, updateGuardMoveFrame } from './guardCombatPose';
 import { PISTOL } from './playerPistol';
@@ -27,6 +27,7 @@ import {
  LIFEBUOY_POS, LIFEBUOY_YAW, type LifebuoyVisual,
 } from './lifebuoyAsset';
 import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLight } from './sconceAsset';
+import { createHangingLights, stepHangingLights, upgradeHangingLights, type HangingLights } from './hangingLightAsset';
 import { createWallPosters, upgradeWallPosters, type WallPosters } from './posterAsset';
 import { createCopperPipe, upgradeCopperPipe, type CopperPipe } from './copperPipeAsset';
 import { createWallPipe, upgradeWallPipe, setPipeWheel, type WallPipe } from './pipeAsset';
@@ -225,6 +226,9 @@ export class CaveWorld extends OceanWorld {
  lifebuoyVisual:LifebuoyVisual|null=null;
  /** Poly Haven caged sconces mounted on the cave walls; their warm point lights flicker. */
  wallSconceLights:SconceLight[]=[];
+ /** Poly Haven caged hanging lamps: swinging, flickering tungsten pools with shadows. */
+ hanging:HangingLights|null=null;
+ hangingSeen:{pistol:number;guards:number[];impact:number}={pistol:0,guards:[],impact:-1};
  /** Sketchfab PotatoWit soviet posters hung on one cave wall. */
  wallPosters:WallPosters|null=null;
  /** Sketchfab gleb_tihon pipe run hidden on the far south-west cavern wall. */
@@ -401,6 +405,7 @@ export class CaveWorld extends OceanWorld {
   this.mountChests();
   this.mountLifebuoy();
   this.mountWallSconces();
+  this.mountHangingLights();
   this.mountWallPosters();
   this.mountWallPipe();
   this.mountCopperPipe();
@@ -447,6 +452,24 @@ export class CaveWorld extends OceanWorld {
     this.adoptPointCull(child,this.worldBox(child),true,true);
    }
   });
+ }
+ /** Hang the caged ceiling lamps on their cables; stubs light at once, the glTF upgrades in. */
+ mountHangingLights(){
+  const h=createHangingLights();
+  this.scene.add(h.group);
+  this.hanging=h;
+  upgradeHangingLights(h).then(ok=>{if(!ok||!this.alive)return;});
+ }
+ /** Gunfire and impacts this frame shake the lamps; the final wave makes them stutter. */
+ stepHanging(dt:number,slamTint:number|null){
+  const h=this.hanging,m=this.mission;if(!h)return;
+  const kicks:{x:number;z:number;power?:number}[]=[];
+  const seen=this.hangingSeen;
+  if(m.pistol.shots!==seen.pistol){if(m.pistol.shots>seen.pistol)kicks.push({x:m.position.x,z:m.position.z,power:1});seen.pistol=m.pistol.shots;}
+  m.guards.forEach((g,i)=>{const prev=seen.guards[i]??g.shots;if(g.shots>prev)kicks.push({x:g.position.x,z:g.position.z,power:.6});seen.guards[i]=g.shots;});
+  if(m.lastImpact&&m.lastImpact.at!==seen.impact){seen.impact=m.lastImpact.at;kicks.push({x:m.lastImpact.point.x,z:m.lastImpact.point.z,power:.7});}
+  const panic=m.director.phase==='final'?1:0;
+  stepHangingLights(h,dt,this.time,this.camera.position,kicks,panic,slamTint);
  }
  /** Hang PotatoWit soviet posters on one solid wall face (stub → PNG albedos). */
  mountWallPosters(){
@@ -1562,17 +1585,17 @@ export class CaveWorld extends OceanWorld {
   // Cavern ceiling fill + floor caustic. No volumetric column — the only god ray is the exit.
   const cavernX=6,cavernZ=-64,cavernOp=.18,cavernBot=2.6;
   this.addCausticPool(cavernX,cavernZ,cavernBot*2.6,cavernOp);
-  const spot=new THREE.SpotLight(PALETTE.ivory,70+cavernOp*520,15,.5,.85,1.15);
+  const spot=new THREE.SpotLight(FLUORESCENT,70+cavernOp*520,15,.5,.85,1.15);
   spot.position.set(cavernX,8.2,cavernZ);spot.target.position.set(cavernX,0,cavernZ);this.scene.add(spot,spot.target);
 
   // Entrance corridor fill. No god ray in the tight tunnel.
-  const entrance=new THREE.SpotLight(PALETTE.amber,80,13,.48,.8,1.1);
+  const entrance=new THREE.SpotLight(FLUORESCENT,80,13,.48,.8,1.1);
   entrance.position.set(0,8.5,-22);entrance.target.position.set(0,0,-22);this.scene.add(entrance,entrance.target);
   this.gradeSpots=[
    {light:sunlight,rest:PALETTE.ivory},
    {light:poolFill,rest:WATER_FIELD},
-   {light:spot,rest:PALETTE.ivory},
-   {light:entrance,rest:PALETTE.amber},
+   {light:spot,rest:FLUORESCENT},
+   {light:entrance,rest:FLUORESCENT},
   ];
  }
  buildComposer(){
@@ -2216,6 +2239,7 @@ export class CaveWorld extends OceanWorld {
   for(const spot of this.gradeSpots)spot.light.color.setHex(slam?field:spot.rest);
   if(this.clipPass)this.clipPass.uniforms.uSlam.value=slam;
   this.uniforms.uTime.value=this.time;
+  this.stepHanging(this.playing?dt:0,slam?field:null);
   for(const s of this.wallSconceLights){
    if(s.state==='off')continue;
    if(s.state==='flicker'){
