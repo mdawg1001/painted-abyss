@@ -154,37 +154,41 @@ export const SURVIVAL_DOORS:{name:string;col:number;row:number;side:DoorSide}[]=
 ];
 
 /**
- * Cover: floor-to-head-height blockers (stacked ammo crates, cardboard piles, metal desk, concrete blast walls).
+ * Cover: floor-to-head-height blockers (stacked ammo crates, cardboard barricades, metal desk, concrete blast walls).
  * World-space axis-aligned boxes; they block movement and sight for everyone.
+ * Cardboard entries are wide footprints for 3–4 carton stacks clustered into a barricade.
  * Placed off cell centres so every room keeps a way round them.
  */
 export const SURVIVAL_COVER:{x:number;z:number;hx:number;hz:number;kind:'crates'|'wall'|'cardboard'|'desk'}[]=[
  // Entrance chamber: the first contact.
  {x:-6,z:-10,hx:.7,hz:.7,kind:'crates'},
  {x:6,z:-14,hx:1.2,hz:.35,kind:'wall'},
- {x:5,z:-12,hx:.55,hz:.5,kind:'cardboard'},
+ {x:5,z:-12,hx:1.05,hz:.55,kind:'cardboard'},
+ {x:-8,z:-12,hx:1.05,hz:.55,kind:'cardboard'},
  {x:-10,z:-18,hx:1,hz:.48,kind:'desk'},
  // Approach corridor.
- {x:-4,z:-16,hx:.55,hz:.5,kind:'cardboard'},
- {x:-6,z:-26,hx:.5,hz:.55,kind:'cardboard'},
+ {x:-4,z:-18,hx:1.05,hz:.55,kind:'cardboard'},
+ {x:2,z:-28,hx:1.05,hz:.55,kind:'cardboard'},
  // Main cavern.
  {x:-2,z:-50,hx:.7,hz:.7,kind:'crates'},
  {x:-18,z:-50,hx:.7,hz:.7,kind:'crates'},
  {x:14,z:-50,hx:1.2,hz:.35,kind:'wall'},
- {x:10,z:-62,hx:.55,hz:.5,kind:'cardboard'},
+ {x:10,z:-60,hx:1.05,hz:.55,kind:'cardboard'},
  {x:-22,z:-70,hx:.35,hz:1.2,kind:'wall'},
  {x:18,z:-70,hx:.7,hz:.7,kind:'crates'},
- {x:-12,z:-66,hx:.5,hz:.55,kind:'cardboard'},
+ {x:-12,z:-64,hx:.55,hz:1.05,kind:'cardboard'},
+ {x:12,z:-70,hx:1.05,hz:.55,kind:'cardboard'},
  {x:-15,z:-82,hx:.7,hz:.7,kind:'crates'},
  {x:10,z:-90,hx:1.2,hz:.35,kind:'wall'},
+ {x:-8,z:-88,hx:1.05,hz:.55,kind:'cardboard'},
  // Bone alcove round the relic.
  {x:-6,z:-108,hx:.7,hz:.7,kind:'crates'},
  {x:6,z:-114,hx:1.2,hz:.35,kind:'wall'},
- {x:0,z:-98,hx:.55,hz:.5,kind:'cardboard'},
- {x:-4,z:-104,hx:.5,hz:.55,kind:'cardboard'},
+ {x:0,z:-92,hx:1.05,hz:.55,kind:'cardboard'},
+ {x:-2,z:-94,hx:1.05,hz:.55,kind:'cardboard'},
  // Extraction pool.
  {x:26,z:-6,hx:.7,hz:.7,kind:'crates'},
- {x:22,z:-14,hx:.55,hz:.5,kind:'cardboard'},
+ {x:26,z:-14,hx:1.05,hz:.55,kind:'cardboard'},
 ];
 
 /** Supply caches: kind and world position. Risky spots: open floor, crossfire lanes. */

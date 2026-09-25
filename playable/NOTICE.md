@@ -20,6 +20,7 @@
 - License: CC0 1.0 Universal (public domain dedication)
 - Files: `public/assets/cardboard_box_01/` (1k glTF + textures) with notes under `src/assets/cardboard_box_01/`
 - Stacked as shootout cover on the bunker floor (blocks movement and sight via `SURVIVAL_COVER`).
+  Each cover footprint is a barricade of 3–4 carton stacks side-by-side.
 
 ## Metal Office Desk (Poly Haven)
 - Source: https://polyhaven.com/a/metal_office_desk

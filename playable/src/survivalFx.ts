@@ -95,7 +95,11 @@ export class SurvivalFx{
   for(const c of SURVIVAL_COVER){
    let g:THREE.Group;
    if(c.kind==='cardboard'){
-    g=createCardboardCoverVisual(c.x*0.17+c.z*0.11);
+    // Stacks run along local +X; rotate π/2 when the AABB is taller than wide.
+    const alongZ=c.hz>c.hx;
+    const yaw=(alongZ?Math.PI/2:0)+c.x*0.07+c.z*0.04;
+    const cluster=3+(Math.abs(Math.round(c.x*2+c.z))%2); // 3 or 4 stacks
+    g=createCardboardCoverVisual(yaw,cluster);
     g.position.set(c.x,FLOOR_Y,c.z);
     void upgradeCardboardCover(g);
    }else if(c.kind==='desk'){
