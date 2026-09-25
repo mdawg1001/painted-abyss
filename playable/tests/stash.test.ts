@@ -81,7 +81,7 @@ test('die with gun and ammo on body — wake empty; chest unchanged',()=>{
  const corpseGun=m.pickups.slice(beforePickups).find(p=>p.item==='gun');
  assert.ok(corpseGun,'gun dropped on corpse');
  assert.equal(corpseGun?.rounds,24);
- assert.ok(!m.inventory.includes('gun'));
+ assert.ok(m.inventory.every(s=>s===null));
 });
 
 test('withdraw then new Mission (dive again / reload) still matches localStorage',()=>{
