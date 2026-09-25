@@ -1,5 +1,6 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
 import { steerToward, faceStanding, yawToward, wrapAngle, GUARD_STEER_WALK, GUARD_STEER_RUN } from './guardSteering';
+import { VALVE_CLOSE_RAD, VALVE_REACH, VALVE_STAND, WHEEL_CENTRE, leakFlowFraction } from './valve';
 export type Point={x:number;y:number;z:number};
 export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife'|'gun'|'bottle'|'coat';
 export type Pickup={id:number;item:Item;position:Point};
@@ -44,7 +45,7 @@ export const BREATH_ROW_FAR=0;
 /** One-cell buffer so the hatch and the far end never host the tank. */
 export const BREATH_HATCH_ROWS=1;
 export const BREATH_FAR_ROWS=1;
-/** Metres the bunker leak raises the waterline each second (corridor and cave share it). Head-height in about two minutes. */
+/** Metres the bunker leak raises the waterline each second with the leak valve fully open (corridor and cave share it). Head-height in about two minutes. */
 export const BREATH_RISE_MPS=0.016;
 /** Standing eye height on the dry corridor floor. */
 export const WALK_EYE_Y=FLOOR_Y+1.6;
@@ -444,7 +445,8 @@ export function floodFraction(waterY:number){
 export function floodColumnY(p:Point,waterY:number){
  return breathingFreeAir(p,waterY)?SURFACE_Y:SURFACE_Y-effectiveDepth(p,waterY);
 }
-export function riseBreathWater(waterY:number,dt:number){return Math.min(SURFACE_Y,waterY+BREATH_RISE_MPS*Math.max(0,dt));}
+/** `flow` is the fraction of full leak flow still getting past the valve (1 = open, 0 = sealed). */
+export function riseBreathWater(waterY:number,dt:number,flow=1){return Math.min(SURFACE_Y,waterY+BREATH_RISE_MPS*Math.max(0,flow)*Math.max(0,dt));}
 /** Open corridor cells only — the Soviet guard never enters the cave grid. */
 export function breathCell(col:number,row:number){return breathZone(col,row)!=='';}
 export type GuardWaypoint={x:number;z:number;
@@ -909,6 +911,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  position={...breathHatchSpawn()};health=100;air=AIR_MAIN_MAX;bailout=0;elapsed=0;stamina=100;torch=true;
  /** Bunker waterline (metres), shared by corridor and cave. The leak raises it over time; it is kept across death. */
  breathWaterY=BREATH_WATER_START;
+ /** Radians the leak valve's handwheel has been wound clockwise from fully open. Kept across death, like the water. */
+ valveTurned=0;
  /** Index into `breathTankMounts`. Moves on each death. */
  breathTankIndex=0;
  breathDeaths=0;
@@ -1011,6 +1015,26 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(this.mapFragments.includes(id))return false;
   this.mapFragments=[...this.mapFragments,id];
   return true;
+ }
+ /** Fraction of the full leak still flowing past the gate (round-port gate valve). */
+ get leakFlow(){return leakFlowFraction(this.valveTurned);}
+ get valveSealed(){return this.valveTurned>=VALVE_CLOSE_RAD-1e-6;}
+ /** Never been moved: the first turn has to break the stem free. */
+ get valveStuck(){return this.valveTurned<=0;}
+ /** Standing (or hovering) square to the leak valve's handwheel, within arm's reach of the stand point. */
+ atValve(){
+  if(this.outcome!=='playing')return false;
+  const d=Math.hypot(this.position.x-VALVE_STAND.x,this.position.z-VALVE_STAND.z);
+  return d<VALVE_REACH&&Math.abs(this.position.y-WHEEL_CENTRE.y)<1.4&&this.position.z>WHEEL_CENTRE.z;
+ }
+ nearValve(){return this.atValve()&&!this.valveSealed;}
+ /** Wind the wheel toward closed. Returns the radians actually applied (stops at the seat). */
+ turnValve(rad:number){
+  if(rad<=0||this.valveSealed)return 0;
+  const before=this.valveTurned;
+  this.valveTurned=Math.min(VALVE_CLOSE_RAD,before+rad);
+  if(this.valveSealed&&before<VALVE_CLOSE_RAD)this.say('The gate seats with a clunk. The leak has stopped. The water stays where it is.','ok');
+  return this.valveTurned-before;
  }
  say(message:string,kind:FeedbackKind=''){this.notice=message;this.noticeUntil=this.elapsed+4.5;this.feedbackKind=kind;this.feedbackPulse++;}
  /** Slot chrome without center text — used after the one-time first-play tip. */
@@ -1235,7 +1259,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;
   // Knife recovery is the diver's arm, not the guardian: it runs whatever state the guardian is in.
   this.predator.stabCool=Math.max(0,this.predator.stabCool-dt);
-  this.breathWaterY=riseBreathWater(this.breathWaterY,dt);
+  this.breathWaterY=riseBreathWater(this.breathWaterY,dt,this.leakFlow);
   const panic=this.elapsed<this.gasPanicUntil;
   const onFoot=canWalk(this.position,this.breathWaterY);
   // Dry corridor: no BCD — trim stays neutral until the flood forces a swim.

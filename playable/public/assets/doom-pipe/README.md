@@ -11,9 +11,14 @@ This work is based on "04_DOOM_pipe (detail)" by gleb_tihon, licensed under CC-B
 
 First Dive ships:
 - `doom_pipe.glb` — the official Sketchfab glTF (793,868 triangles, 25 MB, untextured PBR
-  colour factors) welded, simplified to ~49k triangles and meshopt-compressed (~0.5 MB) with
-  gltf-transform 4.5 (`weld` → `simplify --ratio 0.06 --error 0.002` → `meshopt`). All parts kept:
-  main riser, clamp collar, hand-wheel valve, bracket frame and bypass loop.
+  colour factors) rebuilt by `playable/scripts/build-doom-pipe.mjs` (gltf-transform 4.5 +
+  meshoptimizer): node transforms baked, the red hand-wheel (spokes, hub, rim and its rim face)
+  split into its own node `valveWheel` pivoted on the spin axis, the rest kept as `pipeBody`;
+  body simplified to 6 % and the wheel to 30 % (it fills the view while it is turned), then
+  meshopt-compressed (~0.5 MB, ~67k triangles). Every part is kept: main riser, clamp collar,
+  gate valve and stem, bracket frame and bypass loop.
 
-Wired in `src/pipeAsset.ts`; stands floor to roof against the blind south wall of the far
-south-west cavern corner (not interactable).
+Wired in `src/pipeAsset.ts` and `src/valve.ts`: stands against the blind south wall of the far
+south-west cavern corner, scaled so the handwheel is a real ~0.31 m wheel at chest height, with a
+plain run of the same green pipe up into the roof. Holding E at the wheel turns the gate valve
+shut hand over hand and stops the bunker leak.

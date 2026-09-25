@@ -8,7 +8,7 @@ in this folder and run:
 (Or, if already up to date: node playable/serve.mjs)
 
 Open http://127.0.0.1:5173 in a desktop browser and click Begin dive.
-Confirm the on-screen label says BUILD v0.9.1 · <git-sha>
+Confirm the on-screen label says BUILD v0.10.0 · <git-sha>
 (menu and during the dive). After another agent merges, run refresh.mjs again.
 First rebuild needs `cd playable && npm ci` once; serve/refresh then bake dist locally.
 
@@ -19,6 +19,8 @@ Recover the relic by following turquoise markers. Slot 1 starts with a diving
 knife — select 1 and click near the guardian to stab. If inventory is full,
 press E, choose a slot with 1–5, then E again to swap. Follow amber
 markers through the narrow exit passage and press E at the lit pool.
+The bunker is flooding: find the hidden leak valve in the far south-west
+corner of the cavern and hold E to turn its wheel shut.
 
 README.md has complete controls and editing instructions.
 The root index.html is the original artwork gallery, not the game.

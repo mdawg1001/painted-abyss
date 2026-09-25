@@ -12,13 +12,19 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { SconceMount } from './sconceAsset';
 import { CELL, cells, world } from './simulation';
 import { PIPE_MOUNT, PIPE_WALL_CLEARANCE } from './pipeAsset';
+import { WHEEL_CENTRE } from './valve';
 
 export const COPPER_PIPE_URL='/assets/copper-pipe/copper_pipe.glb';
 export const COPPER_SOURCE='https://sketchfab.com/3d-models/copper-pipe-section-91807ce330af449bbd3c59b5ede8ce67';
 export const COPPER_AUTHOR='pixol3d';
 export const COPPER_LICENSE='CC BY 4.0';
-/** How many copies of the section make the run. Uniform scale — the mesh is not stretched. */
-export const COPPER_SECTION_COUNT=3;
+/**
+ * How many copies of the section make the run. Uniform scale — the mesh is not stretched.
+ * Eight keeps each copy ≈3 m long, which puts the copper at real bore (~10 cm) and the rack
+ * ≈0.7 m deep, so it tees into the riser behind the leak valve's handwheel instead of
+ * burying the wheel and the diver standing at it.
+ */
+export const COPPER_SECTION_COUNT=8;
 /**
  * Metres each copy bites into the next so the joint is a coupling, not a lit crack.
  * Outer ends still land on the wall corners.
@@ -27,10 +33,10 @@ export const COPPER_JOINT_OVERLAP=.05;
 /** Rear face shares the doom pipe's wall clearance so the tee has no step off the rock. */
 export const COPPER_WALL_CLEARANCE=PIPE_WALL_CLEARANCE;
 /**
- * World Y of the hand-wheel centre on the fitted doom pipe.
+ * World Y of the hand-wheel centre on the fitted doom pipe (valve.ts).
  * The copper axis sits on that centre so the run enters the valve, not the floor or the roof.
  */
-export const COPPER_AXIS_Y=3.1545;
+export const COPPER_AXIS_Y=WHEEL_CENTRE.y;
 
 export type CopperPipe={group:THREE.Group;ready:boolean};
 export type CopperWallSpan={x0:number;x1:number;z:number;yaw:number;length:number};

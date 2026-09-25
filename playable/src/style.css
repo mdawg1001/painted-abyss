@@ -350,6 +350,7 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   border:1px solid rgba(199,177,123,.4);padding:12px 20px;
   letter-spacing:.02em;
 }
+.interaction.at-wheel{top:63%}
 .interaction p,.interaction .notice{
   font-size:12px;color:#d2cdb6;line-height:1.5;
   text-shadow:0 2px 5px black;margin:10px auto 0;max-width:480px;
