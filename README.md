@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.14.3
+# Painted Abyss — First Dive · 0.15.0
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -9,6 +9,10 @@ node playable/refresh.mjs
 That pulls `main`, stops the old server on port 5173, rebuilds, and serves. Agents must bump `playable/package.json` (and README / START-HERE) on every playable change — see `.cursor/rules/playable-version.mdc`. Do **not** commit `playable/dist/`; serve/refresh rebuild it when stale.
 
 Includes a clearly audible inventory select click/snap, quieter first-play tip, sound, and continuous 360° horizontal camera turning. When pointer lock is unavailable, hold the pointer near either edge to keep turning; move it back towards the centre to stop.
+
+## Surface shade (0.15.0)
+
+Rock, floor, stone, and moss still use the 2K photographic maps. `OceanWorld.material` in `playable/src/legacy/ocean.ts` posterizes that albedo into a few saturated bands, drops pore normals, and steps direct and hemisphere light into hard bands. Fog and the frame grade are unchanged. A close wall reads as flat graphic fields with the fog off.
 
 ## Frame grade (0.14.3)
 

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
+import { ShaderChunk } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { type PbrMaps, triplanarGlsl } from '../rockMaps';
+import { patchOvertideLighting } from '../overtideSurface';
 
 type Hooks = { onReady:()=>void; onPause:()=>void; onStatus:(d:number,z:string)=>void; onToggleUI:()=>void; onGlide:(v:boolean)=>void; onError:(s:string)=>void };
 type Creature = { group:THREE.Group; fins:THREE.Group[]; tail:THREE.Group; center:THREE.Vector3; radius:number; speed:number; phase:number; kind:string; scale:number };
@@ -84,7 +86,8 @@ export class OceanWorld {
       shader.fragmentShader=fragHead+shader.fragmentShader;
       let detailCode='';
       if(usePbr){
-        // Sample triplanar maps once. Later chunks reuse g* so the picture matches with fewer taps.
+        // The 2K photo is the source. Posterize it into saturated bands; moss and
+        // cracks snap to their own flat field instead of a soft mix.
         detailCode=`{
           gWn=normalize(vOceanWNormal);
           gB=triBlend(gWn);
@@ -92,19 +95,19 @@ export class OceanWorld {
           gRockArm=triArm(uPbrArm,vOceanWorld,gB,uPbrScale);
           gMossArm=vec3(0.);
           gMoss=0.;
-          float wet=${detail==='sand'?'0.5':'0.62'};
-          gAlb*=mix(1.,.62,wet);
           ${useMoss?`
           vec3 mossAlb=triAlbedo(uMossDiff,vOceanWorld,gB,uMossScale);
           gMossArm=triArm(uMossArm,vOceanWorld,gB,uMossScale);
-          gMoss=min(mossCoverage(vOceanWorld,gWn,gRockArm.r,${mossAmount}),.35);
-          mossAlb*=mix(1.,.9,wet*.35);
-          gAlb=mix(gAlb,mossAlb,gMoss);
-          vec3 arm=mix(gRockArm,gMossArm,gMoss);
-          diffuseColor.rgb*=gAlb*mix(.62,1.,arm.r);
-          `:`
-          diffuseColor.rgb*=gAlb*mix(.62,1.,gRockArm.r);
-          `}
+          gMoss=mossCoverage(vOceanWorld,gWn,gRockArm.r,${mossAmount});
+          float mossOn=step(0.42,gMoss);
+          gAlb=mix(gAlb,mossAlb,mossOn);
+          gRockArm=mix(gRockArm,gMossArm,mossOn);
+          `:''}
+          float crevice=step(gRockArm.r,0.40);
+          gAlb=mix(gAlb,gAlb*vec3(0.42,0.40,0.36),crevice);
+          float tint=dot(diffuseColor.rgb,vec3(0.2126,0.7152,0.0722));
+          float tintScale=clamp(tint/0.62,0.72,1.25);
+          diffuseColor.rgb=overtideAlbedo(gAlb*tintScale);
         }`;
       }else{
         if(detail==='sand')detailCode=`float grain=valueNoise(vOceanWorld.xz*15.);float ripple=sin(vOceanWorld.x*.7+vOceanWorld.z*3.+valueNoise(vOceanWorld.xz*.11)*5.);diffuseColor.rgb*=.82+grain*.22+ripple*.07;`;
@@ -113,45 +116,19 @@ export class OceanWorld {
       if(detail==='skin')detailCode=`float blot=valueNoise(vOceanLocal.xz*5.+vOceanLocal.y*2.);float fine=valueNoise(vOceanLocal.xy*48.);float bands=sin(vOceanLocal.x*5.5+vOceanLocal.z*3.+blot*4.);diffuseColor.rgb*=.6+blot*.5+fine*.15;diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*.42,smoothstep(.5,.9,bands)*.45);diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.54,.62,.49),(1.-smoothstep(-.75,.0,vOceanLocal.y))*.65);`;
       if(usePbr){
         shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`vec3 gWn;vec3 gB;vec3 gAlb;vec3 gRockArm;vec3 gMossArm;float gMoss;\n#include <color_fragment>\n${detailCode}`);
-        const wet=detail==='sand'?'0.5':'0.62';
         shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
-          {
-            vec3 arm=gRockArm;
-            float wet=${wet};
-            ${useMoss?`
-            arm.g=mix(arm.g,gMossArm.g,gMoss);
-            roughnessFactor=clamp(mix(arm.g*roughnessFactor,mix(arm.g*roughnessFactor*.35,arm.g*roughnessFactor*.78,gMoss),wet),.06,.98);
-            `:`
-            roughnessFactor=clamp(mix(arm.g*roughnessFactor,arm.g*roughnessFactor*.35,wet),.06,.95);
-            `}
-          }`);
+          roughnessFactor=1.0;`);
         shader.fragmentShader=shader.fragmentShader.replace('#include <metalnessmap_fragment>',`#include <metalnessmap_fragment>
-          {
-            vec3 arm=gRockArm;
-            ${useMoss?`arm.b=mix(arm.b,gMossArm.b,gMoss);`:''}
-            metalnessFactor=clamp(arm.b,.0,.35);
-          }`);
-        shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
-          {
-            vec3 nRock=triNormalView(uPbrNor,vOceanWorld,gWn,gB,uPbrScale,viewMatrix);
-            ${useMoss?`
-            vec3 nMoss=triNormalView(uMossNor,vOceanWorld,gWn,gB,uMossScale,viewMatrix);
-            normal=normalize(mix(nRock,nMoss,gMoss));
-            `:`
-            normal=nRock;
-            `}
-          }`);
+          metalnessFactor=0.0;`);
+        // Pore normal maps stay loaded. Lighting uses the geometric normal only.
+        shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_maps>','#include <normal_fragment_maps>\nnormal=nonPerturbedNormal;');
+        patchOvertideLighting(shader, ShaderChunk);
       }else shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>\n${detailCode}`);
-      if(gain>0){
-        if(usePbr){
-          // Soft caustics only — strong procedural caustics fight photographic albedo
-          shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.012*gain).toFixed(4)};\n#include <opaque_fragment>`);
-        }else{
-          shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.055*gain).toFixed(4)};\n#include <opaque_fragment>`);
-        }
+      if(gain>0&&!usePbr){
+        shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.055*gain).toFixed(4)};\n#include <opaque_fragment>`);
       }
     };
-    m.customProgramCacheKey=()=>`${detail}:${gain.toFixed(2)}:pbr${usePbr?maps!.key:'0'}:moss${useMoss?mossMaps!.key+':35pct':'0'}`;
+    m.customProgramCacheKey=()=>`${detail}:${gain.toFixed(2)}:pbr${usePbr?maps!.key:'0'}:moss${useMoss?mossMaps!.key:'0'}${usePbr?':overtide':''}`;
     return m;
   }
 
