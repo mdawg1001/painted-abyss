@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.15.1
+# Painted Abyss — First Dive · 0.16.1
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -10,9 +10,9 @@ That pulls `main`, stops the old server on port 5173, rebuilds, and serves. Agen
 
 Includes a clearly audible inventory select click/snap, quieter first-play tip, sound, and continuous 360° horizontal camera turning. When pointer lock is unavailable, hold the pointer near either edge to keep turning; move it back towards the centre to stop.
 
-## Surfaces (0.15.1)
+## Surfaces (0.16.1)
 
-Rock, floor, stone, and moss are the 2K photographic maps again, with the original soft lighting and pore normals. Floors and walls still carry blood splatters: isolated stains plus blood in some cracks. The posterized bands are gone. Fog, the frame grade, the io HUD, and the red enemy hit flash are unchanged.
+The flat band shade is gone. Rock, floor, stone, and moss are the 2K photographic maps again, with the original soft lighting and pore normals. Floors and walls still carry blood splatters. Fog, the frame grade, the io HUD, and the red enemy hit flash are unchanged.
 
 ## Frame grade (0.14.3)
 
