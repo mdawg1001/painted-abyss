@@ -111,7 +111,7 @@ export class OceanWorld {
           float speck=smoothstep(0.70,0.84,valueNoise(buv*1.7+vec2(0.4,4.8)));
           float crack=smoothstep(0.50,0.12,gRockArm.r);
           float gate=smoothstep(0.42,0.62,valueNoise(buv*0.28+vec2(1.7,6.4)));
-          gBlood=clamp(max(blob*0.95,speck*0.8)+crack*gate*0.85,0.0,0.88);
+          gBlood=clamp((max(blob*0.95,speck*0.8)+crack*gate*0.85)*0.40,0.0,0.352);
           diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.45,0.02,0.015),gBlood);
         }`;
       }else{
