@@ -88,16 +88,38 @@ test('three body hits drop a guard; every hit staggers and alerts him',()=>{
  assert.equal(m.health,100);
 });
 
-test('one head shot drops him; his magazine is yours when you walk over him',()=>{
+test('one head shot drops him; he drops his pistol and E strips its rounds',()=>{
  const m=armed();const g=m.guard;
  const {eye,dir}=at(m,FLOOR_Y+1.64);
+ const ammoLeft=g.ammo;
  m.firePistol(eye,dir);
  assert.equal(g.hp,0);assert.equal(m.lastPistolHit?.headshot,true);
+ assert.equal(g.gun,false,'the gun left his hand');
+ const dropped=m.pickups.find(p=>p.item==='gun'&&p.rounds!==undefined);
+ assert.ok(dropped,'his pistol lies on the floor');
+ assert.equal(dropped!.rounds,ammoLeft);
  const before=m.pistol.reserve;
- m.position={x:g.position.x,y:WALK_EYE_Y,z:g.position.z+.5};
- m.update(1/60,false);
- assert.ok(m.pistol.reserve>before,'picked up his rounds');
- assert.equal(g.loot,0);
+ m.position={x:dropped!.position.x,y:WALK_EYE_Y,z:dropped!.position.z+.4};
+ m.interact();
+ assert.equal(m.pistol.reserve,before+ammoLeft,'one E takes his rounds');
+ assert.equal(m.inventory.filter(i=>i==='gun').length,1,'no second pistol in your slots');
+ assert.ok(!m.pickups.includes(dropped!));
+});
+
+test('E picks up at once: a free slot first, otherwise it swaps with the item in your hand',()=>{
+ const m=new Mission(true);isolateGuards(m,-1);
+ const gun=m.pickups.find(p=>p.item==='gun')!;
+ m.position={x:gun.position.x+.5,y:WALK_EYE_Y,z:gun.position.z};
+ m.inventory=['knife',null,'flare',null,null];m.selected=0;
+ m.interact();
+ assert.deepEqual(m.inventory,['knife','gun','flare',null,null]);assert.equal(m.selected,1,'the new item is in your hand');
+ // Full: one press swaps with the selected slot and drops the old item at your feet.
+ const bottle=m.pickups.find(p=>p.item==='bottle')!;
+ m.position={x:bottle.position.x+.5,y:WALK_EYE_Y,z:bottle.position.z};
+ m.inventory=['knife','gun','flare','air','bandage'];m.selected=2;
+ m.interact();
+ assert.equal(m.inventory[2],'bottle');assert.equal(m.pending,null);
+ assert.ok(m.pickups.some(p=>p.item==='flare'&&Math.hypot(p.position.x-m.position.x,p.position.z-m.position.z)<.1),'flare dropped where you stand');
 });
 
 test('the shot is loud: patrolling guards in earshot come looking; the empty gun reloads itself',()=>{

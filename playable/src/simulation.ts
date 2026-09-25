@@ -4,7 +4,11 @@ import { PISTOL, makePistol, tickPistol, startReload, canFire, spendRound, takeD
 import { VALVE_CLOSE_RAD, VALVE_REACH, VALVE_STAND, WHEEL_CENTRE, leakFlowFraction } from './valve';
 export type Point={x:number;y:number;z:number};
 export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife'|'gun'|'bottle'|'coat';
-export type Pickup={id:number;item:Item;position:Point};
+export type Pickup={id:number;item:Item;position:Point;
+ /** Rounds still in a dropped pistol (a downed guard's). Undefined for the corridor gun. */
+ rounds?:number;
+ /** Just dropped by a swap: ignored by E until you step away, so a double tap cannot swap it straight back. */
+ settling?:boolean};
 export type PredatorState='patrol'|'alert'|'chase'|'search'|'damaged'|'dead';
 /** Corridor Soviet guard FSM (Phase 3). Separate from the cave ichthyosaur. */
 export type GuardState='patrol'|'alert'|'chase'|'search';
@@ -909,8 +913,6 @@ export type Guard={
  hp:number;maxHp:number;
  /** Seconds left staggering from a hit (no trigger pull while it runs). */
  flinch:number;
- /** Rounds you can take from his body once he is down. */
- loot:number;
 };
 export function makeGuard(outfit=0):Guard{
  const beat=guardBeat(outfit);
@@ -927,7 +929,7 @@ export function makeGuard(outfit=0):Guard{
   gun:true,bottle:false,coat:false,air:0,
   beatStart:beat.start,beatLen:beat.len,beatDir:1,outfit,
   vx:0,vz:0,strafeDir:outfit%2?1:-1,legTime:0,legSpeed:0,legRadial:0,
-  hp:GUARD_MAX_HP,maxHp:GUARD_MAX_HP,flinch:0,loot:0,
+  hp:GUARD_MAX_HP,maxHp:GUARD_MAX_HP,flinch:0,
  };
 }
 /**
@@ -1039,7 +1041,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    g.state='patrol';g.lastState='patrol';g.timer=0;g.lost=0;
    g.speed=0;g.turnRate=0;g.pause=0;g.arrived=false;g.scanBase=g.heading;g.scanTime=0;
    g.meleeCool=0;g.shootCool=0;g.ammo=GUARD_MAGAZINE;g.reload=0;g.firstShot=true;g.aim=0;
-   g.gun=true;g.hp=g.maxHp;g.flinch=0;g.loot=0;g.vx=0;g.vz=0;
+   g.gun=true;g.hp=g.maxHp;g.flinch=0;g.vx=0;g.vz=0;
   });
  }
  /** Tests / older call sites still say `spawnGuard()`. */
@@ -1088,7 +1090,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.pulse(this.inventory[slot]?'select':'blocked');
   return true;
  }
- nearest(){return this.pickups.filter(p=>distance(p.position,this.position)<3.2&&visible(this.position,p.position)).sort((a,b)=>distance(a.position,this.position)-distance(b.position,this.position))[0];}
+ nearest(){return this.pickups.filter(p=>!p.settling&&distance(p.position,this.position)<3.2&&visible(this.position,p.position)).sort((a,b)=>distance(a.position,this.position)-distance(b.position,this.position))[0];}
  /** Closest chest within reach with line of sight (opened or closed). */
  nearestChest(){
   return this.chests
@@ -1211,12 +1213,23 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   }
   if(chest?.open&&!pickup){this.say(`The ${CHEST_LABEL[chest.kind]} is empty.`,'blocked');return;}
   if(!pickup||distance(pickup.position,this.position)>3.2||!visible(this.position,pickup.position)){this.pending=null;return;}
+  // A second pistol is only worth its rounds: strip the magazine and leave the frame.
+  if(pickup.item==='gun'&&this.inventory.includes('gun')){
+   const take=Math.min(this.pistolRoundsOn(pickup),PISTOL.reserveMax-this.pistol.reserve);
+   if(take<=0){this.say('You already carry a TT-33 and your spare rounds are full.','blocked');return;}
+   this.pistol.reserve+=take;this.pickups=this.pickups.filter(p=>p.id!==pickup.id);
+   this.pending=null;this.say(`Stripped its magazine: +${take} rounds.`,'ok');return;
+  }
+  // One press, one pickup: a free slot if there is one, otherwise it swaps into the slot
+  // in your hand and the old item drops where you stand (select 1–5 first to choose).
   let slot=this.inventory.indexOf(null);
-  if(slot<0&&this.pending===null){this.pending=pickup.id;this.say('All five slots are full. Choose 1–5, then E to swap.','blocked');return;}
   if(slot<0)slot=this.selected;
   const old=this.inventory[slot];this.inventory[slot]=pickup.item;this.selected=slot;
-  this.pickups=this.pickups.filter(p=>p.id!==pickup.id);if(old)this.pickups.push({id:this.nextId++,item:old,position:{...this.position,y:Math.max(1,this.position.y-.4)}});
-  this.pending=null;this.say(pickup.item==='relic'?'Relic recovered! Follow the amber markers to extraction.':`${ITEMS[pickup.item].name} collected.`,'ok');
+  this.pickups=this.pickups.filter(p=>p.id!==pickup.id);if(old)this.pickups.push({id:this.nextId++,item:old,settling:true,position:{...this.position,y:this.dropY()}});
+  // A downed guard's pistol still has his rounds in it.
+  if(pickup.item==='gun'&&pickup.rounds)this.pistol.reserve=Math.min(PISTOL.reserveMax,this.pistol.reserve+pickup.rounds);
+  const got=pickup.item==='relic'?'Relic recovered! Follow the amber markers to extraction.':`${ITEMS[pickup.item].name} collected.`;
+  this.pending=null;this.say(old?`${got} Dropped the ${ITEMS[old].name.toLowerCase()}.`:got,'ok');
   if(pickup.item==='relic'&&this.predator.state!=='dead'&&this.predator.state!=='damaged'){
    this.predator.state='alert';this.predator.timer=0;this.predator.lastKnown={...this.position};
   }
@@ -1224,7 +1237,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  drop(){
   const item=this.inventory[this.selected];
   if(!item){this.pulse('blocked');return;}
-  this.pickups.push({id:this.nextId++,item,position:{...this.position,y:Math.max(1,this.position.y-.4)}});
+  this.pickups.push({id:this.nextId++,item,position:{...this.position,y:this.dropY()}});
   this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');
  }
  use(){
@@ -1257,6 +1270,10 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(item==='coat'){this.pulse('blocked');return;}
   this.pulse('blocked');
  }
+ /** Where a dropped item comes to rest: on the floor on foot, just below you when swimming. */
+ dropY(){return canWalk(this.position,this.breathWaterY)?FLOOR_Y:Math.max(1,this.position.y-.4);}
+ /** Rounds you get by stripping a pistol you find (the corridor gun comes loaded). */
+ pistolRoundsOn(p:Pickup){return p.rounds??PISTOL.magazine;}
  /** Start a magazine change on the pistol (R, or automatically when the last round goes). */
  reloadPistol(){
   const p=this.pistol;
@@ -1314,7 +1331,12 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   const {killed}=takeDamage(g,amount);
   if(killed){
    g.speed=0;g.vx=0;g.vz=0;g.turnRate=0;g.flinch=0;
-   g.loot=g.gun?Math.max(0,g.ammo):0;
+   // His pistol falls beside him with what is left in it; E picks it up.
+   if(g.gun){
+    const side={x:Math.cos(g.heading)*.45,z:-Math.sin(g.heading)*.45};
+    this.pickups.push({id:this.nextId++,item:'gun',rounds:Math.max(0,g.ammo),position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}});
+    g.gun=false;
+   }
    return true;
   }
   g.flinch=GUARD_HIT_FLINCH;
@@ -1385,19 +1407,11 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   // Corridor guards run even while the cave guardian is dead / flinching.
   const playerSpeed=this.lastPlayerPos&&dt>0?Math.hypot(this.position.x-this.lastPlayerPos.x,this.position.z-this.lastPlayerPos.z)/dt:0;
   tickPistol(this.pistol,dt);
+  // Items dropped by a swap become collectable again once you step away from them.
+  for(const p of this.pickups)if(p.settling&&Math.hypot(p.position.x-this.position.x,p.position.z-this.position.z)>1.4)p.settling=false;
   for(const g of this.guards){
    this.updateGuard(dt,sprinting,g,playerSpeed);
    if(this.outcome!=='playing')return;
-  }
-  // Walk over a downed guard with the pistol on you to take his rounds.
-  if(this.inventory.includes('gun')){
-   for(const g of this.guards){
-    if(g.hp>0||g.loot<=0||distance(g.position,this.position)>GUARD_LOOT_RANGE)continue;
-    const take=Math.min(g.loot,PISTOL.reserveMax-this.pistol.reserve);
-    if(take<=0)continue;
-    this.pistol.reserve+=take;g.loot-=take;
-    this.say(`Took his rounds: +${take}.`,'ok');
-   }
   }
   this.lastPlayerPos={...this.position};
   this.updatePredator(dt,sprinting);
