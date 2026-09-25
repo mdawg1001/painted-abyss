@@ -1,9 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { type PbrMaps, triplanarGlsl } from '../rockMaps';
-import { installOvertideShade } from '../overtideShade';
-
-installOvertideShade();
 
 type Hooks = { onReady:()=>void; onPause:()=>void; onStatus:(d:number,z:string)=>void; onToggleUI:()=>void; onGlide:(v:boolean)=>void; onError:(s:string)=>void };
 type Creature = { group:THREE.Group; fins:THREE.Group[]; tail:THREE.Group; center:THREE.Vector3; radius:number; speed:number; phase:number; kind:string; scale:number };
@@ -122,7 +119,6 @@ export class OceanWorld {
         if(detail==='rock')detailCode=`float n=valueNoise(vOceanWorld.xz*1.7+vOceanWorld.y*.8);float layer=sin(vOceanWorld.y*5.+valueNoise(vOceanWorld.xz)*3.);diffuseColor.rgb*=.67+n*.5+layer*.075;diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.12,.22,.16),smoothstep(.57,.84,n)*.6);`;
       }
       if(detail==='skin')detailCode=`float blot=valueNoise(vOceanLocal.xz*5.+vOceanLocal.y*2.);float fine=valueNoise(vOceanLocal.xy*48.);float bands=sin(vOceanLocal.x*5.5+vOceanLocal.z*3.+blot*4.);diffuseColor.rgb*=.6+blot*.5+fine*.15;diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*.42,smoothstep(.5,.9,bands)*.45);diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.54,.62,.49),(1.-smoothstep(-.75,.0,vOceanLocal.y))*.65);`;
-      if(detailCode)detailCode+='\ndiffuseColor.rgb=overtideAlbedo(diffuseColor.rgb);';
       if(usePbr){
         shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`vec3 gWn;vec3 gB;vec3 gAlb;vec3 gRockArm;vec3 gMossArm;float gMoss;float gBlood;\n#include <color_fragment>\n${detailCode}`);
         const wet=detail==='sand'?'0.5':'0.62';
@@ -144,13 +140,26 @@ export class OceanWorld {
             ${useMoss?`arm.b=mix(arm.b,gMossArm.b,gMoss);`:''}
             metalnessFactor=clamp(arm.b,.0,.35);
           }`);
-        shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_maps>','#include <normal_fragment_maps>\nnormal=nonPerturbedNormal;');
+        shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
+          {
+            vec3 nRock=triNormalView(uPbrNor,vOceanWorld,gWn,gB,uPbrScale,viewMatrix);
+            ${useMoss?`
+            vec3 nMoss=triNormalView(uMossNor,vOceanWorld,gWn,gB,uMossScale,viewMatrix);
+            normal=normalize(mix(nRock,nMoss,gMoss));
+            `:`
+            normal=nRock;
+            `}
+          }`);
       }else shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>\n${detailCode}`);
-      if(gain>0&&!usePbr){
-        shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.055*gain).toFixed(4)};\n#include <opaque_fragment>`);
+      if(gain>0){
+        if(usePbr){
+          shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.012*gain).toFixed(4)};\n#include <opaque_fragment>`);
+        }else{
+          shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.055*gain).toFixed(4)};\n#include <opaque_fragment>`);
+        }
       }
     };
-    m.customProgramCacheKey=()=>`${detail}:${gain.toFixed(2)}:pbr${usePbr?maps!.key:'0'}:moss${useMoss?mossMaps!.key+':35pct':'0'}:overtide`;
+    m.customProgramCacheKey=()=>`${detail}:${gain.toFixed(2)}:pbr${usePbr?maps!.key:'0'}:moss${useMoss?mossMaps!.key+':35pct':'0'}${usePbr?':blood':''}`;
     return m;
   }
 
@@ -241,7 +250,7 @@ export class OceanWorld {
   surface(){
     const mat=new THREE.ShaderMaterial({uniforms:{uTime:this.uniforms.uTime},side:THREE.DoubleSide,transparent:true,depthWrite:false,
       vertexShader:`varying vec3 wp; uniform float uTime;void main(){vec3 p=position;p.z+=sin(p.x*.09+uTime*.25)*.3+sin(p.y*.11-uTime*.3)*.2;wp=(modelMatrix*vec4(p,1.)).xyz;gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.);}`,
-      fragmentShader:`varying vec3 wp;uniform float uTime;${shaderNoise}void main(){float n=valueNoise(wp.xz*.08);float band=step(0.5,n);vec3 col=mix(vec3(0.02,0.42,0.48),vec3(0.15,0.82,0.86),band);gl_FragColor=vec4(col,.92);}`});
+      fragmentShader:`varying vec3 wp;uniform float uTime;${shaderNoise}void main(){float c=caustic(wp.xz*.16,uTime*.7);float n=valueNoise(wp.xz*.025+uTime*.02);vec3 col=mix(vec3(.1,.48,.54),vec3(.55,.86,.81),n);col+=c*.24;float sun=exp(-length(wp.xz-vec2(-38.,-36.))*.014);col+=vec3(.35,.4,.3)*sun;gl_FragColor=vec4(col,.89);}`});
     const plane=new THREE.Mesh(new THREE.PlaneGeometry(800,800,55,55),mat);plane.rotation.x=-Math.PI/2;plane.position.y=26;this.scene.add(plane);
     const beamMat=new THREE.ShaderMaterial({uniforms:{uTime:this.uniforms.uTime},transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
       vertexShader:`varying vec2 vUv;varying vec3 wPos;void main(){vUv=uv;wPos=(modelMatrix*vec4(position,1.)).xyz;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
