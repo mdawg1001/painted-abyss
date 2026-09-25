@@ -84,7 +84,7 @@ export class OceanWorld {
       shader.fragmentShader=fragHead+shader.fragmentShader;
       let detailCode='';
       if(usePbr){
-        // Sample triplanar maps once. Later chunks reuse g* so the picture matches with fewer taps.
+        // Photographic albedo, then blood only where the splatter mask opens.
         detailCode=`{
           gWn=normalize(vOceanWNormal);
           gB=triBlend(gWn);
@@ -92,6 +92,7 @@ export class OceanWorld {
           gRockArm=triArm(uPbrArm,vOceanWorld,gB,uPbrScale);
           gMossArm=vec3(0.);
           gMoss=0.;
+          gBlood=0.;
           float wet=${detail==='sand'?'0.5':'0.62'};
           gAlb*=mix(1.,.62,wet);
           ${useMoss?`
@@ -105,6 +106,13 @@ export class OceanWorld {
           `:`
           diffuseColor.rgb*=gAlb*mix(.62,1.,gRockArm.r);
           `}
+          vec2 buv=abs(gWn.y)>0.65?vOceanWorld.xz:(abs(gWn.x)>abs(gWn.z)?vOceanWorld.zy:vOceanWorld.xy);
+          float blob=smoothstep(0.58,0.74,valueNoise(buv*0.45+vec2(8.0,3.0)));
+          float speck=smoothstep(0.70,0.84,valueNoise(buv*1.7+vec2(0.4,4.8)));
+          float crack=smoothstep(0.50,0.12,gRockArm.r);
+          float gate=smoothstep(0.42,0.62,valueNoise(buv*0.28+vec2(1.7,6.4)));
+          gBlood=clamp((max(blob*0.95,speck*0.8)+crack*gate*0.85)*0.40,0.0,0.352);
+          diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.45,0.02,0.015),gBlood);
         }`;
       }else{
         if(detail==='sand')detailCode=`float grain=valueNoise(vOceanWorld.xz*15.);float ripple=sin(vOceanWorld.x*.7+vOceanWorld.z*3.+valueNoise(vOceanWorld.xz*.11)*5.);diffuseColor.rgb*=.82+grain*.22+ripple*.07;`;
@@ -112,7 +120,7 @@ export class OceanWorld {
       }
       if(detail==='skin')detailCode=`float blot=valueNoise(vOceanLocal.xz*5.+vOceanLocal.y*2.);float fine=valueNoise(vOceanLocal.xy*48.);float bands=sin(vOceanLocal.x*5.5+vOceanLocal.z*3.+blot*4.);diffuseColor.rgb*=.6+blot*.5+fine*.15;diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*.42,smoothstep(.5,.9,bands)*.45);diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.54,.62,.49),(1.-smoothstep(-.75,.0,vOceanLocal.y))*.65);`;
       if(usePbr){
-        shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`vec3 gWn;vec3 gB;vec3 gAlb;vec3 gRockArm;vec3 gMossArm;float gMoss;\n#include <color_fragment>\n${detailCode}`);
+        shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`vec3 gWn;vec3 gB;vec3 gAlb;vec3 gRockArm;vec3 gMossArm;float gMoss;float gBlood;\n#include <color_fragment>\n${detailCode}`);
         const wet=detail==='sand'?'0.5':'0.62';
         shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
           {
@@ -124,6 +132,7 @@ export class OceanWorld {
             `:`
             roughnessFactor=clamp(mix(arm.g*roughnessFactor,arm.g*roughnessFactor*.35,wet),.06,.95);
             `}
+            roughnessFactor=mix(roughnessFactor,min(roughnessFactor,0.35),gBlood);
           }`);
         shader.fragmentShader=shader.fragmentShader.replace('#include <metalnessmap_fragment>',`#include <metalnessmap_fragment>
           {
@@ -144,14 +153,13 @@ export class OceanWorld {
       }else shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>\n${detailCode}`);
       if(gain>0){
         if(usePbr){
-          // Soft caustics only — strong procedural caustics fight photographic albedo
           shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.012*gain).toFixed(4)};\n#include <opaque_fragment>`);
         }else{
           shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.055*gain).toFixed(4)};\n#include <opaque_fragment>`);
         }
       }
     };
-    m.customProgramCacheKey=()=>`${detail}:${gain.toFixed(2)}:pbr${usePbr?maps!.key:'0'}:moss${useMoss?mossMaps!.key+':35pct':'0'}`;
+    m.customProgramCacheKey=()=>`${detail}:${gain.toFixed(2)}:pbr${usePbr?maps!.key:'0'}:moss${useMoss?mossMaps!.key+':35pct':'0'}${usePbr?':blood':''}`;
     return m;
   }
 

@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.14.3
+# Painted Abyss — First Dive · 0.17.7
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -10,9 +10,53 @@ That pulls `main`, stops the old server on port 5173, rebuilds, and serves. Agen
 
 Includes a clearly audible inventory select click/snap, quieter first-play tip, sound, and continuous 360° horizontal camera turning. When pointer lock is unavailable, hold the pointer near either edge to keep turning; move it back towards the centre to stop.
 
-## Art palette (0.14.3)
+## Surfaces (0.16.2)
 
-Original rock, wall, floor and moss maps are preserved. A shared palette in `playable/src/artPalette.ts` uses muted stone/green, amber practical lamps, blue-green water and red trap alarms. Low amber guide fixtures with ivory arrows replace turquoise orbs. Corridor lamps switch to steady red after the relic trap activates; guide fixtures stay amber for navigation.
+The flat band shade is gone. Rock, floor, stone, and moss are the 2K photographic maps again, with the original soft lighting and pore normals. Floor and wall blood stains are 60% lighter than before. Fog, the frame grade, the io HUD, and the red enemy hit flash are unchanged.
+
+## Faster guards (0.16.3)
+
+Corridor guards walk and chase about 15% faster. Role combat speeds, patrol/chase/search, and the walk→run gait blend move with them. Authored foot-slide clip speeds are unchanged so the planted foot still locks to the floor.
+
+## Cardboard cover (0.16.4)
+
+Poly Haven [Cardboard Box 01](https://polyhaven.com/a/cardboard_box_01) piles are wired as shootout cover across the bunker (entrance, corridor, cavern, relic approach, extraction). They block movement and sight like the existing crates and blast walls.
+
+## Metal desk cover (0.16.5)
+
+One Poly Haven [Metal Office Desk](https://polyhaven.com/a/metal_office_desk) sits in the entrance chamber as duck-behind shootout cover. Same movement/sight blocking as crates, walls, and cardboard.
+
+## Stylized colour (0.17.0)
+
+Brighter, louder, Overtide-style picture without touching the 2K rock, wall, stone and moss maps. The frame grade adds luma-preserving saturation and vibrance (near-greys stay neutral), a midtone lift and a gentle multiplicative split tone. Dry air has a bright neutral key with a teal floor bounce so textures keep their own hue; the underwater field is lighter too. Cover crates are painted olive, blast walls are sand concrete with a hazard stripe, reinforcement doors are teal steel in yellow frames. The HUD moves to chunky Barlow Condensed on rounded solid panels with yellow keys, colour-coded meters, a big ammo counter and a yellow selected slot. The vignette is much lighter.
+
+## Cardboard barricades (0.17.1)
+
+Cardboard cover is now clustered barricades: each footprint is **3–4 carton stacks** side-by-side (chest–head high) with a wider collision box, so you can actually hide behind them in a shootout. More barricades in the entrance, corridor, cavern, relic approach, and extraction.
+
+## Faster pistol reload (0.17.2)
+
+Player TT-33 magazine changes take **1.2 s** (was 1.9 s). Empty mags come back online quicker in a fight.
+
+## Pistol reload 0.9 s (0.17.3)
+
+Player TT-33 magazine change is **0.9 s** (was 1.2 s).
+
+## Grounded loot + ammo prompts (0.17.4)
+
+Removed the mystery mid-air teal flare orb. Death drops land on the floor instead of floating at eye height. Floor pickups no longer bob. Stocked ammo / med / smoke boxes only appear when you can take them, and show a **Walk over · Ammo box** prompt.
+
+## Soviet bunker grade (0.17.5)
+
+The sepia is gone. Dry air is a dark cold teal-grey (fog and background), the key light is cold fluorescent white, the ceiling bounce is cold concrete, and the frame grade slightly desaturates with teal shadows and neutral highlights. Two of every three wall fixtures are cold tubes (every flickering one included); one in three stays a warm orange caged bulb as the accent. The cavern and entrance ceiling spots are fluorescent. The underwater field and the red relic slam are unchanged.
+
+## Hanging tube lights (0.17.7)
+
+18 Poly Haven [Caged Hanging Light](https://polyhaven.com/a/caged_hanging_light) fixtures (CC0) hang on their chains from the bunker ceiling over open floor. Each is a real pendulum (period from g and chain length); your shots, guard fire and bullet impacts within 9 m kick them, so the light pools and the shadows under them sway. 60% of tubes burn steady, 30% are failing (buzzing blackouts), 10% are dying (dark, then bursts); in the final wave every tube stutters, and the relic slam turns them red. A fixed pool of 5 downward spotlights follows the tubes nearest you (no shader recompiles); the nearest casts shadows. Tuning in `playable/src/hangingLightAsset.ts`.
+
+## Frame grade (0.14.3)
+
+Original rock, wall, floor and moss maps are preserved. The picture around them is three hard fields in `playable/src/frameGrade.ts`: a flat blue-green water sheet, dirty ivory with amber practicals while you are in the air, and a hard red slam for a few seconds when the relic trap first opens. Those fields are assigned. They do not fog-blend, and depth no longer fades the cave into navy. Contrast is clipped. Guard kits and metal meshes stay as they are and read darker against the field.
 
 ## Survival firefight (0.14)
 

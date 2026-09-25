@@ -50,8 +50,8 @@ export const GUARD_RIM_INTENSITY=2.5;
 export const GUARD_WALK_CLIP_SPEED=1.05;
 export const GUARD_RUN_CLIP_SPEED=2.65;
 /** Walk→run blend band (m/s). Below the start it is pure walk, above the end pure run. */
-export const GUARD_GAIT_BLEND_START=1.45;
-export const GUARD_GAIT_BLEND_END=2.05;
+export const GUARD_GAIT_BLEND_START=1.67;
+export const GUARD_GAIT_BLEND_END=2.36;
 /** Idle→walk blend band (m/s): the first steps out of a stand. */
 export const GUARD_IDLE_BLEND_END=.45;
 

@@ -26,6 +26,7 @@ test('gun, spare bottle, and coat lie in the corridor and not at the hatch',()=>
   assert.equal(m.pickups.filter(p=>p.item===item).length,1);
  }
  assert.equal(m.pickups[0].item,'relic');
+ assert.equal(m.pickups.filter(p=>p.item==='flare').length,0,'no mystery mid-air flare orb in the cavern');
 });
 
 test('death drops whatever is carried at the corpse; each life starts with the pistol and knife',()=>{
@@ -54,6 +55,7 @@ test('death drops whatever is carried at the corpse; each life starts with the p
  assert.deepEqual(dropped.map(p=>p.item),['gun','bottle','coat','knife','relic']);
  for(const p of dropped){
   assert.ok(distance({...p.position,y:corpse.y},corpse)<1.2);
+  assert.equal(p.position.y,FLOOR_Y,'corpse loot sits on the floor, not floating at eye height');
   assert.ok(Math.abs(p.position.z-breathHatchSpawn().z)>8,'corpse stays off the hatch');
  }
  for(const id of worldGear)assert.ok(m.pickups.some(p=>p.id===id),'untaken corridor gear stays');

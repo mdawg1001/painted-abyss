@@ -1,5 +1,6 @@
 import { createGuideFixture } from './guideFixture';
 import { PALETTE } from './artPalette';
+import { DRY_DENSITY, DRY_FIELD, FLUORESCENT, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type FrameGrade } from './frameGrade';
 import * as THREE from 'three';
 import { applyGuardCombatPose, updateGuardMoveFrame } from './guardCombatPose';
 import { PISTOL } from './playerPistol';
@@ -27,6 +28,7 @@ import {
  LIFEBUOY_POS, LIFEBUOY_YAW, type LifebuoyVisual,
 } from './lifebuoyAsset';
 import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLight } from './sconceAsset';
+import { createHangingLights, stepHangingLights, upgradeHangingLights, type HangingLights } from './hangingLightAsset';
 import { createWallPosters, upgradeWallPosters, type WallPosters } from './posterAsset';
 import { createCopperPipe, upgradeCopperPipe, type CopperPipe } from './copperPipeAsset';
 import { createWallPipe, upgradeWallPipe, setPipeWheel, type WallPipe } from './pipeAsset';
@@ -38,7 +40,7 @@ import {
  type SovietGuardVisual,
 } from './sovietGuardAsset';
 import { mountTt33 } from './gunAsset';
-import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_COUNT, type BreathFootprint, type BreathTankMount } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_COUNT, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
  airborne:boolean;
@@ -225,6 +227,9 @@ export class CaveWorld extends OceanWorld {
  lifebuoyVisual:LifebuoyVisual|null=null;
  /** Poly Haven caged sconces mounted on the cave walls; their warm point lights flicker. */
  wallSconceLights:SconceLight[]=[];
+ /** Poly Haven caged hanging lamps: swinging, flickering tungsten pools with shadows. */
+ hanging:HangingLights|null=null;
+ hangingSeen:{pistol:number;guards:number[];impact:number}={pistol:0,guards:[],impact:-1};
  /** Sketchfab PotatoWit soviet posters hung on one cave wall. */
  wallPosters:WallPosters|null=null;
  /** Sketchfab gleb_tihon pipe run hidden on the far south-west cavern wall. */
@@ -288,9 +293,11 @@ export class CaveWorld extends OceanWorld {
  _pcy=[0,0,0,0];
  _adoptTmp=new THREE.Box3();
  alarmFixtures:{light:THREE.PointLight;lens:THREE.MeshBasicMaterial}[]=[];
- fogDeep=new THREE.Color(PALETTE.waterDeep);
- fogMurk=new THREE.Color(PALETTE.waterMurk);
- fogExit=new THREE.Color(PALETTE.waterExit);
+ gradeHemi!:THREE.HemisphereLight;gradeAmbient!:THREE.AmbientLight;gradeSky!:THREE.DirectionalLight;
+ waterMat!:THREE.MeshBasicMaterial;volMat!:THREE.MeshBasicMaterial;
+ gradeClock=createGradeClock();frameGrade:FrameGrade='dry';
+ clipPass!:ReturnType<typeof createClipGradePass>;
+ gradeSpots:{light:THREE.Light;rest:number}[]=[];
  /** Soft blood cloud group (droplets + plume); hidden until hit/kill. */
  bloodGroup:THREE.Group|null=null;
  bloodLayers:BloodLayer[]=[];
@@ -299,18 +306,20 @@ export class CaveWorld extends OceanWorld {
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
   super(host,{onReady:()=>{},onPause:()=>{},onStatus:()=>{},onToggleUI:()=>{},onGlide:()=>{},onError:()=>{}},{deferStart:true});
   this.ui=ui;this.rockMaps=loadCaveRockMaps(this.renderer);this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
-  // Deep teal void — matches reference plates (cyan haze, not pure black)
-  this.scene.background=new THREE.Color(PALETTE.air);this.scene.fog=new THREE.FogExp2(PALETTE.air,.018);
+  // Dirty ivory field. The three grades assign this color; they do not blend it.
+  this.scene.background=new THREE.Color(DRY_FIELD);this.scene.fog=new THREE.FogExp2(DRY_FIELD,DRY_DENSITY);
   this.camera.far=130;this.camera.fov=64;this.camera.updateProjectionMatrix();
-  this.renderer.toneMappingExposure=1.12;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  // No filmic shoulder — the clip pass clamps contrast.
+  this.renderer.toneMappingExposure=1;this.renderer.toneMapping=THREE.NoToneMapping;
   this.setPixelRatio();
   // Modest torch shadows only (no other casters) — 512² map for Safari cost.
   this.renderer.shadowMap.enabled=true;
   this.renderer.shadowMap.type=THREE.PCFShadowMap;
-  // Cool teal ambient fill so rock reads in the murk; shafts/torch still dominate
-  this.scene.add(new THREE.HemisphereLight(PALETTE.fill,PALETTE.shadow,.42));
-  this.scene.add(new THREE.AmbientLight(PALETTE.fill,.16));
-  const skyFill=new THREE.DirectionalLight(PALETTE.ivory,.38);skyFill.position.set(-8,30,-20);this.scene.add(skyFill);
+  const dry=GRADE_LIGHTS.dry;
+  this.gradeHemi=new THREE.HemisphereLight(dry.sky,dry.ground,dry.hemi);
+  this.gradeAmbient=new THREE.AmbientLight(dry.ambient,dry.ambientI);
+  this.gradeSky=new THREE.DirectionalLight(dry.sun,dry.sunI);this.gradeSky.position.set(-8,30,-20);
+  this.scene.add(this.gradeHemi,this.gradeAmbient,this.gradeSky);
   this.buildCave();this.buildBreath();this.buildLights();this.buildComposer();
   loadCausticAtlas().then(tex=>{
    if(!this.alive)return;
@@ -397,6 +406,7 @@ export class CaveWorld extends OceanWorld {
   this.mountChests();
   this.mountLifebuoy();
   this.mountWallSconces();
+  this.mountHangingLights();
   this.mountWallPosters();
   this.mountWallPipe();
   this.mountCopperPipe();
@@ -443,6 +453,24 @@ export class CaveWorld extends OceanWorld {
     this.adoptPointCull(child,this.worldBox(child),true,true);
    }
   });
+ }
+ /** Hang the caged ceiling lamps on their cables; stubs light at once, the glTF upgrades in. */
+ mountHangingLights(){
+  const h=createHangingLights();
+  this.scene.add(h.group);
+  this.hanging=h;
+  upgradeHangingLights(h).then(ok=>{if(!ok||!this.alive)return;});
+ }
+ /** Gunfire and impacts this frame shake the lamps; the final wave makes them stutter. */
+ stepHanging(dt:number,slamTint:number|null){
+  const h=this.hanging,m=this.mission;if(!h)return;
+  const kicks:{x:number;z:number;power?:number}[]=[];
+  const seen=this.hangingSeen;
+  if(m.pistol.shots!==seen.pistol){if(m.pistol.shots>seen.pistol)kicks.push({x:m.position.x,z:m.position.z,power:1});seen.pistol=m.pistol.shots;}
+  m.guards.forEach((g,i)=>{const prev=seen.guards[i]??g.shots;if(g.shots>prev)kicks.push({x:g.position.x,z:g.position.z,power:.6});seen.guards[i]=g.shots;});
+  if(m.lastImpact&&m.lastImpact.at!==seen.impact){seen.impact=m.lastImpact.at;kicks.push({x:m.lastImpact.point.x,z:m.lastImpact.point.z,power:.7});}
+  const panic=m.director.phase==='final'?1:0;
+  stepHangingLights(h,dt,this.time,this.camera.position,kicks,panic,slamTint);
  }
  /** Hang PotatoWit soviet posters on one solid wall face (stub → PNG albedos). */
  mountWallPosters(){
@@ -826,23 +854,15 @@ export class CaveWorld extends OceanWorld {
   const foot=breathFootprint();
   this.breathFoot=foot;
   this.breathMounts=breathTankMounts();
-  const waterMat=new THREE.MeshStandardMaterial({
-   color:PALETTE.water,transparent:true,opacity:.55,roughness:.08,metalness:.15,
-   depthWrite:false,side:THREE.DoubleSide,
+  // Unlit sheet: one blue-green, not a lit translucent blend.
+  this.waterMat=new THREE.MeshBasicMaterial({
+   color:WATER_FIELD,transparent:true,opacity:.93,depthWrite:false,side:THREE.DoubleSide,fog:false,
   });
-  const volMat=new THREE.MeshStandardMaterial({
-   color:PALETTE.waterDeep,transparent:true,opacity:.42,roughness:.2,metalness:.05,
-   depthWrite:false,side:THREE.BackSide,
+  this.volMat=new THREE.MeshBasicMaterial({
+   color:WATER_FIELD,transparent:true,opacity:waterVeilOpacity('water'),depthWrite:false,side:THREE.BackSide,fog:false,
   });
-  // Same BRDF, but only point lights that can reach the corridor. A fullscreen
-  // water volume must not unroll the rest of the cave's point lights.
-  const waterBox=new THREE.Box3(
-   new THREE.Vector3(foot.minX,-.3,foot.minZ),
-   new THREE.Vector3(foot.maxX,8.7,foot.maxZ),
-  );
+  const waterMat=this.waterMat,volMat=this.volMat;
   // The leak floods the whole bunker, so the surface spans every open cell.
-  // Its lights come from a box that follows the camera, so a bunker-wide plane
-  // never unrolls every sconce in the cave into one shader.
   let bx0=Infinity,bx1=-Infinity,bz0=Infinity,bz1=-Infinity;
   for(const key of cells){
    const [c,r]=key.split(',').map(Number);const w=world(c,r);
@@ -850,8 +870,7 @@ export class CaveWorld extends OceanWorld {
   }
   this.bunkerBounds={minX:bx0,maxX:bx1,minZ:bz0,maxZ:bz1,cx:(bx0+bx1)/2,cz:(bz0+bz1)/2,width:bx1-bx0,depth:bz1-bz0};
   this.floodLightBox.set(new THREE.Vector3(foot.minX,-.3,foot.minZ),new THREE.Vector3(foot.maxX,8.7,foot.maxZ));
-  this.trackPointCull(waterMat,this.floodLightBox);
-  this.trackPointCull(volMat,waterBox);
+  // Unlit water does not sample point lights, so it stays one flat field.
   const bb=this.bunkerBounds;
   this.breathWater=new THREE.Mesh(new THREE.PlaneGeometry(bb.width,bb.depth),waterMat);
   this.breathWater.rotation.x=-Math.PI/2;
@@ -863,7 +882,7 @@ export class CaveWorld extends OceanWorld {
   this.breathVolume.renderOrder=1;
   this.scene.add(this.breathVolume,this.breathWater);
 
-  const steel=new THREE.MeshStandardMaterial({color:0x8a9298,metalness:.72,roughness:.32});
+  const steel=new THREE.MeshStandardMaterial({color:PALETTE.steel,metalness:.72,roughness:.42});
   const spawn=breathHatchSpawn();
   const hatchBox=new THREE.Box3(
    new THREE.Vector3(spawn.x-2.2,0,spawn.z+1.6),
@@ -871,7 +890,7 @@ export class CaveWorld extends OceanWorld {
   );
   this.trackPointCull(steel,hatchBox);
   const ring=new THREE.MeshBasicMaterial({color:0xf0d48a});
-  const blaze=new THREE.MeshBasicMaterial({color:0xc8d4d2});
+  const blaze=new THREE.MeshBasicMaterial({color:PALETTE.ivory});
   const hatch=new THREE.Group();
   const door=new THREE.Mesh(new THREE.BoxGeometry(3.6,2.6,.22),steel);
   door.position.y=1.65;
@@ -939,9 +958,13 @@ export class CaveWorld extends OceanWorld {
  }
  syncBreathProps(){
   for(const fixture of this.alarmFixtures){
-   fixture.light.color.setHex(this.mission.floodTriggered?PALETTE.alarm:PALETTE.amber);
-   fixture.lens.color.setHex(this.mission.floodTriggered?PALETTE.alarm:PALETTE.amberGlow);
+   fixture.light.color.setHex(practicalColor(this.frameGrade));
+   fixture.lens.color.setHex(practicalGlow(this.frameGrade));
   }
+  const sheet=waterSheet(this.frameGrade);
+  this.waterMat.color.setHex(sheet);
+  this.volMat.color.setHex(sheet);
+  this.volMat.opacity=waterVeilOpacity(this.frameGrade);
   const y=this.mission.breathWaterY;
   const foot=this.breathFoot;
   const show=y>0.32;
@@ -1043,7 +1066,7 @@ export class CaveWorld extends OceanWorld {
   }
   const sup=m.supplyTaken;
   if(sup&&sup.at!==this.supplySeen){this.supplySeen=sup.at;if(a)playSupply(ctx!,master!,sup.kind);}
-  this.fx.syncCaches(m.caches,this.time,o=>this.adoptPointCull(o,this.worldBox(o),true,true));
+  this.fx.syncCaches(m.caches,this.time,o=>this.adoptPointCull(o,this.worldBox(o),true,true),c=>m.canTakeCache(c));
   this.fx.update(dt,this.time,m.elapsed,this.camera,this.sovietGuards,m.guards,m.clouds,m.grenades);
  }
  syncSovietGuard(dt:number){
@@ -1552,23 +1575,32 @@ export class CaveWorld extends OceanWorld {
   ring.rotation.x=Math.PI/2;exit.add(ring);this.scene.add(exit);
   const sunlight=new THREE.SpotLight(PALETTE.ivory,480,26,.72,.8,1);
   sunlight.position.set(32,12,-12);sunlight.target.position.set(32,0,-12);this.scene.add(sunlight,sunlight.target);
-  const poolFill=new THREE.PointLight(PALETTE.water,34,16,1.1);poolFill.position.set(32,5,-12);this.scene.add(poolFill);
+  const poolFill=new THREE.PointLight(WATER_FIELD,34,16,1.1);poolFill.position.set(32,5,-12);this.scene.add(poolFill);
   this.addShaft(32,5.2,-12,9,.75,2.9,PALETTE.ivory,.3,0,0,{caustic:true,causticR:5.2});
 
   // Cavern ceiling fill + floor caustic. No volumetric column — the only god ray is the exit.
   const cavernX=6,cavernZ=-64,cavernOp=.18,cavernBot=2.6;
   this.addCausticPool(cavernX,cavernZ,cavernBot*2.6,cavernOp);
-  const spot=new THREE.SpotLight(PALETTE.ivory,70+cavernOp*520,15,.5,.85,1.15);
+  const spot=new THREE.SpotLight(FLUORESCENT,70+cavernOp*520,15,.5,.85,1.15);
   spot.position.set(cavernX,8.2,cavernZ);spot.target.position.set(cavernX,0,cavernZ);this.scene.add(spot,spot.target);
 
   // Entrance corridor fill. No god ray in the tight tunnel.
-  const entrance=new THREE.SpotLight(PALETTE.amber,80,13,.48,.8,1.1);
+  const entrance=new THREE.SpotLight(FLUORESCENT,80,13,.48,.8,1.1);
   entrance.position.set(0,8.5,-22);entrance.target.position.set(0,0,-22);this.scene.add(entrance,entrance.target);
+  this.gradeSpots=[
+   {light:sunlight,rest:PALETTE.ivory},
+   {light:poolFill,rest:WATER_FIELD},
+   {light:spot,rest:FLUORESCENT},
+   {light:entrance,rest:FLUORESCENT},
+  ];
  }
  buildComposer(){
   this.composer=new EffectComposer(this.renderer);
   this.composer.addPass(new RenderPass(this.scene,this.camera));
   // UnrealBloomPass skipped: bright-pass + 5 mip blurs on Retina made swim frames hitch.
+  // Clip sits in front of output. Tone mapping is off, so this clamp is the grade.
+  this.clipPass=createClipGradePass();
+  this.composer.addPass(this.clipPass);
   this.composer.addPass(new OutputPass());
   this.setPixelRatio();
  }
@@ -1599,7 +1631,7 @@ export class CaveWorld extends OceanWorld {
     });
     this.adoptPointCull(pickup,box,false,true);
     this.scene.add(group);this.pickupMeshes.set(p.id,group);
-   }group.position.set(p.position.x,p.position.y+Math.sin(this.time*1.7+p.id)*.12,p.position.z);group.rotation.y=this.time*.45;
+   }group.position.set(p.position.x,p.position.y+(p.position.y>FLOOR_Y+.5?Math.sin(this.time*1.7+p.id)*.12:0),p.position.z);group.rotation.y=this.time*.45;
   }
  }
  publish(){this.ui({mission:this.mission,playing:this.playing,started:this.started,pointerLocked:this.pointerLocked,error:this.error,audioNotice:this.audioNotice,yaw:this.yaw,onFoot:this.onFoot,airborne:this.airborne,atWheel:!!this.valveStroke});}
@@ -1999,6 +2031,7 @@ export class CaveWorld extends OceanWorld {
  reset(){
   this.endValve();
   this.backgroundMusic?.reset();this.mission=new Mission(readInventoryTipsSeen());
+  resetGradeClock(this.gradeClock);this.frameGrade='dry';
   this.resetSurvivalFx();
   this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();
   this.onFoot=true;this.wasOnFoot=true;this.gait.reset();
@@ -2178,28 +2211,31 @@ export class CaveWorld extends OceanWorld {
    if(m.outcome==='lost')this.applyBreathRespawn();
    else if(m.outcome!=='playing')this.pause();
   }
-  // Atmosphere: above the bunker waterline it is stale dry air; below it, cyan-teal murk
-  // that is denser in deep chambers and clears at the exit.
-  const deep=THREE.MathUtils.smoothstep(-this.position.z,35,100);
-  const nearExit=1-THREE.MathUtils.smoothstep(distance(this.position,EXIT),4,22);
+  // Three fields, assigned. Depth and the exit do not tint the fog.
   const fog=this.scene.fog as THREE.FogExp2;
   const corridorAir=breathingFreeAir(this.position,this.mission.breathWaterY);
   if(corridorAir!==this.airborne){
    this.airborne=corridorAir;
    this.backgroundMusic?.setDry(corridorAir);
   }
-  // Keep the water surface lit by the lights around the player.
-  this.floodLightBox.min.set(this.position.x-22,this.mission.breathWaterY-3,this.position.z-22);
-  this.floodLightBox.max.set(this.position.x+22,this.mission.breathWaterY+3,this.position.z+22);
-  if(corridorAir){
-   fog.color.set(PALETTE.air);
-   fog.density=.012+.008*deep;
-  }else{
-   fog.color.copy(this.fogDeep).lerp(this.fogMurk,deep).lerp(this.fogExit,nearExit*.65);
-   fog.density=.032+.022*deep-.014*nearExit;
-  }
+  this.frameGrade=stepFrameGrade(this.gradeClock,this.mission.floodTriggered,corridorAir,this.playing?dt:0);
+  const field=gradeField(this.frameGrade);
+  fog.color.setHex(field);
+  fog.density=gradeDensity(this.frameGrade);
   (this.scene.background as THREE.Color).copy(fog.color);
+  const lights=GRADE_LIGHTS[this.frameGrade];
+  this.gradeHemi.color.setHex(lights.sky);
+  this.gradeHemi.groundColor.setHex(lights.ground);
+  this.gradeHemi.intensity=lights.hemi;
+  this.gradeAmbient.color.setHex(lights.ambient);
+  this.gradeAmbient.intensity=lights.ambientI;
+  this.gradeSky.color.setHex(lights.sun);
+  this.gradeSky.intensity=lights.sunI;
+  const slam=gradeSlam(this.frameGrade);
+  for(const spot of this.gradeSpots)spot.light.color.setHex(slam?field:spot.rest);
+  if(this.clipPass)this.clipPass.uniforms.uSlam.value=slam;
   this.uniforms.uTime.value=this.time;
+  this.stepHanging(this.playing?dt:0,slam?field:null);
   for(const s of this.wallSconceLights){
    if(s.state==='off')continue;
    if(s.state==='flicker'){
