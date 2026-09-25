@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { overtideSurfaceGlsl } from './overtideSurface';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import rockDiff from './assets/rocks/rock_face_03/diff.ktx2?url';
 import rockNor from './assets/rocks/rock_face_03/nor.ktx2?url';
@@ -103,7 +102,7 @@ export function loadCaveRockMaps(renderer: THREE.WebGLRenderer): CaveRockMaps {
 }
 
 /** Triplanar helpers injected ahead of MeshStandardMaterial fragment chunks. */
-export const triplanarGlsl = overtideSurfaceGlsl + /* glsl */ `
+export const triplanarGlsl = /* glsl */ `
 vec3 triBlend(vec3 n){
   vec3 b=pow(abs(n),vec3(4.));
   return b/(b.x+b.y+b.z+1e-5);
