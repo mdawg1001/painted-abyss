@@ -1094,6 +1094,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  position={...breathHatchSpawn()};health=100;air=AIR_MAIN_MAX;bailout=0;elapsed=0;stamina=100;torch=true;
  /** Bunker waterline (metres), shared by corridor and cave. The leak raises it over time; it is kept across death. */
  breathWaterY=BREATH_WATER_START;
+ /** Relic booby trap: latched across drops and deaths; a new mission rearms it. */
+ floodTriggered=false;
  /** Radians the leak valve's handwheel has been wound clockwise from fully open. Kept across death, like the water. */
  valveTurned=0;
  /** Index into `breathTankMounts`. Moves on each death. */
@@ -1181,7 +1183,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.spawnGuards();
   this.killedByGuard=false;
   if(!tipsSeen){
-   this.notice='The bunker is leaking. The water is rising. WASD walk · Shift run · 1–5 select · click stabs.';
+   this.notice='Find the relic. WASD walk · Shift run · 1–5 select · click stabs.';
    this.noticeUntil=9;this.feedbackKind='select';
   }
  }
@@ -1206,7 +1208,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   return true;
  }
  /** Fraction of the full leak still flowing past the gate (round-port gate valve). */
- get leakFlow(){return leakFlowFraction(this.valveTurned);}
+ get leakFlow(){return this.floodTriggered?leakFlowFraction(this.valveTurned):0;}
  get valveSealed(){return this.valveTurned>=VALVE_CLOSE_RAD-1e-6;}
  /** Never been moved: the first turn has to break the stem free. */
  get valveStuck(){return this.valveTurned<=0;}
@@ -1242,7 +1244,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     :'The gate seats with a clunk. The leak has stopped.','ok');
   }else if(wasSealed&&!this.valveSealed){
    this.drainDone=false;
-   this.say('The gate lifts off its seat. Water is forcing its way in again.','blocked');
+   this.say(this.floodTriggered?'The gate lifts off its seat. Water is forcing its way in again.':'The gate lifts off its seat. The pipe is quiet.','blocked');
   }
   return this.valveTurned-before;
  }
@@ -1395,7 +1397,13 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.pickups=this.pickups.filter(p=>p.id!==pickup.id);if(old)this.pickups.push({id:this.nextId++,item:old,settling:true,position:{...this.position,y:this.dropY()}});
   // A downed guard's pistol still has his rounds in it.
   if(pickup.item==='gun'&&pickup.rounds)this.pistol.reserve=Math.min(PISTOL.reserveMax,this.pistol.reserve+pickup.rounds);
-  const got=pickup.item==='relic'?'Relic recovered! Follow the amber markers to extraction.':`${ITEMS[pickup.item].name} collected.`;
+  const sprung=pickup.item==='relic'&&!this.floodTriggered;
+  if(sprung){
+   this.floodTriggered=true;
+   this.valveTurned=0;
+   this.drainDone=false;
+  }
+  const got=sprung?'Booby trap! Taking the relic opened the flood valve. Water is rising — reach extraction!':pickup.item==='relic'?'Relic recovered! Follow the amber markers to extraction.':`${ITEMS[pickup.item].name} collected.`;
   this.pending=null;this.say(old?`${got} Dropped the ${ITEMS[old].name.toLowerCase()}.`:got,'ok');
   if(pickup.item==='relic'&&this.predator.state!=='dead'&&this.predator.state!=='damaged'){
    this.predator.state='alert';this.predator.timer=0;this.predator.lastKnown={...this.position};
@@ -1689,7 +1697,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;
   // Knife recovery is the diver's arm, not the guardian: it runs whatever state the guardian is in.
   this.predator.stabCool=Math.max(0,this.predator.stabCool-dt);
-  this.breathWaterY=stepFloodLevel(this.breathWaterY,dt,this.leakFlow);
+  if(this.floodTriggered)this.breathWaterY=stepFloodLevel(this.breathWaterY,dt,this.leakFlow);
   if(this.floodDrained&&!this.drainDone){
    this.drainDone=true;
    this.say('The last of the water gurgles away down the sump. The floor is clear.','ok');
@@ -2221,7 +2229,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.say('They are regrouping. Reload, patch up, move — supplies have been dropped.','ok');
   }else if(changed==='final'){
    D.cues.push({kind:'final',x:EXIT.x,z:EXIT.z,at:now,label:'Final push'});
-   this.say('The whole garrison is coming. Get the relic to the extraction pool!','blocked');
+   this.say('Relic booby trap sprung! Water is rising and the garrison is coming. Reach extraction!','blocked');
   }else if(changed==='build'&&D.cycle>0){
    this.say('Boots in the corridors — they are coming back harder.','blocked');
   }
