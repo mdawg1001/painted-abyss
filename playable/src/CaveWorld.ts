@@ -1042,7 +1042,7 @@ export class CaveWorld extends OceanWorld {
   }
   const sup=m.supplyTaken;
   if(sup&&sup.at!==this.supplySeen){this.supplySeen=sup.at;if(a)playSupply(ctx!,master!,sup.kind);}
-  this.fx.syncCaches(m.caches,this.time,o=>this.adoptPointCull(o,this.worldBox(o),true,true));
+  this.fx.syncCaches(m.caches,this.time,o=>this.adoptPointCull(o,this.worldBox(o),true,true),c=>m.canTakeCache(c));
   this.fx.update(dt,this.time,m.elapsed,this.camera,this.sovietGuards,m.guards,m.clouds,m.grenades);
  }
  syncSovietGuard(dt:number){
@@ -1612,7 +1612,7 @@ export class CaveWorld extends OceanWorld {
     });
     this.adoptPointCull(pickup,box,false,true);
     this.scene.add(group);this.pickupMeshes.set(p.id,group);
-   }group.position.set(p.position.x,p.position.y+Math.sin(this.time*1.7+p.id)*.12,p.position.z);group.rotation.y=this.time*.45;
+   }group.position.set(p.position.x,p.position.y+(p.position.y>FLOOR_Y+.5?Math.sin(this.time*1.7+p.id)*.12:0),p.position.z);group.rotation.y=this.time*.45;
   }
  }
  publish(){this.ui({mission:this.mission,playing:this.playing,started:this.started,pointerLocked:this.pointerLocked,error:this.error,audioNotice:this.audioNotice,yaw:this.yaw,onFoot:this.onFoot,airborne:this.airborne,atWheel:!!this.valveStroke});}

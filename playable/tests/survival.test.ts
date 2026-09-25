@@ -293,13 +293,17 @@ test('walk over supplies to take them; a lull restocks caches away from you',()=
  const m=new Mission(true);isolateGuards(m,-1);
  const ammo=SURVIVAL_CACHES.findIndex(c=>c.kind==='ammo');
  m.pistol.reserve=0;m.position={x:SURVIVAL_CACHES[ammo].x,y:WALK_EYE_Y,z:SURVIVAL_CACHES[ammo].z};
+ assert.ok(m.canTakeCache(m.caches[ammo]));
+ assert.equal(m.nearestTakeableCache()?.id,m.caches[ammo].id,'ammo box prompts as walk-over loot');
  m.update(1/60,false);
  assert.equal(m.pistol.reserve,SURVIVAL.supplies.ammo);
  assert.equal(m.caches[ammo].stocked,false);
+ assert.equal(m.canTakeCache(m.caches[ammo]),false);
  const med=SURVIVAL_CACHES.findIndex(c=>c.kind==='medkit');
  m.health=100;m.position={x:SURVIVAL_CACHES[med].x,y:WALK_EYE_Y,z:SURVIVAL_CACHES[med].z};
  m.update(1/60,false);
  assert.equal(m.caches[med].stocked,true,'a full-health walk-over leaves the kit');
+ assert.equal(m.canTakeCache(m.caches[med]),false,'full health: kit stays but is not takeable');
  m.health=50;m.update(1/60,false);
  assert.equal(m.health,50+SURVIVAL.supplies.medkit);
  for(const c of SURVIVAL_CACHES)assert.ok(fits({x:c.x,y:WALK_EYE_Y,z:c.z},.5),'cache on open floor');

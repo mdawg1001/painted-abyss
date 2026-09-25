@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.17.3
+# Painted Abyss — First Dive · 0.17.4
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -41,6 +41,10 @@ Player TT-33 magazine changes take **1.2 s** (was 1.9 s). Empty mags come back o
 ## Pistol reload 0.9 s (0.17.3)
 
 Player TT-33 magazine change is **0.9 s** (was 1.2 s).
+
+## Grounded loot + ammo prompts (0.17.4)
+
+Removed the mystery mid-air teal flare orb. Death drops land on the floor instead of floating at eye height. Floor pickups no longer bob. Stocked ammo / med / smoke boxes only appear when you can take them, and show a **Walk over · Ammo box** prompt.
 
 ## Frame grade (0.14.3)
 

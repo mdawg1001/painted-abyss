@@ -1108,7 +1108,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  /** Elevated gas effort until this mission elapsed time (bite / panic). */
  gasPanicUntil=0;
  inventory:(Item|null)[]=[...SURVIVAL_KIT,'flare','bandage','air'];selected=1;
- pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},{id:2,item:'flare',position:{x:-20,y:2,z:-56}},...corridorGearPickups()];nextId=6;
+ pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},...corridorGearPickups()];nextId=6;
  chests:Chest[]=createDiveChests();
  /** Collected cave-chart scraps (taken from the crates). */
  mapFragments:MapFragmentId[]=[];
@@ -1259,6 +1259,25 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   return true;
  }
  nearest(){return this.pickups.filter(p=>!p.settling&&distance(p.position,this.position)<3.2&&visible(this.position,p.position)).sort((a,b)=>distance(a.position,this.position)-distance(b.position,this.position))[0];}
+ /** Closest stocked supply cache you can actually take right now (walk-over ammo / med / smoke). */
+ nearestTakeableCache(){
+  const S=SURVIVAL.supplies;
+  return this.caches
+   .filter(c=>{
+    if(!c.stocked||Math.hypot(c.x-this.position.x,c.z-this.position.z)>S.pickupRadius+.4)return false;
+    if(c.kind==='ammo')return this.pistol.reserve<PISTOL.reserveMax;
+    if(c.kind==='medkit')return this.health<100;
+    return this.smokes<SURVIVAL.smoke.max;
+   })
+   .sort((a,b)=>Math.hypot(a.x-this.position.x,a.z-this.position.z)-Math.hypot(b.x-this.position.x,b.z-this.position.z))[0];
+ }
+ /** True when the player can take this stocked cache right now. */
+ canTakeCache(c:SupplyCache){
+  if(!c.stocked)return false;
+  if(c.kind==='ammo')return this.pistol.reserve<PISTOL.reserveMax;
+  if(c.kind==='medkit')return this.health<100;
+  return this.smokes<SURVIVAL.smoke.max;
+ }
  /** Closest chest within reach with line of sight (opened or closed). */
  nearestChest(){
   return this.chests
@@ -1277,12 +1296,14 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  dropCarriedAt(where:Point){
   const carried=this.inventory.filter((item):item is Item=>item!==null);
   const n=carried.length;
+  // Keep loot on the walkable floor — mid-eye drops looked like mystery floating orbs.
+  const y=canWalk(where,this.breathWaterY)?FLOOR_Y:this.dropY();
   for(let i=0;i<n;i++){
    const a=(i/n)*Math.PI*2;
    this.pickups.push({
     id:this.nextId++,
     item:carried[i],
-    position:{x:where.x+Math.cos(a)*.55,y:Math.max(1,where.y-.4),z:where.z+Math.sin(a)*.55},
+    position:{x:where.x+Math.cos(a)*.55,y,z:where.z+Math.sin(a)*.55},
    });
   }
   this.inventory=[null,null,null,null,null];
