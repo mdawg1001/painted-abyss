@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.16.3
+# Painted Abyss — First Dive · 0.16.4
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -17,6 +17,10 @@ The flat band shade is gone. Rock, floor, stone, and moss are the 2K photographi
 ## Faster guards (0.16.3)
 
 Corridor guards walk and chase about 15% faster. Role combat speeds, patrol/chase/search, and the walk→run gait blend move with them. Authored foot-slide clip speeds are unchanged so the planted foot still locks to the floor.
+
+## Cardboard cover (0.16.4)
+
+Poly Haven [Cardboard Box 01](https://polyhaven.com/a/cardboard_box_01) piles are wired as shootout cover across the bunker (entrance, corridor, cavern, relic approach, extraction). They block movement and sight like the existing crates and blast walls.
 
 ## Frame grade (0.14.3)
 
