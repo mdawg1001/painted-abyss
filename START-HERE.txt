@@ -8,7 +8,7 @@ in this folder and run:
 (Or, if already up to date: node playable/serve.mjs)
 
 Open http://127.0.0.1:5173 in a desktop browser and click Begin dive.
-Confirm the on-screen label says BUILD v0.14.1 · <git-sha>
+Confirm the on-screen label says BUILD v0.14.2 · <git-sha>
 (menu and during the dive). After another agent merges, run refresh.mjs again.
 First rebuild needs `cd playable && npm ci` once; serve/refresh then bake dist locally.
 
