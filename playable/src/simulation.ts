@@ -1,5 +1,7 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
 import { steerToward, faceStanding, yawToward, wrapAngle, turnToward, forwardOf, GUARD_STEER_WALK, GUARD_STEER_RUN } from './guardSteering';
+import { SURVIVAL, SURVIVAL_COVER, type GuardRole } from './survivalConfig';
+import { Director, patrolPosts, nearestFree, pistolDamage, rayWallPoint, smokeBlocks, smokeAlive, smokeLanding, survivalDoors, makeCaches, type SmokeCloud, type SmokeGrenade, type SupplyCache, type SupplyKind } from './survival';
 import { PISTOL, makePistol, tickPistol, startReload, canFire, spendRound, takeDamage, hitscan, type PistolState } from './playerPistol';
 import { VALVE_CLOSE_RAD, VALVE_REACH, VALVE_STAND, WHEEL_CENTRE, leakFlowFraction } from './valve';
 export type Point={x:number;y:number;z:number};
@@ -178,7 +180,14 @@ export const GUARD_CHASE_STANDOFF=1.15;
 /** Half arc of the look-around at the end of a search (radians, ~52°). */
 export const GUARD_SCAN_ARC=.9;
 /** How many Soviet guards walk the bunker at once. */
-export const GUARD_COUNT=5;
+/** Guard pool size (active + waiting behind the doors). */
+export const GUARD_COUNT=SURVIVAL.maxGuards;
+/** In a burst he fires once the muzzle is within this of you (hip-fire, ~20°). */
+export const GUARD_BURST_TOLERANCE=20*Math.PI/180;
+/** What you carry into every life: the diving knife and the TT-33. */
+export const SURVIVAL_KIT:Item[]=['knife','gun'];
+/** A guard that is in play and on his feet. */
+export const liveGuard=(g:Guard)=>g.active&&g.hp>0;
 /** Adjacent beats share this fraction of their waypoints (~one room of overlap). */
 export const GUARD_PATROL_OVERLAP=.25;
 /**
@@ -291,6 +300,13 @@ export const BCD_TRIM_ADJUST_RATE=.9;
 export const SWIM_KICK_VERTICAL_SCALE=.25;
 /** Predator band sits between player cruise and sprint; rage exceeds chase, damaged limps. */
 export const PREDATOR_SPEED={chase:2.7,rage:3.35,patrol:1.3,alert:.5,damaged:.85} as const;
+/**
+ * The ichthyosaur is a marine reptile: it needs this much water over the bunker floor to
+ * swim (m). Below that it lies stranded where it is and can only snap at anyone who comes
+ * within `PREDATOR_STRANDED_BITE` of its jaws. The leak brings it back to life.
+ */
+export const PREDATOR_SWIM_DEPTH=1.1;
+export const PREDATOR_STRANDED_BITE=1.6;
 export type Vec3={x:number;y:number;z:number};
 /**
  * Space/Q BCD input (−1..+1). Idle drifts toward `trimTarget` (default neutral 0).
@@ -400,7 +416,30 @@ for(const col of BREATH_COLS)for(let row=BREATH_ROW_HATCH;row<=BREATH_ROW_FAR;ro
 export const world=(col:number,row:number):Point=>({x:(col-11)*CELL,y:3,z:-row*CELL});
 export const tile=(p:Point)=>({col:Math.round(p.x/CELL)+11,row:Math.round(-p.z/CELL)});
 export const distance=(a:Point,b:Point)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
-export function isOpen(x:number,z:number){return cells.has(`${Math.round(x/CELL)+11},${Math.round(-z/CELL)}`);}
+/**
+ * Open floor at (x, z): inside an open grid cell and not inside a cover block.
+ * The grid is packed into a typed array on first use (this is the hottest function in
+ * the simulation: movement, sight lines and navigation all sample it).
+ */
+let openGrid:{minC:number;minR:number;w:number;h:number;bits:Uint8Array;size:number}|null=null;
+function packOpenGrid(){
+ let minC=Infinity,maxC=-Infinity,minR=Infinity,maxR=-Infinity;
+ for(const c of cells){const [a,b]=c.split(',').map(Number);minC=Math.min(minC,a);maxC=Math.max(maxC,a);minR=Math.min(minR,b);maxR=Math.max(maxR,b);}
+ const w=maxC-minC+1,h=maxR-minR+1,bits=new Uint8Array(w*h);
+ for(const c of cells){const [a,b]=c.split(',').map(Number);bits[(b-minR)*w+(a-minC)]=1;}
+ openGrid={minC,minR,w,h,bits,size:cells.size};
+}
+export function cellOpen(col:number,row:number){
+ if(!openGrid||openGrid.size!==cells.size)packOpenGrid();
+ const g=openGrid!;const c=col-g.minC,r=row-g.minR;
+ return c>=0&&r>=0&&c<g.w&&r<g.h&&g.bits[r*g.w+c]===1;
+}
+/** Inside a cover block (stacked crates / blast wall). */
+export function inCover(x:number,z:number){
+ for(const b of SURVIVAL_COVER)if(Math.abs(x-b.x)<=b.hx&&Math.abs(z-b.z)<=b.hz)return true;
+ return false;
+}
+export function isOpen(x:number,z:number){return cellOpen(Math.round(x/CELL)+11,Math.round(-z/CELL))&&!inCover(x,z);}
 export function fits(p:Point,r=.48){
  if(p.y<FLOOR_Y||p.y>SURFACE_Y)return false;
  for(let a=0;a<8;a++)if(!isOpen(p.x+Math.cos(a*Math.PI/4)*r,p.z+Math.sin(a*Math.PI/4)*r))return false;
@@ -979,6 +1018,36 @@ export type Guard={
  flankSide:1|-1;
  /** Clear line of sight to you on his last tick. */
  sees:boolean;
+ // ── Survival firefight ──
+ /** In play (false = an empty slot in the reinforcement pool). */
+ active:boolean;
+ role:GuardRole;
+ /** Melee wind-up left (s, 0 = none) and its full length (for the pose). */
+ windup:number;windupTotal:number;
+ /** Holds one of the limited shooting / close-attack slots. */
+ fireToken:boolean;meleeToken:boolean;
+ /** Rounds left in the current burst; wait before asking for the trigger again. */
+ burstLeft:number;burstIndex:number;tokenCool:number;
+ /** Reaction delay after he first gets a line on you (s). */
+ reactT:number;prevSees:boolean;
+ /** Engagement slot: angular offset round you (rad) and its slow drift. */
+ slot:number;slotDrift:number;
+ /** Patrol post index (into `patrolPosts()`), and the room box he patrols before contact. */
+ post:number;home:{x0:number;x1:number;z0:number;z1:number}|null;
+ /** Stuck detection and unstick detour. */
+ progressAt:number;progressPos:{x:number;z:number};stuckT:number;detour:{x:number;z:number}|null;detourUntil:number;
+ /** Cached navigation step toward `navGoal`. */
+ navGoal:{x:number;z:number};navStep:{x:number;z:number;final:boolean};navAt:number;
+ /** Time since he went down (corpses are recycled). */
+ downFor:number;
+ /** Mission time of your last hit on him (hit flash) and his last melee strike. */
+ hitAt:number;strikeAt:number;
+ /** Pickup id of the pistol he dropped, if any. */
+ dropId:number;
+ /** Lookout length, strafing flag (velocity not along facing), slot drift flip, unstick count, life counter. */
+ pauseTotal:number;strafing:boolean;slotFlipAt:number;stuckCount:number;life:number;
+ /** His engagement slot has been placed for this chase. */
+ slotSet:boolean;
 };
 export function makeGuard(outfit=0):Guard{
  const beat=guardBeat(outfit);
@@ -996,6 +1065,11 @@ export function makeGuard(outfit=0):Guard{
   beatStart:beat.start,beatLen:beat.len,beatDir:1,outfit,
   vx:0,vz:0,
   hp:GUARD_MAX_HP,maxHp:GUARD_MAX_HP,flinch:0,team:-1,noticeAt:-1,flankSide:outfit%2?1:-1,sees:false,
+  active:true,role:'assault',windup:0,windupTotal:0,fireToken:false,meleeToken:false,
+  burstLeft:0,burstIndex:0,tokenCool:0,reactT:0,prevSees:false,slot:0,slotDrift:0,
+  post:-1,home:null,progressAt:0,progressPos:{x:0,z:0},stuckT:0,detour:null,detourUntil:0,
+  navGoal:{x:1e9,z:1e9},navStep:{x:0,z:0,final:true},navAt:-1,downFor:0,hitAt:-1,strikeAt:-1,dropId:-1,
+  pauseTotal:0,strafing:false,slotFlipAt:4,stuckCount:0,life:0,slotSet:false,
  };
 }
 /**
@@ -1010,7 +1084,11 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   g.lastKnown={...g.position};
   g.state='patrol';g.pause=1e9;g.speed=0;g.turnRate=0;
   g.meleeCool=1e9;g.shootCool=1e9;g.gun=false;
+  g.active=false;
  }
+ if(keep>=0&&m.guards[keep]){const g=m.guards[keep];g.active=true;if(g.hp<=0)g.hp=g.maxHp;}
+ // Tests that isolate guards want a quiet bunker: no reinforcements.
+ const d=(m as {director?:{enabled:boolean}}).director;if(d)d.enabled=false;
 }
  export class Mission {
  position={...breathHatchSpawn()};health=100;air=AIR_MAIN_MAX;bailout=0;elapsed=0;stamina=100;torch=true;
@@ -1027,7 +1105,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  buoyancyTrim=0;
  /** Elevated gas effort until this mission elapsed time (bite / panic). */
  gasPanicUntil=0;
- inventory:(Item|null)[]=['knife','wood','flare','air','bandage'];selected=0;
+ inventory:(Item|null)[]=[...SURVIVAL_KIT,'flare','bandage','air'];selected=1;
  pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},{id:2,item:'flare',position:{x:-20,y:2,z:-56}},...corridorGearPickups()];nextId=6;
  chests:Chest[]=createDiveChests();
  /** Collected cave-chart scraps (taken from the crates). */
@@ -1054,15 +1132,33 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  lootGuardIndex=0;
  /** Latest combat cue for audio / camera (cleared by the renderer when consumed). */
  combatCue:''|'stab-hit'|'stab-miss'|'flinch'|'break'|'kill'|'guard-shot'|'guard-miss'|'guard-melee'
-  |'pistol-miss'|'pistol-hit'|'pistol-head'|'pistol-kill'|'pistol-dry'|'pistol-reload'='';
+  |'pistol-miss'|'pistol-hit'|'pistol-head'|'pistol-kill'|'pistol-dry'|'pistol-reload'
+  |'stab-guard'|'stab-guard-kill'|'guard-whiff'|'smoke-throw'='';
  /** Mission time of the latest squad call-out (renderer: radio squelch + notice). */
  squadAlertAt=-1;
  /** How long your sights have rested on each guard (s). */
  aimDwell:number[]=[];
  /** Your TT-33: magazine, spare rounds, cooldown and reload. */
  pistol:PistolState=makePistol();
+ /** Pacing director for the firefight (reinforcements, lulls, final push). */
+ director=new Director();
+ /** Smoke grenades you carry, grenades in the air and clouds on the floor. */
+ smokes:number=SURVIVAL.smoke.start;grenades:SmokeGrenade[]=[];clouds:SmokeCloud[]=[];nextSmokeId=1;
+ /** Supply caches (walk over to take). */
+ caches:SupplyCache[]=makeCaches();
+ supplyTaken:{kind:SupplyKind;at:number}|null=null;
+ /** Recent hits on you and where they came from (HUD direction markers). */
+ damageFrom:{x:number;z:number;at:number}[]=[];
+ /** Your view direction as a sim yaw (0 = +Z); the renderer keeps it current. */
+ facing=Math.PI;
+ /** Last round that hit rock or cover (sparks), last knife hit on a guard, and your tally. */
+ lastImpact:{point:Point;at:number;shot:number}|null=null;
+ lastKnifeHit:{guard:number;killed:boolean;backstab:boolean;at:number}|null=null;
+ kills=0;
+ /** Last guard blow: when, and whether it connected (renderer: thud or swish). */
+ lastStrike:{at:number;landed:boolean}|null=null;
  /** Last bullet that connected (renderer: hit marker, flinch, impact). */
- lastPistolHit:{guard:number;point:Point;headshot:boolean;killed:boolean;shot:number;at:number}|null=null;
+ lastPistolHit:{guard:number;point:Point;headshot:boolean;killed:boolean;shot:number;at:number;damage?:number}|null=null;
  decoy:{position:Point;until:number}|null=null;
  patrol=[world(16,22),world(6,22),world(6,13),world(16,13)];
  /** Player position last tick, for the guard's read on how fast you are moving. */
@@ -1093,27 +1189,6 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   * Place each guard on his overlapping perimeter beat, away from the player
   * and different from his last start. Keeps any gear he looted.
   */
- spawnGuards(){
-  const route=guardPerimeterRoute();
-  const n=route.length;
-  const taken=new Set<number>();
-  this.guards.forEach((g,outfit)=>{
-   const beat=guardBeat(outfit,n);
-   g.beatStart=beat.start;g.beatLen=beat.len;g.outfit=outfit;
-   const onBeat=beatIndices(beat.start,beat.len,n);
-   const free=onBeat.filter(i=>!taken.has(i));
-   const i=pickGuardSpawn(this.rand,this.position,g.spawnIndex,30,free.length?free:onBeat);
-   taken.add(i);
-   const at=route[i],step=beatStep(i,beat.start,beat.len,n,1),next=route[step.wp];
-   g.spawnIndex=i;g.waypoint=step.wp;g.beatDir=step.dir;
-   g.position={x:at.x,y:WALK_EYE_Y,z:at.z};g.lastKnown={...g.position};
-   g.heading=Math.atan2(next.x-at.x,next.z-at.z);
-   g.state='patrol';g.lastState='patrol';g.timer=0;g.lost=0;
-   g.speed=0;g.turnRate=0;g.pause=0;g.arrived=false;g.scanBase=g.heading;g.scanTime=0;
-   g.meleeCool=0;g.shootCool=0;g.ammo=GUARD_MAGAZINE;g.reload=0;g.firstShot=true;g.aim=0;
-   g.gun=true;g.hp=g.maxHp;g.flinch=0;g.vx=0;g.vz=0;g.team=-1;g.noticeAt=-1;g.sees=false;
-  });
- }
  /** Tests / older call sites still say `spawnGuard()`. */
  spawnGuard(){this.spawnGuards();}
  get hasRelic(){return this.inventory.includes('relic');}
@@ -1239,8 +1314,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.outcome='playing';
   this.reason='';
   this.pending=null;
+  this.resetFirefight();
   this.spawnGuards();
-  this.say('You wake at the hatch with empty hands. What you carried is on the corpse. The water stayed. The air tank has moved.','blocked');
+  this.say('You wake at the hatch with your pistol and knife. Everything else is on your corpse. The garrison has reset — push through.','blocked');
  }
  /**
   * After a guard kill, pull gun / bottle / coat lying on the corpse into his kit.
@@ -1370,7 +1446,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   const p=this.pistol;
   if(p.reload>0){this.pulse('blocked');return false;}
   if(p.mag>=p.maxMag){this.say('Magazine is full.','blocked');return false;}
-  if(p.reserve<=0){this.say('No spare rounds. Take them off a guard.','blocked');return false;}
+  if(p.reserve<=0){this.say('No spare rounds. Find an ammo box or a downed guard\'s pistol.','blocked');return false;}
   startReload(p);
   this.combatCue='pistol-reload';
   this.pulse('ok');
@@ -1378,7 +1454,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  }
  /**
   * Pull the trigger with the TT-33 in hand. One hitscan ray from the centre of the screen:
-  * `origin` is the camera position and `dir` its forward vector (world space).
+  * `origin` is the camera position and `dir` its forward vector (world space). One bullet
+  * is one damage event on at most one guard (the nearest the ray meets).
   */
  firePistol(origin:Point,dir:Point):'fired'|'cooldown'|'reloading'|'empty'|'blocked'{
   if(this.outcome!=='playing'||this.inventory[this.selected]!=='gun')return 'blocked';
@@ -1391,28 +1468,37 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   }
   if(gate!=='ready')return gate;
   spendRound(p);
-  // Everyone near enough to hear it comes looking (sound carries round corners).
-  for(const g of this.guards){
-   if(g.hp<=0||g.state!=='patrol')continue;
-   if(distance(g.position,this.position)<=GUNSHOT_HEARING){
-    g.state='search';g.timer=0;g.arrived=false;g.lost=0;g.lastKnown={...this.position};
-   }
-  }
+  this.hearGunshot();
   // A pistol round is spent within a metre or two of water.
   const range=origin.y<this.breathWaterY?PISTOL.rangeUnderwater:PISTOL.range;
   const targets=this.guards
    .map((g,id)=>({g,id}))
-   .filter(({g})=>g.hp>0)
+   .filter(({g})=>liveGuard(g))
    .map(({g,id})=>({id,foot:{x:g.position.x,y:FLOOR_Y,z:g.position.z}}));
   const hit=hitscan(origin,dir,targets,range,(a,b)=>visible(a,b));
   if(p.mag===0&&p.reserve>0)startReload(p);
-  if(!hit){this.combatCue='pistol-miss';return 'fired';}
+  if(!hit){
+   this.combatCue='pistol-miss';
+   const wall=rayWallPoint(origin,dir,range);
+   if(wall)this.lastImpact={point:wall,at:this.elapsed,shot:p.shots};
+   return 'fired';
+  }
   const g=this.guards[hit.id];
-  const killed=this.guardTakeDamage(g,hit.headshot?PISTOL.headDamage:PISTOL.bodyDamage);
-  this.lastPistolHit={guard:hit.id,point:hit.point,headshot:hit.headshot,killed,shot:p.shots,at:this.elapsed};
+  const dmg=pistolDamage(hit.distance,hit.headshot,SURVIVAL.roles[g.role].headMult);
+  const killed=this.guardTakeDamage(g,dmg);
+  this.lastPistolHit={guard:hit.id,point:hit.point,headshot:hit.headshot,killed,shot:p.shots,at:this.elapsed,damage:dmg};
   this.combatCue=killed?'pistol-kill':hit.headshot?'pistol-head':'pistol-hit';
-  if(killed)this.say(hit.headshot?'Headshot. Guard down.':'Guard down.','ok');
+  if(killed)this.kills++;
+  if(killed&&(this.noticeUntil<=this.elapsed||!this.tipsSeen))this.say(hit.headshot?'Headshot. Guard down.':'Guard down.','ok');
   return 'fired';
+ }
+ /** Your shot is heard through the bunker: guards in earshot know where it came from (not see you). */
+ hearGunshot(){
+  for(const g of this.guards){
+   if(!liveGuard(g)||distance(g.position,this.position)>SURVIVAL.gunshotHearing)continue;
+   if(g.state==='patrol'){g.state='search';g.timer=0;g.arrived=false;g.lost=0;g.lastKnown={...this.position};}
+   else if(!g.sees)g.lastKnown={...this.position};
+  }
  }
  /**
   * Sights on a guard: call every frame the pistol is up with the camera ray. Resting the
@@ -1420,9 +1506,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   */
  aimAt(origin:Point,dir:Point,dt:number){
   if(this.outcome!=='playing'||this.inventory[this.selected]!=='gun'){this.aimDwell.fill(0);return null;}
-  const targets=this.guards.map((g,id)=>({g,id})).filter(({g})=>g.hp>0)
+  const targets=this.guards.map((g,id)=>({g,id})).filter(({g})=>liveGuard(g))
    .map(({g,id})=>({id,foot:{x:g.position.x,y:FLOOR_Y,z:g.position.z}}));
-  const hit=hitscan(origin,dir,targets,GUARD_GUN_RANGE+8,(a,b)=>visible(a,b));
+  const hit=hitscan(origin,dir,targets,GUARD_GUN_RANGE+8,(a,b)=>visible(a,b)&&!smokeBlocks(this.clouds,a,b,this.elapsed));
   for(let i=0;i<this.guards.length;i++){
    if(!hit||hit.id!==i){this.aimDwell[i]=0;continue;}
    this.aimDwell[i]=(this.aimDwell[i]??0)+dt;
@@ -1432,51 +1518,45 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   return hit?hit.id:null;
  }
  /**
-  * Guard A has been shot or has a gun on him. He and every living guard within
-  * `GUARD_SQUAD_RADIUS` of him go on alert together: each shows his detection notice,
-  * gets your exact position, raises his pistol at once, and any of them with a line on you
-  * opens fire almost immediately (staggered so it lands as a volley, not one shot).
-  * From then on they hunt as one team until `GUARD_TEAM_MEMORY` passes without any of them
-  * seeing you: whoever sees you calls it for everyone, and those without a line flank.
+  * Guard A has been shot, spotted you, or has a gun on him. He and every living guard within
+  * `GUARD_SQUAD_RADIUS` of him go on alert together: each shows his detection notice, is
+  * told where you are, and engages. Each still needs his own reaction time and a free
+  * shooting slot before he fires, so a squad call-out is a warning, not an instant volley.
   */
  squadAlert(source:Guard,reason:'shot'|'targeted'|'spotted'){
-  if(source.hp<=0&&reason==='targeted')return [];
+  if(!liveGuard(source)&&reason==='targeted')return [];
   const squad=this.guards
-   .filter(g=>g.hp>0&&(g===source||distance(g.position,source.position)<=GUARD_SQUAD_RADIUS))
+   .filter(g=>liveGuard(g)&&(g===source||distance(g.position,source.position)<=GUARD_SQUAD_RADIUS))
    .sort((a,b)=>distance(a.position,this.position)-distance(b.position,this.position));
-  const fresh=squad.filter(g=>g.team<=this.elapsed||g.state==='patrol'||g.state==='search');
+  const fresh=squad.filter(g=>g.state==='patrol'||g.state==='search');
   const until=this.elapsed+GUARD_TEAM_MEMORY;
-  let k=0,side:1|-1=1;
+  let side:1|-1=this.rand()<.5?1:-1;
   for(const g of squad){
-   const wasHunting=g.team>this.elapsed&&g.state==='chase';
    g.team=until;
    g.lastKnown={...this.position};g.lost=0;
-   if(wasHunting)continue;
+   if(g.state==='chase')continue;
    g.noticeAt=this.elapsed;
-   g.state='chase';g.timer=0;g.arrived=false;g.pause=0;
-   g.aim=g.gun?1:0;g.firstShot=true;
+   g.state='chase';g.timer=0;g.arrived=false;g.pause=0;g.firstShot=true;
    // Alternate flank sides so a pair comes at you from two directions.
    g.flankSide=side;side=side===1?-1:1;
-   if(g.flinch<=0&&visible(g.position,this.position)){
-    g.shootCool=Math.min(g.shootCool,GUARD_SQUAD_FIRST_SHOT+GUARD_SQUAD_STAGGER*k);
-    k++;
-   }
+   const r=SURVIVAL.roles[g.role].reaction;
+   g.reactT=Math.max(g.reactT,r[0]+(r[1]-r[0])*this.rand());
   }
   if(fresh.length>1||(fresh.length===1&&fresh[0]!==source)){
    this.squadAlertAt=this.elapsed;
-   this.say(fresh.length>2?`${fresh.length} guards are onto you — they are working together.`:'Another guard heard it — they are coming for you together.','blocked');
+   if(this.noticeUntil<=this.elapsed)this.say(fresh.length>2?`${fresh.length} guards are onto you — they are working together.`:'Another guard heard it — they are coming for you together.','blocked');
   }
   return squad;
  }
- /** Share one squad's picture of you: anyone who sees you calls it for all of them. */
+ /** Share one squad's picture of you: anyone who sees you calls it on the radio. */
  private shareSquadIntel(){
-  const hunting=this.guards.filter(g=>g.hp>0&&g.team>this.elapsed);
+  const hunting=this.guards.filter(g=>liveGuard(g)&&g.team>this.elapsed);
   if(!hunting.length)return;
   if(!hunting.some(g=>g.sees&&distance(g.position,this.position)<GUARD_GUN_RANGE+8))return;
   const until=this.elapsed+GUARD_TEAM_MEMORY;
   for(const g of hunting){
    g.team=until;g.lastKnown={...this.position};g.lost=0;
-   if(g.state!=='chase'){g.state='chase';g.timer=0;g.aim=g.gun?Math.max(g.aim,.5):0;}
+   if(g.state!=='chase'){g.state='chase';g.timer=0;}
   }
  }
  /**
@@ -1484,38 +1564,58 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   * you, swung `GUARD_FLANK_ANGLE` off his straight approach to his side, so the team
   * closes from more than one direction. Falls back to your position if that spot is rock.
   */
- flankPoint(g:Guard,target:Point=g.lastKnown):Point{
+ flankPoint(g:Guard,target:Point=g.lastKnown,radius=GUARD_FLANK_DISTANCE,angle=GUARD_FLANK_ANGLE):Point{
   const dx=g.position.x-target.x,dz=g.position.z-target.z;
   const len=Math.hypot(dx,dz)||1;
-  if(len<GUARD_FLANK_DISTANCE*1.2)return {...target};
-  const a=Math.atan2(dx,dz)+g.flankSide*GUARD_FLANK_ANGLE;
-  const p={x:target.x+Math.sin(a)*GUARD_FLANK_DISTANCE,y:g.position.y,z:target.z+Math.cos(a)*GUARD_FLANK_DISTANCE};
+  if(len<radius*1.2)return {...target};
+  const a=Math.atan2(dx,dz)+g.flankSide*angle;
+  const p={x:target.x+Math.sin(a)*radius,y:g.position.y,z:target.z+Math.cos(a)*radius};
   return fits(p,GUARD_BODY_RADIUS)&&visible(p,target)?p:{...target};
  }
  /**
-  * Damage one corridor guard through the shared `takeDamage` rule. A hit staggers him and
-  * tells him exactly where you are; the last hit drops him and leaves his magazine.
+  * Damage one guard through the shared `takeDamage` rule (one call per bullet or stab).
+  * A hit staggers him: cancels a melee wind-up, costs him his shooting slot, and tells him
+  * where you are. The last hit drops him and his pistol.
   */
  guardTakeDamage(g:Guard,amount:number){
   const {killed}=takeDamage(g,amount);
+  g.hitAt=this.elapsed;
   // Shooting one of them brings the rest of the squad in, whether or not he survives it.
   this.squadAlert(g,'shot');
   if(killed){
-   g.speed=0;g.vx=0;g.vz=0;g.turnRate=0;g.flinch=0;
+   g.speed=0;g.vx=0;g.vz=0;g.turnRate=0;g.flinch=0;g.windup=0;g.downFor=0;
+   g.fireToken=false;g.meleeToken=false;
    // His pistol falls beside him with what is left in it; E picks it up.
    if(g.gun){
     const side={x:Math.cos(g.heading)*.45,z:-Math.sin(g.heading)*.45};
-    this.pickups.push({id:this.nextId++,item:'gun',rounds:Math.max(0,g.ammo),position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}});
-    g.gun=false;
+    const id=this.nextId++;
+    this.pickups.push({id,item:'gun',rounds:Math.max(SURVIVAL.dropRounds,g.ammo),position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}});
+    g.dropId=id;g.gun=false;
    }
    return true;
   }
-  // Horde: a hit is a flinch, not a stop. He keeps coming and is firing again almost at once.
-  g.flinch=GUARD_HORDE.flinch;
-  g.shootCool=Math.max(g.shootCool,GUARD_HORDE.flinch);
+  g.flinch=SURVIVAL.hitFlinch;
+  if(g.windup>0){g.windup=0;g.meleeCool=Math.max(g.meleeCool,.9);g.meleeToken=false;}
+  g.shootCool=Math.max(g.shootCool,SURVIVAL.hitFlinch+.15);
+  if(g.fireToken){g.fireToken=false;g.burstLeft=0;g.burstIndex=0;g.tokenCool=Math.max(g.tokenCool,.6);}
   g.lastKnown={...this.position};
   if(g.state!=='chase'){g.state='chase';g.timer=0;g.lost=0;g.firstShot=true;}
   return false;
+ }
+ /** Every hit on you goes through here: health, panic breathing, pacing and the direction marker. */
+ hurtPlayer(amount:number,from:Point,reason:string,g:Guard|null){
+  if(amount<=0||this.outcome!=='playing')return;
+  this.health=Math.max(0,this.health-amount);
+  this.gasPanicUntil=this.elapsed+AIR_PANIC_SECONDS;
+  this.director.hurt.push({at:this.elapsed,amount});
+  this.damageFrom.push({x:from.x,z:from.z,at:this.elapsed});
+  if(this.damageFrom.length>8)this.damageFrom.shift();
+  if(this.health<=0){
+   this.killedByGuard=!!g;
+   if(g)this.lootGuardIndex=this.guards.indexOf(g);
+   this.outcome='lost';
+   this.reason=reason;
+  }
  }
  /**
   * Mouse-click stab while the diving knife is selected.
@@ -1527,6 +1627,32 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   const p=this.predator;
   if(p.stabCool>0)return 'cooldown';
   p.stabCool=KNIFE_COOLDOWN;
+  // Guards first: the nearest one inside the blade's reach and cone, with nothing between.
+  {
+   const lookLen=Math.hypot(look.x,look.z)||1;const lx=look.x/lookLen,lz=look.z/lookLen;
+   let best:Guard|null=null,bd=Infinity;
+   for(const g of this.guards){
+    if(!liveGuard(g))continue;
+    const dx=g.position.x-this.position.x,dz=g.position.z-this.position.z,dist=Math.hypot(dx,dz);
+    if(dist>KNIFE_RANGE+GUARD_BODY_RADIUS||dist<1e-6)continue;
+    if((dx*lx+dz*lz)/dist<Math.cos(KNIFE_CONE))continue;
+    if(!visible(this.position,g.position))continue;
+    if(dist<bd){bd=dist;best=g;}
+   }
+   if(best){
+    const k=SURVIVAL.knife;
+    // Behind him and he has not turned to you: a silent, lethal stab.
+    const fromGuard=Math.atan2(this.position.x-best.position.x,this.position.z-best.position.z);
+    const behind=Math.abs(wrapAngle(fromGuard-best.heading))>Math.PI-k.backstabArc/2;
+    const back=behind&&best.state!=='chase';
+    const killed=this.guardTakeDamage(best,k.guardDamage*(back?k.backstabMultiplier:1));
+    this.lastKnifeHit={guard:this.guards.indexOf(best),killed,backstab:back,at:this.elapsed};
+    this.combatCue=killed?'stab-guard-kill':'stab-guard';
+    if(killed)this.kills++;
+    if(back&&killed)this.say('Silent kill.','ok');
+    return 'hit';
+   }
+  }
   if(p.state==='dead'){this.combatCue='stab-miss';this.pulse('blocked');return 'miss';}
   const to={x:p.position.x-this.position.x,y:p.position.y-this.position.y,z:p.position.z-this.position.z};
   const dist=Math.hypot(to.x,to.y,to.z);
@@ -1582,6 +1708,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   // Corridor guards run even while the cave guardian is dead / flinching.
   const playerSpeed=this.lastPlayerPos&&dt>0?Math.hypot(this.position.x-this.lastPlayerPos.x,this.position.z-this.lastPlayerPos.z)/dt:0;
   tickPistol(this.pistol,dt);
+  this.stepSmoke();
+  this.collectSupplies();
+  this.assignTokens();
   this.shareSquadIntel();
   // Items dropped by a swap become collectable again once you step away from them.
   for(const p of this.pickups)if(p.settling&&Math.hypot(p.position.x-this.position.x,p.position.z-this.position.z)>1.4)p.settling=false;
@@ -1589,106 +1718,113 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.updateGuard(dt,sprinting,g,playerSpeed);
    if(this.outcome!=='playing')return;
   }
+  this.separateGuards();
+  this.stepDirector();
+  this.damageFrom=this.damageFrom.filter(h=>this.elapsed-h.at<SURVIVAL.damageIndicator);
   this.lastPlayerPos={...this.position};
   this.updatePredator(dt,sprinting);
  }
  /**
-  * One Soviet guard: patrol / chase on dry bunker floor.
-  * Stops where water is too deep. No see-through-walls (uses `visible`).
-  * Stolen gun shoots; stolen bottle fuels his chase; stolen coat softens his damage.
+  * One Soviet guard for one tick: senses, state, movement, melee and fire.
+  * Sight is blocked by rock, cover and smoke; he never knows where you are through a wall
+  * unless he heard your shot, a squad-mate who sees you called it, or the director sent
+  * him to sweep your rough area.
   */
  private updateGuard(dt:number,sprinting:boolean,g:Guard,playerSpeed:number){
+  if(!g.active)return;
   // Down: no senses, no footwork, no trigger. The arm drops.
-  if(g.hp<=0){g.speed=0;g.vx=0;g.vz=0;g.turnRate=0;g.aim=Math.max(0,g.aim-dt*4);return;}
+  if(g.hp<=0){g.speed=0;g.vx=0;g.vz=0;g.turnRate=0;g.aim=Math.max(0,g.aim-dt*4);g.downFor+=dt;return;}
+  const cfg=SURVIVAL.roles[g.role];
   g.flinch=Math.max(0,g.flinch-dt);
   g.timer+=dt;
   g.meleeCool=Math.max(0,g.meleeCool-dt);
   g.shootCool=Math.max(0,g.shootCool-dt);
-  // Bottle is his air — burns while chasing / searching.
-  if(g.bottle&&g.air>0&&(g.state==='chase'||g.state==='search')){
-   g.air=Math.max(0,g.air-dt*2.4);
-   if(g.air<=0)g.bottle=false;
-  }
+  g.tokenCool=Math.max(0,g.tokenCool-dt);
+  g.reactT=Math.max(0,g.reactT-dt);
   const d=distance(g.position,this.position);
-  const canSee=visible(g.position,this.position);
+  const lineClear=visible(g.position,this.position);
+  const canSee=lineClear&&!smokeBlocks(this.clouds,g.position,this.position,this.elapsed);
   g.sees=canSee;
+  // A fresh line on you costs him a human reaction time before the first shot.
+  if(canSee&&!g.prevSees){const r=cfg.reaction;g.reactT=Math.max(g.reactT,r[0]+(r[1]-r[0])*this.rand());}
+  g.prevSees=canSee;
   // He sees what is in front of him (a lit torch from further), hears running, and
   // notices anyone right beside him whichever way he faces.
   const toward=Math.atan2(this.position.x-g.position.x,this.position.z-g.position.z);
   const inView=Math.abs(wrapAngle(toward-g.heading))<=GUARD_FOV_HALF;
   const sense=canSee&&(d<2.5||(inView&&d<(this.torch?16:9))||(sprinting&&d<11));
-  // Once he has you, he keeps you while he can see you at all.
   const tracking=canSee&&d<GUARD_GUN_RANGE+8;
-  const engaged=g.state==='alert'||g.state==='chase';
-  // FSM: spotting you goes straight to drawing and firing — no hesitation.
   if(g.state==='patrol'&&sense){
    g.state='alert';g.timer=0;g.lastKnown={...this.position};g.firstShot=true;
-   // One of them has you: he screams it and every guard in earshot turns into the horde.
    this.squadAlert(g,'spotted');
-  }
-  else if(g.state==='alert'){
-   // Horde: no confirming what he saw. Draw and go.
+  }else if(g.state==='alert'){
    if(sense||tracking)g.lastKnown={...this.position};
-   if(g.timer>=GUARD_HORDE.draw){g.state=(sense||tracking)?'chase':'search';g.timer=0;g.lost=0;}
+   if(g.timer>=GUARD_DRAW_SECONDS){g.state=tracking?'chase':'search';g.timer=0;g.lost=0;g.arrived=false;}
   }else if(g.state==='chase'){
-   // The horde never loses the scent: he always knows where you are and never gives up.
-   g.lastKnown={...this.position};
-   if(tracking)g.lost=0;else g.lost+=dt;
+   if(tracking){g.lastKnown={...this.position};g.lost=0;}else g.lost+=dt;
+   // Sight lost: go to where he last saw you and search from there.
+   if(g.lost>SURVIVAL.loseSightSeconds){g.state='search';g.timer=0;g.arrived=false;}
   }else if(g.state==='search'){
-   // Heard a shot: he is already running at the noise, and sight of you makes him the horde.
-   if(sense){g.state='alert';g.timer=GUARD_HORDE.draw*.5;g.lost=0;this.squadAlert(g,'spotted');}
-   else if(g.timer>8){
-    // Give up and rejoin his own beat at the nearest stop.
-    g.state='patrol';g.timer=0;g.pause=0;
-    g.waypoint=nearestBeatStop(g.position,g.beatStart,g.beatLen);
+   if(sense||tracking){
+    g.state='chase';g.timer=0;g.lost=0;g.lastKnown={...this.position};
+    if(g.team<=this.elapsed)this.squadAlert(g,'spotted');
+   }else if(g.arrived&&g.timer>SURVIVAL.searchSeconds){
+    if(this.director.enabled&&this.director.phase!=='intro'){
+     // The bunker is on alert: sweep toward your rough area rather than stand down.
+     g.lastKnown=this.huntPoint();g.arrived=false;g.timer=0;
+    }else{g.state='patrol';g.timer=0;g.pause=0;g.post=-1;}
    }
   }
-  this.steerGuard(dt,g,playerSpeed);
-
-  // Pistol raise: up while engaged, down otherwise (~0.25 s either way).
-  g.aim=Math.max(0,Math.min(1,g.aim+(engaged||g.state==='chase'?1:-1)*dt/.25));
-  // Reload when the magazine runs dry.
-  if(g.reload>0){g.reload=Math.max(0,g.reload-dt);if(g.reload===0)g.ammo=GUARD_MAGAZINE;}
-  // Combat — only with LOS (no wall shots / stabs).
-  if(canSee&&d<GUARD_MELEE_RANGE&&g.meleeCool<=0&&(g.state==='chase'||g.state==='alert'||g.state==='search')){
-   let dmg=GUARD_MELEE_DAMAGE;
-   if(g.coat)dmg=Math.round(dmg*GUARD_COAT_DAMAGE_MULT);
-   this.health=Math.max(0,this.health-dmg);
-   g.meleeCool=GUARD_MELEE_COOLDOWN;
-   this.gasPanicUntil=this.elapsed+AIR_PANIC_SECONDS;
-   this.combatCue='guard-melee';
-   this.say(g.coat?'Heavy coat — the blow is softer.':'The guard strikes!');
-   if(this.health<=0){
-    this.killedByGuard=true;
-    this.lootGuardIndex=this.guards.indexOf(g);
-    this.outcome='lost';
-    this.reason='The guard finished you. He takes your dropped gear.';
+  this.steerGuard(dt,g);
+  // Pistol comes up while engaged, down otherwise (~0.3 s either way).
+  const up=(g.state==='chase'||g.state==='alert')&&g.gun;
+  g.aim=Math.max(0,Math.min(1,g.aim+(up?1:-1)*dt/.3));
+  if(g.reload>0){g.reload=Math.max(0,g.reload-dt);if(g.reload===0)g.ammo=SURVIVAL.guardMagazine;}
+  // Close-range attack: a readable wind-up, then one strike that must still reach you.
+  const mcfg=g.role==='rusher'?SURVIVAL.melee.rusher:SURVIVAL.melee.other;
+  if(g.windup>0){
+   g.windup=Math.max(0,g.windup-dt);
+   if(g.windup===0){
+    g.strikeAt=this.elapsed;g.meleeCool=mcfg.cooldown;g.meleeToken=false;
+    const now=distance(g.position,this.position);
+    const bearing=Math.atan2(this.position.x-g.position.x,this.position.z-g.position.z);
+    const inArc=Math.abs(wrapAngle(bearing-g.heading))<=mcfg.arc;
+    const landed=now<=mcfg.reach&&inArc&&visible(g.position,this.position);
+    this.lastStrike={at:this.elapsed,landed};
+    if(landed){
+     let dmg:number=mcfg.damage;if(g.coat)dmg=Math.round(dmg*GUARD_COAT_DAMAGE_MULT);
+     this.combatCue='guard-melee';
+     this.hurtPlayer(dmg,g.position,g.role==='rusher'?'A guard knifed you.':'The guard clubbed you down.',g);
+     if(this.noticeUntil<=this.elapsed)this.say(g.role==='rusher'?'Knifed! Keep your distance from the runners.':'The guard strikes!','blocked');
+    }else this.combatCue='guard-whiff';
    }
    return;
   }
-  if(g.state==='chase'&&this.guardHasShot(g)&&g.shootCool<=0){
-   const aimErr=Math.abs(wrapAngle(Math.atan2(this.position.x-g.position.x,this.position.z-g.position.z)-g.heading));
-   // Spray from the hip on the run: wide tolerance, fast cadence, poor accuracy.
-   if(aimErr<=GUARD_HORDE.aimTolerance&&g.aim>=.99){
-    const hit=this.rand()<guardHitChance(d,playerSpeed,g.firstShot,g.speed)*GUARD_HORDE.accuracy;
+  if(g.meleeToken&&lineClear&&d<=SURVIVAL.melee.startRange&&g.meleeCool<=0&&g.flinch<=0&&(g.state==='chase'||g.state==='alert')){
+   g.windup=mcfg.windup;g.windupTotal=mcfg.windup;
+   return;
+  }
+  // Gunfire: only with a shooting slot, a line on you, after reacting, in short bursts.
+  if(cfg.armed&&g.gun&&g.state==='chase'&&g.fireToken&&canSee&&g.reactT<=0&&g.flinch<=0&&g.shootCool<=0&&this.guardHasShot(g)){
+   const aimErr=Math.abs(wrapAngle(toward-g.heading));
+   if(aimErr<=GUARD_BURST_TOLERANCE&&g.aim>=.99){
+    const climb=Math.max(.35,1-SURVIVAL.burstClimb*g.burstIndex);
+    const hit=this.rand()<guardHitChance(d,playerSpeed,g.firstShot,g.speed)*cfg.accuracy*climb;
     g.firstShot=false;
-    g.shots+=1;g.lastShotHit=hit;g.ammo-=1;
-    g.shootCool=GUARD_HORDE.fireInterval*(.8+.4*this.rand());
-    if(g.ammo<=0){g.reload=GUARD_RELOAD_SECONDS;}
-    this.gasPanicUntil=this.elapsed+AIR_PANIC_SECONDS;
-    if(!hit){this.combatCue='guard-miss';this.say('Shots! Get out of his line of fire.','blocked');return;}
-    let dmg=GUARD_GUN_DAMAGE;
-    if(g.coat)dmg=Math.round(dmg*GUARD_COAT_DAMAGE_MULT);
-    this.health=Math.max(0,this.health-dmg);
-    this.combatCue='guard-shot';
-    this.say(g.coat?'Hit — the coat took some of it.':'You are hit!');
-    if(this.health<=0){
-     this.killedByGuard=true;
-     this.lootGuardIndex=this.guards.indexOf(g);
-     this.outcome='lost';
-     this.reason='The guard shot you. He will take what you dropped.';
+    g.shots+=1;g.lastShotHit=hit;g.ammo-=1;g.burstIndex+=1;g.burstLeft-=1;
+    if(g.burstLeft>0)g.shootCool=cfg.burstGap;
+    else{g.shootCool=cfg.restMin+(cfg.restMax-cfg.restMin)*this.rand();g.fireToken=false;g.tokenCool=g.shootCool;g.burstIndex=0;}
+    if(g.ammo<=0){g.reload=SURVIVAL.guardReload;g.fireToken=false;g.burstLeft=0;g.burstIndex=0;}
+    if(!hit){
+     this.combatCue='guard-miss';
+     if(this.noticeUntil<=this.elapsed)this.say('Shots! Get out of his line of fire.','blocked');
+     return;
     }
-    return;
+    let dmg:number=cfg.damage;
+    if(g.coat)dmg=Math.round(dmg*GUARD_COAT_DAMAGE_MULT);
+    this.combatCue='guard-shot';
+    this.hurtPlayer(dmg,g.position,'The guards shot you down.',g);
+    if(this.outcome==='playing'&&this.noticeUntil<=this.elapsed)this.say(g.coat?'Hit — the coat took some of it.':'You are hit!');
    }
   }
  }
@@ -1705,71 +1841,443 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  private startLookout(g:Guard,pause:number){
   const l=guardLookout(g.position);
   const turn=Math.abs(wrapAngle(l.yaw-g.heading));
-  g.pause=pause;g.scanTime=0;g.scanBase=l.yaw;g.scanArc=Math.max(.35,l.arc);g.scanAlt=l.alt;
+  g.pause=pause;g.pauseTotal=pause;g.scanTime=0;g.scanBase=l.yaw;g.scanArc=Math.max(.35,l.arc);g.scanAlt=l.alt;
   // Budget the turn the long way round too, since he turns through the room, not the wall.
   g.scanTurn=Math.max(turn,Math.PI*2-turn)/GUARD_STEER_WALK.turnRateStanding*.6;
  }
- private steerGuard(dt:number,g:Guard,playerSpeed=0){
-  if(g.lastState!==g.state){g.lastState=g.state;g.arrived=false;g.scanTime=0;}
+ /**
+  * Next patrol post: somewhere 6–26 m off across his room's floor (not along the wall),
+  * not a post another guard is standing at or walking to.
+  */
+ private pickPost(g:Guard){
+  const posts=patrolPosts();
+  const claimed=this.guards.filter(o=>o!==g&&liveGuard(o)&&o.post>=0).map(o=>posts[o.post]);
+  const inHome=(p:{x:number;z:number})=>!g.home||(p.x>=g.home.x0&&p.x<=g.home.x1&&p.z>=g.home.z0&&p.z<=g.home.z1);
+  const ok=posts.map((p,i)=>({p,i})).filter(({p,i})=>{
+   if(i===g.post||!inHome(p))return false;
+   const dd=Math.hypot(p.x-g.position.x,p.z-g.position.z);
+   return dd>=6&&dd<=26&&claimed.every(c=>Math.hypot(c.x-p.x,c.z-p.z)>3);
+  });
+  if(ok.length)return ok[Math.floor(this.rand()*ok.length)].i;
+  let best=-1,bd=Infinity;
+  posts.forEach((p,i)=>{if(i===g.post||!inHome(p))return;const dd=Math.hypot(p.x-g.position.x,p.z-g.position.z);if(dd>2&&dd<bd){bd=dd;best=i;}});
+  return best;
+ }
+ /** Rough area to sweep when the bunker is on alert: near you, never your exact spot. */
+ huntPoint():Point{
+  const e=SURVIVAL.huntError;
+  for(let k=0;k<6;k++){
+   const a=this.rand()*Math.PI*2,r=e*(.5+.5*this.rand());
+   const q=nearestFree({x:this.position.x+Math.sin(a)*r,z:this.position.z+Math.cos(a)*r},.5,3);
+   if(q)return{x:q.x,y:WALK_EYE_Y,z:q.z};
+  }
+  return{...this.position};
+ }
+ /** Cached route step toward `goal` (recomputed a few times a second, or when the goal moves). */
+ private navFor(g:Guard,goal:{x:number;z:number}){
+  if(g.detour&&this.elapsed<g.detourUntil)return{x:g.detour.x,z:g.detour.z,final:false};
+  g.detour=null;
+  const moved=Math.hypot(goal.x-g.navGoal.x,goal.z-g.navGoal.z);
+  const reached=!g.navStep.final&&Math.hypot(g.navStep.x-g.position.x,g.navStep.z-g.position.z)<.35;
+  if(moved>.8||reached||this.elapsed-g.navAt>=SURVIVAL.navRefresh||g.navAt<0){
+   g.navGoal={x:goal.x,z:goal.z};g.navAt=this.elapsed;
+   g.navStep=guardNavTarget(g.position,goal);
+  }
+  return g.navStep;
+ }
+ /**
+  * Stuck recovery: if he has been trying to move but has not got anywhere for
+  * `stuckSeconds`, he takes a short detour to open floor beside him and re-plans.
+  */
+ private trackProgress(g:Guard,wantMove:boolean){
+  const span=this.elapsed-g.progressAt;
+  if(span<.6)return;
+  const moved=Math.hypot(g.position.x-g.progressPos.x,g.position.z-g.progressPos.z);
+  if(wantMove&&moved<.25)g.stuckT+=span;else g.stuckT=0;
+  g.progressAt=this.elapsed;g.progressPos={x:g.position.x,z:g.position.z};
+  if(g.stuckT<SURVIVAL.stuckSeconds)return;
+  g.stuckT=0;g.navAt=-1;
+  for(let k=0;k<10;k++){
+   const a=this.rand()*Math.PI*2,r=1.5+this.rand()*1.5;
+   const q={x:g.position.x+Math.sin(a)*r,z:g.position.z+Math.cos(a)*r};
+   if(guardClearLine(g.position,q,GUARD_BODY_RADIUS)){g.detour=q;g.detourUntil=this.elapsed+1.3;g.stuckCount++;return;}
+  }
+ }
+ private steerGuard(dt:number,g:Guard){
+  if(g.lastState!==g.state){g.lastState=g.state;g.arrived=false;g.scanTime=0;g.slotSet=false;}
+  g.strafing=false;
   const water=this.breathWaterY;
   const dry=water<BREATH_WALK_WATER;
   const canMove=(x:number,z:number)=>dry&&fits({x,y:3,z},GUARD_BODY_RADIUS);
-  const n=guardPerimeterRoute().length;
-  const nextWp=()=>{const s=beatStep(g.waypoint,g.beatStart,g.beatLen,n,g.beatDir);g.waypoint=s.wp;g.beatDir=s.dir;};
+  const cfg=SURVIVAL.roles[g.role];
   if(!dry){
    // Flooded past the walk line: he holds his ground and keeps watching.
    faceStanding(g,g.heading,GUARD_STEER_WALK,dt,()=>false);
+  }else if(g.windup>0){
+   // Committed to the swing: square up, and a rusher lunges the last half-metre.
+   faceStanding(g,yawToward(g.position,this.position),GUARD_STEER_RUN,dt,canMove);
+   const d=Math.hypot(this.position.x-g.position.x,this.position.z-g.position.z);
+   const lunge=g.role==='rusher'?SURVIVAL.melee.rusher.lunge:SURVIVAL.melee.other.lunge;
+   if(lunge>0&&d>1.05){
+    const s=Math.min(d-1.05,lunge*dt),ux=(this.position.x-g.position.x)/d,uz=(this.position.z-g.position.z)/d;
+    if(canMove(g.position.x+ux*s,g.position.z+uz*s)){g.position.x+=ux*s;g.position.z+=uz*s;g.speed=s/dt;}
+   }
   }else if(g.state==='patrol'){
-   const route=guardPerimeterRoute();
-   const wp=route[g.waypoint%route.length];
+   const posts=patrolPosts();
+   if(g.post<0||g.post>=posts.length)g.post=this.pickPost(g);
+   const wp=posts[Math.max(0,g.post)];
    if(g.pause>0){
-    // Inspect: turn to face out into the room, then sweep it left, right and back to centre.
+    // Look out into the room, sweep it, then move on to another post.
     g.scanTime+=dt;
-    const sweep=Math.max(.1,wp.pause-g.scanTurn);
+    const sweep=Math.max(.1,g.pauseTotal-g.scanTurn);
     const t=Math.max(0,Math.min(1,(g.scanTime-g.scanTurn)/sweep));
-    // With a second open view he sweeps the first for 60 % of the stop, then checks the other.
     const second=g.scanAlt!==null&&t>.6;
     const look=second?g.scanAlt!:wrapAngle(g.scanBase+g.scanArc*Math.sin(TAU_GUARD*Math.min(1,t/(g.scanAlt!==null?.6:1))));
     faceStanding(g,turnThroughRoom(g.position,g.heading,look),GUARD_STEER_WALK,dt,canMove);
     g.pause=Math.max(0,g.pause-dt);
-    if(g.pause===0)nextWp();
-   }else{
-    const nav=guardNavTarget(g.position,wp);
+    if(g.pause===0)g.post=this.pickPost(g);
+   }else if(wp){
+    const nav=this.navFor(g,wp);
     const left=steerToward(g,nav,{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.patrol,stopDistance:0,pivotAngle:1e-3},dt,canMove);
-    if(nav.final&&left<.02&&g.speed===0){
-     if(wp.pause>0){this.startLookout(g,wp.pause);}
-     else nextWp(); // detour point round a prop: keep walking
-    }
+    this.trackProgress(g,true);
+    if(nav.final&&left<.05&&g.speed===0)this.startLookout(g,2.2+this.rand()*1.8);
    }
   }else if(g.state==='alert'){
    // Freeze, then square up to where the noise came from.
    faceStanding(g,yawToward(g.position,g.lastKnown),GUARD_STEER_WALK,dt,canMove);
   }else if(g.state==='chase'){
-   // Horde charge: straight at you by the shortest walkable line, full pace, never
-   // stopping to take cover or pick an angle. He only stops when he is on top of you.
-   void playerSpeed;
-   const params={...GUARD_STEER_RUN,maxSpeed:guardIsSprinter(g.outfit)?GUARD_HORDE.sprint:GUARD_HORDE.march,turnRateMoving:4.5};
-   const nav=guardNavTarget(g.position,g.lastKnown);
-   const left=steerToward(g,nav,{...params,stopDistance:nav.final?GUARD_CHASE_STANDOFF:0},dt,canMove);
-   // At arm's length keep squared up to the target rather than circling it.
-   if(nav.final&&left<.02&&g.speed===0)faceStanding(g,yawToward(g.position,g.lastKnown),params,dt,canMove);
+   this.engage(dt,g,canMove);
   }else{
-   // Search: walk to the last sighting, then scan left and right from there.
+   // Search: go to the last sighting (or the sweep point), then scan left and right there.
    if(!g.arrived){
-    const nav=guardNavTarget(g.position,g.lastKnown);
-    const left=steerToward(g,nav,{...GUARD_STEER_RUN,maxSpeed:GUARD_HORDE.march,stopDistance:nav.final?.3:0},dt,canMove);
-    if(nav.final&&left<.02&&g.speed===0){g.arrived=true;this.startLookout(g,0);}
+    const nav=this.navFor(g,g.lastKnown);
+    const left=steerToward(g,nav,{...GUARD_STEER_RUN,maxSpeed:cfg.speed*.85,stopDistance:nav.final?.3:0},dt,canMove);
+    this.trackProgress(g,true);
+    if(nav.final&&left<.05&&g.speed===0){g.arrived=true;g.timer=0;this.startLookout(g,0);}
    }else{
     g.scanTime+=dt;
     faceStanding(g,wrapAngle(g.scanBase+Math.sin(Math.max(0,g.scanTime-g.scanTurn)*.7)*g.scanArc),GUARD_STEER_WALK,dt,canMove);
    }
   }
   g.position.y=WALK_EYE_Y;
-  // Outside the firing stance he only ever travels along his facing.
-  g.vx=Math.sin(g.heading)*g.speed;g.vz=Math.cos(g.heading)*g.speed;
+  if(!g.strafing){g.vx=Math.sin(g.heading)*g.speed;g.vz=Math.cos(g.heading)*g.speed;}
  }
+ /**
+  * Engaged movement by role. Each guard works toward his own slot round your last known
+  * position (his bearing plus a personal offset that drifts), so a group spreads across the
+  * room instead of queueing in one line, and nobody stands still for long.
+  * - assault: slot at ~9 m, advancing and firing bursts;
+  * - flanker: swings wide to your side before closing to ~7 m;
+  * - heavy: slow, ~11 m, long suppressive bursts;
+  * - rusher: sprints in when he has a close-attack slot, otherwise circles at ~4.6 m.
+  * With a line on you an armed guard faces you and side-steps / advances (strafes);
+  * without one he runs by the shortest walkable route, facing where he is going.
+  */
+ private engage(dt:number,g:Guard,canMove:(x:number,z:number)=>boolean){
+  const cfg=SURVIVAL.roles[g.role];
+  const t=g.lastKnown;
+  // His slot is a bearing round you. It starts where he is and drifts slowly (reversing
+  // now and then) so he works back and forth instead of standing on one spot.
+  if(!g.slotSet){g.slot=Math.atan2(g.position.x-t.x,g.position.z-t.z)+(this.rand()-.5)*.5;g.slotSet=true;}
+  g.slot=wrapAngle(g.slot+g.slotDrift*dt);
+  // Spread out: slide away round you from any squad-mate whose slot is on the same side.
+  for(const o of this.guards){
+   if(o===g||!liveGuard(o)||o.state!=='chase'||!o.slotSet||distance(o.lastKnown,t)>6)continue;
+   const dd=wrapAngle(o.slot-g.slot);
+   if(Math.abs(dd)<.75)g.slot=wrapAngle(g.slot-Math.sign(dd||(g.outfit-o.outfit))*1.1*dt);
+  }
+  if(g.timer>g.slotFlipAt){g.slotDrift=-g.slotDrift;g.slotFlipAt=g.timer+3+this.rand()*3;}
+  const dx=g.position.x-t.x,dz=g.position.z-t.z,dist=Math.hypot(dx,dz);
+  const ring=(r:number,extra=0)=>{
+   const a=g.slot+extra;
+   const p={x:t.x+Math.sin(a)*r,z:t.z+Math.cos(a)*r};
+   return nearestFree(p,.5,3)??{x:t.x,z:t.z};
+  };
+  let goal:{x:number;z:number};
+  let stop=.3;
+  const armed=cfg.armed&&g.gun;
+  if(!armed&&g.role!=='rusher'){
+   // Disarmed: he goes for you with his hands.
+   goal={x:t.x,z:t.z};stop=GUARD_CHASE_STANDOFF;
+  }else if(g.role==='rusher'){
+   if(g.meleeToken||!g.sees){goal={x:t.x,z:t.z};stop=1.0;}
+   else goal=ring(SURVIVAL.melee.waitRadius);
+  }else if(g.role==='flanker'&&!g.sees&&dist>cfg.range+2){
+   const f=this.flankPoint(g,t,cfg.range,100*Math.PI/180);goal={x:f.x,z:f.z};
+  }else if(!g.sees){
+   // Lost the line: close on the last sighting to get it back.
+   goal=dist>cfg.range*.6?ring(Math.max(3,cfg.range*.55)):{x:t.x,z:t.z};
+  }else goal=ring(cfg.range);
+  const nav=this.navFor(g,goal);
+  const want=Math.hypot(nav.x-g.position.x,nav.z-g.position.z);
+  if(g.sees&&armed){
+   // Shooting on the move: chest on you, feet toward the slot.
+   g.strafing=true;
+   const before=g.heading;
+   g.heading=turnToward(g.heading,yawToward(g.position,this.position),GUARD_STEER_RUN.turnRateStanding*dt);
+   g.turnRate=dt>0?wrapAngle(g.heading-before)/dt:0;
+   const sp=want>.25?Math.min(cfg.combatSpeed,Math.sqrt(2*3*want)):0;
+   const wx=want>1e-4?(nav.x-g.position.x)/want*sp:0,wz=want>1e-4?(nav.z-g.position.z)/want*sp:0;
+   const ex=wx-g.vx,ez=wz-g.vz,e=Math.hypot(ex,ez),cap=4*dt;
+   if(e>cap){g.vx+=ex/e*cap;g.vz+=ez/e*cap;}else{g.vx=wx;g.vz=wz;}
+   const nx=g.position.x+g.vx*dt,nz=g.position.z+g.vz*dt;
+   if(canMove(nx,nz)){g.position.x=nx;g.position.z=nz;}
+   else if(canMove(nx,g.position.z)){g.position.x=nx;g.vz=0;}
+   else if(canMove(g.position.x,nz)){g.position.z=nz;g.vx=0;}
+   else{g.vx=0;g.vz=0;}
+   g.speed=Math.hypot(g.vx,g.vz);
+  }else{
+   const speed=g.role==='rusher'&&!g.meleeToken&&g.sees?cfg.speed*.7:cfg.speed;
+   const left=steerToward(g,nav,{...GUARD_STEER_RUN,maxSpeed:speed,turnRateMoving:4.5,stopDistance:nav.final?stop:0},dt,canMove);
+   if(nav.final&&left<.02&&g.speed===0)faceStanding(g,yawToward(g.position,this.position),GUARD_STEER_RUN,dt,canMove);
+  }
+  this.trackProgress(g,want>1.2);
+ }
+ /** Push guards apart so a crowd never stacks into one body or one file. */
+ private separateGuards(){
+  const r=SURVIVAL.separation;
+  const dry=this.breathWaterY<BREATH_WALK_WATER;
+  if(!dry)return;
+  const live=this.guards.filter(liveGuard);
+  for(let i=0;i<live.length;i++)for(let j=i+1;j<live.length;j++){
+   const a=live[i],b=live[j];
+   const dx=b.position.x-a.position.x,dz=b.position.z-a.position.z,d=Math.hypot(dx,dz);
+   if(d>=r)continue;
+   const ux=d>1e-4?dx/d:Math.cos(i*2.4),uz=d>1e-4?dz/d:Math.sin(i*2.4);
+   const push=(r-d)/2;
+   const ok=(g:Guard,sx:number,sz:number)=>fits({x:g.position.x+sx,y:3,z:g.position.z+sz},GUARD_BODY_RADIUS);
+   if(ok(a,-ux*push,-uz*push)){a.position.x-=ux*push;a.position.z-=uz*push;}
+   if(ok(b,ux*push,uz*push)){b.position.x+=ux*push;b.position.z+=uz*push;}
+  }
+ }
+ /**
+  * Hand out the limited shooting and close-attack slots. Guards without one keep moving
+  * and wait their turn, so a room full of guards is dangerous but not an instant death.
+  */
+ private assignTokens(){
+  const maxS=this.director.phase==='final'?SURVIVAL.maxShootersFinal:SURVIVAL.maxShooters;
+  const live=this.guards.filter(liveGuard);
+  const d=(g:Guard)=>distance(g.position,this.position);
+  for(const g of live){
+   if(g.fireToken&&!(g.state==='chase'&&g.sees&&g.gun&&g.reload===0)){g.fireToken=false;g.burstLeft=0;g.burstIndex=0;}
+   if(g.meleeToken&&g.windup<=0&&(g.state!=='chase'||d(g)>SURVIVAL.melee.waitRadius+3)){g.meleeToken=false;}
+  }
+  let holders=live.filter(g=>g.fireToken).length;
+  const shooters=live.filter(g=>!g.fireToken&&g.gun&&SURVIVAL.roles[g.role].armed&&g.state==='chase'&&g.sees&&g.reload===0&&g.tokenCool<=0&&g.flinch<=0&&d(g)<=GUARD_GUN_RANGE)
+   .sort((a,b)=>d(a)-d(b));
+  for(const g of shooters){
+   if(holders>=maxS)break;
+   const b=SURVIVAL.roles[g.role].burst;
+   g.fireToken=true;g.burstLeft=b[0]+Math.floor(this.rand()*(b[1]-b[0]+1));g.burstIndex=0;holders++;
+  }
+  let mh=live.filter(g=>g.meleeToken).length;
+  const biters=live.filter(g=>!g.meleeToken&&g.state==='chase'&&g.meleeCool<=0&&g.flinch<=0&&(g.role==='rusher'?d(g)<=SURVIVAL.melee.waitRadius+1.5:d(g)<=SURVIVAL.melee.startRange+.3))
+   .sort((a,b)=>(a.role==='rusher'?0:1)-(b.role==='rusher'?0:1)||d(a)-d(b));
+  for(const g of biters){if(mh>=SURVIVAL.melee.maxAttackers)break;g.meleeToken=true;mh++;}
+ }
+ // ── Survival: guards in play, reinforcements, smoke, supplies ──────────────────
+ /** Put guard slot `g` into play at `at` as a fresh `role`. */
+ activateGuard(g:Guard,at:{x:number;z:number},heading:number,role:GuardRole){
+  const life=g.life+1;
+  Object.assign(g,makeGuard(g.outfit));
+  const cfg=SURVIVAL.roles[role];
+  g.life=life;g.active=true;g.role=role;g.hp=g.maxHp=cfg.hp;g.gun=cfg.armed;g.ammo=SURVIVAL.guardMagazine;
+  g.position={x:at.x,y:WALK_EYE_Y,z:at.z};g.lastKnown={...g.position};g.heading=heading;
+  g.progressPos={x:at.x,z:at.z};g.progressAt=this.elapsed;
+  g.slot=0;g.slotDrift=(this.rand()<.5?-1:1)*(.07+.08*this.rand());g.slotFlipAt=3+this.rand()*3;
+  g.flankSide=this.rand()<.5?1:-1;
+  g.coat=role==='heavy';
+  return g;
+ }
+ deactivateGuard(g:Guard){
+  g.active=false;g.hp=0;g.fireToken=false;g.meleeToken=false;g.windup=0;g.post=-1;
+  g.position={x:500,y:WALK_EYE_Y,z:500};g.speed=0;g.vx=0;g.vz=0;
+ }
+ /** A slot for a new arrival: an empty one, else the longest-dead body you cannot see. */
+ private freeGuardSlot(){
+  const empty=this.guards.find(g=>!g.active);
+  if(empty)return empty;
+  const bodies=this.guards.filter(g=>g.active&&g.hp<=0&&g.downFor>SURVIVAL.director.corpseSeconds&&!visible(this.position,g.position))
+   .sort((a,b)=>b.downFor-a.downFor);
+  return bodies[0]??null;
+ }
+ /**
+  * Mission start / each life: the opening garrison. Two sentries hold the first chamber
+  * (the first contact comes quickly), the cavern has three, and a heavy guards the relic.
+  * The rest of the pool waits behind the doors.
+  */
+ spawnGuards(){
+  for(const g of this.guards)this.deactivateGuard(g);
+  const rooms:{x0:number;x1:number;z0:number;z1:number;role:GuardRole}[]=[
+   {x0:-12,x1:12,z0:-20,z1:-4,role:'assault'},
+   {x0:-12,x1:12,z0:-20,z1:-4,role:'assault'},
+   {x0:-28,x1:28,z0:-96,z1:-44,role:'assault'},
+   {x0:-28,x1:28,z0:-96,z1:-44,role:'rusher'},
+   {x0:-28,x1:28,z0:-96,z1:-44,role:'flanker'},
+   {x0:-12,x1:12,z0:-120,z1:-104,role:'heavy'},
+  ];
+  const posts=patrolPosts();
+  const used:number[]=[];
+  const n=Math.min(SURVIVAL.director.initial,rooms.length,this.guards.length);
+  for(let i=0;i<n;i++){
+   const room=rooms[i];
+   const inRoom=posts.map((p,k)=>({p,k})).filter(({p,k})=>p.x>=room.x0&&p.x<=room.x1&&p.z>=room.z0&&p.z<=room.z1&&!used.includes(k)
+    &&Math.hypot(p.x-this.position.x,p.z-this.position.z)>=24&&used.every(u=>Math.hypot(posts[u].x-p.x,posts[u].z-p.z)>=5));
+   if(!inRoom.length)continue;
+   const pick=inRoom[Math.floor(this.rand()*inRoom.length)];
+   used.push(pick.k);
+   const g=this.activateGuard(this.guards[i],pick.p,this.rand()*Math.PI*2,room.role);
+   g.home={x0:room.x0,x1:room.x1,z0:room.z0,z1:room.z1};g.post=pick.k;
+   this.startLookout(g,1+this.rand()*2);
+  }
+ }
+ /** Each life starts the firefight over: kit, pacing, smoke and supplies. */
+ resetFirefight(){
+  const on=this.director.enabled;
+  this.director=new Director();this.director.enabled=on;this.director.reset(this.elapsed);
+  this.grenades=[];this.clouds=[];this.smokes=SURVIVAL.smoke.start;
+  this.caches=makeCaches();this.damageFrom=[];this.supplyTaken=null;this.lastImpact=null;this.lastKnifeHit=null;
+  this.pistol=makePistol();
+  this.inventory=[...SURVIVAL_KIT,null,null,null];this.selected=1;
+  this.aimDwell=[];
+ }
+ /** Throw one of your smoke grenades along (dirX, dirZ). */
+ throwSmoke(dirX:number,dirZ:number){
+  if(this.outcome!=='playing')return false;
+  if(this.smokes<=0){this.say('No smoke left. Ammo boxes and med kits are marked on the floor — smoke is in green tins.','blocked');return false;}
+  this.smokes--;
+  const from={...this.position};
+  const to=smokeLanding(from,dirX,dirZ);
+  this.grenades.push({id:this.nextSmokeId++,from,to,thrownAt:this.elapsed,player:true});
+  this.combatCue='smoke-throw';
+  return true;
+ }
+ private guardThrowSmoke(g:Guard){
+  const f=.6;
+  const to=smokeLanding(g.position,(this.position.x-g.position.x)*f,(this.position.z-g.position.z)*f,distance(g.position,this.position)*f);
+  this.grenades.push({id:this.nextSmokeId++,from:{...g.position},to,thrownAt:this.elapsed,player:false});
+  this.director.cues.push({kind:'smoke',x:g.position.x,z:g.position.z,at:this.elapsed,label:'Smoke!'});
+  if(this.noticeUntil<=this.elapsed)this.say('Smoke! They are moving up under cover.','blocked');
+ }
+ private stepSmoke(){
+  const s=SURVIVAL.smoke;
+  for(const gr of this.grenades)if(this.elapsed-gr.thrownAt>=s.flight){
+   this.clouds.push({id:gr.id,x:gr.to.x,z:gr.to.z,born:this.elapsed,player:gr.player});
+  }
+  this.grenades=this.grenades.filter(gr=>this.elapsed-gr.thrownAt<s.flight);
+  this.clouds=this.clouds.filter(c=>smokeAlive(c,this.elapsed));
+  while(this.clouds.length>s.maxClouds)this.clouds.shift();
+ }
+ /** Walk over a stocked cache to take it (only if you need it). */
+ private collectSupplies(){
+  const S=SURVIVAL.supplies;
+  for(const c of this.caches){
+   if(!c.stocked||Math.hypot(c.x-this.position.x,c.z-this.position.z)>S.pickupRadius)continue;
+   if(c.kind==='ammo'){
+    if(this.pistol.reserve>=PISTOL.reserveMax)continue;
+    this.pistol.reserve=Math.min(PISTOL.reserveMax,this.pistol.reserve+S.ammo);
+    this.say(`Ammo box: +${S.ammo} rounds.`,'ok');
+   }else if(c.kind==='medkit'){
+    if(this.health>=100)continue;
+    this.health=Math.min(100,this.health+S.medkit);
+    this.say(`Field dressing: +${S.medkit} suit.`,'ok');
+   }else{
+    if(this.smokes>=SURVIVAL.smoke.max)continue;
+    this.smokes=Math.min(SURVIVAL.smoke.max,this.smokes+S.smoke);
+    this.say('Smoke grenade. T throws it.','ok');
+   }
+   c.stocked=false;
+   this.supplyTaken={kind:c.kind,at:this.elapsed};
+  }
+  // A downed guard's pistol: with yours in hand you strip its rounds just by walking over it.
+  if(this.inventory.includes('gun')&&this.pistol.reserve<PISTOL.reserveMax){
+   for(const p of this.pickups){
+    if(p.item!=='gun'||!p.rounds||Math.hypot(p.position.x-this.position.x,p.position.z-this.position.z)>S.pickupRadius)continue;
+    const take=Math.min(p.rounds,PISTOL.reserveMax-this.pistol.reserve);
+    this.pistol.reserve+=take;p.rounds-=take;
+    this.supplyTaken={kind:'ammo',at:this.elapsed};
+    if(this.noticeUntil<=this.elapsed)this.say(`Stripped his magazine: +${take} rounds.`,'ok');
+   }
+   this.pickups=this.pickups.filter(p=>!(p.item==='gun'&&p.rounds===0));
+  }
+ }
+ /**
+  * Pacing: intro (quiet until first contact) → build → peak → short lull → build again,
+  * harder each cycle; picking up the relic starts the final push that only ends at the
+  * extraction pool. Arrivals are announced at a door before the guard steps through.
+  */
+ private stepDirector(){
+  const D=this.director;
+  if(!D.enabled)return;
+  const now=this.elapsed;
+  const live=this.guards.filter(liveGuard);
+  const contact=live.some(g=>g.state==='chase'||g.state==='alert');
+  const changed=D.advance(now,contact,this.hasRelic);
+  if(changed==='lull'){
+   // Breathing room: restock a couple of caches away from you.
+   const empty=this.caches.filter(c=>!c.stocked&&Math.hypot(c.x-this.position.x,c.z-this.position.z)>=SURVIVAL.supplies.restockMinDistance);
+   for(let k=0;k<SURVIVAL.supplies.restockPerLull&&empty.length;k++)empty.splice(Math.floor(this.rand()*empty.length),1)[0].stocked=true;
+   D.cues.push({kind:'lull',x:this.position.x,z:this.position.z,at:now,label:'Lull'});
+   this.say('They are regrouping. Reload, patch up, move — supplies have been dropped.','ok');
+  }else if(changed==='final'){
+   D.cues.push({kind:'final',x:EXIT.x,z:EXIT.z,at:now,label:'Final push'});
+   this.say('The whole garrison is coming. Get the relic to the extraction pool!','blocked');
+  }else if(changed==='build'&&D.cycle>0){
+   this.say('Boots in the corridors — they are coming back harder.','blocked');
+  }
+  // Arrivals whose warning has run out step through their door.
+  for(const p of D.pending.filter(p=>p.at<=now)){
+   const door=survivalDoors()[p.door];
+   const g=this.freeGuardSlot();
+   if(!g||!door)continue;
+   this.activateGuard(g,door.spawn,door.yaw,p.role);
+   g.state='search';g.lastKnown=this.huntPoint();g.team=now+GUARD_TEAM_MEMORY;
+   D.arrivals++;
+  }
+  D.pending=D.pending.filter(p=>p.at>now);
+  // Keep the hunting pressure at the director's target.
+  const hunting=live.filter(g=>g.state!=='patrol').length+D.pending.length;
+  const slots=this.guards.filter(g=>!g.active||(g.hp<=0&&g.downFor>SURVIVAL.director.corpseSeconds)).length-D.pending.length;
+  if(D.phase!=='intro'&&D.phase!=='lull'&&hunting<D.target()&&now>=D.nextArrival&&slots>0){
+   const busy=(i:number)=>D.pending.some(p=>p.door===i);
+   const door=D.pickDoor(this.position,this.facing,this.rand,busy);
+   if(door>=0){
+    const heavies=live.filter(g=>g.role==='heavy').length+D.pending.filter(p=>p.role==='heavy').length;
+    const role=D.pickRole(this.rand,heavies);
+    D.pending.push({door,role,at:now+SURVIVAL.director.warnSeconds});
+    const dd=survivalDoors()[door];
+    D.cues.push({kind:'door',x:dd.door.x,z:dd.door.z,at:now,label:dd.name});
+    D.lastDoors=[door,...D.lastDoors].slice(0,2);
+    const [a,b]=D.interval();
+    let wait=a+(b-a)*this.rand();
+    if(D.recentDamage(now)>=SURVIVAL.director.mercyDamage)wait+=SURVIVAL.director.mercyDelay;
+    D.nextArrival=now+wait;
+   }else D.nextArrival=now+1;
+  }
+  // Guards cover their advance with smoke now and then.
+  if(D.phase!=='intro'&&D.phase!=='lull'&&now>=D.guardSmokeReady){
+   const thrower=live.find(g=>(g.role==='assault'||g.role==='heavy')&&g.state==='chase'&&g.sees&&distance(g.position,this.position)>=8&&distance(g.position,this.position)<=18);
+   if(thrower){this.guardThrowSmoke(thrower);D.guardSmokeReady=now+SURVIVAL.smoke.guardCooldown;}
+  }
+  // Recycle long-dead bodies out of your sight (their dropped pistols stay on the floor).
+  for(const g of this.guards)if(g.active&&g.hp<=0&&g.downFor>SURVIVAL.director.corpseSeconds*2&&!visible(this.position,g.position))this.deactivateGuard(g);
+  D.cues=D.cues.filter(c=>now-c.at<4);
+ }
+ /** Enough water over the floor for the guardian to swim. */
+ predatorCanSwim(){return this.breathWaterY-FLOOR_Y>=PREDATOR_SWIM_DEPTH;}
  private updatePredator(dt:number,sprinting:boolean){
   const p=this.predator;const d=distance(p.position,this.position);const canSee=visible(p.position,this.position);
+  if(p.state!=='dead'&&!this.predatorCanSwim()){
+   // Stranded on the dry floor: it settles, thrashes, and only snaps at arm's length.
+   p.timer+=dt;p.bite=Math.max(0,p.bite-dt);p.flinch=Math.max(0,p.flinch-dt);
+   p.position.y+=(FLOOR_Y+.55-p.position.y)*Math.min(1,dt*1.5);
+   const flat=Math.hypot(p.position.x-this.position.x,p.position.z-this.position.z);
+   if(flat<PREDATOR_STRANDED_BITE&&p.bite<=0&&p.flinch<=0){
+    p.bite=1.8;this.hurtPlayer(20,p.position,'The stranded guardian caught you in its jaws.',null);
+    this.say('Its jaws snap shut on you — keep clear of the stranded beast.','blocked');
+   }
+   return;
+  }
   const sense=canSee&&(d<4.5||d<(this.torch?16:sprinting?13:8));
   const safe=!predatorCell(tile(this.position).col,tile(this.position).row);
   p.timer+=dt;p.bite=Math.max(0,p.bite-dt);p.flinch=Math.max(0,p.flinch-dt);

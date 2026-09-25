@@ -265,6 +265,10 @@ export type GuardCombatPoseInput={
  dt:number;
  /** 0..1 once he is shot down: face goes slack, eyes close. */
  down?:number;
+ /** Close-attack wind-up progress 0..1 (hand drawn up and back over the shoulder). */
+ melee?:number;
+ /** Strike 1 → 0 just after the blow lands (arm thrust out at you). */
+ strike?:number;
 };
 
 const _S=new THREE.Vector3(),_SL=new THREE.Vector3(),_SR=new THREE.Vector3(),_dir=new THREE.Vector3(),_dirH=new THREE.Vector3();
@@ -362,6 +366,25 @@ export function applyGuardCombatPose(rig:GuardRig,st:GuardCombatState,gun:THREE.
   armIK(rig.armR,_G,_pole,w);
   _pole.copy(_SL).addScaledVector(UP,-.45).addScaledVector(_left,.35).addScaledVector(_dir,-.1);
   armIK(rig.armL,_GL,_pole,w);
+ }
+
+ // --- Close attack: a readable wind-up (hand back over the shoulder, torso turned away),
+ // then a full-length thrust. Overrides the grip on the striking arm. ---
+ const mel=THREE.MathUtils.clamp(inp.melee??0,0,1),stk=THREE.MathUtils.clamp(inp.strike??0,0,1);
+ if(mel>0||stk>0){
+  const [ur,lr]=rig.armR;
+  ur.getWorldPosition(_SR);lr.getWorldPosition(_p);
+  _c.copy(rig.armR[2].position);lr.localToWorld(_c);
+  const armLen=_SR.distanceTo(_p)+_p.distanceTo(_c);
+  _dir.subVectors(inp.target,_SR);_dir.y*=.4;_dir.normalize();
+  _left.crossVectors(UP,_dir).normalize();
+  const draw=mel*mel*(3-2*mel);
+  _G.copy(_SR).addScaledVector(UP,.3).addScaledVector(_dir,-.14).addScaledVector(_left,-.14);
+  _GL.copy(_SR).addScaledVector(_dir,armLen*.97).addScaledVector(UP,-.1);
+  _G.lerp(_GL,stk);
+  _pole.copy(_SR).addScaledVector(_left,-.45).addScaledVector(UP,.05-.4*stk);
+  armIK(rig.armR,_G,_pole,Math.max(draw,stk));
+  rotateAxis(rig.torso,UP,-.4*draw*(1-stk)+.3*stk);
  }
 
  // --- Head: eyes on the target, cheek dropped a touch toward the sights. ---

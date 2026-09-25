@@ -18,15 +18,17 @@
  * so a submerged shot barely reaches past arm's length.
  */
 
+import { SURVIVAL } from './survivalConfig';
+
 export type Vec3={x:number;y:number;z:number};
 
 /** Tunables. `magazine` is the adjustable maximum ammo per magazine. */
 export const PISTOL={
  /** Rounds per magazine (TT-33: 8). */
- magazine:8,
- /** Spare rounds carried on pickup, and the most spare rounds you can carry. */
- startReserve:16,
- reserveMax:40,
+ magazine:SURVIVAL.pistol.magazine,
+ /** Spare rounds carried at the start of a life, and the most spare rounds you can carry. */
+ startReserve:SURVIVAL.pistol.startReserve,
+ reserveMax:SURVIVAL.pistol.reserveMax,
  /** Semi-automatic: the fastest one trigger pull can follow the last (s). */
  fireInterval:.18,
  /** Magazine change (s). */
@@ -34,9 +36,9 @@ export const PISTOL={
  /** Effective range in air, and in water (m). */
  range:45,
  rangeUnderwater:1.6,
- /** Damage per hit. Guards have 100 hp: three body hits or one head hit. */
- bodyDamage:38,
- headDamage:100,
+ /** Close-range damage per hit (range falloff and helmets: `pistolDamage` in survival.ts). */
+ bodyDamage:SURVIVAL.pistol.bodyDamage,
+ headDamage:SURVIVAL.pistol.headDamage,
  /** View kick per shot (rad) and the share of it that recovers by itself. */
  recoilPitch:.032,
  recoilYaw:.008,

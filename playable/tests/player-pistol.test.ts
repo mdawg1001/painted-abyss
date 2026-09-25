@@ -8,6 +8,7 @@ import {
  Mission,isolateGuards,FLOOR_Y,WALK_EYE_Y,breathFootprint,
  GUARD_MAX_HP,GUARD_HORDE,GUNSHOT_HEARING,
 } from '../src/simulation';
+import {SURVIVAL} from '../src/survivalConfig';
 
 const CORRIDOR={x:breathFootprint().cx,y:WALK_EYE_Y,z:16};
 const clear=()=>true;
@@ -60,48 +61,49 @@ test('takeDamage: generic health rule, no overkill, dead stay dead',()=>{
 
 function armed(){
  const m=new Mission(true);isolateGuards(m,0);m.breathWaterY=FLOOR_Y-.1;m.rand=()=>.99;
- m.inventory[0]='gun';m.selected=0;
+ m.inventory=['gun','knife','flare',null,null];m.selected=0;
  const g=m.guard;g.position={...CORRIDOR};g.heading=Math.PI;g.state='patrol';g.pause=99;
  m.position={x:CORRIDOR.x,y:WALK_EYE_Y,z:CORRIDOR.z+8};
  return m;
 }
 const at=(m:Mission,y:number)=>{const e={...m.position};return{eye:e,dir:{x:m.guard.position.x-e.x,y:y-e.y,z:m.guard.position.z-e.z}};};
 
-test('three body hits drop a guard; every hit staggers and alerts him',()=>{
+test('standard guard: two close head shots or five body hits; every hit staggers and alerts him',()=>{
  const m=armed();const g=m.guard;
+ assert.equal(g.role,'assault');assert.equal(g.maxHp,SURVIVAL.roles.assault.hp);
+ const wait=()=>{for(let i=0;i<12;i++)m.update(1/60,false);}; // > one fire interval
  const {eye,dir}=at(m,FLOOR_Y+1.0);
  assert.equal(m.firePistol(eye,dir),'fired');
- assert.equal(g.hp,GUARD_MAX_HP-PISTOL.bodyDamage);
+ assert.equal(g.hp,g.maxHp-SURVIVAL.pistol.bodyDamage,'8 m: full body damage, one event');
  assert.equal(g.state,'chase','a hit tells him where you are');
- assert.ok(g.flinch>0&&g.shootCool>=GUARD_HORDE.flinch,'a flinch, not a stop');
+ assert.ok(g.flinch>0&&g.shootCool>=SURVIVAL.hitFlinch,'staggered');
  assert.equal(m.firePistol(eye,dir),'cooldown','semi-auto');
- const wait=()=>{for(let i=0;i<12;i++)m.update(1/60,false);}; // > one fire interval
- wait();
- assert.equal(m.firePistol(eye,at(m,FLOOR_Y+1.0).dir),'fired');
- wait();
- assert.equal(m.firePistol(eye,at(m,FLOOR_Y+1.0).dir),'fired');
- assert.equal(g.hp,0);
+ let bodyHits=1;
+ while(g.hp>0&&bodyHits<10){wait();const a=at(m,FLOOR_Y+1.0);m.firePistol(a.eye,a.dir);bodyHits++;}
+ assert.equal(bodyHits,5,'five body hits at close range');
  assert.equal(m.combatCue,'pistol-kill');
  const shotsBefore=g.shots;
  for(let i=0;i<120;i++)m.update(1/60,false);
  assert.equal(g.shots,shotsBefore,'a downed guard never fires');
- assert.equal(m.health,100);
 });
 
-test('one head shot drops him; he drops his pistol and E strips its rounds',()=>{
+test('two head shots drop him up close; his pistol drops and E strips its rounds',()=>{
  const m=armed();const g=m.guard;
- const {eye,dir}=at(m,FLOOR_Y+1.64);
  const ammoLeft=g.ammo;
- m.firePistol(eye,dir);
- assert.equal(g.hp,0);assert.equal(m.lastPistolHit?.headshot,true);
+ let a=at(m,FLOOR_Y+1.64);m.firePistol(a.eye,a.dir);
+ assert.ok(g.hp>0,'one head shot is not enough');assert.equal(m.lastPistolHit?.headshot,true);
+ for(let i=0;i<12;i++)m.update(1/60,false);
+ a=at(m,FLOOR_Y+1.64);m.firePistol(a.eye,a.dir);
+ assert.equal(g.hp,0,'the second one is');
  assert.equal(g.gun,false,'the gun left his hand');
  const dropped=m.pickups.find(p=>p.item==='gun'&&p.rounds!==undefined);
  assert.ok(dropped,'his pistol lies on the floor');
- assert.equal(dropped!.rounds,ammoLeft);
+ const rounds=dropped!.rounds!;
+ assert.ok(rounds<=ammoLeft);
  const before=m.pistol.reserve;
  m.position={x:dropped!.position.x,y:WALK_EYE_Y,z:dropped!.position.z+.4};
  m.interact();
- assert.equal(m.pistol.reserve,before+ammoLeft,'one E takes his rounds');
+ assert.equal(m.pistol.reserve,before+rounds,'one E takes his rounds');
  assert.equal(m.inventory.filter(i=>i==='gun').length,1,'no second pistol in your slots');
  assert.ok(!m.pickups.includes(dropped!));
 });
@@ -126,7 +128,8 @@ test('the shot is loud: patrolling guards in earshot come looking; the empty gun
  const m=new Mission(true);isolateGuards(m,-1);m.breathWaterY=FLOOR_Y-.1;
  m.inventory[0]='gun';m.selected=0;
  const near=m.guards[1],far=m.guards[2];
- near.position={x:CORRIDOR.x,y:WALK_EYE_Y,z:CORRIDOR.z-GUNSHOT_HEARING*.5};near.hp=100;near.state='patrol';
+ near.active=true;near.hp=near.maxHp;
+ near.position={x:CORRIDOR.x,y:WALK_EYE_Y,z:CORRIDOR.z-SURVIVAL.gunshotHearing*.5};near.state='patrol';
  far.position={x:500,y:WALK_EYE_Y,z:500};far.state='patrol';
  m.position={...CORRIDOR};
  m.pistol.mag=1;m.pistol.reserve=8;
@@ -141,13 +144,13 @@ test('underwater the round dies within a couple of metres',()=>{
  const m=armed();m.breathWaterY=WALK_EYE_Y+1; // flooded above the eye
  const {eye,dir}=at(m,FLOOR_Y+1.0);
  m.firePistol(eye,dir);
- assert.equal(m.guard.hp,GUARD_MAX_HP,'8 m of water stops it');
+ assert.equal(m.guard.hp,m.guard.maxHp,'8 m of water stops it');
 });
 
 test('R with the pistol selected changes the magazine; nothing fires without it in hand',()=>{
  const m=armed();m.pistol.mag=3;m.pistol.reserve=10;
  m.use();
  assert.ok(m.pistol.reload>0);
- m.selected=1;
+ m.selected=2;
  assert.equal(m.firePistol(m.position,{x:0,y:0,z:-1}),'blocked');
 });

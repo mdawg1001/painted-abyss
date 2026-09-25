@@ -1,13 +1,16 @@
 import * as THREE from 'three';
 import { applyGuardCombatPose, updateGuardMoveFrame } from './guardCombatPose';
 import { PISTOL } from './playerPistol';
+import { SurvivalFx } from './survivalFx';
+import { survivalDoors } from './survival';
+import { makeGuardCombatState } from './guardCombatPose';
 import { ShaderChunk } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
-import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playSquadCall, playValveStroke, playValveSeat } from './diveAudio';
+import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playSquadCall, pannedBus, playDoorBang, playSmokePop, playGrunt, playMeleeHit, playFleshHit, playSupply, playValveStroke, playValveSeat } from './diveAudio';
 import { Gait, wadingDrag, runWeight, WALK_CAMERA_MOTION, type GaitEvent } from './gait';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
@@ -204,6 +207,10 @@ export class CaveWorld extends OceanWorld {
  guardJolt:number[]=[];guardFall:number[]=[];pistolHitSeen=0;
  /** Per guard: the red "!" detection notice over his helmet. */
  guardNotice:THREE.Sprite[]=[];squadAlertSeen=-1;
+ /** Survival firefight visuals (cover, doors, caches, smoke, sparks, light pool). */
+ fx!:SurvivalFx;
+ guardLifeSeen:number[]=[];guardWindupSeen:number[]=[];guardStrikeSeen:number[]=[];
+ cueSeen=-1;cloudSeen=-1;impactSeen=-1;hitFxSeen=-1;knifeFxSeen=-1;supplySeen=-1;
  guardFlash!:THREE.PointLight;guardFlashGlow!:THREE.Sprite;guardFlashT=0;guardRecoil:number[]=[];guardShotsSeen:number[]=[];
  private _aimTarget=new THREE.Vector3();private _muzzle=new THREE.Vector3();private _shotOrigin=new THREE.Vector3();private _aimDir=new THREE.Vector3();
  /** World crates / suitcase (Poly Haven) keyed by mission chest id. */
@@ -324,6 +331,8 @@ export class CaveWorld extends OceanWorld {
   this.guardFlashGlow.scale.setScalar(.55);this.guardFlashGlow.visible=false;
   this.scene.add(this.guardFlash,this.guardFlashGlow);
   this.guardJolt=this.sovietGuards.map(()=>0);this.guardFall=this.sovietGuards.map(()=>0);
+  this.fx=new SurvivalFx(this.scene,this.sovietGuards,flashTex,o=>this.adoptPointCull(o,this.worldBox(o),true,true));
+  this.guardLifeSeen=this.sovietGuards.map(()=>-1);this.guardWindupSeen=this.sovietGuards.map(()=>0);this.guardStrikeSeen=this.sovietGuards.map(()=>-1);
   // Detection notice: a hard red "!" that pops over a guard's helmet when he is called in.
   const noticeTex=(()=>{const c=document.createElement('canvas');c.width=64;c.height=128;const g=c.getContext('2d')!;
    g.font='bold 112px sans-serif';g.textAlign='center';g.textBaseline='middle';
@@ -952,6 +961,7 @@ export class CaveWorld extends OceanWorld {
   this.endValve();
   this.mission.respawnAtHatch();
   this.mission.mapOpen=false;
+  this.resetSurvivalFx();
   this.position.copy(this.mission.position);
   this.velocity.set(0,0,0);
   this.yaw=this.targetYaw=0;
@@ -966,6 +976,65 @@ export class CaveWorld extends OceanWorld {
   this.backgroundMusic?.setDry(true);
  }
  /** Place each Soviet guard mesh on the bunker floor from sim state. */
+ /** Restart / respawn: clear smoke, sparks, door swings and the seen-event markers. */
+ resetSurvivalFx(){
+  this.fx?.reset();
+  this.cueSeen=this.mission.elapsed;this.cloudSeen=-1;this.impactSeen=-1;this.hitFxSeen=-1;this.knifeFxSeen=-1;this.supplySeen=-1;
+  this.guardLifeSeen=this.sovietGuards.map(()=>-1);
+ }
+ /** Stereo position of a world point relative to where you look: −1 left … +1 right. */
+ panFor(p:{x:number;z:number}){
+  const dx=p.x-this.position.x,dz=p.z-this.position.z,l=Math.hypot(dx,dz)||1;
+  return Math.max(-1,Math.min(1,(dx*this.right.x+dz*this.right.z)/l));
+ }
+ /** Per-frame survival presentation: cues, smoke, impacts, supplies, effects. */
+ syncSurvival(dt:number){
+  const m=this.mission;
+  // Keep the sim told where you look (the director never sends a door close behind you).
+  this.camera.getWorldDirection(this._aimDir);
+  m.facing=Math.atan2(this._aimDir.x,this._aimDir.z);
+  const a=this.audible(),ctx=this.audioContext,master=this.master;
+  // Door warnings: lamp, swing, bang and a shout from that direction.
+  for(const c of m.director.cues){
+   if(c.at<=this.cueSeen)continue;
+   if(c.kind==='door'){
+    const i=survivalDoors().findIndex(d=>d.door.x===c.x&&d.door.z===c.z);
+    if(i>=0)this.fx.cueDoor(i,c.at);
+    if(a){
+     const far=Math.hypot(c.x-this.position.x,c.z-this.position.z);
+     const bus=pannedBus(ctx!,master!,this.panFor(c),Math.max(.25,1-far/60),3);
+     playDoorBang(ctx!,bus);
+     setTimeout(()=>{if(this.audible())playSquadCall(ctx!,bus,far);},350);
+    }
+   }
+  }
+  const lastCue=m.director.cues.reduce((t,c)=>Math.max(t,c.at),this.cueSeen);
+  this.cueSeen=lastCue;
+  // New smoke clouds pop and hiss where they land.
+  for(const c of m.clouds){
+   if(c.id<=this.cloudSeen)continue;
+   this.cloudSeen=c.id;
+   if(a)playSmokePop(ctx!,pannedBus(ctx!,master!,this.panFor(c),Math.max(.3,1-Math.hypot(c.x-this.position.x,c.z-this.position.z)/40),3));
+  }
+  // Your rounds: sparks and dust on rock, blood and a thwack on a guard.
+  const imp=m.lastImpact;
+  if(imp&&imp.shot!==this.impactSeen){this.impactSeen=imp.shot;this.fx.burst(imp.point,'spark',8);this.fx.burst(imp.point,'dust',6);}
+  const hit=m.lastPistolHit;
+  if(hit&&hit.shot!==this.hitFxSeen){
+   this.hitFxSeen=hit.shot;this.fx.burst(hit.point,'blood',hit.killed?16:9);
+   const g=m.guards[hit.guard];
+   if(a&&g)playFleshHit(ctx!,pannedBus(ctx!,master!,this.panFor(g.position),.9),hit.headshot&&g.role==='heavy');
+  }
+  const kh=m.lastKnifeHit;
+  if(kh&&kh.at!==this.knifeFxSeen){
+   this.knifeFxSeen=kh.at;const g=m.guards[kh.guard];
+   if(g)this.fx.burst({x:g.position.x,y:FLOOR_Y+1.3,z:g.position.z},'blood',kh.killed?18:10);
+  }
+  const sup=m.supplyTaken;
+  if(sup&&sup.at!==this.supplySeen){this.supplySeen=sup.at;if(a)playSupply(ctx!,master!,sup.kind);}
+  this.fx.syncCaches(m.caches,this.time,o=>this.adoptPointCull(o,this.worldBox(o),true,true));
+  this.fx.update(dt,this.time,m.elapsed,this.camera,this.sovietGuards,m.guards,m.clouds,m.grenades);
+ }
  syncSovietGuard(dt:number){
   if(!this.sovietGuards.length)return;
   // The squad calling each other in: one shout from the nearest caller.
@@ -981,6 +1050,12 @@ export class CaveWorld extends OceanWorld {
   for(let i=0;i<this.sovietGuards.length;i++){
    const visual=this.sovietGuards[i];
    const g=this.mission.guards[i];if(!visual||!g)continue;
+   // A fresh life in this slot (reinforcement or restart): clear his fall and pose state.
+   if(g.life!==this.guardLifeSeen[i]){
+    this.guardLifeSeen[i]=g.life;this.guardFall[i]=0;this.guardRecoil[i]=0;this.guardJolt[i]=0;
+    this.guardShotsSeen[i]=g.shots;this.guardStrikeSeen[i]=g.strikeAt;visual.pose=makeGuardCombatState(i);
+   }
+   if(!g.active){visual.root.visible=false;continue;}
    visual.root.position.set(g.position.x,FLOOR_Y,g.position.z);
    // Shot down: he topples backward from the boots (gravity: slow start, fast finish),
    // with a slight twist so a squad of bodies does not fall identically.
@@ -1013,7 +1088,8 @@ export class CaveWorld extends OceanWorld {
      this.guardFlashT=1;this.guardRecoil[i]=1;flashFrom=i;
      const ctx=this.audioContext,master=this.master;
      if(this.sound&&ctx&&master&&ctx.state==='running'){
-      playGunshot(ctx,master,Math.hypot(g.position.x-this.position.x,g.position.z-this.position.z));
+      const bus=pannedBus(ctx,master,this.panFor(g.position),1,2.5);
+      playGunshot(ctx,bus,Math.hypot(g.position.x-this.position.x,g.position.z-this.position.z));
       if(!g.lastShotHit)playRicochet(ctx,master);
      }
      this.shakeAmp=Math.max(this.shakeAmp,g.lastShotHit?.5:.12);
@@ -1025,12 +1101,31 @@ export class CaveWorld extends OceanWorld {
    if(hit&&hit.guard===i&&hit.shot!==this.pistolHitSeen){this.pistolHitSeen=hit.shot;this.guardJolt[i]=1;}
    this.guardJolt[i]=Math.max(0,(this.guardJolt[i]??0)-dt*4);
    const kick=Math.max(this.guardRecoil[i]??0,this.guardJolt[i]??0);
+   // Close attack: grunt at the wind-up, thud or swish at the blow.
+   const winding=g.windup>0;
+   if(winding&&!this.guardWindupSeen[i]&&this.audible())playGrunt(this.audioContext!,pannedBus(this.audioContext!,this.master!,this.panFor(g.position),1));
+   this.guardWindupSeen[i]=winding?1:0;
+   if(g.strikeAt!==this.guardStrikeSeen[i]){
+    this.guardStrikeSeen[i]=g.strikeAt;
+    const landed=this.mission.lastStrike?.at===g.strikeAt&&this.mission.lastStrike.landed;
+    if(this.audible())playMeleeHit(this.audioContext!,pannedBus(this.audioContext!,this.master!,this.panFor(g.position),1),!!landed);
+    if(landed)this.shakeAmp=Math.max(this.shakeAmp,.7);
+   }
+   const strikeAge=this.mission.elapsed-g.strikeAt;
    if(visual.rig&&visual.loco){
     applyGuardCombatPose(visual.rig,visual.pose,visual.gun,{
      target:this._aimTarget,aim:g.gun?g.aim:0,engaged:g.hp>0&&g.state!=='patrol',
      recoil:kick,speed:g.speed,dt,down:g.hp>0?0:1,
+     melee:winding&&g.windupTotal>0?1-g.windup/g.windupTotal:0,
+     strike:g.strikeAt>=0&&strikeAge>=0&&strikeAge<.3?1-strikeAge/.3:0,
     });
    }else applyGuardAim(visual,this._aimTarget,g.aim,kick);
+   let muzzle:THREE.Vector3|null=null;
+   if(g.gun&&this.guardShotsSeen[i]===g.shots&&flashFrom===i){
+    muzzle=visual.gun.getWorldPosition(new THREE.Vector3());
+    muzzle.addScaledVector(this._aimTarget.clone().sub(muzzle).normalize(),.28);
+   }
+   this.fx.syncGuard(i,visual,g,this.mission.elapsed,flashFrom===i,muzzle,dt);
    if(flashFrom===i||(flashFrom<0&&i===0)){
     visual.gun.getWorldPosition(this._muzzle);
     this._muzzle.addScaledVector(this._aimTarget.clone().sub(this._muzzle).normalize(),.28);
@@ -1039,7 +1134,8 @@ export class CaveWorld extends OceanWorld {
   }
   const f=this.guardFlashT;
   this.guardFlash.intensity=f>0?40*f*f:0;
-  this.guardFlashGlow.visible=f>0;
+  // Each guard now draws his own muzzle glow (survivalFx); the shared card stays hidden.
+  this.guardFlashGlow.visible=false;
   (this.guardFlashGlow.material as THREE.SpriteMaterial).opacity=f;
   this.guardFlashGlow.scale.setScalar(.18+.24*f);
   this.guardFlashT=Math.max(0,f-dt/.06);
@@ -1518,6 +1614,7 @@ export class CaveWorld extends OceanWorld {
    if(this.mission.mapOpen){this.publish();return;}
    if(e.code==='KeyE'){if(this.mission.nearValve())this.beginValve();else this.mission.interact();}
    if(e.code==='KeyF')this.mission.torch=!this.mission.torch;
+   if(e.code==='KeyT'){this.camera.getWorldDirection(this._aimDir);this.mission.throwSmoke(this._aimDir.x,this._aimDir.z);}
    if(e.code==='KeyR')this.mission.use();if(e.code==='KeyG')this.mission.drop();if(e.code==='KeyM')this.setSound(!this.sound);
    this.publish();
   }) as EventListener);
@@ -1831,6 +1928,11 @@ export class CaveWorld extends OceanWorld {
    if(audible)playStabSound(ctx!,master!,false);
    return;
   }
+  if(cue==='stab-guard'||cue==='stab-guard-kill'){
+   if(audible)playStabSound(ctx!,master!,true);
+   this.shakeAmp=Math.max(this.shakeAmp,cue==='stab-guard-kill'?.45:.3);
+   return;
+  }
   if(cue==='stab-hit'||cue==='break'||cue==='kill'){
    if(audible)playStabSound(ctx!,master!,true);
    this.shakeAmp=Math.max(this.shakeAmp,cue==='kill'?.55:.32);
@@ -1882,6 +1984,7 @@ export class CaveWorld extends OceanWorld {
  reset(){
   this.endValve();
   this.backgroundMusic?.reset();this.mission=new Mission(readInventoryTipsSeen());
+  this.resetSurvivalFx();
   this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();
   this.onFoot=true;this.wasOnFoot=true;this.gait.reset();
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
@@ -2148,6 +2251,7 @@ export class CaveWorld extends OceanWorld {
    this.guardian.tail.rotation.y=Math.sin(this.time*3*thrash)*.22*thrash;
   }
   this.syncSovietGuard(dt);
+  if(this.fx)this.syncSurvival(dt);
   this.syncBreathProps();
   this.syncPickups();this.syncChests(dt);this.decoyMesh.visible=!!this.mission.decoy;if(this.mission.decoy)this.decoyMesh.position.copy(this.mission.decoy.position);
   if(this.time-this.lastSent>.05){this.lastSent=this.time;this.publish();}

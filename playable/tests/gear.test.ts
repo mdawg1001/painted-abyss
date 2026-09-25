@@ -5,6 +5,7 @@ import {
  breathZone,breathHatchSpawn,inBreathCorridor,corridorGearPickups,
  occupiesFpsHand,torchShouldShine,SPARE_BOTTLE_LITRES,BREATH_RESPAWN_LITRES,
  WALK_EYE_Y,nextBreathTankIndex,isolateGuards,
+PREDATOR_SWIM_DEPTH,FLOOR_Y,
 } from '../src/simulation';
 
 test('gun, spare bottle, and coat lie in the corridor and not at the hatch',()=>{
@@ -20,14 +21,14 @@ test('gun, spare bottle, and coat lie in the corridor and not at the hatch',()=>
  }
  const m=new Mission(true);
  assert.equal(m.nextId,6);
- assert.deepEqual(m.inventory,['knife','wood','flare','air','bandage']);
+ assert.deepEqual(m.inventory,['knife','gun','flare','bandage','air'],'the survival kit: knife, pistol, flare, sealant, pony');
  for(const item of ['gun','bottle','coat'] as const){
   assert.equal(m.pickups.filter(p=>p.item===item).length,1);
  }
  assert.equal(m.pickups[0].item,'relic');
 });
 
-test('death drops whatever is carried at the corpse and wakes with empty hands',()=>{
+test('death drops whatever is carried at the corpse; each life starts with the pistol and knife',()=>{
  const m=new Mission(true);
  const worldGear=m.pickups.filter(p=>p.item==='gun'||p.item==='bottle'||p.item==='coat').map(p=>p.id);
  const corpse={x:-2,y:WALK_EYE_Y,z:16};
@@ -39,8 +40,8 @@ test('death drops whatever is carried at the corpse and wakes with empty hands',
  const tank=m.breathTankIndex;
  const before=m.pickups.length;
  m.respawnAtHatch();
- assert.deepEqual(m.inventory,[null,null,null,null,null]);
- assert.equal(m.selected,0);
+ assert.deepEqual(m.inventory,['knife','gun',null,null,null]);
+ assert.equal(m.selected,1,'pistol in hand');
  assert.equal(m.pending,null);
  assert.equal(m.outcome,'playing');
  assert.equal(m.position.x,breathHatchSpawn().x);
@@ -63,7 +64,7 @@ test('death drops whatever is carried at the corpse and wakes with empty hands',
  const n=empty.pickups.length;
  empty.respawnAtHatch();
  assert.equal(empty.pickups.length,n);
- assert.deepEqual(empty.inventory,[null,null,null,null,null]);
+ assert.deepEqual(empty.inventory,['knife','gun',null,null,null]);
 });
 
 test('spare bottle fills the main cylinder and is consumed; gun and coat do not act',()=>{
@@ -101,7 +102,7 @@ test('spare bottle fills the main cylinder and is consumed; gun and coat do not 
 });
 
 test('the coat does not reduce a guardian bite',()=>{
- const bare=new Mission(true);
+ const bare=new Mission(true);bare.breathWaterY=FLOOR_Y+PREDATOR_SWIM_DEPTH+.3;
  isolateGuards(bare);
  bare.position=world(16,19);
  bare.predator.position={...bare.position};
@@ -109,7 +110,7 @@ test('the coat does not reduce a guardian bite',()=>{
  bare.predator.bite=0;
  bare.update(.05);
  assert.equal(bare.health,75);
- const coated=new Mission(true);
+ const coated=new Mission(true);coated.breathWaterY=FLOOR_Y+PREDATOR_SWIM_DEPTH+.3;
  isolateGuards(coated);
  coated.inventory=['coat','knife','wood','flare','air'];
  coated.selected=0;

@@ -1,3 +1,4 @@
+import {SURVIVAL} from '../src/survivalConfig';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -147,7 +148,7 @@ test('chase: squares up, closes in one straight line, stops at arm\'s length wit
  m.guard.lastKnown={...m.position};
  const start={...m.guard.position};
  const dt=1/60;
- const s=track(m,60*8,dt,mm=>{mm.guard.meleeCool=99;mm.guard.shootCool=99;mm.health=100;mm.guard.state='chase';mm.guard.lastKnown={...mm.position};});
+ const s=track(m,60*10,dt,mm=>{mm.guard.meleeCool=99;mm.guard.shootCool=99;mm.health=100;mm.guard.state='chase';mm.guard.lastKnown={...mm.position};});
  assertFacingTravel(s,'chase');
  assertTurnRate(s,dt,GUARD_STEER_RUN.turnRateStanding,'chase');
  // No translation until he has turned most of the way round.
@@ -166,7 +167,7 @@ test('chase: squares up, closes in one straight line, stops at arm\'s length wit
  const tail=s.slice(-120);
  const drift=Math.max(...tail.map(p=>Math.hypot(p.x-end.x,p.z-end.z)));
  assert.ok(drift<1e-6,'holds position at arm\'s length');
- assert.ok(Math.max(...s.map(p=>p.speed))>GUARD_SPEED.chase-.05,'reaches running pace');
+ assert.ok(Math.max(...s.map(p=>p.speed))>SURVIVAL.roles.assault.speed-.05,'reaches his running pace');
 });
 
 test('alert halts and turns to the noise; search walks there and scans without moving',()=>{
