@@ -51,6 +51,7 @@ test('the leak raises the water only while the valve passes flow',()=>{
  assert.equal(riseBreathWater(1,10),1+BREATH_RISE_MPS*10);
  assert.equal(riseBreathWater(1,10,0),1);
  const m=new Mission(true);
+ m.floodTriggered=true; // Existing hydraulic tests exercise the activated trap.
  const w0=m.breathWaterY;
  m.update(.05);
  const openRise=m.breathWaterY-w0;
@@ -90,6 +91,7 @@ test('drain speed is independent of frame rate',()=>{
 
 test('re-opening mid-drain stops the drain and refills from the current level',()=>{
  const m=new Mission(true);
+ m.floodTriggered=true; // Existing hydraulic tests exercise the activated trap.
  m.breathWaterY=3;
  m.turnValve(VALVE_CLOSE_RAD);
  for(let i=0;i<200;i++)m.update(.05);
@@ -109,6 +111,7 @@ test('re-opening mid-drain stops the drain and refills from the current level',(
 
 test('an emptied bunker announces itself once',()=>{
  const m=new Mission(true);
+ m.floodTriggered=true; // Existing hydraulic tests exercise the activated trap.
  m.breathWaterY=BREATH_EMPTY_Y+.001;
  m.turnValve(VALVE_CLOSE_RAD);
  for(let i=0;i<100;i++)m.update(.05);
@@ -118,6 +121,7 @@ test('an emptied bunker announces itself once',()=>{
 
 test('the prompt appears only at the wheel',()=>{
  const m=new Mission(true);
+ m.floodTriggered=true; // Existing hydraulic tests exercise the activated trap.
  assert.equal(m.nearValve(),false);
  m.position={x:VALVE_STAND.x,y:WALK_EYE_Y,z:VALVE_STAND.z};
  assert.ok(m.nearValve());

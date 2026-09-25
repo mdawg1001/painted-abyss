@@ -28,6 +28,7 @@ test('breath corridor is attached to the cave and does not replace it',()=>{
 
 test('first life is dry enough to walk and water rises only as corridor state',()=>{
  const m=new Mission(true);
+ m.floodTriggered=true; // Existing hydraulic tests exercise the activated trap.
  isolateGuards(m);
  assert.equal(m.breathWaterY,BREATH_WATER_START);
  assert.equal(BREATH_WATER_FILL_START,.05);
@@ -60,6 +61,7 @@ test('wall tank mounts stay in the middle and move on death',()=>{
   assert.notEqual(breathZone(t.col,t.row),'far');
  }
  const m=new Mission(true);
+ m.floodTriggered=true; // Existing hydraulic tests exercise the activated trap.
  isolateGuards(m);
  const startIndex=m.breathTankIndex;
  const waterMark=2.4;
@@ -105,6 +107,7 @@ test('every new life spawns at the hatch, never the far end or the old random se
  const farZ=world(BREATH_COLS[0],BREATH_ROW_FAR).z;
  for(let n=0;n<12;n++){
   const m=new Mission(true);
+ m.floodTriggered=true; // Existing hydraulic tests exercise the activated trap.
   assert.equal(m.position.x,hatch.x);
   assert.equal(m.position.z,hatch.z);
   assert.ok(Math.abs(m.position.z-farZ)>20);
@@ -120,6 +123,7 @@ test('every new life spawns at the hatch, never the far end or the old random se
 
 test('dry corridor walk: free air, zero depth, no tank burn; flood forces swim',()=>{
  const m=new Mission(true);
+ m.floodTriggered=true; // Existing hydraulic tests exercise the activated trap.
  isolateGuards(m);
  assert.ok(canWalkBreath(m.position,m.breathWaterY));
  assert.ok(breathingFreeAir(m.position,m.breathWaterY));
@@ -164,6 +168,7 @@ test('walk sprint uses WALK_SPRINT and walk cruise uses WALK_SPEED',()=>{
 
 test('the leak floods the whole bunker from nearly dry: no cave water at spawn',()=>{
  const m=new Mission(true);
+ m.floodTriggered=true; // Existing hydraulic tests exercise the activated trap.
  isolateGuards(m);
  // Spawn: water sits below the floor everywhere, so every head position in the cave is in free air.
  assert.ok(m.breathWaterY<FLOOR_Y,'bunker starts dry');
