@@ -36,6 +36,7 @@ test('hitscan: centre ray, nearest target wins, head vs body, walls block',()=>{
 });
 
 test('semi-automatic: one round per pull, cooldown, magazine, reload from reserve',()=>{
+ assert.ok(PISTOL.reloadSeconds<=1.3,'reload is fast enough to stay in the fight');
  const p=makePistol(8,10);
  assert.equal(canFire(p),'ready');
  spendRound(p);
@@ -46,6 +47,7 @@ test('semi-automatic: one round per pull, cooldown, magazine, reload from reserv
  assert.equal(p.mag,0);assert.equal(canFire(p),'empty');
  assert.ok(startReload(p));
  assert.equal(canFire(p),'reloading');
+ assert.ok(p.reload>1.0&&p.reload<=1.3,'reload timer matches the faster magazine change');
  tickPistol(p,PISTOL.reloadSeconds);
  assert.equal(p.mag,8);assert.equal(p.reserve,2);
  // Adjustable capacity.
