@@ -27,11 +27,11 @@ export const SURVIVAL={
 
  // ── Guard durability by role (standard guard = assault) ────────────────────────
  roles:{
-  assault:{hp:150,headMult:1,speed:1.9,combatSpeed:1.25,range:9,burst:[3,3] as [number,number],burstGap:.16,restMin:1.0,restMax:1.7,accuracy:.6,damage:12,reaction:[.5,.85] as [number,number],armed:true},
-  flanker:{hp:130,headMult:1,speed:2.5,combatSpeed:1.6,range:7,burst:[2,3] as [number,number],burstGap:.15,restMin:.9,restMax:1.5,accuracy:.56,damage:12,reaction:[.45,.8] as [number,number],armed:true},
-  rusher:{hp:110,headMult:1,speed:3.15,combatSpeed:3.15,range:0,burst:[0,0] as [number,number],burstGap:1,restMin:1,restMax:1,accuracy:0,damage:0,reaction:[.2,.35] as [number,number],armed:false},
+  assault:{hp:150,headMult:1,speed:2.19,combatSpeed:1.44,range:9,burst:[3,3] as [number,number],burstGap:.16,restMin:1.0,restMax:1.7,accuracy:.6,damage:12,reaction:[.5,.85] as [number,number],armed:true},
+  flanker:{hp:130,headMult:1,speed:2.88,combatSpeed:1.84,range:7,burst:[2,3] as [number,number],burstGap:.15,restMin:.9,restMax:1.5,accuracy:.56,damage:12,reaction:[.45,.8] as [number,number],armed:true},
+  rusher:{hp:110,headMult:1,speed:3.62,combatSpeed:3.62,range:0,burst:[0,0] as [number,number],burstGap:1,restMin:1,restMax:1,accuracy:0,damage:0,reaction:[.2,.35] as [number,number],armed:false},
   /** Heavy: helmet and flak — headshots do 60 %; long suppressive bursts, slow walk. */
-  heavy:{hp:280,headMult:.6,speed:1.3,combatSpeed:1.05,range:11,burst:[5,7] as [number,number],burstGap:.13,restMin:1.4,restMax:2.2,accuracy:.5,damage:18,reaction:[.7,1.05] as [number,number],armed:true},
+  heavy:{hp:280,headMult:.6,speed:1.5,combatSpeed:1.21,range:11,burst:[5,7] as [number,number],burstGap:.13,restMin:1.4,restMax:2.2,accuracy:.5,damage:18,reaction:[.7,1.05] as [number,number],armed:true},
  },
 
  // ── Guard fire discipline (why a crowd stays survivable) ───────────────────────
