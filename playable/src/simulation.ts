@@ -74,6 +74,19 @@ export const BREATH_WATER_FILL_START=.05;
 export const BREATH_WATER_START=BREATH_WALK_WATER*BREATH_WATER_FILL_START;
 /** Head clears the corridor waterline — free air, no tank drain. */
 export const BREATH_AIR_MARGIN=.12;
+/** "Empty" bunker: the waterline a dry floor starts at. Draining never goes below it. */
+export const BREATH_EMPTY_Y=BREATH_WATER_START;
+/**
+ * Seconds a completely full bunker (empty line → SURFACE_Y) takes to drain once the
+ * leak valve is shut. Tune this to make the drain faster or slower.
+ */
+export const BREATH_DRAIN_FULL_SECONDS=420;
+/**
+ * Gravity drain through the floor sump follows Torricelli: outflow ∝ √head, so
+ * dh/dt = −k·√h. A full column h₀ empties in T = 2√h₀ / k, which fixes k from the
+ * configured time. Deep water falls fastest; the last few centimetres trickle.
+ */
+export const BREATH_DRAIN_K=2*Math.sqrt(SURFACE_Y-BREATH_EMPTY_Y)/BREATH_DRAIN_FULL_SECONDS;
 /** Phase 3 Soviet guard — melee reach on dry corridor floor. */
 export const GUARD_MELEE_RANGE=1.85;
 export const GUARD_MELEE_DAMAGE=22;
@@ -491,6 +504,27 @@ export function floodColumnY(p:Point,waterY:number){
 }
 /** `flow` is the fraction of full leak flow still getting past the valve (1 = open, 0 = sealed). */
 export function riseBreathWater(waterY:number,dt:number,flow=1){return Math.min(SURFACE_Y,waterY+BREATH_RISE_MPS*Math.max(0,flow)*Math.max(0,dt));}
+/**
+ * Sump drain for `dt` seconds. Solves dh/dt = −k·√h exactly (√h falls linearly,
+ * by k·dt/2), so one 1 s step lands where sixty 1/60 s steps do: the drain speed
+ * does not depend on frame rate. Never drops below the empty line.
+ */
+export function drainBreathWater(waterY:number,dt:number,k=BREATH_DRAIN_K){
+ const head=waterY-BREATH_EMPTY_Y;
+ if(head<=0)return waterY;
+ const root=Math.sqrt(head)-k*Math.max(0,dt)/2;
+ return root>0?BREATH_EMPTY_Y+root*root:BREATH_EMPTY_Y;
+}
+/**
+ * One tick of the bunker flood. While any water gets past the valve the leak fills
+ * the bunker (at the flow fraction the gate still lets through); the instant the
+ * gate is seated the rise stops and the sump drains it. Re-opening the valve mid-drain
+ * stops the drain and resumes filling from the current level — the level is state,
+ * the valve only picks the direction.
+ */
+export function stepFloodLevel(waterY:number,dt:number,flow:number){
+ return flow>0?riseBreathWater(waterY,dt,flow):drainBreathWater(waterY,dt);
+}
 /** Open corridor cells only — the Soviet guard never enters the cave grid. */
 export function breathCell(col:number,row:number){return breathZone(col,row)!=='';}
 export type GuardWaypoint={x:number;z:number;
@@ -1098,13 +1132,34 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   const d=Math.hypot(this.position.x-VALVE_STAND.x,this.position.z-VALVE_STAND.z);
   return d<VALVE_REACH&&Math.abs(this.position.y-WHEEL_CENTRE.y)<1.4&&this.position.z>WHEEL_CENTRE.z;
  }
- nearValve(){return this.atValve()&&!this.valveSealed;}
- /** Wind the wheel toward closed. Returns the radians actually applied (stops at the seat). */
+ /** At the wheel with somewhere to turn it: any valve can be worked, open or shut. */
+ nearValve(){return this.atValve();}
+ /** Which way holding E turns the wheel from here: +1 winds it shut, −1 (only once seated) opens it again. */
+ get valveTurnDir():1|-1{return this.valveSealed?-1:1;}
+ /** Gate seated and water still above the empty line: the sump is pulling it down. */
+ get floodDraining(){return this.valveSealed&&this.breathWaterY>BREATH_EMPTY_Y+1e-4;}
+ get floodDrained(){return this.valveSealed&&this.breathWaterY<=BREATH_EMPTY_Y+1e-4;}
+ /** Said "the floor is clear" for the current seal (reset when the valve opens again). */
+ drainDone=false;
+ /**
+  * Turn the wheel by `rad` (positive = clockwise toward the seat, negative = open).
+  * Returns the radians actually applied (stops at the seat and at fully open).
+  * Seating and unseating are the pipe's OFF / ON events: they announce the drain or the new leak.
+  */
  turnValve(rad:number){
-  if(rad<=0||this.valveSealed)return 0;
+  if(rad===0)return 0;
+  const wasSealed=this.valveSealed;
   const before=this.valveTurned;
-  this.valveTurned=Math.min(VALVE_CLOSE_RAD,before+rad);
-  if(this.valveSealed&&before<VALVE_CLOSE_RAD)this.say('The gate seats with a clunk. The leak has stopped. The water stays where it is.','ok');
+  this.valveTurned=Math.max(0,Math.min(VALVE_CLOSE_RAD,before+rad));
+  if(!wasSealed&&this.valveSealed){
+   this.drainDone=false;
+   this.say(this.breathWaterY>BREATH_EMPTY_Y+1e-4
+    ?'The gate seats with a clunk. The leak has stopped, and the sump is gurgling: the water is going down.'
+    :'The gate seats with a clunk. The leak has stopped.','ok');
+  }else if(wasSealed&&!this.valveSealed){
+   this.drainDone=false;
+   this.say('The gate lifts off its seat. Water is forcing its way in again.','blocked');
+  }
   return this.valveTurned-before;
  }
  say(message:string,kind:FeedbackKind=''){this.notice=message;this.noticeUntil=this.elapsed+4.5;this.feedbackKind=kind;this.feedbackPulse++;}
@@ -1499,7 +1554,11 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;
   // Knife recovery is the diver's arm, not the guardian: it runs whatever state the guardian is in.
   this.predator.stabCool=Math.max(0,this.predator.stabCool-dt);
-  this.breathWaterY=riseBreathWater(this.breathWaterY,dt,this.leakFlow);
+  this.breathWaterY=stepFloodLevel(this.breathWaterY,dt,this.leakFlow);
+  if(this.floodDrained&&!this.drainDone){
+   this.drainDone=true;
+   this.say('The last of the water gurgles away down the sump. The floor is clear.','ok');
+  }
   const panic=this.elapsed<this.gasPanicUntil;
   const onFoot=canWalk(this.position,this.breathWaterY);
   // Dry corridor: no BCD — trim stays neutral until the flood forces a swim.
