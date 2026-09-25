@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.17.2
+# Painted Abyss — First Dive · 0.17.3
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -37,6 +37,10 @@ Cardboard cover is now clustered barricades: each footprint is **3–4 carton st
 ## Faster pistol reload (0.17.2)
 
 Player TT-33 magazine changes take **1.2 s** (was 1.9 s). Empty mags come back online quicker in a fight.
+
+## Pistol reload 0.9 s (0.17.3)
+
+Player TT-33 magazine change is **0.9 s** (was 1.2 s).
 
 ## Frame grade (0.14.3)
 

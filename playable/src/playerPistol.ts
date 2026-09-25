@@ -32,7 +32,7 @@ export const PISTOL={
  /** Semi-automatic: the fastest one trigger pull can follow the last (s). */
  fireInterval:.18,
  /** Magazine change (s). Snappy so empty mags do not stall a shootout. */
- reloadSeconds:1.2,
+ reloadSeconds:.9,
  /** Effective range in air, and in water (m). */
  range:45,
  rangeUnderwater:1.6,
