@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.11.1
+# Painted Abyss — First Dive · 0.12.0
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 

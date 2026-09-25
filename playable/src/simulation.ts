@@ -111,6 +111,21 @@ export const GUARD_HIT_FLINCH=.5;
 /** Guards on patrol within this range hear your shot and come looking (m). */
 export const GUNSHOT_HEARING=20;
 /**
+ * Squad alert. When you shoot a guard or hold your sights on him, every other guard within
+ * this radius of him (shout / radio range down concrete corridors) joins the fight (m).
+ */
+export const GUARD_SQUAD_RADIUS=18;
+/** How long the sights must rest on a guard before he (and his squad) react (s). */
+export const GUARD_TARGETED_DWELL=.4;
+/** A squad keeps hunting this long after the last time any of them saw you (s). */
+export const GUARD_TEAM_MEMORY=14;
+/** Squad members who already have a line on you fire within this long of the call, staggered (s). */
+export const GUARD_SQUAD_FIRST_SHOT=.15;
+export const GUARD_SQUAD_STAGGER=.2;
+/** How far round you a flanker aims to come in from (m, and angle off his straight approach). */
+export const GUARD_FLANK_DISTANCE=4;
+export const GUARD_FLANK_ANGLE=65*Math.PI/180;
+/**
  * Combat footwork while he shoots (AAA human-enemy practice: TLOU / F.E.A.R. / Halo
  * enemies keep repositioning between firing positions instead of freezing).
  * Speeds are a crouched combat walk, not a run; legs last about 1–2 s.
@@ -913,6 +928,14 @@ export type Guard={
  hp:number;maxHp:number;
  /** Seconds left staggering from a hit (no trigger pull while it runs). */
  flinch:number;
+ /** Squad hunt: mission time until which he works with the others to kill you (−1 = off). */
+ team:number;
+ /** Mission time his detection notice ("!") went up (−1 = none). */
+ noticeAt:number;
+ /** Which side of you he swings round to when he cannot see you (+1 / −1). */
+ flankSide:1|-1;
+ /** Clear line of sight to you on his last tick. */
+ sees:boolean;
 };
 export function makeGuard(outfit=0):Guard{
  const beat=guardBeat(outfit);
@@ -929,7 +952,7 @@ export function makeGuard(outfit=0):Guard{
   gun:true,bottle:false,coat:false,air:0,
   beatStart:beat.start,beatLen:beat.len,beatDir:1,outfit,
   vx:0,vz:0,strafeDir:outfit%2?1:-1,legTime:0,legSpeed:0,legRadial:0,
-  hp:GUARD_MAX_HP,maxHp:GUARD_MAX_HP,flinch:0,
+  hp:GUARD_MAX_HP,maxHp:GUARD_MAX_HP,flinch:0,team:-1,noticeAt:-1,flankSide:outfit%2?1:-1,sees:false,
  };
 }
 /**
@@ -989,6 +1012,10 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  /** Latest combat cue for audio / camera (cleared by the renderer when consumed). */
  combatCue:''|'stab-hit'|'stab-miss'|'flinch'|'break'|'kill'|'guard-shot'|'guard-miss'|'guard-melee'
   |'pistol-miss'|'pistol-hit'|'pistol-head'|'pistol-kill'|'pistol-dry'|'pistol-reload'='';
+ /** Mission time of the latest squad call-out (renderer: radio squelch + notice). */
+ squadAlertAt=-1;
+ /** How long your sights have rested on each guard (s). */
+ aimDwell:number[]=[];
  /** Your TT-33: magazine, spare rounds, cooldown and reload. */
  pistol:PistolState=makePistol();
  /** Last bullet that connected (renderer: hit marker, flinch, impact). */
@@ -1041,7 +1068,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    g.state='patrol';g.lastState='patrol';g.timer=0;g.lost=0;
    g.speed=0;g.turnRate=0;g.pause=0;g.arrived=false;g.scanBase=g.heading;g.scanTime=0;
    g.meleeCool=0;g.shootCool=0;g.ammo=GUARD_MAGAZINE;g.reload=0;g.firstShot=true;g.aim=0;
-   g.gun=true;g.hp=g.maxHp;g.flinch=0;g.vx=0;g.vz=0;
+   g.gun=true;g.hp=g.maxHp;g.flinch=0;g.vx=0;g.vz=0;g.team=-1;g.noticeAt=-1;g.sees=false;
   });
  }
  /** Tests / older call sites still say `spawnGuard()`. */
@@ -1324,11 +1351,91 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   return 'fired';
  }
  /**
+  * Sights on a guard: call every frame the pistol is up with the camera ray. Resting the
+  * crosshair on a guard who can see you for `GUARD_TARGETED_DWELL` sets off the squad.
+  */
+ aimAt(origin:Point,dir:Point,dt:number){
+  if(this.outcome!=='playing'||this.inventory[this.selected]!=='gun'){this.aimDwell.fill(0);return null;}
+  const targets=this.guards.map((g,id)=>({g,id})).filter(({g})=>g.hp>0)
+   .map(({g,id})=>({id,foot:{x:g.position.x,y:FLOOR_Y,z:g.position.z}}));
+  const hit=hitscan(origin,dir,targets,GUARD_GUN_RANGE+8,(a,b)=>visible(a,b));
+  for(let i=0;i<this.guards.length;i++){
+   if(!hit||hit.id!==i){this.aimDwell[i]=0;continue;}
+   this.aimDwell[i]=(this.aimDwell[i]??0)+dt;
+   const g=this.guards[i];
+   if(this.aimDwell[i]>=GUARD_TARGETED_DWELL&&g.team<=this.elapsed)this.squadAlert(g,'targeted');
+  }
+  return hit?hit.id:null;
+ }
+ /**
+  * Guard A has been shot or has a gun on him. He and every living guard within
+  * `GUARD_SQUAD_RADIUS` of him go on alert together: each shows his detection notice,
+  * gets your exact position, raises his pistol at once, and any of them with a line on you
+  * opens fire almost immediately (staggered so it lands as a volley, not one shot).
+  * From then on they hunt as one team until `GUARD_TEAM_MEMORY` passes without any of them
+  * seeing you: whoever sees you calls it for everyone, and those without a line flank.
+  */
+ squadAlert(source:Guard,reason:'shot'|'targeted'){
+  if(source.hp<=0&&reason==='targeted')return [];
+  const squad=this.guards
+   .filter(g=>g.hp>0&&(g===source||distance(g.position,source.position)<=GUARD_SQUAD_RADIUS))
+   .sort((a,b)=>distance(a.position,this.position)-distance(b.position,this.position));
+  const fresh=squad.filter(g=>g.team<=this.elapsed||g.state==='patrol'||g.state==='search');
+  const until=this.elapsed+GUARD_TEAM_MEMORY;
+  let k=0,side:1|-1=1;
+  for(const g of squad){
+   const wasHunting=g.team>this.elapsed&&g.state==='chase';
+   g.team=until;
+   g.lastKnown={...this.position};g.lost=0;
+   if(wasHunting)continue;
+   g.noticeAt=this.elapsed;
+   g.state='chase';g.timer=0;g.arrived=false;g.pause=0;
+   g.aim=g.gun?1:0;g.firstShot=true;
+   // Alternate flank sides so a pair comes at you from two directions.
+   g.flankSide=side;side=side===1?-1:1;
+   if(g.flinch<=0&&visible(g.position,this.position)){
+    g.shootCool=Math.min(g.shootCool,GUARD_SQUAD_FIRST_SHOT+GUARD_SQUAD_STAGGER*k);
+    k++;
+   }
+  }
+  if(fresh.length>1||(fresh.length===1&&fresh[0]!==source)){
+   this.squadAlertAt=this.elapsed;
+   this.say(fresh.length>2?`${fresh.length} guards are onto you — they are working together.`:'Another guard heard it — they are coming for you together.','blocked');
+  }
+  return squad;
+ }
+ /** Share one squad's picture of you: anyone who sees you calls it for all of them. */
+ private shareSquadIntel(){
+  const hunting=this.guards.filter(g=>g.hp>0&&g.team>this.elapsed);
+  if(!hunting.length)return;
+  if(!hunting.some(g=>g.sees&&distance(g.position,this.position)<GUARD_GUN_RANGE+8))return;
+  const until=this.elapsed+GUARD_TEAM_MEMORY;
+  for(const g of hunting){
+   g.team=until;g.lastKnown={...this.position};g.lost=0;
+   if(g.state!=='chase'){g.state='chase';g.timer=0;g.aim=g.gun?Math.max(g.aim,.5):0;}
+  }
+ }
+ /**
+  * Where a squad member without a line on you heads: a point `GUARD_FLANK_DISTANCE` from
+  * you, swung `GUARD_FLANK_ANGLE` off his straight approach to his side, so the team
+  * closes from more than one direction. Falls back to your position if that spot is rock.
+  */
+ flankPoint(g:Guard,target:Point=g.lastKnown):Point{
+  const dx=g.position.x-target.x,dz=g.position.z-target.z;
+  const len=Math.hypot(dx,dz)||1;
+  if(len<GUARD_FLANK_DISTANCE*1.2)return {...target};
+  const a=Math.atan2(dx,dz)+g.flankSide*GUARD_FLANK_ANGLE;
+  const p={x:target.x+Math.sin(a)*GUARD_FLANK_DISTANCE,y:g.position.y,z:target.z+Math.cos(a)*GUARD_FLANK_DISTANCE};
+  return fits(p,GUARD_BODY_RADIUS)&&visible(p,target)?p:{...target};
+ }
+ /**
   * Damage one corridor guard through the shared `takeDamage` rule. A hit staggers him and
   * tells him exactly where you are; the last hit drops him and leaves his magazine.
   */
  guardTakeDamage(g:Guard,amount:number){
   const {killed}=takeDamage(g,amount);
+  // Shooting one of them brings the rest of the squad in, whether or not he survives it.
+  this.squadAlert(g,'shot');
   if(killed){
    g.speed=0;g.vx=0;g.vz=0;g.turnRate=0;g.flinch=0;
    // His pistol falls beside him with what is left in it; E picks it up.
@@ -1407,6 +1514,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   // Corridor guards run even while the cave guardian is dead / flinching.
   const playerSpeed=this.lastPlayerPos&&dt>0?Math.hypot(this.position.x-this.lastPlayerPos.x,this.position.z-this.lastPlayerPos.z)/dt:0;
   tickPistol(this.pistol,dt);
+  this.shareSquadIntel();
   // Items dropped by a swap become collectable again once you step away from them.
   for(const p of this.pickups)if(p.settling&&Math.hypot(p.position.x-this.position.x,p.position.z-this.position.z)>1.4)p.settling=false;
   for(const g of this.guards){
@@ -1435,6 +1543,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   }
   const d=distance(g.position,this.position);
   const canSee=visible(g.position,this.position);
+  g.sees=canSee;
+  const teamed=g.team>this.elapsed;
   // He sees what is in front of him (a lit torch from further), hears running, and
   // notices anyone right beside him whichever way he faces.
   const toward=Math.atan2(this.position.x-g.position.x,this.position.z-g.position.z);
@@ -1450,7 +1560,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    if(g.timer>=GUARD_DRAW_SECONDS){g.state=(sense||tracking)?'chase':'search';g.timer=0;g.lost=0;}
   }else if(g.state==='chase'){
    if(tracking){g.lastKnown={...this.position};g.lost=0;}else g.lost+=dt;
-   if(g.lost>2.8){g.state='search';g.timer=0;}
+   // A squad hunting together does not give up while any of them has had you recently.
+   if(g.lost>2.8&&!teamed){g.state='search';g.timer=0;}
   }else if(g.state==='search'){
    if(sense){g.state='alert';g.timer=GUARD_DRAW_SECONDS*.5;g.lost=0;}
    else if(g.timer>8){
@@ -1569,8 +1680,15 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    const params=tired
     ?{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.chaseTired}
     :{...GUARD_STEER_RUN,maxSpeed:GUARD_SPEED.chase};
-   const nav=guardNavTarget(g.position,g.lastKnown);
-   const left=steerToward(g,nav,{...params,stopDistance:nav.final?GUARD_CHASE_STANDOFF:0},dt,canMove);
+   // Squad hunt without a line on you: swing round to your flank instead of queueing
+   // behind a teammate down the same corridor. Once there, close on the last sighting.
+   let goal=g.lastKnown;
+   if(g.team>this.elapsed&&!g.sees){
+    const flank=this.flankPoint(g);
+    if(Math.hypot(flank.x-g.position.x,flank.z-g.position.z)>1.2)goal=flank;
+   }
+   const nav=guardNavTarget(g.position,goal);
+   const left=steerToward(g,nav,{...params,stopDistance:nav.final&&goal===g.lastKnown?GUARD_CHASE_STANDOFF:0},dt,canMove);
    // At arm's length keep squared up to the target rather than circling it.
    if(nav.final&&left<.02&&g.speed===0)faceStanding(g,yawToward(g.position,g.lastKnown),params,dt,canMove);
   }else{
