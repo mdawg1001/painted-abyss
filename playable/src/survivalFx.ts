@@ -12,6 +12,7 @@ import { SURVIVAL, SURVIVAL_COVER } from './survivalConfig';
 import { survivalDoors, smokeDensity, smokeRadius, type SmokeCloud, type SmokeGrenade, type SupplyCache } from './survival';
 import { FLOOR_Y, type Guard, type Point } from './simulation';
 import { GUARD_KEY_INTENSITY, GUARD_RIM_INTENSITY, type SovietGuardVisual } from './sovietGuardAsset';
+import { createCardboardCoverVisual, upgradeCardboardCover } from './cardboardBoxAsset';
 
 const LIGHT_SLOTS=4;
 const CLOUD_SPRITES=14;
@@ -83,23 +84,30 @@ export class SurvivalFx{
   this.points.frustumCulled=false;scene.add(this.points);
   for(let i=0;i<PARTICLES;i++)this.pts.push({v:new THREE.Vector3(),life:0,max:1,grav:0});
  }
- /** Stacked ammo crates and concrete blast walls, head height, where the sim puts cover. */
+ /** Stacked ammo crates, cardboard piles, and concrete blast walls, head height, where the sim puts cover. */
  private buildCover(adopt:(o:THREE.Object3D)=>void){
   const wood=new THREE.MeshStandardMaterial({color:0x5a4a33,roughness:.85});
   const band=new THREE.MeshStandardMaterial({color:0x2e2a22,roughness:.7,metalness:.3});
   const concrete=new THREE.MeshStandardMaterial({color:0x6b6860,roughness:.95});
   for(const c of SURVIVAL_COVER){
-   const g=new THREE.Group();g.position.set(c.x,FLOOR_Y,c.z);
-   if(c.kind==='crates'){
-    const w=c.hx*2,d=c.hz*2;
-    const lower=new THREE.Mesh(new THREE.BoxGeometry(w,1.0,d),wood);lower.position.y=.5;
-    const upper=new THREE.Mesh(new THREE.BoxGeometry(w*.92,.95,d*.92),wood);upper.position.y=1.48;upper.rotation.y=.08;
-    for(const y of [.2,.8,1.25,1.75]){const b=new THREE.Mesh(new THREE.BoxGeometry(w*1.01,.06,d*1.01),band);b.position.y=y;g.add(b);}
-    g.add(lower,upper);
+   let g:THREE.Group;
+   if(c.kind==='cardboard'){
+    g=createCardboardCoverVisual(c.x*0.17+c.z*0.11);
+    g.position.set(c.x,FLOOR_Y,c.z);
+    void upgradeCardboardCover(g);
    }else{
-    const wall=new THREE.Mesh(new THREE.BoxGeometry(c.hx*2,2.1,c.hz*2),concrete);wall.position.y=1.05;
-    const cap=new THREE.Mesh(new THREE.BoxGeometry(c.hx*2+.08,.12,c.hz*2+.08),concrete);cap.position.y=2.12;
-    g.add(wall,cap);
+    g=new THREE.Group();g.position.set(c.x,FLOOR_Y,c.z);
+    if(c.kind==='crates'){
+     const w=c.hx*2,d=c.hz*2;
+     const lower=new THREE.Mesh(new THREE.BoxGeometry(w,1.0,d),wood);lower.position.y=.5;
+     const upper=new THREE.Mesh(new THREE.BoxGeometry(w*.92,.95,d*.92),wood);upper.position.y=1.48;upper.rotation.y=.08;
+     for(const y of [.2,.8,1.25,1.75]){const b=new THREE.Mesh(new THREE.BoxGeometry(w*1.01,.06,d*1.01),band);b.position.y=y;g.add(b);}
+     g.add(lower,upper);
+    }else{
+     const wall=new THREE.Mesh(new THREE.BoxGeometry(c.hx*2,2.1,c.hz*2),concrete);wall.position.y=1.05;
+     const cap=new THREE.Mesh(new THREE.BoxGeometry(c.hx*2+.08,.12,c.hz*2+.08),concrete);cap.position.y=2.12;
+     g.add(wall,cap);
+    }
    }
    g.traverse(o=>{if((o as THREE.Mesh).isMesh){o.castShadow=true;o.receiveShadow=true;}});
    this.scene.add(g);adopt(g);
