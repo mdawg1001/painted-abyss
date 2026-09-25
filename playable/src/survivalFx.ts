@@ -1,4 +1,5 @@
 import { PALETTE } from './artPalette';
+import { GUARD_KEY_GRADE, GUARD_RIM_GRADE } from './frameGrade';
 /**
  * Survival firefight visuals: cover, reinforcement doors, supply caches, smoke, grenades,
  * sparks and blood puffs, guard hit flashes, per-guard muzzle glows, and a small pool of
@@ -226,7 +227,7 @@ export class SurvivalFx{
    if(!o||o.d>40*40){key.intensity=0;rim.intensity=0;continue;}
    key.position.copy(o.v.root.localToWorld(new THREE.Vector3(.25,1.75,.9)));
    rim.position.copy(o.v.root.localToWorld(new THREE.Vector3(-.3,2.1,-.7)));
-   key.intensity=GUARD_KEY_INTENSITY;rim.intensity=GUARD_RIM_INTENSITY;
+   key.intensity=GUARD_KEY_INTENSITY*GUARD_KEY_GRADE;rim.intensity=GUARD_RIM_INTENSITY*GUARD_RIM_GRADE;
   }
   // Doors.
   const warn=SURVIVAL.director.warnSeconds;
