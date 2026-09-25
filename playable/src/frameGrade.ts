@@ -32,7 +32,7 @@ export const GRADE_CONTRAST = 1.28;
 /** Low toe. Highlights clip; photographic shadows are not crushed to black. */
 export const GRADE_PIVOT = 0.04;
 
-/** Dim the guard lamps so the kits read as dark shapes. Outfits are not re-dyed. */
+/** Dim the guard lamps. Outfit color now comes from the overtide shade, not this grade. */
 export const GUARD_KEY_GRADE = 0.45;
 export const GUARD_RIM_GRADE = 0.22;
 
