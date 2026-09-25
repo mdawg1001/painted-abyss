@@ -59,7 +59,7 @@ test('holding your sights on A for a moment sets the squad off; a flick across h
  assert.equal(b.aim,1);
 });
 
-test('the squad shares what one of them sees, and does not give up while the hunt is warm',()=>{
+test('the squad shares what one of them sees, and the horde never gives up',()=>{
  const {m,a,b}=squad();
  m.firePistol(m.position,chest(m,a));
  // You duck somewhere B cannot see; A still can.
@@ -73,7 +73,8 @@ test('the squad shares what one of them sees, and does not give up while the hun
  for(let i=0;i<60*5;i++)m.update(1/60,false);
  assert.equal(b.state,'chase');
  for(let i=0;i<60*(GUARD_TEAM_MEMORY);i++)m.update(1/60,false);
- assert.notEqual(b.state,'chase','the trail goes cold eventually');
+ assert.equal(b.state,'chase','the horde never loses the scent');
+ assert.deepEqual(b.lastKnown,m.position,'he always knows where you are');
 });
 
 test('without a line on you a squad member flanks: he aims to come in from the side, not in a queue',()=>{

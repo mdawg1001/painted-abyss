@@ -6,7 +6,7 @@ import {
 } from '../src/playerPistol';
 import {
  Mission,isolateGuards,FLOOR_Y,WALK_EYE_Y,breathFootprint,
- GUARD_MAX_HP,GUARD_HIT_FLINCH,GUNSHOT_HEARING,
+ GUARD_MAX_HP,GUARD_HORDE,GUNSHOT_HEARING,
 } from '../src/simulation';
 
 const CORRIDOR={x:breathFootprint().cx,y:WALK_EYE_Y,z:16};
@@ -73,7 +73,7 @@ test('three body hits drop a guard; every hit staggers and alerts him',()=>{
  assert.equal(m.firePistol(eye,dir),'fired');
  assert.equal(g.hp,GUARD_MAX_HP-PISTOL.bodyDamage);
  assert.equal(g.state,'chase','a hit tells him where you are');
- assert.ok(g.flinch>0&&g.shootCool>=GUARD_HIT_FLINCH,'staggered: no instant return fire');
+ assert.ok(g.flinch>0&&g.shootCool>=GUARD_HORDE.flinch,'a flinch, not a stop');
  assert.equal(m.firePistol(eye,dir),'cooldown','semi-auto');
  const wait=()=>{for(let i=0;i<12;i++)m.update(1/60,false);}; // > one fire interval
  wait();

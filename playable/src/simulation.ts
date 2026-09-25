@@ -106,15 +106,13 @@ export function guardHitChance(distance:number,targetSpeed:number,firstShot:bool
 export const GUARD_MOVING_FIRE_PENALTY=.09;
 /** Guard health: three pistol body hits, or one to the head. */
 export const GUARD_MAX_HP=100;
-/** How long a hit staggers him: arm knocked off target, no shot (s). */
-export const GUARD_HIT_FLINCH=.5;
 /** Guards on patrol within this range hear your shot and come looking (m). */
 export const GUNSHOT_HEARING=20;
 /**
  * Squad alert. When you shoot a guard or hold your sights on him, every other guard within
  * this radius of him (shout / radio range down concrete corridors) joins the fight (m).
  */
-export const GUARD_SQUAD_RADIUS=18;
+export const GUARD_SQUAD_RADIUS=25;
 /** How long the sights must rest on a guard before he (and his squad) react (s). */
 export const GUARD_TARGETED_DWELL=.4;
 /** A squad keeps hunting this long after the last time any of them saw you (s). */
@@ -125,24 +123,37 @@ export const GUARD_SQUAD_STAGGER=.2;
 /** How far round you a flanker aims to come in from (m, and angle off his straight approach). */
 export const GUARD_FLANK_DISTANCE=4;
 export const GUARD_FLANK_ANGLE=65*Math.PI/180;
-/**
- * Combat footwork while he shoots (AAA human-enemy practice: TLOU / F.E.A.R. / Halo
- * enemies keep repositioning between firing positions instead of freezing).
- * Speeds are a crouched combat walk, not a run; legs last about 1–2 s.
- */
-export const GUARD_STRAFE={
- speedMin:.5,speedMax:1.05,
- /** Faster shuffle while reloading or dodging a charge. */
- evade:1.45,
- legMin:.9,legMax:2.2,
- /** Back off inside this range, press forward beyond `far` (m). */
- near:3.4,far:8.5,
- accel:3.2,
-} as const;
 export const GUARD_MELEE_COOLDOWN=1.55;
 /** Bottle fuel the guard drinks as “his air” while chasing. */
 export const GUARD_BOTTLE_AIR=SPARE_BOTTLE_LITRES;
 export const GUARD_SPEED={patrol:1.2,alert:.65,chase:2.15,chaseTired:1.25,search:1.45} as const;
+/**
+ * Horde mode: once a guard has you he is a zombie with a pistol. No cover, no strafing,
+ * no retreat, no giving up. He comes straight at you at full pace and empties his
+ * magazine on the way in; the only thing that stops him is a bullet.
+ *
+ * - Pace: every other guard is a sprinter (just under your own sprint, so you can open a
+ *   gap but never lose him); the rest are marchers, a relentless fast walk.
+ * - Fire: run-and-gun spray at twice the aimed cadence, with a wide muzzle tolerance and
+ *   poor accuracy. It is pressure, not marksmanship: rounds crack past and ricochet
+ *   constantly, and enough of them land.
+ * - He always knows where you are once engaged (the horde never loses the scent) and
+ *   closes to arm's length, where he clubs you.
+ * - Hits barely stagger him.
+ */
+export const GUARD_HORDE={
+ sprint:3.0,march:2.1,
+ fireInterval:.36,
+ aimTolerance:24*Math.PI/180,
+ /** Multiplier on hit chance for spray fire on the run. */
+ accuracy:.5,
+ /** Stagger from your hit (s): a flinch, not a stop. */
+ flinch:.15,
+ /** Draw from spotting you to first shot (s). */
+ draw:.2,
+} as const;
+/** Sprinters (true) and marchers (false) alternate through the squad. */
+export const guardIsSprinter=(outfit:number)=>outfit%2===0;
 /** How close a corpse drop must be for him to claim gun / bottle / coat. */
 export const GUARD_LOOT_RANGE=1.6;
 /** Guard shoulder radius for wall clearance (m). */
@@ -922,8 +933,6 @@ export type Guard={
  beatStart:number;beatLen:number;beatDir:1|-1;outfit:number;
  /** Ground velocity (m/s, world). Equals speed along heading except in the firing stance, where he strafes. */
  vx:number;vz:number;
- /** Combat footwork: strafe side (+1 his left, −1 his right), time left on this leg, its speed and radial drift. */
- strafeDir:1|-1;legTime:number;legSpeed:number;legRadial:number;
  /** Health (0 = down). `takeDamage` from playerPistol is the only way it drops. */
  hp:number;maxHp:number;
  /** Seconds left staggering from a hit (no trigger pull while it runs). */
@@ -951,7 +960,7 @@ export function makeGuard(outfit=0):Guard{
   shots:0,lastShotHit:false,aim:0,
   gun:true,bottle:false,coat:false,air:0,
   beatStart:beat.start,beatLen:beat.len,beatDir:1,outfit,
-  vx:0,vz:0,strafeDir:outfit%2?1:-1,legTime:0,legSpeed:0,legRadial:0,
+  vx:0,vz:0,
   hp:GUARD_MAX_HP,maxHp:GUARD_MAX_HP,flinch:0,team:-1,noticeAt:-1,flankSide:outfit%2?1:-1,sees:false,
  };
 }
@@ -1375,7 +1384,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   * From then on they hunt as one team until `GUARD_TEAM_MEMORY` passes without any of them
   * seeing you: whoever sees you calls it for everyone, and those without a line flank.
   */
- squadAlert(source:Guard,reason:'shot'|'targeted'){
+ squadAlert(source:Guard,reason:'shot'|'targeted'|'spotted'){
   if(source.hp<=0&&reason==='targeted')return [];
   const squad=this.guards
    .filter(g=>g.hp>0&&(g===source||distance(g.position,source.position)<=GUARD_SQUAD_RADIUS))
@@ -1446,9 +1455,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    }
    return true;
   }
-  g.flinch=GUARD_HIT_FLINCH;
-  g.shootCool=Math.max(g.shootCool,GUARD_HIT_FLINCH+.1);
-  g.aim=Math.min(g.aim,.35);
+  // Horde: a hit is a flinch, not a stop. He keeps coming and is firing again almost at once.
+  g.flinch=GUARD_HORDE.flinch;
+  g.shootCool=Math.max(g.shootCool,GUARD_HORDE.flinch);
   g.lastKnown={...this.position};
   if(g.state!=='chase'){g.state='chase';g.timer=0;g.lost=0;g.firstShot=true;}
   return false;
@@ -1544,7 +1553,6 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   const d=distance(g.position,this.position);
   const canSee=visible(g.position,this.position);
   g.sees=canSee;
-  const teamed=g.team>this.elapsed;
   // He sees what is in front of him (a lit torch from further), hears running, and
   // notices anyone right beside him whichever way he faces.
   const toward=Math.atan2(this.position.x-g.position.x,this.position.z-g.position.z);
@@ -1554,16 +1562,22 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   const tracking=canSee&&d<GUARD_GUN_RANGE+8;
   const engaged=g.state==='alert'||g.state==='chase';
   // FSM: spotting you goes straight to drawing and firing — no hesitation.
-  if(g.state==='patrol'&&sense){g.state='alert';g.timer=0;g.lastKnown={...this.position};g.firstShot=true;}
+  if(g.state==='patrol'&&sense){
+   g.state='alert';g.timer=0;g.lastKnown={...this.position};g.firstShot=true;
+   // One of them has you: he screams it and every guard in earshot turns into the horde.
+   this.squadAlert(g,'spotted');
+  }
   else if(g.state==='alert'){
+   // Horde: no confirming what he saw. Draw and go.
    if(sense||tracking)g.lastKnown={...this.position};
-   if(g.timer>=GUARD_DRAW_SECONDS){g.state=(sense||tracking)?'chase':'search';g.timer=0;g.lost=0;}
+   if(g.timer>=GUARD_HORDE.draw){g.state=(sense||tracking)?'chase':'search';g.timer=0;g.lost=0;}
   }else if(g.state==='chase'){
-   if(tracking){g.lastKnown={...this.position};g.lost=0;}else g.lost+=dt;
-   // A squad hunting together does not give up while any of them has had you recently.
-   if(g.lost>2.8&&!teamed){g.state='search';g.timer=0;}
+   // The horde never loses the scent: he always knows where you are and never gives up.
+   g.lastKnown={...this.position};
+   if(tracking)g.lost=0;else g.lost+=dt;
   }else if(g.state==='search'){
-   if(sense){g.state='alert';g.timer=GUARD_DRAW_SECONDS*.5;g.lost=0;}
+   // Heard a shot: he is already running at the noise, and sight of you makes him the horde.
+   if(sense){g.state='alert';g.timer=GUARD_HORDE.draw*.5;g.lost=0;this.squadAlert(g,'spotted');}
    else if(g.timer>8){
     // Give up and rejoin his own beat at the nearest stop.
     g.state='patrol';g.timer=0;g.pause=0;
@@ -1595,11 +1609,12 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   }
   if(g.state==='chase'&&this.guardHasShot(g)&&g.shootCool<=0){
    const aimErr=Math.abs(wrapAngle(Math.atan2(this.position.x-g.position.x,this.position.z-g.position.z)-g.heading));
-   if(aimErr<=GUARD_AIM_TOLERANCE&&g.aim>=.99){
-    const hit=this.rand()<guardHitChance(d,playerSpeed,g.firstShot,g.speed);
+   // Spray from the hip on the run: wide tolerance, fast cadence, poor accuracy.
+   if(aimErr<=GUARD_HORDE.aimTolerance&&g.aim>=.99){
+    const hit=this.rand()<guardHitChance(d,playerSpeed,g.firstShot,g.speed)*GUARD_HORDE.accuracy;
     g.firstShot=false;
     g.shots+=1;g.lastShotHit=hit;g.ammo-=1;
-    g.shootCool=GUARD_GUN_COOLDOWN*(.85+.3*this.rand());
+    g.shootCool=GUARD_HORDE.fireInterval*(.8+.4*this.rand());
     if(g.ammo<=0){g.reload=GUARD_RELOAD_SECONDS;}
     this.gasPanicUntil=this.elapsed+AIR_PANIC_SECONDS;
     if(!hit){this.combatCue='guard-miss';this.say('Shots! Get out of his line of fire.','blocked');return;}
@@ -1640,7 +1655,6 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   const water=this.breathWaterY;
   const dry=water<BREATH_WALK_WATER;
   const canMove=(x:number,z:number)=>dry&&fits({x,y:3,z},GUARD_BODY_RADIUS);
-  const tired=!g.bottle||g.air<=0;
   const n=guardPerimeterRoute().length;
   const nextWp=()=>{const s=beatStep(g.waypoint,g.beatStart,g.beatLen,n,g.beatDir);g.waypoint=s.wp;g.beatDir=s.dir;};
   if(!dry){
@@ -1671,31 +1685,20 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   }else if(g.state==='alert'){
    // Freeze, then square up to where the noise came from.
    faceStanding(g,yawToward(g.position,g.lastKnown),GUARD_STEER_WALK,dt,canMove);
-  }else if(g.state==='chase'&&this.guardInFiringStance(g)){
-   // Firing stance: square up on you and keep his feet moving while he shoots.
-   this.combatFootwork(dt,g,canMove,playerSpeed);
-   g.position.y=WALK_EYE_Y;
-   return;
   }else if(g.state==='chase'){
-   const params=tired
-    ?{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.chaseTired}
-    :{...GUARD_STEER_RUN,maxSpeed:GUARD_SPEED.chase};
-   // Squad hunt without a line on you: swing round to your flank instead of queueing
-   // behind a teammate down the same corridor. Once there, close on the last sighting.
-   let goal=g.lastKnown;
-   if(g.team>this.elapsed&&!g.sees){
-    const flank=this.flankPoint(g);
-    if(Math.hypot(flank.x-g.position.x,flank.z-g.position.z)>1.2)goal=flank;
-   }
-   const nav=guardNavTarget(g.position,goal);
-   const left=steerToward(g,nav,{...params,stopDistance:nav.final&&goal===g.lastKnown?GUARD_CHASE_STANDOFF:0},dt,canMove);
+   // Horde charge: straight at you by the shortest walkable line, full pace, never
+   // stopping to take cover or pick an angle. He only stops when he is on top of you.
+   void playerSpeed;
+   const params={...GUARD_STEER_RUN,maxSpeed:guardIsSprinter(g.outfit)?GUARD_HORDE.sprint:GUARD_HORDE.march,turnRateMoving:4.5};
+   const nav=guardNavTarget(g.position,g.lastKnown);
+   const left=steerToward(g,nav,{...params,stopDistance:nav.final?GUARD_CHASE_STANDOFF:0},dt,canMove);
    // At arm's length keep squared up to the target rather than circling it.
    if(nav.final&&left<.02&&g.speed===0)faceStanding(g,yawToward(g.position,g.lastKnown),params,dt,canMove);
   }else{
    // Search: walk to the last sighting, then scan left and right from there.
    if(!g.arrived){
     const nav=guardNavTarget(g.position,g.lastKnown);
-    const left=steerToward(g,nav,{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.search,stopDistance:nav.final?.3:0},dt,canMove);
+    const left=steerToward(g,nav,{...GUARD_STEER_RUN,maxSpeed:GUARD_HORDE.march,stopDistance:nav.final?.3:0},dt,canMove);
     if(nav.final&&left<.02&&g.speed===0){g.arrived=true;this.startLookout(g,0);}
    }else{
     g.scanTime+=dt;
@@ -1705,64 +1708,6 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   g.position.y=WALK_EYE_Y;
   // Outside the firing stance he only ever travels along his facing.
   g.vx=Math.sin(g.heading)*g.speed;g.vz=Math.cos(g.heading)*g.speed;
-  g.legTime=0;
- }
- /**
-  * Shooting on the move. Chest and muzzle stay on you (heading turns at a standing
-  * pivot rate) while the legs strafe side to side in short, unpredictable legs, give
-  * ground when you close in, and press forward when you are far. He never walks out
-  * of his own line of fire or into a wall: a blocked leg flips direction.
-  */
- private combatFootwork(dt:number,g:Guard,canMove:(x:number,z:number)=>boolean,playerSpeed:number){
-  const before=g.heading;
-  const face=yawToward(g.position,this.position);
-  g.heading=turnToward(g.heading,face,GUARD_STEER_RUN.turnRateStanding*dt);
-  g.turnRate=dt>0?wrapAngle(g.heading-before)/dt:0;
-  const d=distance(g.position,this.position);
-  const reloading=g.reload>0;
-  // You charging him: a sidestep-and-give-ground dodge (F.E.A.R.'s DodgeShuffle).
-  const charged=playerSpeed>2.4&&d<6.5;
-  const f=forwardOf(face);
-  // Unit vector to his left (he faces +Z at yaw 0, so left is +X).
-  const lx=f.z,lz=-f.x;
-  // Is there room for a real step (≈1 m) on that side, still with a line on you?
-  const room=(dir:number)=>{
-   const px=g.position.x+lx*dir*1.1,pz=g.position.z+lz*dir*1.1;
-   return canMove(px,pz)&&visible({x:px,y:g.position.y,z:pz},this.position);
-  };
-  g.legTime-=dt;
-  if(g.legTime<=0){
-   if(this.rand()<.7)g.strafeDir=g.strafeDir===1?-1:1;
-   // Pick the side that has room, so he crosses the lane instead of jittering at a wall.
-   if(!room(g.strafeDir)&&room(-g.strafeDir))g.strafeDir=g.strafeDir===1?-1:1;
-   g.legTime=GUARD_STRAFE.legMin+(GUARD_STRAFE.legMax-GUARD_STRAFE.legMin)*this.rand();
-   g.legSpeed=GUARD_STRAFE.speedMin+(GUARD_STRAFE.speedMax-GUARD_STRAFE.speedMin)*this.rand();
-   g.legRadial=(this.rand()-.45)*.4;
-   // Boxed in on both sides: work the range instead (step in or out).
-   if(!room(1)&&!room(-1)){g.legSpeed=.15;g.legRadial=this.rand()<.5?-.6:.5;}
-  }
-  const side=(reloading||charged?GUARD_STRAFE.evade:g.legSpeed)*g.strafeDir;
-  let radial=g.legRadial;
-  if(d<GUARD_STRAFE.near||charged)radial=-.7;
-  else if(d>GUARD_STRAFE.far&&!reloading)radial=.55;
-  let wx=lx*side+f.x*radial,wz=lz*side+f.z*radial;
-  const want=Math.hypot(wx,wz);
-  if(want>GUARD_STRAFE.evade){wx*=GUARD_STRAFE.evade/want;wz*=GUARD_STRAFE.evade/want;}
-  // Ease velocity toward the wish (feet cannot reverse instantly).
-  const ex=wx-g.vx,ez=wz-g.vz,e=Math.hypot(ex,ez),cap=GUARD_STRAFE.accel*dt;
-  if(e>cap){g.vx+=ex/e*cap;g.vz+=ez/e*cap;}else{g.vx=wx;g.vz=wz;}
-  const nx=g.position.x+g.vx*dt,nz=g.position.z+g.vz*dt;
-  const next={x:nx,y:g.position.y,z:nz};
-  if(canMove(nx,nz)&&visible(next,this.position)){
-   g.position.x=nx;g.position.z=nz;
-  }else{
-   // Wall, prop or lost sight line: plant and step the other way.
-   g.strafeDir=g.strafeDir===1?-1:1;
-   g.legTime=GUARD_STRAFE.legMin+.5;
-   g.legRadial=-g.legRadial;
-   g.vx*=.2;g.vz*=.2;
-  }
-  g.speed=Math.hypot(g.vx,g.vz);
  }
  private updatePredator(dt:number,sprinting:boolean){
   const p=this.predator;const d=distance(p.position,this.position);const canSee=visible(p.position,this.position);
