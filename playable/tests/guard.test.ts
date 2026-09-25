@@ -9,7 +9,7 @@ import {
  GUARD_MAGAZINE,GUARD_RELOAD_SECONDS,GUARD_GUN_COOLDOWN,guardHitChance,guardLookout,clearDistance,
  GUARD_WALL_CLEARANCE,GUARD_INSPECT_SPACING,GUARD_CORNER_PAUSE,GUARD_BODY_RADIUS,GUARD_FOV_HALF,createDiveChests,
  GUARD_MELEE_RANGE,GUARD_MELEE_DAMAGE,GUARD_COAT_DAMAGE_MULT,GUARD_GUN_DAMAGE,
- GUARD_BOTTLE_AIR,GUARD_LOOT_RANGE,SPARE_BOTTLE_LITRES,GUARD_SPEED,GUARD_AIM_TOLERANCE,GUARD_GUN_RANGE,
+ GUARD_BOTTLE_AIR,GUARD_LOOT_RANGE,SPARE_BOTTLE_LITRES,GUARD_SPEED,GUARD_AIM_TOLERANCE,GUARD_GUN_RANGE,GUARD_HORDE,
 } from '../src/simulation';
 import {
  SOVIET_GUARD_SOURCE,SOVIET_GUARD_AUTHOR,SOVIET_GUARD_LICENSE,SOVIET_GUARD_GLB,SOVIET_GUARD_HEIGHT,
@@ -170,10 +170,11 @@ test('guard sees what is in front of him, hears running, and feels someone right
   m.update(.05,!!opts.sprint);
   return m.guard.state;
  };
- assert.equal(setup(0,8),'alert','torch-lit player in front at 8 m');
+ const engaged=(s:string)=>s==='alert'||s==='chase';
+ assert.ok(engaged(setup(0,8)),'torch-lit player in front at 8 m');
  assert.equal(setup(0,-8),'patrol','same player behind him goes unseen');
- assert.equal(setup(0,-1.8),'alert','close enough to sense from behind');
- assert.equal(setup(0,-8,{sprint:true}),'alert','running footsteps behind him');
+ assert.ok(engaged(setup(0,-1.8)),'close enough to sense from behind');
+ assert.ok(engaged(setup(0,-8,{sprint:true})),'running footsteps behind him');
  assert.equal(setup(0,12,{torch:false}),'patrol','dark and far is safe');
  assert.ok(GUARD_FOV_HALF>1&&GUARD_FOV_HALF<1.3);
 });
@@ -298,37 +299,39 @@ test('player coat still does not reduce a guardian bite',()=>{
  assert.equal(coated.health,75);
 });
 
-test('spotting you, he draws and fires almost at once, and keeps his feet moving while he shoots',()=>{
- const m=alone(new Mission(true));m.breathWaterY=FLOOR_Y-.1;m.rand=()=>.99; // every shot misses: keep the player alive
+test('horde: spotting you, he charges straight in firing the whole way and never stops short of you',()=>{
+ const m=alone(new Mission(true));m.breathWaterY=FLOOR_Y-.1;m.rand=()=>.99; // every shot misses
  m.guard.position={...CORRIDOR};m.guard.heading=0;m.guard.state='patrol';m.guard.pause=5;
- m.position={x:CORRIDOR.x,y:WALK_EYE_Y,z:CORRIDOR.z+10};m.torch=true;
- const dt=1/60;let t=0,firstShotAt=-1;const shotTimes:number[]=[];let moved=0;let prev={...m.guard.position};
- let stillFrames=0,frames=0,worstAim=0;
- for(let i=0;i<60*14;i++){
-  const shotsBefore=m.guard.shots;
+ m.position={x:CORRIDOR.x,y:WALK_EYE_Y,z:CORRIDOR.z+12};m.torch=true;
+ const dt=1/60;let t=0,firstShotAt=-1,arrivedAt=-1,stoppedEarly=0,melee=0,minD=Infinity,worstAim=0;
+ const shotTimes:number[]=[];
+ for(let i=0;i<60*8;i++){
+  const shotsBefore=m.guard.shots,hpBefore=m.health;
   m.update(dt,false);t+=dt;
-  if(m.guard.shots>shotTimes.length){shotTimes.push(t);if(firstShotAt<0)firstShotAt=t;}
+  const d=Math.hypot(m.position.x-m.guard.position.x,m.position.z-m.guard.position.z);
+  minD=Math.min(minD,d);
   if(m.guard.shots>shotsBefore){
+   shotTimes.push(t);if(firstShotAt<0)firstShotAt=t;
    const to=Math.atan2(m.position.x-m.guard.position.x,m.position.z-m.guard.position.z);
    worstAim=Math.max(worstAim,Math.abs(wrapAngle(to-m.guard.heading)));
   }
-  if(firstShotAt>0){
-   const step=Math.hypot(m.guard.position.x-prev.x,m.guard.position.z-prev.z);
-   moved+=step;frames++;if(step<1e-4)stillFrames++;
+  if(firstShotAt>0&&arrivedAt<0){
+   if(d<=GUARD_MELEE_RANGE)arrivedAt=t;
+   else if(m.guard.speed<.5)stoppedEarly++;
   }
-  prev={...m.guard.position};
+  if(m.health<hpBefore)melee++;
+  m.health=100; // keep the test running through his blows
  }
- assert.ok(firstShotAt>0&&firstShotAt<.8,`first shot ${firstShotAt.toFixed(2)} s after he sees you`);
- assert.ok(moved>3,`keeps repositioning while shooting (moved ${moved.toFixed(2)} m)`);
- assert.ok(stillFrames/frames<.15,`rarely frozen (${(100*stillFrames/frames).toFixed(0)} % of frames)`);
- assert.ok(worstAim<=GUARD_AIM_TOLERANCE+1e-6,'chest and muzzle stay on you for every shot');
- const d=Math.hypot(m.position.x-m.guard.position.x,m.position.z-m.guard.position.z);
- assert.ok(d>2&&d<GUARD_GUN_RANGE,'footwork keeps him at a fighting distance');
- // Semi-automatic cadence, then a reload after the 8-round magazine.
- const gaps=shotTimes.slice(1).map((s,i)=>s-shotTimes[i]);
- for(const g of gaps.slice(0,GUARD_MAGAZINE-1))assert.ok(g>=GUARD_GUN_COOLDOWN*.85-.02&&g<=GUARD_GUN_COOLDOWN*1.15+.05,`gap ${g.toFixed(2)}`);
- assert.ok(gaps[GUARD_MAGAZINE-1]>=GUARD_RELOAD_SECONDS,'reloads after eight rounds');
- assert.ok(shotTimes.length>GUARD_MAGAZINE,'keeps firing after reloading');
+ assert.ok(firstShotAt>0&&firstShotAt<.6,`first shot ${firstShotAt.toFixed(2)} s after he sees you`);
+ assert.ok(arrivedAt>0&&arrivedAt<6,`on top of you ${arrivedAt.toFixed(2)} s after spotting you`);
+ assert.ok(stoppedEarly<12,`never stops to take a position (${stoppedEarly} slow frames on the way in)`);
+ assert.ok(minD<=GUARD_MELEE_RANGE,'closes to arm\'s length');
+ assert.ok(melee>0,'and clubs you when he gets there');
+ const onTheWay=shotTimes.filter(s=>s<arrivedAt).length;
+ assert.ok(onTheWay>=6,`sprays ${onTheWay} rounds while advancing`);
+ assert.ok(worstAim<=GUARD_HORDE.aimTolerance+1e-6,'fires roughly your way, from the hip');
+ const gaps=shotTimes.slice(1).map((s,i)=>s-shotTimes[i]).filter(g=>g<1);
+ for(const g of gaps)assert.ok(g>=GUARD_HORDE.fireInterval*.8-.02&&g<=GUARD_HORDE.fireInterval*1.2+.05,`gap ${g.toFixed(2)}`);
 });
 
 test('no line of sight, no shot; hit chance falls with range and a moving target',()=>{
