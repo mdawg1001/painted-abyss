@@ -9,7 +9,7 @@ import {
  GUARD_MAGAZINE,GUARD_RELOAD_SECONDS,GUARD_GUN_COOLDOWN,guardHitChance,guardLookout,clearDistance,
  GUARD_WALL_CLEARANCE,GUARD_INSPECT_SPACING,GUARD_CORNER_PAUSE,GUARD_BODY_RADIUS,GUARD_FOV_HALF,createDiveChests,
  GUARD_MELEE_RANGE,GUARD_MELEE_DAMAGE,GUARD_COAT_DAMAGE_MULT,GUARD_GUN_DAMAGE,
- GUARD_BOTTLE_AIR,GUARD_LOOT_RANGE,SPARE_BOTTLE_LITRES,GUARD_SPEED,
+ GUARD_BOTTLE_AIR,GUARD_LOOT_RANGE,SPARE_BOTTLE_LITRES,GUARD_SPEED,GUARD_AIM_TOLERANCE,GUARD_GUN_RANGE,
 } from '../src/simulation';
 import {
  SOVIET_GUARD_SOURCE,SOVIET_GUARD_AUTHOR,SOVIET_GUARD_LICENSE,SOVIET_GUARD_GLB,SOVIET_GUARD_HEIGHT,
@@ -298,19 +298,32 @@ test('player coat still does not reduce a guardian bite',()=>{
  assert.equal(coated.health,75);
 });
 
-test('spotting you, he draws and fires almost at once, from a standing firing stance',()=>{
+test('spotting you, he draws and fires almost at once, and keeps his feet moving while he shoots',()=>{
  const m=alone(new Mission(true));m.breathWaterY=FLOOR_Y-.1;m.rand=()=>.99; // every shot misses: keep the player alive
  m.guard.position={...CORRIDOR};m.guard.heading=0;m.guard.state='patrol';m.guard.pause=5;
  m.position={x:CORRIDOR.x,y:WALK_EYE_Y,z:CORRIDOR.z+10};m.torch=true;
  const dt=1/60;let t=0,firstShotAt=-1;const shotTimes:number[]=[];let moved=0;let prev={...m.guard.position};
+ let stillFrames=0,frames=0,worstAim=0;
  for(let i=0;i<60*14;i++){
+  const shotsBefore=m.guard.shots;
   m.update(dt,false);t+=dt;
   if(m.guard.shots>shotTimes.length){shotTimes.push(t);if(firstShotAt<0)firstShotAt=t;}
-  if(firstShotAt>0)moved+=Math.hypot(m.guard.position.x-prev.x,m.guard.position.z-prev.z);
+  if(m.guard.shots>shotsBefore){
+   const to=Math.atan2(m.position.x-m.guard.position.x,m.position.z-m.guard.position.z);
+   worstAim=Math.max(worstAim,Math.abs(wrapAngle(to-m.guard.heading)));
+  }
+  if(firstShotAt>0){
+   const step=Math.hypot(m.guard.position.x-prev.x,m.guard.position.z-prev.z);
+   moved+=step;frames++;if(step<1e-4)stillFrames++;
+  }
   prev={...m.guard.position};
  }
  assert.ok(firstShotAt>0&&firstShotAt<.8,`first shot ${firstShotAt.toFixed(2)} s after he sees you`);
- assert.ok(moved<.05,'stands his ground while shooting');
+ assert.ok(moved>3,`keeps repositioning while shooting (moved ${moved.toFixed(2)} m)`);
+ assert.ok(stillFrames/frames<.15,`rarely frozen (${(100*stillFrames/frames).toFixed(0)} % of frames)`);
+ assert.ok(worstAim<=GUARD_AIM_TOLERANCE+1e-6,'chest and muzzle stay on you for every shot');
+ const d=Math.hypot(m.position.x-m.guard.position.x,m.position.z-m.guard.position.z);
+ assert.ok(d>2&&d<GUARD_GUN_RANGE,'footwork keeps him at a fighting distance');
  // Semi-automatic cadence, then a reload after the 8-round magazine.
  const gaps=shotTimes.slice(1).map((s,i)=>s-shotTimes[i]);
  for(const g of gaps.slice(0,GUARD_MAGAZINE-1))assert.ok(g>=GUARD_GUN_COOLDOWN*.85-.02&&g<=GUARD_GUN_COOLDOWN*1.15+.05,`gap ${g.toFixed(2)}`);
