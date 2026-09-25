@@ -74,7 +74,7 @@ function App(){
   return()=>{alive=false;window.clearInterval(id);window.removeEventListener('focus',onFocus);};
  },[]);
  const m=snap?.mission,playing=!!snap?.playing,terminal=m?.outcome!=='playing'&&!!m;
- const nearest=m?.nearest();const nearChest=m?.nearestChest();const extraction=m&&distance(m.position,EXIT)<4;
+ const nearest=m?.nearest();const nearChest=m?.nearestChest();const nearCache=m?.nearestTakeableCache();const extraction=m&&distance(m.position,EXIT)<4;
  const chestPrompt=nearChest
   ?chestInteractPrompt(nearChest,!!m?.hasMapFragment(nearChest.fragment))
   :'';
@@ -86,7 +86,8 @@ function App(){
   if(!mm.inventory.includes(null)&&held)return `E · Swap ${ITEMS[held].name} for ${ITEMS[item].name}`;
   return `E · Pick up ${ITEMS[item].name}`;
  };
- const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':valvePrompt?valvePrompt:extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):chestPrompt?chestPrompt:nearest?pickupPrompt(m!,nearest.item):'';
+ const cachePrompt=nearCache?(nearCache.kind==='ammo'?`Walk over · Ammo box (+${SURVIVAL.supplies.ammo} rounds)`:nearCache.kind==='medkit'?`Walk over · Field dressing (+${SURVIVAL.supplies.medkit} suit)`:`Walk over · Smoke grenade`):'';
+ const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':valvePrompt?valvePrompt:extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):chestPrompt?chestPrompt:nearest?pickupPrompt(m!,nearest.item):cachePrompt;
  const heading=(((-(snap?.yaw??0)*180)/Math.PI)%360+360)%360;
  const goal=m?(m.hasRelic?{p:EXIT,label:'EXTRACT'}:{p:RELIC,label:'RELIC'}):null;
  const objective=m&&goal?{deg:compassDeg(goal.p.x-m.position.x,goal.p.z-m.position.z),label:`${goal.label} ${Math.round(Math.hypot(goal.p.x-m.position.x,goal.p.z-m.position.z))} m`}:undefined;

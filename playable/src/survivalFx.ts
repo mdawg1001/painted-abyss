@@ -169,14 +169,22 @@ export class SurvivalFx{
   return {make,adopt};
  }
  /** Build (once) and show / hide the cache props for the mission's current caches. */
- syncCaches(caches:SupplyCache[],time:number,adopt:(o:THREE.Object3D)=>void){
+ syncCaches(caches:SupplyCache[],time:number,adopt:(o:THREE.Object3D)=>void,canTake?:(c:SupplyCache)=>boolean){
   const {make}=this.buildCaches(()=>{});
   while(this.cacheProps.length<caches.length){
    const c=caches[this.cacheProps.length];
    const g=make(c.kind);g.position.set(c.x,FLOOR_Y,c.z);g.rotation.y=c.id*1.7;
    this.scene.add(g);adopt(g);this.cacheProps.push(g);
   }
-  caches.forEach((c,i)=>{const g=this.cacheProps[i];g.visible=c.stocked;const s=g.children[g.children.length-1] as THREE.Sprite;s.material.opacity=.25+.15*Math.sin(time*3+i);});
+  caches.forEach((c,i)=>{
+   const g=this.cacheProps[i];
+   const usable=canTake?canTake(c):c.stocked;
+   // Hide boxes you cannot take so they never look like mystery floating loot.
+   g.visible=c.stocked&&usable;
+   if(!g.visible)return;
+   const s=g.children[g.children.length-1] as THREE.Sprite;
+   s.material.opacity=.25+.15*Math.sin(time*3+i);
+  });
  }
  /** A reinforcement door: lamp flashes during the warning, leaf swings open as he comes through. */
  cueDoor(index:number,at:number){this.doorOpenAt[index]=at;}
