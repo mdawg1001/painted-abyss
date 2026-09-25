@@ -29,20 +29,23 @@ test('gun, spare bottle, and coat lie in the corridor and not at the hatch',()=>
  assert.equal(m.pickups.filter(p=>p.item==='flare').length,0,'no mystery mid-air flare orb in the cavern');
 });
 
-test('death drops whatever is carried at the corpse; each life starts with the pistol and knife',()=>{
+test('death drops whatever is carried at the corpse; wake with empty hands',()=>{
  const m=new Mission(true);
  const worldGear=m.pickups.filter(p=>p.item==='gun'||p.item==='bottle'||p.item==='coat').map(p=>p.id);
  const corpse={x:-2,y:WALK_EYE_Y,z:16};
  m.position={...corpse};
  m.inventory=['gun','bottle','coat','knife','relic'];
  m.selected=2;
+ m.pistol.mag=5;m.pistol.reserve=12;
  const water=1.7;
  m.breathWaterY=water;
  const tank=m.breathTankIndex;
  const before=m.pickups.length;
  m.respawnAtHatch();
- assert.deepEqual(m.inventory,['knife','gun',null,null,null]);
- assert.equal(m.selected,1,'pistol in hand');
+ assert.deepEqual(m.inventory,[null,null,null,null,null]);
+ assert.equal(m.selected,0);
+ assert.equal(m.pistol.mag,0);
+ assert.equal(m.pistol.reserve,0);
  assert.equal(m.pending,null);
  assert.equal(m.outcome,'playing');
  assert.equal(m.position.x,breathHatchSpawn().x);
@@ -53,6 +56,8 @@ test('death drops whatever is carried at the corpse; each life starts with the p
  assert.equal(m.pickups.length,before+5);
  const dropped=m.pickups.slice(before);
  assert.deepEqual(dropped.map(p=>p.item),['gun','bottle','coat','knife','relic']);
+ const droppedGun=dropped.find(p=>p.item==='gun');
+ assert.equal(droppedGun?.rounds,17,'pocket mag+reserve ride on the corpse pistol');
  for(const p of dropped){
   assert.ok(distance({...p.position,y:corpse.y},corpse)<1.2);
   assert.equal(p.position.y,FLOOR_Y,'corpse loot sits on the floor, not floating at eye height');
@@ -66,7 +71,7 @@ test('death drops whatever is carried at the corpse; each life starts with the p
  const n=empty.pickups.length;
  empty.respawnAtHatch();
  assert.equal(empty.pickups.length,n);
- assert.deepEqual(empty.inventory,['knife','gun',null,null,null]);
+ assert.deepEqual(empty.inventory,[null,null,null,null,null]);
 });
 
 test('spare bottle fills the main cylinder and is consumed; gun and coat do not act',()=>{

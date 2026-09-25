@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
- Mission, STASH_CAPACITY, STASH_POSITION, STASH_AMMO_PACK,
+ Mission, STASH_CAPACITY, STASH_POSITION, STASH_AMMO_PACK, WALK_EYE_Y,
  breathHatchSpawn, writeStash, readStash, emptyStash, stashInteractPrompt,
 } from '../src/simulation';
 
@@ -46,13 +46,42 @@ test('deposit gun and ammo, die empty-handed — stash still holds them after wa
  m.interact(); // store ammo into next empty
  assert.ok(m.stash.some(s=>s?.kind==='ammo'&&s.amount===STASH_AMMO_PACK));
  const before=structuredClone(m.stash);
- m.inventory=[null,null,null,null,null];
  m.respawnAtHatch();
+ assert.deepEqual(m.inventory,[null,null,null,null,null],'wake with empty hands');
+ assert.equal(m.pistol.mag,0);
+ assert.equal(m.pistol.reserve,0);
  assert.deepEqual(m.stash,before);
  assert.equal(m.stashOpen,false);
  const persisted=readStash();
  assert.ok(persisted.some(s=>s?.kind==='item'&&s.item==='gun'));
  assert.ok(persisted.some(s=>s?.kind==='ammo'&&s.amount===STASH_AMMO_PACK));
+});
+
+test('die with gun and ammo on body — wake empty; chest unchanged',()=>{
+ mockStorage();
+ writeStash(emptyStash());
+ const m=new Mission(true);
+ atStash(m);
+ m.inventory=['coat',null,null,null,null];m.selected=0;
+ m.interact();m.interact(); // open + stash coat so chest is non-empty
+ const chestBefore=structuredClone(m.stash);
+ m.stashOpen=false;
+ const corpse={x:0,y:WALK_EYE_Y,z:8};
+ m.position={...corpse};
+ m.inventory=['gun',null,null,null,null];
+ m.selected=0;
+ m.pistol.mag=8;m.pistol.reserve=16;
+ const beforePickups=m.pickups.length;
+ m.respawnAtHatch();
+ assert.deepEqual(m.inventory,[null,null,null,null,null]);
+ assert.equal(m.pistol.mag,0);
+ assert.equal(m.pistol.reserve,0);
+ assert.deepEqual(m.stash,chestBefore,'hatch chest not wiped');
+ assert.ok(m.stash.some(s=>s?.kind==='item'&&s.item==='coat'));
+ const corpseGun=m.pickups.slice(beforePickups).find(p=>p.item==='gun');
+ assert.ok(corpseGun,'gun dropped on corpse');
+ assert.equal(corpseGun?.rounds,24);
+ assert.ok(m.inventory.every(s=>s===null));
 });
 
 test('withdraw then new Mission (dive again / reload) still matches localStorage',()=>{
