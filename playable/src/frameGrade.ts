@@ -9,14 +9,20 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 
 export type FrameGrade = 'dry' | 'water' | 'slam';
 
-/** Dirty ivory — dry safety. */
-export const DRY_FIELD = 0xe8d3a8;
+/** Dark cold bunker air (fog + background). */
+export const DRY_FIELD = 0x18211f;
+/** Cold fluorescent tube white: the bunker's main light. */
+export const FLUORESCENT = 0xcfe8f0;
+/** Hemisphere 'sky' in the dry bunker: cold concrete bounce from the ceiling. */
+export const BUNKER_SKY = 0x5f7c86;
+/** Warm caged-bulb sconce orange: the accent against the cold. */
+export const BULB_ORANGE = 0xff9a48;
 /** One flat blue-green. Not a depth ramp into navy. */
 export const WATER_FIELD = 0x178f86;
 /** Hard relic-trap red. */
 export const SLAM_FIELD = 0xe30812;
 
-export const DRY_DENSITY = 0.008;
+export const DRY_DENSITY = 0.017;
 export const WATER_DENSITY = 0.016;
 export const SLAM_DENSITY = 0.05;
 
@@ -28,7 +34,7 @@ export const SLAM_HOLD = 2.8;
  * then the grade clips the shoulder instead of filming it off.
  */
 export const GRADE_EXPOSURE = 1;
-export const GRADE_CONTRAST = 1.28;
+export const GRADE_CONTRAST = 1.34;
 /** Low toe. Highlights clip; photographic shadows are not crushed to black. */
 export const GRADE_PIVOT = 0.04;
 
@@ -38,20 +44,22 @@ export const GRADE_PIVOT = 0.04;
  * every detail — only their colour is pushed. Luma-preserving saturation plus vibrance
  * (dull colours pushed harder than already-vivid ones, so skin and lamps do not burn).
  */
-export const GRADE_SATURATION = 1.22;
-export const GRADE_VIBRANCE = 0.9;
+export const GRADE_SATURATION = 0.9;
+export const GRADE_VIBRANCE = 0.45;
 /** Midtone lift (gamma on linear light; < 1 brightens the mids, keeps black and white). */
-export const GRADE_GAMMA = 0.82;
+export const GRADE_GAMMA = 0.9;
 /** Split tone (multiplicative, so black stays black): cool shadows, warm sun highlights. */
-export const GRADE_SHADOW_TINT = [0.97, 1.0, 1.03] as const;
-export const GRADE_HIGHLIGHT_TINT = [1.04, 1.01, 0.95] as const;
+export const GRADE_SHADOW_TINT = [0.84, 1.0, 1.06] as const;
+export const GRADE_HIGHLIGHT_TINT = [1.0, 1.0, 1.0] as const;
+/** Black level: shadows sit in a cold teal murk, not pure black (linear light, tiny). */
+export const GRADE_LIFT = [0.0012, 0.0042, 0.0048] as const;
 
 /** Dim the guard lamps so the kits read as dark shapes. Outfits are not re-dyed. */
 export const GUARD_KEY_GRADE = 0.45;
 export const GUARD_RIM_GRADE = 0.22;
 
 export const GRADE_LIGHTS = {
- dry: { sky: DRY_FIELD, ground: 0x2c6b66, hemi: 1.05, ambient: 0x8f9aa0, ambientI: 0.3, sun: 0xfff1da, sunI: 1.0 },
+ dry: { sky: BUNKER_SKY, ground: 0x3c4846, hemi: 0.85, ambient: 0x52666a, ambientI: 0.5, sun: FLUORESCENT, sunI: 0.55 },
  water: { sky: WATER_FIELD, ground: 0x0b2e2b, hemi: 0.62, ambient: 0x1d7468, ambientI: 0.22, sun: WATER_FIELD, sunI: 0.6 },
  slam: { sky: SLAM_FIELD, ground: 0x3a0808, hemi: 0.48, ambient: SLAM_FIELD, ambientI: 0.22, sun: SLAM_FIELD, sunI: 0.9 },
 } as const;
@@ -127,10 +135,11 @@ const CLIP_GRADE_SHADER = {
   uGamma: { value: GRADE_GAMMA },
   uShadowTint: { value: [...GRADE_SHADOW_TINT] },
   uHighlightTint: { value: [...GRADE_HIGHLIGHT_TINT] },
+  uLift: { value: [...GRADE_LIFT] },
  },
  vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
  fragmentShader: `uniform sampler2D tDiffuse;uniform float uExposure;uniform float uContrast;uniform float uPivot;uniform float uSlam;
-uniform float uSaturation;uniform float uVibrance;uniform float uGamma;uniform vec3 uShadowTint;uniform vec3 uHighlightTint;varying vec2 vUv;
+uniform float uSaturation;uniform float uVibrance;uniform float uGamma;uniform vec3 uShadowTint;uniform vec3 uHighlightTint;uniform vec3 uLift;varying vec2 vUv;
 void main(){
   vec4 tex=texture2D(tDiffuse,vUv);
   vec3 c=max(tex.rgb*uExposure,vec3(0.0));
@@ -146,6 +155,7 @@ void main(){
   // Split tone: teal shadows, warm highlights.
   float t=smoothstep(0.0,0.7,dot(c,vec3(0.2126,0.7152,0.0722)));
   c*=mix(uShadowTint,uHighlightTint,t);
+  c+=uLift*(1.0-t);
   c=(c-vec3(uPivot))*uContrast+vec3(uPivot);
   c=clamp(c,0.0,1.0);
   // uSlam is 0 or 1. Multiply crushes the frame to hard red; it is not a tint mix.

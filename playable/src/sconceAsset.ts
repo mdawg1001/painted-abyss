@@ -1,4 +1,5 @@
 import { PALETTE } from './artPalette';
+import { BULB_ORANGE, FLUORESCENT } from './frameGrade';
 /**
  * Wall lamps — Poly Haven “Industrial Caged Sconce”.
  * A single self-contained GLB (the "_b" caged variant) lives in
@@ -16,7 +17,11 @@ export const SCONCE_LICENSE='CC0 1.0 Universal (public domain dedication)';
 export const SCONCE_TARGET_HEIGHT=1.3;
 export const SCONCE_MOUNT_Y=4.4;
 /** Warm incandescent glow for the caged bulb. */
-export const SCONCE_LIGHT_COLOR=PALETTE.amber;
+export const SCONCE_LIGHT_COLOR=BULB_ORANGE;
+/** Cold fluorescent fixtures: every flickering one, and two of every three steady ones. */
+export const SCONCE_TUBE_COLOR=FLUORESCENT;
+/** Bunker light mix: mostly cold tubes, one warm caged bulb in three as the accent. */
+export function sconceColor(i:number,state:SconceState){return state==='flicker'||i%3!==0?SCONCE_TUBE_COLOR:SCONCE_LIGHT_COLOR;}
 const SCONCE_LIGHT_INTENSITY=11;
 const SCONCE_LIGHT_DISTANCE=12;
 const SCONCE_LIGHT_DECAY=1.6;
@@ -95,15 +100,16 @@ export function createWallSconces(mounts:SconceMount[]):WallSconces{
  const states=assignSconceStates(mounts.length);
  const stubGeo=new THREE.SphereGeometry(.09,8,6);
  const litStubMat=new THREE.MeshBasicMaterial({color:PALETTE.amberGlow});
+ const tubeStubMat=new THREE.MeshBasicMaterial({color:0xe8f6ff});
  // Unlit fixtures get a cold, dark bulb so they read as switched off.
  const darkStubMat=new THREE.MeshBasicMaterial({color:0x2a2118});
  for(let i=0;i<mounts.length;i++){
   const m=mounts[i],state=states[i],on=state!=='off',inward=inwardVec(m.yaw);
-  const stub=new THREE.Mesh(stubGeo,on?litStubMat:darkStubMat);
+  const stub=new THREE.Mesh(stubGeo,on?(sconceColor(i,state)===SCONCE_TUBE_COLOR?tubeStubMat:litStubMat):darkStubMat);
   stub.name='sconceStub';
   stub.position.set(m.x,SCONCE_MOUNT_Y+.45,m.z).addScaledVector(inward,.28);
   group.add(stub);
-  const light=new THREE.PointLight(SCONCE_LIGHT_COLOR,SCONCE_LIGHT_INTENSITY,SCONCE_LIGHT_DISTANCE,SCONCE_LIGHT_DECAY);
+  const light=new THREE.PointLight(sconceColor(i,state),SCONCE_LIGHT_INTENSITY,SCONCE_LIGHT_DISTANCE,SCONCE_LIGHT_DECAY);
   light.position.set(m.x,SCONCE_MOUNT_Y+.55,m.z).addScaledVector(inward,.5);
   // Off fixtures cast no light (also spares the renderer half the point lights).
   light.visible=on;

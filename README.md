@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.17.4
+# Painted Abyss — First Dive · 0.17.5
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -45,6 +45,10 @@ Player TT-33 magazine change is **0.9 s** (was 1.2 s).
 ## Grounded loot + ammo prompts (0.17.4)
 
 Removed the mystery mid-air teal flare orb. Death drops land on the floor instead of floating at eye height. Floor pickups no longer bob. Stocked ammo / med / smoke boxes only appear when you can take them, and show a **Walk over · Ammo box** prompt.
+
+## Soviet bunker grade (0.17.5)
+
+The sepia is gone. Dry air is a dark cold teal-grey (fog and background), the key light is cold fluorescent white, the ceiling bounce is cold concrete, and the frame grade slightly desaturates with teal shadows and neutral highlights. Two of every three wall fixtures are cold tubes (every flickering one included); one in three stays a warm orange caged bulb as the accent. The cavern and entrance ceiling spots are fluorescent. The underwater field and the red relic slam are unchanged.
 
 ## Frame grade (0.14.3)
 

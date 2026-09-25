@@ -62,14 +62,21 @@ test('grade lights cut between fields', () => {
  assert.equal(GRADE_LIGHTS.slam.sun, SLAM_FIELD);
  assert.equal(GRADE_LIGHTS.slam.sky, SLAM_FIELD);
  assert.equal(GRADE_LIGHTS.water.sky, WATER_FIELD);
- assert.equal(GRADE_LIGHTS.dry.sky, DRY_FIELD);
+ assert.notEqual(GRADE_LIGHTS.dry.sky, GRADE_LIGHTS.water.sky);
 });
 
-test('stylized grade pushes colour and lifts mids without touching the rock maps', async () => {
+test('Soviet bunker grade: cold, dark, desaturated air lit by fluorescent tubes with warm bulb accents', async () => {
  const g = await import('../src/frameGrade');
- assert.ok(g.GRADE_SATURATION > 1.1 && g.GRADE_SATURATION < 1.5, 'louder colour, not neon');
- assert.ok(g.GRADE_VIBRANCE > 0, 'dull colours pushed hardest');
- assert.ok(g.GRADE_GAMMA < 1 && g.GRADE_GAMMA > 0.7, 'mids lifted, black and white kept');
- for (const k of [...g.GRADE_SHADOW_TINT, ...g.GRADE_HIGHLIGHT_TINT]) assert.ok(k > 0.85 && k < 1.15, 'split tone is multiplicative and gentle');
- assert.ok(GRADE_LIGHTS.dry.hemi > 0.8, 'dry air is bright and readable');
+ const rgb = (c: number) => [(c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff];
+ const [fr, fg, fb] = rgb(g.DRY_FIELD);
+ assert.ok(fr + fg + fb < 0x30 * 3, 'bunker air is dark, not ivory');
+ assert.ok(fr <= fg && fr <= fb, 'no sepia: red is the weakest channel of the air');
+ const [tr, , tb] = rgb(g.FLUORESCENT);
+ assert.ok(tb > tr, 'tubes are cold');
+ const [br, , bb] = rgb(g.BULB_ORANGE);
+ assert.ok(br > bb * 2, 'bulbs are warm orange');
+ assert.ok(g.GRADE_SATURATION < 1, 'overall picture is slightly desaturated');
+ assert.ok(g.GRADE_SHADOW_TINT[0] < g.GRADE_SHADOW_TINT[2], 'shadows lean teal');
+ assert.ok(g.GRADE_HIGHLIGHT_TINT[0] <= 1 && g.GRADE_HIGHLIGHT_TINT[2] >= 1, 'no warm push in the highlights');
+ assert.equal(GRADE_LIGHTS.dry.sun, g.FLUORESCENT);
 });

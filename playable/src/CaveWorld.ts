@@ -1,5 +1,5 @@
 import { PALETTE } from './artPalette';
-import { DRY_DENSITY, DRY_FIELD, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type FrameGrade } from './frameGrade';
+import { DRY_DENSITY, DRY_FIELD, FLUORESCENT, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type FrameGrade } from './frameGrade';
 import * as THREE from 'three';
 import { applyGuardCombatPose, updateGuardMoveFrame } from './guardCombatPose';
 import { PISTOL } from './playerPistol';
@@ -1562,17 +1562,17 @@ export class CaveWorld extends OceanWorld {
   // Cavern ceiling fill + floor caustic. No volumetric column — the only god ray is the exit.
   const cavernX=6,cavernZ=-64,cavernOp=.18,cavernBot=2.6;
   this.addCausticPool(cavernX,cavernZ,cavernBot*2.6,cavernOp);
-  const spot=new THREE.SpotLight(PALETTE.ivory,70+cavernOp*520,15,.5,.85,1.15);
+  const spot=new THREE.SpotLight(FLUORESCENT,70+cavernOp*520,15,.5,.85,1.15);
   spot.position.set(cavernX,8.2,cavernZ);spot.target.position.set(cavernX,0,cavernZ);this.scene.add(spot,spot.target);
 
   // Entrance corridor fill. No god ray in the tight tunnel.
-  const entrance=new THREE.SpotLight(PALETTE.amber,80,13,.48,.8,1.1);
+  const entrance=new THREE.SpotLight(FLUORESCENT,80,13,.48,.8,1.1);
   entrance.position.set(0,8.5,-22);entrance.target.position.set(0,0,-22);this.scene.add(entrance,entrance.target);
   this.gradeSpots=[
    {light:sunlight,rest:PALETTE.ivory},
    {light:poolFill,rest:WATER_FIELD},
-   {light:spot,rest:PALETTE.ivory},
-   {light:entrance,rest:PALETTE.amber},
+   {light:spot,rest:FLUORESCENT},
+   {light:entrance,rest:FLUORESCENT},
   ];
  }
  buildComposer(){
