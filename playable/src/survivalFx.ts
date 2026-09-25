@@ -13,6 +13,7 @@ import { survivalDoors, smokeDensity, smokeRadius, type SmokeCloud, type SmokeGr
 import { FLOOR_Y, type Guard, type Point } from './simulation';
 import { GUARD_KEY_INTENSITY, GUARD_RIM_INTENSITY, type SovietGuardVisual } from './sovietGuardAsset';
 import { createCardboardCoverVisual, upgradeCardboardCover } from './cardboardBoxAsset';
+import { createDeskCoverVisual, upgradeDeskCover } from './metalDeskAsset';
 
 const LIGHT_SLOTS=4;
 const CLOUD_SPRITES=14;
@@ -84,7 +85,7 @@ export class SurvivalFx{
   this.points.frustumCulled=false;scene.add(this.points);
   for(let i=0;i<PARTICLES;i++)this.pts.push({v:new THREE.Vector3(),life:0,max:1,grav:0});
  }
- /** Stacked ammo crates, cardboard piles, and concrete blast walls, head height, where the sim puts cover. */
+ /** Stacked ammo crates, cardboard piles, metal desk, and concrete blast walls, where the sim puts cover. */
  private buildCover(adopt:(o:THREE.Object3D)=>void){
   const wood=new THREE.MeshStandardMaterial({color:0x5a4a33,roughness:.85});
   const band=new THREE.MeshStandardMaterial({color:0x2e2a22,roughness:.7,metalness:.3});
@@ -95,6 +96,10 @@ export class SurvivalFx{
     g=createCardboardCoverVisual(c.x*0.17+c.z*0.11);
     g.position.set(c.x,FLOOR_Y,c.z);
     void upgradeCardboardCover(g);
+   }else if(c.kind==='desk'){
+    g=createDeskCoverVisual(c.x*0.13+c.z*0.09);
+    g.position.set(c.x,FLOOR_Y,c.z);
+    void upgradeDeskCover(g);
    }else{
     g=new THREE.Group();g.position.set(c.x,FLOOR_Y,c.z);
     if(c.kind==='crates'){

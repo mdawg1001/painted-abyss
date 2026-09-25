@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.16.4
+# Painted Abyss — First Dive · 0.16.5
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -21,6 +21,10 @@ Corridor guards walk and chase about 15% faster. Role combat speeds, patrol/chas
 ## Cardboard cover (0.16.4)
 
 Poly Haven [Cardboard Box 01](https://polyhaven.com/a/cardboard_box_01) piles are wired as shootout cover across the bunker (entrance, corridor, cavern, relic approach, extraction). They block movement and sight like the existing crates and blast walls.
+
+## Metal desk cover (0.16.5)
+
+One Poly Haven [Metal Office Desk](https://polyhaven.com/a/metal_office_desk) sits in the entrance chamber as duck-behind shootout cover. Same movement/sight blocking as crates, walls, and cardboard.
 
 ## Frame grade (0.14.3)
 

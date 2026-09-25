@@ -154,15 +154,16 @@ export const SURVIVAL_DOORS:{name:string;col:number;row:number;side:DoorSide}[]=
 ];
 
 /**
- * Cover: floor-to-head-height blockers (stacked ammo crates, cardboard piles, concrete blast walls).
+ * Cover: floor-to-head-height blockers (stacked ammo crates, cardboard piles, metal desk, concrete blast walls).
  * World-space axis-aligned boxes; they block movement and sight for everyone.
  * Placed off cell centres so every room keeps a way round them.
  */
-export const SURVIVAL_COVER:{x:number;z:number;hx:number;hz:number;kind:'crates'|'wall'|'cardboard'}[]=[
+export const SURVIVAL_COVER:{x:number;z:number;hx:number;hz:number;kind:'crates'|'wall'|'cardboard'|'desk'}[]=[
  // Entrance chamber: the first contact.
  {x:-6,z:-10,hx:.7,hz:.7,kind:'crates'},
  {x:6,z:-14,hx:1.2,hz:.35,kind:'wall'},
  {x:5,z:-12,hx:.55,hz:.5,kind:'cardboard'},
+ {x:-10,z:-18,hx:1,hz:.48,kind:'desk'},
  // Approach corridor.
  {x:-4,z:-16,hx:.55,hz:.5,kind:'cardboard'},
  {x:-6,z:-26,hx:.5,hz:.55,kind:'cardboard'},
