@@ -1,3 +1,4 @@
+import { createGuideFixture } from './guideFixture';
 import { PALETTE } from './artPalette';
 import * as THREE from 'three';
 import { applyGuardCombatPose, updateGuardMoveFrame } from './guardCombatPose';
@@ -1537,14 +1538,9 @@ export class CaveWorld extends OceanWorld {
   const guide=(points:number[][],destination:{x:number;z:number})=>{
    points.forEach(([x,z],i)=>{
     const next=points[i+1]??[destination.x,destination.z];
-    const fixture=new THREE.Group();fixture.position.set(x,.10,z);
+    const fixture=createGuideFixture();fixture.position.set(x,0,z);
     fixture.rotation.y=Math.atan2(next[0]-x,next[1]-z);
-    const housing=new THREE.Mesh(new THREE.BoxGeometry(.48,.18,.65),new THREE.MeshStandardMaterial({color:PALETTE.steel,roughness:.85,metalness:.35}));
-    const lens=new THREE.Mesh(new THREE.BoxGeometry(.28,.035,.10),new THREE.MeshBasicMaterial({color:PALETTE.amberGlow}));lens.position.set(0,.11,-.18);
-    const shape=new THREE.Shape();shape.moveTo(0,.22);shape.lineTo(-.13,.04);shape.lineTo(-.045,.04);shape.lineTo(-.045,-.10);shape.lineTo(.045,-.10);shape.lineTo(.045,.04);shape.lineTo(.13,.04);shape.closePath();
-    const arrow=new THREE.Mesh(new THREE.ShapeGeometry(shape),new THREE.MeshBasicMaterial({color:PALETTE.ivory,side:THREE.DoubleSide}));arrow.rotation.x=Math.PI/2;arrow.position.y=.112;
-    const light=new THREE.PointLight(PALETTE.amber,.85,5.5,1.5);light.position.y=.2;
-    fixture.add(housing,lens,arrow,light);this.scene.add(fixture);
+    this.scene.add(fixture);
    });
   };
   guide([[0,-18],[0,-28],[0,-40],[-12,-48],[-22,-60],[-22,-78],[-16,-90],[0,-98],[0,-108]],RELIC);
