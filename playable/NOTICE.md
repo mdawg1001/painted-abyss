@@ -21,6 +21,13 @@
 - Files: `public/assets/cardboard_box_01/` (1k glTF + textures) with notes under `src/assets/cardboard_box_01/`
 - Stacked as shootout cover on the bunker floor (blocks movement and sight via `SURVIVAL_COVER`).
 
+## Metal Office Desk (Poly Haven)
+- Source: https://polyhaven.com/a/metal_office_desk
+- Author: Ulan Cabanilla
+- License: CC0 1.0 Universal (public domain dedication)
+- Files: `public/assets/metal_office_desk/` (1k glTF + textures) with notes under `src/assets/metal_office_desk/`
+- Placed as shootout cover in the entrance chamber (blocks movement and sight via `SURVIVAL_COVER`).
+
 ## Map scrap scroll (Sketchfab)
 - Source: https://sketchfab.com/3d-models/scroll-game-ready-asset-c1503d2292c74faebf83a5937646c1c7
 - Author: Aparicio Silva 3D (@apariciosilva3D)
