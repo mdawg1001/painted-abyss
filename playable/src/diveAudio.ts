@@ -335,3 +335,39 @@ export function playValveSeat(ctx: AudioContext, master: GainNode) {
     o.onended = () => { o.disconnect(); e.disconnect(); };
   }
 }
+
+/**
+ * Hit confirmation, AAA style: a short bright tick on a hit, a lower double tick on a
+ * head shot or kill. Plays on top of the gunshot, so it is quiet and very short.
+ */
+export function playHitMarker(ctx: AudioContext, master: GainNode, kind: 'hit' | 'head' | 'kill') {
+  const start = ctx.currentTime + .03;
+  const ticks = kind === 'hit' ? [{ f: 2300, t: 0 }] : [{ f: 1900, t: 0 }, { f: 1400, t: .055 }];
+  for (const { f, t } of ticks) {
+    const osc = ctx.createOscillator(); osc.type = 'triangle';
+    osc.frequency.setValueAtTime(f, start + t);
+    osc.frequency.exponentialRampToValueAtTime(f * .7, start + t + .05);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, start + t);
+    env.gain.linearRampToValueAtTime(.16, start + t + .002);
+    env.gain.exponentialRampToValueAtTime(.001, start + t + .06);
+    osc.connect(env).connect(master);
+    osc.start(start + t); osc.stop(start + t + .07);
+    osc.onended = () => { osc.disconnect(); env.disconnect(); };
+  }
+}
+
+/** Dry trigger / magazine click: a tiny metallic tick. `seat` is the heavier mag-home snap. */
+export function playPistolClick(ctx: AudioContext, master: GainNode, seat = false) {
+  const start = ctx.currentTime + .002;
+  const len = seat ? .05 : .025;
+  const buf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * len)), ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+  const src = ctx.createBufferSource(); src.buffer = buf;
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = seat ? 1800 : 3600; bp.Q.value = 2.5;
+  const g = ctx.createGain(); g.gain.value = seat ? .5 : .35;
+  src.connect(bp).connect(g).connect(master);
+  src.start(start);
+  src.onended = () => { src.disconnect(); bp.disconnect(); g.disconnect(); };
+}

@@ -1,5 +1,6 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
 import { steerToward, faceStanding, yawToward, wrapAngle, turnToward, forwardOf, GUARD_STEER_WALK, GUARD_STEER_RUN } from './guardSteering';
+import { PISTOL, makePistol, tickPistol, startReload, canFire, spendRound, takeDamage, hitscan, type PistolState } from './playerPistol';
 import { VALVE_CLOSE_RAD, VALVE_REACH, VALVE_STAND, WHEEL_CENTRE, leakFlowFraction } from './valve';
 export type Point={x:number;y:number;z:number};
 export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife'|'gun'|'bottle'|'coat';
@@ -99,6 +100,12 @@ export function guardHitChance(distance:number,targetSpeed:number,firstShot:bool
 }
 /** Hit-chance lost per m/s of his own footwork while firing. */
 export const GUARD_MOVING_FIRE_PENALTY=.09;
+/** Guard health: three pistol body hits, or one to the head. */
+export const GUARD_MAX_HP=100;
+/** How long a hit staggers him: arm knocked off target, no shot (s). */
+export const GUARD_HIT_FLINCH=.5;
+/** Guards on patrol within this range hear your shot and come looking (m). */
+export const GUNSHOT_HEARING=20;
 /**
  * Combat footwork while he shoots (AAA human-enemy practice: TLOU / F.E.A.R. / Halo
  * enemies keep repositioning between firing positions instead of freezing).
@@ -310,7 +317,7 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  air:{name:'Pony bottle',short:'Pony',description:`R · Arm a separate bailout cylinder (~${AIR_BAILOUT_LITRES} L). Drains after the main tank.`,hint:'R arm bailout · consumed'},
  bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
- gun:{name:'Gun',short:'Gun',description:'Carry it in the hand. It does not fire for you. If a corridor guard kills you, he will take it and shoot.',hint:'Carry · death drops it'},
+ gun:{name:'TT-33 pistol',short:'Pistol',description:'Semi-automatic, 8-round magazine. Click fires one round at the centre of the screen; R changes the magazine. Three body hits or one to the head drop a guard, and every shot brings nearby guards running. Take spare rounds off the guards you drop. If a corridor guard kills you, he takes it.',hint:'Click fire · R reload'},
  bottle:{name:'Spare air bottle',short:'Bottle',description:`R · Add ${SPARE_BOTTLE_LITRES} L to the main cylinder (consumed). A corridor guard will drink it as his air if he takes it from your corpse.`,hint:'R use · consumed'},
  coat:{name:'Coat',short:'Coat',description:'Carry it. It does not soften guardian bites. If a corridor guard takes it from your corpse, his strikes hurt less.',hint:'Carry · death drops it'},
 };
@@ -898,6 +905,12 @@ export type Guard={
  vx:number;vz:number;
  /** Combat footwork: strafe side (+1 his left, −1 his right), time left on this leg, its speed and radial drift. */
  strafeDir:1|-1;legTime:number;legSpeed:number;legRadial:number;
+ /** Health (0 = down). `takeDamage` from playerPistol is the only way it drops. */
+ hp:number;maxHp:number;
+ /** Seconds left staggering from a hit (no trigger pull while it runs). */
+ flinch:number;
+ /** Rounds you can take from his body once he is down. */
+ loot:number;
 };
 export function makeGuard(outfit=0):Guard{
  const beat=guardBeat(outfit);
@@ -914,6 +927,7 @@ export function makeGuard(outfit=0):Guard{
   gun:true,bottle:false,coat:false,air:0,
   beatStart:beat.start,beatLen:beat.len,beatDir:1,outfit,
   vx:0,vz:0,strafeDir:outfit%2?1:-1,legTime:0,legSpeed:0,legRadial:0,
+  hp:GUARD_MAX_HP,maxHp:GUARD_MAX_HP,flinch:0,loot:0,
  };
 }
 /**
@@ -971,7 +985,12 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  /** Which squad member claimed the kill (index into `guards`). */
  lootGuardIndex=0;
  /** Latest combat cue for audio / camera (cleared by the renderer when consumed). */
- combatCue:''|'stab-hit'|'stab-miss'|'flinch'|'break'|'kill'|'guard-shot'|'guard-miss'|'guard-melee'='';
+ combatCue:''|'stab-hit'|'stab-miss'|'flinch'|'break'|'kill'|'guard-shot'|'guard-miss'|'guard-melee'
+  |'pistol-miss'|'pistol-hit'|'pistol-head'|'pistol-kill'|'pistol-dry'|'pistol-reload'='';
+ /** Your TT-33: magazine, spare rounds, cooldown and reload. */
+ pistol:PistolState=makePistol();
+ /** Last bullet that connected (renderer: hit marker, flinch, impact). */
+ lastPistolHit:{guard:number;point:Point;headshot:boolean;killed:boolean;shot:number;at:number}|null=null;
  decoy:{position:Point;until:number}|null=null;
  patrol=[world(16,22),world(6,22),world(6,13),world(16,13)];
  /** Player position last tick, for the guard's read on how fast you are moving. */
@@ -1020,7 +1039,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    g.state='patrol';g.lastState='patrol';g.timer=0;g.lost=0;
    g.speed=0;g.turnRate=0;g.pause=0;g.arrived=false;g.scanBase=g.heading;g.scanTime=0;
    g.meleeCool=0;g.shootCool=0;g.ammo=GUARD_MAGAZINE;g.reload=0;g.firstShot=true;g.aim=0;
-   g.gun=true;
+   g.gun=true;g.hp=g.maxHp;g.flinch=0;g.loot=0;g.vx=0;g.vz=0;
   });
  }
  /** Tests / older call sites still say `spawnGuard()`. */
@@ -1232,9 +1251,78 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.air=Math.min(AIR_MAIN_MAX,this.air+SPARE_BOTTLE_LITRES);
    this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');return;
   }
-  // Gun does not fire. Coat does not change damage. Both are only carried, then lost.
-  if(item==='gun'||item==='coat'){this.pulse('blocked');return;}
+  // R with the pistol in hand changes the magazine.
+  if(item==='gun'){this.reloadPistol();return;}
+  // Coat does not change your damage; it is only carried, then lost.
+  if(item==='coat'){this.pulse('blocked');return;}
   this.pulse('blocked');
+ }
+ /** Start a magazine change on the pistol (R, or automatically when the last round goes). */
+ reloadPistol(){
+  const p=this.pistol;
+  if(p.reload>0){this.pulse('blocked');return false;}
+  if(p.mag>=p.maxMag){this.say('Magazine is full.','blocked');return false;}
+  if(p.reserve<=0){this.say('No spare rounds. Take them off a guard.','blocked');return false;}
+  startReload(p);
+  this.combatCue='pistol-reload';
+  this.pulse('ok');
+  return true;
+ }
+ /**
+  * Pull the trigger with the TT-33 in hand. One hitscan ray from the centre of the screen:
+  * `origin` is the camera position and `dir` its forward vector (world space).
+  */
+ firePistol(origin:Point,dir:Point):'fired'|'cooldown'|'reloading'|'empty'|'blocked'{
+  if(this.outcome!=='playing'||this.inventory[this.selected]!=='gun')return 'blocked';
+  const p=this.pistol;
+  const gate=canFire(p);
+  if(gate==='empty'){
+   // Dry trigger: start a reload if there is anything to load, otherwise it just clicks.
+   if(!this.reloadPistol())this.combatCue='pistol-dry';
+   return 'empty';
+  }
+  if(gate!=='ready')return gate;
+  spendRound(p);
+  // Everyone near enough to hear it comes looking (sound carries round corners).
+  for(const g of this.guards){
+   if(g.hp<=0||g.state!=='patrol')continue;
+   if(distance(g.position,this.position)<=GUNSHOT_HEARING){
+    g.state='search';g.timer=0;g.arrived=false;g.lost=0;g.lastKnown={...this.position};
+   }
+  }
+  // A pistol round is spent within a metre or two of water.
+  const range=origin.y<this.breathWaterY?PISTOL.rangeUnderwater:PISTOL.range;
+  const targets=this.guards
+   .map((g,id)=>({g,id}))
+   .filter(({g})=>g.hp>0)
+   .map(({g,id})=>({id,foot:{x:g.position.x,y:FLOOR_Y,z:g.position.z}}));
+  const hit=hitscan(origin,dir,targets,range,(a,b)=>visible(a,b));
+  if(p.mag===0&&p.reserve>0)startReload(p);
+  if(!hit){this.combatCue='pistol-miss';return 'fired';}
+  const g=this.guards[hit.id];
+  const killed=this.guardTakeDamage(g,hit.headshot?PISTOL.headDamage:PISTOL.bodyDamage);
+  this.lastPistolHit={guard:hit.id,point:hit.point,headshot:hit.headshot,killed,shot:p.shots,at:this.elapsed};
+  this.combatCue=killed?'pistol-kill':hit.headshot?'pistol-head':'pistol-hit';
+  if(killed)this.say(hit.headshot?'Headshot. Guard down.':'Guard down.','ok');
+  return 'fired';
+ }
+ /**
+  * Damage one corridor guard through the shared `takeDamage` rule. A hit staggers him and
+  * tells him exactly where you are; the last hit drops him and leaves his magazine.
+  */
+ guardTakeDamage(g:Guard,amount:number){
+  const {killed}=takeDamage(g,amount);
+  if(killed){
+   g.speed=0;g.vx=0;g.vz=0;g.turnRate=0;g.flinch=0;
+   g.loot=g.gun?Math.max(0,g.ammo):0;
+   return true;
+  }
+  g.flinch=GUARD_HIT_FLINCH;
+  g.shootCool=Math.max(g.shootCool,GUARD_HIT_FLINCH+.1);
+  g.aim=Math.min(g.aim,.35);
+  g.lastKnown={...this.position};
+  if(g.state!=='chase'){g.state='chase';g.timer=0;g.lost=0;g.firstShot=true;}
+  return false;
  }
  /**
   * Mouse-click stab while the diving knife is selected.
@@ -1296,9 +1384,20 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(this.pending!==null&&!this.pickups.some(p=>p.id===this.pending&&distance(p.position,this.position)<3.2))this.pending=null;
   // Corridor guards run even while the cave guardian is dead / flinching.
   const playerSpeed=this.lastPlayerPos&&dt>0?Math.hypot(this.position.x-this.lastPlayerPos.x,this.position.z-this.lastPlayerPos.z)/dt:0;
+  tickPistol(this.pistol,dt);
   for(const g of this.guards){
    this.updateGuard(dt,sprinting,g,playerSpeed);
    if(this.outcome!=='playing')return;
+  }
+  // Walk over a downed guard with the pistol on you to take his rounds.
+  if(this.inventory.includes('gun')){
+   for(const g of this.guards){
+    if(g.hp>0||g.loot<=0||distance(g.position,this.position)>GUARD_LOOT_RANGE)continue;
+    const take=Math.min(g.loot,PISTOL.reserveMax-this.pistol.reserve);
+    if(take<=0)continue;
+    this.pistol.reserve+=take;g.loot-=take;
+    this.say(`Took his rounds: +${take}.`,'ok');
+   }
   }
   this.lastPlayerPos={...this.position};
   this.updatePredator(dt,sprinting);
@@ -1309,6 +1408,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   * Stolen gun shoots; stolen bottle fuels his chase; stolen coat softens his damage.
   */
  private updateGuard(dt:number,sprinting:boolean,g:Guard,playerSpeed:number){
+  // Down: no senses, no footwork, no trigger. The arm drops.
+  if(g.hp<=0){g.speed=0;g.vx=0;g.vz=0;g.turnRate=0;g.aim=Math.max(0,g.aim-dt*4);return;}
+  g.flinch=Math.max(0,g.flinch-dt);
   g.timer+=dt;
   g.meleeCool=Math.max(0,g.meleeCool-dt);
   g.shootCool=Math.max(0,g.shootCool-dt);

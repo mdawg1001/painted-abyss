@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { applyGuardCombatPose, updateGuardMoveFrame } from './guardCombatPose';
+import { PISTOL } from './playerPistol';
 import { ShaderChunk } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
-import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playValveStroke, playValveSeat } from './diveAudio';
+import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playValveStroke, playValveSeat } from './diveAudio';
 import { Gait, wadingDrag, runWeight, WALK_CAMERA_MOTION, type GaitEvent } from './gait';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
@@ -192,8 +193,17 @@ export class CaveWorld extends OceanWorld {
  sovietGuards:SovietGuardVisual[]=[];
  get sovietGuard(){return this.sovietGuards[0]??null;}
  /** Muzzle flash light + glow at the firing guard's pistol; per-guard shot counters. */
+ /** Your TT-33: muzzle flash (light + glow on the viewmodel), view recoil, viewmodel kick. */
+ playerFlash!:THREE.PointLight;playerFlashGlow!:THREE.Sprite;playerFlashT=0;
+ /** Viewmodel kick 0..1 (decays), and pitch still owed back by recoil recovery (rad). */
+ gunKick=0;recoilDebt=0;
+ /** A click that landed inside the semi-auto interval fires as soon as it opens. */
+ triggerBufferUntil=-1;
+ pistolReloadSeen=0;
+ /** Per guard: hit stagger 0..1 (decays) and death fall progress 0..1. */
+ guardJolt:number[]=[];guardFall:number[]=[];pistolHitSeen=0;
  guardFlash!:THREE.PointLight;guardFlashGlow!:THREE.Sprite;guardFlashT=0;guardRecoil:number[]=[];guardShotsSeen:number[]=[];
- private _aimTarget=new THREE.Vector3();private _muzzle=new THREE.Vector3();
+ private _aimTarget=new THREE.Vector3();private _muzzle=new THREE.Vector3();private _shotOrigin=new THREE.Vector3();
  /** World crates / suitcase (Poly Haven) keyed by mission chest id. */
  chestVisuals=new Map<number,ChestVisual>();
  /** Chart-scrap scrolls nested in each crate (visible until taken). */
@@ -311,6 +321,10 @@ export class CaveWorld extends OceanWorld {
   this.guardFlashGlow=new THREE.Sprite(new THREE.SpriteMaterial({map:flashTex,color:0xffffff,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0}));
   this.guardFlashGlow.scale.setScalar(.55);this.guardFlashGlow.visible=false;
   this.scene.add(this.guardFlash,this.guardFlashGlow);
+  this.guardJolt=this.sovietGuards.map(()=>0);this.guardFall=this.sovietGuards.map(()=>0);
+  this.playerFlash=new THREE.PointLight(0xffb45a,0,6,1.8);this.playerFlash.castShadow=false;
+  this.playerFlashGlow=new THREE.Sprite(new THREE.SpriteMaterial({map:flashTex,color:0xffffff,transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending,opacity:0}));
+  this.playerFlashGlow.visible=false;this.playerFlashGlow.renderOrder=10;
   Promise.all(this.sovietGuards.map(v=>upgradeSovietGuardVisual(v))).then(()=>{
    if(!this.alive)return;
    this.syncSovietGuard(0);
@@ -344,6 +358,9 @@ export class CaveWorld extends OceanWorld {
   this.knifeVisual.visible=false;
   this.gunVisual=this.makeHeldGun();
   this.camera.add(this.gunVisual);
+  // Muzzle sits just past the TT-33's barrel (viewmodel faces −Z).
+  this.playerFlash.position.set(0,.05,-.34);this.playerFlashGlow.position.set(0,.05,-.34);
+  this.gunVisual.add(this.playerFlash,this.playerFlashGlow);
   this.syncHeldTorch();
   upgradeKnifeVisual(this.knifeVisual,this.knifeEnvMap).then(()=>{
    if(!this.alive||!this.knifeVisual)return;
@@ -945,7 +962,12 @@ export class CaveWorld extends OceanWorld {
    const visual=this.sovietGuards[i];
    const g=this.mission.guards[i];if(!visual||!g)continue;
    visual.root.position.set(g.position.x,FLOOR_Y,g.position.z);
-   visual.root.rotation.set(0,g.heading,0);
+   // Shot down: he topples backward from the boots (gravity: slow start, fast finish),
+   // with a slight twist so a squad of bodies does not fall identically.
+   if(g.hp<=0)this.guardFall[i]=Math.min(1,(this.guardFall[i]??0)+dt/.65);else this.guardFall[i]=0;
+   const fall=(this.guardFall[i]??0)**2;
+   visual.root.rotation.order='YXZ';
+   visual.root.rotation.set(-fall*1.48,g.heading,fall*(i%2?.22:-.22));
    syncGuardGear(visual,{gun:g.gun,bottle:g.bottle,coat:g.coat});
    // Legs follow real ground velocity (strafe / backpedal while firing), chest follows you.
    const gaitDir=updateGuardMoveFrame(visual.pose,g.vx,g.vz,g.heading,g.speed,dt);
@@ -966,12 +988,17 @@ export class CaveWorld extends OceanWorld {
     }
    }
    this.guardRecoil[i]=Math.max(0,(this.guardRecoil[i]??0)-dt*6);
+   // Your round landing: a hard stagger through chest and head.
+   const hit=this.mission.lastPistolHit;
+   if(hit&&hit.guard===i&&hit.shot!==this.pistolHitSeen){this.pistolHitSeen=hit.shot;this.guardJolt[i]=1;}
+   this.guardJolt[i]=Math.max(0,(this.guardJolt[i]??0)-dt*4);
+   const kick=Math.max(this.guardRecoil[i]??0,this.guardJolt[i]??0);
    if(visual.rig&&visual.loco){
     applyGuardCombatPose(visual.rig,visual.pose,visual.gun,{
-     target:this._aimTarget,aim:g.gun?g.aim:0,engaged:g.state!=='patrol',
-     recoil:this.guardRecoil[i]??0,speed:g.speed,dt,
+     target:this._aimTarget,aim:g.gun?g.aim:0,engaged:g.hp>0&&g.state!=='patrol',
+     recoil:kick,speed:g.speed,dt,down:g.hp>0?0:1,
     });
-   }else applyGuardAim(visual,this._aimTarget,g.aim,this.guardRecoil[i]??0);
+   }else applyGuardAim(visual,this._aimTarget,g.aim,kick);
    if(flashFrom===i||(flashFrom<0&&i===0)){
     visual.gun.getWorldPosition(this._muzzle);
     this._muzzle.addScaledVector(this._aimTarget.clone().sub(this._muzzle).normalize(),.28);
@@ -1469,8 +1496,8 @@ export class CaveWorld extends OceanWorld {
    if(!this.playing||this.mission.mapOpen)return;
    try{canvas.setPointerCapture(e.pointerId);}catch{/* unsupported */}
    if(document.pointerLockElement!==canvas)this.requestLookLock(false);
-   // Primary click while knife selected → stab (knife is the held FPS prop).
-   if(e.button===0)this.tryStab();
+   // Primary click: pistol in hand fires; knife in hand stabs.
+   if(e.button===0){if(this.holdingGun())this.pullTrigger();else this.tryStab();}
   }) as EventListener);
   on(document,'pointermove',((e:PointerEvent)=>{if(!this.playing)return;
    const locked=document.pointerLockElement===canvas;
@@ -1651,6 +1678,104 @@ export class CaveWorld extends OceanWorld {
   this.consumeCombatCue(result==='hit');
   this.publish();
   return true;
+ }
+ /**
+  * One trigger pull (semi-automatic: one click, one round). Hitscan runs in the sim from
+  * the centre of the screen: the camera's world position along its forward vector.
+  */
+ pullTrigger(){
+  if(!this.playing||this.mission.outcome!=='playing')return;
+  this.camera.updateMatrixWorld();
+  this.camera.getWorldPosition(this._shotOrigin);
+  this.camera.getWorldDirection(this.forward);
+  const o=this._shotOrigin,d=this.forward;
+  const result=this.mission.firePistol({x:o.x,y:o.y,z:o.z},{x:d.x,y:d.y,z:d.z});
+  if(result==='cooldown'){this.triggerBufferUntil=this.time+.14;return;}
+  this.triggerBufferUntil=-1;
+  if(result==='fired'){
+   this.pistolMuzzleFlash();
+   this.pistolRecoil();
+   this.pistolCameraShake();
+   if(this.audible())playGunshot(this.audioContext!,this.master!,0);
+  }
+  this.consumePistolCue();
+  this.publish();
+ }
+ audible(){const ctx=this.audioContext;return !!(this.sound&&ctx&&this.master&&ctx.state==='running');}
+ /** Juice hook: muzzle flash. A hot point light and an additive glow card at the barrel, ~50 ms. */
+ pistolMuzzleFlash(){
+  this.placePlayerMuzzle();
+  this.playerFlashT=1;
+  this.playerFlashGlow.material.rotation=Math.random()*Math.PI*2;
+ }
+ /**
+  * Put the flash at the real muzzle: the front-centre of the TT-33's bounds in the
+  * viewmodel's own frame (barrel along −Z). Measured once the glTF has replaced the stub.
+  */
+ placePlayerMuzzle(){
+  const gun=this.gunVisual;if(!gun||gun.userData.muzzleMeasured)return;
+  const box=new THREE.Box3(),tmp=new THREE.Box3(),inv=new THREE.Matrix4(),rel=new THREE.Matrix4();
+  gun.updateMatrixWorld(true);inv.copy(gun.matrixWorld).invert();
+  let real=false;
+  gun.traverse(o=>{
+   const mesh=o as THREE.Mesh;
+   if(!mesh.isMesh)return;
+   for(let a:THREE.Object3D|null=o;a&&a!==gun;a=a.parent)if(a.userData.gunStub)return;
+   mesh.geometry.computeBoundingBox();
+   tmp.copy(mesh.geometry.boundingBox!).applyMatrix4(rel.multiplyMatrices(inv,mesh.matrixWorld));
+   box.union(tmp);real=true;
+  });
+  if(!real)return;
+  // Bore line: upper part of the slide, just past its front face.
+  const at=new THREE.Vector3((box.min.x+box.max.x)/2,box.max.y-(box.max.y-box.min.y)*.18,box.min.z-.02);
+  this.playerFlash.position.copy(at);this.playerFlashGlow.position.copy(at);
+  gun.userData.muzzleMeasured=true;
+ }
+ /**
+  * Juice hook: view recoil. The view kicks up (with a little random yaw) and most of the
+  * climb recovers by itself over ~0.25 s, like a real pistol settling back on target.
+  */
+ pistolRecoil(){
+  this.targetPitch=Math.min(1.4,this.targetPitch+PISTOL.recoilPitch);
+  this.targetYaw+=(Math.random()*2-1)*PISTOL.recoilYaw;
+  this.recoilDebt+=PISTOL.recoilPitch*PISTOL.recoilRecover;
+  this.gunKick=1;
+ }
+ /** Juice hook: camera shake, a short sharp punch rather than a long wobble. */
+ pistolCameraShake(){this.shakeAmp=Math.max(this.shakeAmp,.22);}
+ /** Sounds and feedback for the pistol's combat cue. */
+ consumePistolCue(){
+  const cue=this.mission.combatCue;
+  if(!cue.startsWith('pistol-'))return;
+  this.mission.combatCue='';
+  const a=this.audible(),ctx=this.audioContext!,master=this.master!;
+  if(cue==='pistol-dry'){if(a)playPistolClick(ctx,master);return;}
+  if(cue==='pistol-reload'){if(a)playPistolClick(ctx,master);return;}
+  if(cue==='pistol-hit'||cue==='pistol-head'||cue==='pistol-kill'){
+   if(a)playHitMarker(ctx,master,cue==='pistol-kill'?'kill':cue==='pistol-head'?'head':'hit');
+  }
+ }
+ /** Per-frame pistol feel: buffered pull, recoil recovery, flash decay, reload snap. */
+ updatePistolFeel(dt:number){
+  if(this.triggerBufferUntil>=0){
+   if(this.time>this.triggerBufferUntil||!this.holdingGun())this.triggerBufferUntil=-1;
+   else if(this.mission.pistol.cool<=0)this.pullTrigger();
+  }
+  if(this.recoilDebt>0){
+   const back=Math.min(this.recoilDebt,this.recoilDebt*dt*9+dt*.01);
+   this.targetPitch-=back;this.recoilDebt-=back;
+  }
+  this.gunKick=Math.max(0,this.gunKick-dt*7);
+  const f=this.playerFlashT;
+  this.playerFlash.intensity=f>0?26*f*f:0;
+  this.playerFlashGlow.visible=f>0;
+  this.playerFlashGlow.material.opacity=f;
+  this.playerFlashGlow.scale.setScalar(.05+.08*f);
+  this.playerFlashT=Math.max(0,f-dt/.05);
+  // Magazine seats: heavier click when a reload finishes.
+  const r=this.mission.pistol.reload;
+  if(this.pistolReloadSeen>0&&r===0&&this.audible())playPistolClick(this.audioContext!,this.master!,true);
+  this.pistolReloadSeen=r;
  }
  flashKnife(){
   if(!this.knifeVisual||!knifeMeshReady(this.knifeVisual))return;
@@ -1880,9 +2005,14 @@ export class CaveWorld extends OceanWorld {
    if(this.gunVisual){
     this.gunVisual.visible=this.holdingGun();
     if(this.gunVisual.visible){
-     this.gunVisual.position.set(.32+Math.sin(this.time*.7)*.02*bobBlend,-.28+Math.sin(this.time*1.05)*.02*bobBlend,-.55);
+     // Kick: slide back and muzzle flip on each shot; reload: tip the gun down and in.
+     const k=this.gunKick*this.gunKick,p=this.mission.pistol;
+     const rl=p.reload>0?Math.sin(Math.PI*(1-p.reload/PISTOL.reloadSeconds)):0;
+     this.gunVisual.position.set(.32+Math.sin(this.time*.7)*.02*bobBlend-.05*rl,-.28+Math.sin(this.time*1.05)*.02*bobBlend+.02*k-.12*rl,-.55+.07*k);
+     this.gunVisual.rotation.set(.2+.32*k-.7*rl,.55+.25*rl,.08+.3*rl);
     }
    }
+   this.updatePistolFeel(dt);
    this.updateBlood(dt);
    }
 
