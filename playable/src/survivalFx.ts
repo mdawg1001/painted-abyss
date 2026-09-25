@@ -87,9 +87,11 @@ export class SurvivalFx{
  }
  /** Stacked ammo crates, cardboard piles, metal desk, and concrete blast walls, where the sim puts cover. */
  private buildCover(adopt:(o:THREE.Object3D)=>void){
-  const wood=new THREE.MeshStandardMaterial({color:0x5a4a33,roughness:.85});
-  const band=new THREE.MeshStandardMaterial({color:0x2e2a22,roughness:.7,metalness:.3});
-  const concrete=new THREE.MeshStandardMaterial({color:0x6b6860,roughness:.95});
+  // Stylized, saturated prop paint (flat colour, no photo maps): readable cover at a glance.
+  const wood=new THREE.MeshStandardMaterial({color:0x557d2a,roughness:.8});
+  const band=new THREE.MeshStandardMaterial({color:0x2b3320,roughness:.7,metalness:.3});
+  const concrete=new THREE.MeshStandardMaterial({color:0xb9a88c,roughness:.95});
+  const hazard=new THREE.MeshStandardMaterial({map:canvasTex(64,16,g=>{g.fillStyle='#f2c230';g.fillRect(0,0,64,16);g.fillStyle='#1d1d1d';for(let x=-16;x<64;x+=16){g.beginPath();g.moveTo(x,16);g.lineTo(x+8,16);g.lineTo(x+16,0);g.lineTo(x+8,0);g.closePath();g.fill();}}),roughness:.8});
   for(const c of SURVIVAL_COVER){
    let g:THREE.Group;
    if(c.kind==='cardboard'){
@@ -111,7 +113,8 @@ export class SurvivalFx{
     }else{
      const wall=new THREE.Mesh(new THREE.BoxGeometry(c.hx*2,2.1,c.hz*2),concrete);wall.position.y=1.05;
      const cap=new THREE.Mesh(new THREE.BoxGeometry(c.hx*2+.08,.12,c.hz*2+.08),concrete);cap.position.y=2.12;
-     g.add(wall,cap);
+     const stripe=new THREE.Mesh(new THREE.BoxGeometry(c.hx*2+.02,.22,c.hz*2+.02),hazard);stripe.position.y=.32;
+     g.add(wall,cap,stripe);
     }
    }
    g.traverse(o=>{if((o as THREE.Mesh).isMesh){o.castShadow=true;o.receiveShadow=true;}});
@@ -120,8 +123,8 @@ export class SurvivalFx{
  }
  /** Steel bulkheads where reinforcements come through, each with a red warning lamp. */
  private buildDoors(adopt:(o:THREE.Object3D)=>void){
-  const steel=new THREE.MeshStandardMaterial({color:0x6e7872,roughness:.5,metalness:.55,emissive:0x1a1e1c,emissiveIntensity:.6});
-  const frameMat=new THREE.MeshStandardMaterial({color:0x8a6d2e,roughness:.6,metalness:.4,emissive:0x2a1d08,emissiveIntensity:.8});
+  const steel=new THREE.MeshStandardMaterial({color:0x2f7f8c,roughness:.55,metalness:.35,emissive:0x0c2226,emissiveIntensity:.6});
+  const frameMat=new THREE.MeshStandardMaterial({color:0xe0a21c,roughness:.6,metalness:.3,emissive:0x2a1d08,emissiveIntensity:.8});
   const lampTex=canvasTex(32,32,g=>{const gr=g.createRadialGradient(16,16,0,16,16,16);gr.addColorStop(0,'rgba(255,90,60,1)');gr.addColorStop(1,'rgba(255,40,20,0)');g.fillStyle=gr;g.fillRect(0,0,32,32);});
   for(const d of survivalDoors()){
    const g=new THREE.Group();
@@ -140,8 +143,8 @@ export class SurvivalFx{
  }
  /** Supply caches: olive ammo boxes, white field-dressing kits, green smoke tins. */
  private buildCaches(adopt:(o:THREE.Object3D)=>void){
-  const crossTex=canvasTex(64,64,g=>{g.fillStyle='#e8e4dc';g.fillRect(0,0,64,64);g.fillStyle='#c0271e';g.fillRect(26,10,12,44);g.fillRect(10,26,44,12);});
-  const stripeTex=canvasTex(64,32,g=>{g.fillStyle='#4a5a34';g.fillRect(0,0,64,32);g.fillStyle='#d6b23a';g.fillRect(0,12,64,7);});
+  const crossTex=canvasTex(64,64,g=>{g.fillStyle='#f4f1ea';g.fillRect(0,0,64,64);g.fillStyle='#e0261c';g.fillRect(26,10,12,44);g.fillRect(10,26,44,12);});
+  const stripeTex=canvasTex(64,32,g=>{g.fillStyle='#5f8a2c';g.fillRect(0,0,64,32);g.fillStyle='#f2c230';g.fillRect(0,12,64,7);});
   const glowTex=canvasTex(32,32,g=>{const gr=g.createRadialGradient(16,16,0,16,16,16);gr.addColorStop(0,'rgba(255,240,200,.9)');gr.addColorStop(1,'rgba(255,240,200,0)');g.fillStyle=gr;g.fillRect(0,0,32,32);});
   const make=(kind:'ammo'|'medkit'|'smoke')=>{
    const g=new THREE.Group();
