@@ -7,4 +7,4 @@ Runtime files live in `playable/public/assets/cardboard_box_01/` (copied into `d
 - License: CC0 1.0
 - Files: `cardboard_box_01_1k.gltf` + `.bin` + `textures/` (diff / arm / nor_gl)
 
-Loaded via `src/cardboardBoxAsset.ts` as stacked shootout cover on the bunker floor.
+Loaded via `src/cardboardBoxAsset.ts` as clustered shootout barricades (3–4 stacks each) on the bunker floor.

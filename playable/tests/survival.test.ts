@@ -5,7 +5,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
- Mission,isolateGuards,FLOOR_Y,WALK_EYE_Y,distance,visible,fits,isOpen,liveGuard,moveBody,
+ Mission,isolateGuards,FLOOR_Y,WALK_EYE_Y,distance,visible,fits,isOpen,cellOpen,CELL,liveGuard,moveBody,
  WALK_SPEED,WALK_SPRINT,EXIT,RELIC,GUARD_BODY_RADIUS,type Guard,
 } from '../src/simulation';
 import {SURVIVAL,SURVIVAL_COVER,SURVIVAL_CACHES} from '../src/survivalConfig';
@@ -93,7 +93,11 @@ test('patrolling guards cross room interiors instead of hugging walls, and never
  const m=new Mission(true);m.rand=seeded(11);m.spawnGuards();m.director.enabled=false;
  m.breathWaterY=FLOOR_Y-.1;m.position={x:500,y:WALK_EYE_Y,z:500};
  let near=0,samples=0;
- const wallGap=(p:{x:number;z:number})=>{let best=9;for(let a=0;a<16;a++){for(let d=.1;d<9;d+=.1){if(!isOpen(p.x+Math.sin(a/16*Math.PI*2)*d,p.z+Math.cos(a/16*Math.PI*2)*d)){best=Math.min(best,d);break;}}}return best;};
+ // Rock/tile walls only — cardboard barricades and crates are interior cover, not walls.
+ const wallGap=(p:{x:number;z:number})=>{let best=9;for(let a=0;a<16;a++){for(let d=.1;d<9;d+=.1){
+  const x=p.x+Math.sin(a/16*Math.PI*2)*d,z=p.z+Math.cos(a/16*Math.PI*2)*d;
+  if(!cellOpen(Math.round(x/CELL)+11,Math.round(-z/CELL))){best=Math.min(best,d);break;}
+ }}return best;};
  wait(m,90,()=>{m.breathWaterY=FLOOR_Y-.1;});
  for(let k=0;k<180;k++){
   wait(m,.5);

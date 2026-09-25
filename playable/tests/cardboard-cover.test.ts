@@ -4,8 +4,12 @@ import {accessSync, readFileSync, constants} from 'node:fs';
 import {dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {SURVIVAL_COVER} from '../src/survivalConfig';
-import {CARDBOARD_BOX_URL,CARDBOARD_BOX_SOURCE,CARDBOARD_STACK,createCardboardCoverVisual} from '../src/cardboardBoxAsset';
-import {inCover,isOpen,cellOpen,tile} from '../src/simulation';
+import {
+ CARDBOARD_BOX_URL,CARDBOARD_BOX_SOURCE,CARDBOARD_STACK,
+ CARDBOARD_CLUSTER_MIN,CARDBOARD_CLUSTER_MAX,CARDBOARD_STACK_SPACING,
+ cardboardClusterCount,cardboardStackOffsets,createCardboardCoverVisual,
+} from '../src/cardboardBoxAsset';
+import {inCover,isOpen,cellOpen,tile,guardPerimeterRoute,guardClearLine,GUARD_BODY_RADIUS} from '../src/simulation';
 
 const root=join(dirname(fileURLToPath(import.meta.url)),'..');
 const pub=join(root,'public','assets','cardboard_box_01');
@@ -20,6 +24,9 @@ test('cardboard_box_01 1k glTF and textures are shipped',()=>{
  assert.equal(CARDBOARD_BOX_URL,'/assets/cardboard_box_01/cardboard_box_01_1k.gltf');
  assert.equal(CARDBOARD_BOX_SOURCE,'https://polyhaven.com/a/cardboard_box_01');
  assert.equal(CARDBOARD_STACK,3);
+ assert.equal(CARDBOARD_CLUSTER_MIN,3);
+ assert.equal(CARDBOARD_CLUSTER_MAX,4);
+ assert.ok(CARDBOARD_STACK_SPACING>.3);
 });
 
 test('NOTICE credits Poly Haven cardboard_box_01',()=>{
@@ -29,20 +36,43 @@ test('NOTICE credits Poly Haven cardboard_box_01',()=>{
  assert.match(notice,/CC0/);
 });
 
-test('cardboard cover piles sit on open floor and leave a way round',()=>{
+test('cardboard barricades sit on open floor and leave a way round',()=>{
  const boxes=SURVIVAL_COVER.filter(c=>c.kind==='cardboard');
- assert.ok(boxes.length>=6,`${boxes.length} cardboard piles`);
+ assert.ok(boxes.length>=8,`${boxes.length} cardboard barricades`);
  for(const c of boxes){
+  assert.ok(c.hx>=.5&&c.hz>=.5,`barricade at ${c.x},${c.z} is wide enough (${c.hx}×${c.hz})`);
   const t=tile({x:c.x,y:0,z:c.z});
-  assert.ok(cellOpen(t.col,t.row),`pile at ${c.x},${c.z} is on an open cell`);
-  assert.ok(inCover(c.x,c.z),'pile itself is cover');
-  assert.ok(isOpen(c.x+c.hx+.6,c.z)||isOpen(c.x-c.hx-.6,c.z),'cover leaves a way round');
+  assert.ok(cellOpen(t.col,t.row),`barricade at ${c.x},${c.z} is on an open cell`);
+  assert.ok(inCover(c.x,c.z),'barricade itself is cover');
+  assert.ok(
+   isOpen(c.x+c.hx+.6,c.z)||isOpen(c.x-c.hx-.6,c.z)||isOpen(c.x,c.z+c.hz+.6)||isOpen(c.x,c.z-c.hz-.6),
+   'cover leaves a way round',
+  );
  }
 });
 
-test('cardboard cover stub stacks three cartons',()=>{
- const g=createCardboardCoverVisual(0);
- const stub=g.getObjectByName('cardboardStub');
- assert.ok(stub);
- assert.equal(stub!.children.length,CARDBOARD_STACK);
+test('cardboard cover does not block the guard perimeter route',()=>{
+ const r=guardPerimeterRoute();
+ for(let i=0;i<r.length;i++){
+  const a=r[i],b=r[(i+1)%r.length];
+  assert.ok(guardClearLine(a,b,GUARD_BODY_RADIUS),`segment ${i} is walkable`);
+ }
+});
+
+test('cardboard cover stub clusters 3–4 stacks of three cartons',()=>{
+ const four=createCardboardCoverVisual(0,4);
+ const stub4=four.getObjectByName('cardboardStub');
+ assert.ok(stub4);
+ assert.equal(stub4!.children.length,4,'four stacks in a barricade');
+ for(const stack of stub4!.children)assert.equal(stack.children.length,CARDBOARD_STACK);
+
+ const three=createCardboardCoverVisual(0,3);
+ const stub3=three.getObjectByName('cardboardStub');
+ assert.ok(stub3);
+ assert.equal(stub3!.children.length,3);
+
+ assert.equal(cardboardClusterCount(2),3);
+ assert.equal(cardboardClusterCount(9),4);
+ assert.equal(cardboardStackOffsets(4).length,4);
+ assert.ok(Math.abs(cardboardStackOffsets(4)[0]+cardboardStackOffsets(4)[3])<1e-9,'centred');
 });

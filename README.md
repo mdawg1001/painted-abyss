@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.16.5
+# Painted Abyss — First Dive · 0.16.6
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -25,6 +25,10 @@ Poly Haven [Cardboard Box 01](https://polyhaven.com/a/cardboard_box_01) piles ar
 ## Metal desk cover (0.16.5)
 
 One Poly Haven [Metal Office Desk](https://polyhaven.com/a/metal_office_desk) sits in the entrance chamber as duck-behind shootout cover. Same movement/sight blocking as crates, walls, and cardboard.
+
+## Cardboard barricades (0.16.6)
+
+Cardboard cover is now clustered barricades: each footprint is **3–4 carton stacks** side-by-side (chest–head high) with a wider collision box, so you can actually hide behind them in a shootout. More barricades in the entrance, corridor, cavern, relic approach, and extraction.
 
 ## Frame grade (0.14.3)
 
