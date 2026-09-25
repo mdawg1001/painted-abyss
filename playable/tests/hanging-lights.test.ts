@@ -17,7 +17,7 @@ test('the Poly Haven glTF and every file it references ship with the game', () =
 
 test('lamps hang over open floor, spread through the bunker', () => {
  const m = hangingLightMounts();
- assert.ok(m.length >= 10, `enough lamps (${m.length})`);
+ assert.equal(m.length, 7, `seven lamps, 60 % fewer than the original 18 (${m.length})`);
  for (const p of m) {
   const inside = [...cells].some(k => { const [c, r] = k.split(',').map(Number); const w = world(c, r); return Math.abs(w.x - p.x) < 1e-6 && Math.abs(w.z - p.z) < 1e-6; });
   assert.ok(inside, 'over a floor cell');

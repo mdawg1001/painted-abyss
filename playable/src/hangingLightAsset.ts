@@ -30,9 +30,9 @@ export const HANGING_LIGHT = {
  cable: 0.85,
  /** Where the tube sits below the ceiling (m, after scale): the light source. */
  tubeDrop: 0.86,
- /** Lamp spacing and count. */
- spacing: 11,
- max: 18,
+ /** Lamp spacing and count: 7 lamps, 60 % fewer than the original 18, spread ≥22 m apart. */
+ spacing: 22,
+ max: 7,
  /** Old fluorescent tube: cold, faintly green. */
  color: 0xd2f2e2,
  /** Spot cone: tight hard pools. */
