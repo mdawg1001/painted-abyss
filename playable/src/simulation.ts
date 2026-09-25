@@ -434,7 +434,7 @@ export function cellOpen(col:number,row:number){
  const g=openGrid!;const c=col-g.minC,r=row-g.minR;
  return c>=0&&r>=0&&c<g.w&&r<g.h&&g.bits[r*g.w+c]===1;
 }
-/** Inside a cover block (stacked crates / blast wall). */
+/** Inside a cover block (cardboard barricade / desk). */
 export function inCover(x:number,z:number){
  for(const b of SURVIVAL_COVER)if(Math.abs(x-b.x)<=b.hx&&Math.abs(z-b.z)<=b.hz)return true;
  return false;

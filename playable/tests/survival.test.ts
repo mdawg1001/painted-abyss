@@ -93,7 +93,7 @@ test('patrolling guards cross room interiors instead of hugging walls, and never
  const m=new Mission(true);m.rand=seeded(11);m.spawnGuards();m.director.enabled=false;
  m.breathWaterY=FLOOR_Y-.1;m.position={x:500,y:WALK_EYE_Y,z:500};
  let near=0,samples=0;
- // Rock/tile walls only — cardboard barricades and crates are interior cover, not walls.
+ // Rock/tile walls only — cardboard barricades are interior cover, not walls.
  const wallGap=(p:{x:number;z:number})=>{let best=9;for(let a=0;a<16;a++){for(let d=.1;d<9;d+=.1){
   const x=p.x+Math.sin(a/16*Math.PI*2)*d,z=p.z+Math.cos(a/16*Math.PI*2)*d;
   if(!cellOpen(Math.round(x/CELL)+11,Math.round(-z/CELL))){best=Math.min(best,d);break;}
@@ -128,10 +128,10 @@ test('guards route round cover to reach you, and spread out instead of stacking 
 });
 
 test('a guard jammed against cover gets unstuck',()=>{
- const {m,g}=one('assault',{x:-2,z:-47.5},{x:500,z:500});
- g.state='search';g.lastKnown={x:-2,y:WALK_EYE_Y,z:-60};g.arrived=false;
- // Poison his route cache: a step straight through the crate at (-2, -50), refreshed never.
- const step={x:-2,z:-52,final:false};
+ // Cardboard barricade at (10, -60) — poison a step straight through it.
+ const {m,g}=one('assault',{x:10,z:-57.5},{x:500,z:500});
+ g.state='search';g.lastKnown={x:10,y:WALK_EYE_Y,z:-70};g.arrived=false;
+ const step={x:10,z:-62,final:false};
  const start={...g.position};
  wait(m,5,()=>{if(g.stuckCount===0){g.navStep=step;g.navGoal={x:g.lastKnown.x,z:g.lastKnown.z};g.navAt=m.elapsed;}});
  assert.ok(g.stuckCount>0,'noticed he was stuck');

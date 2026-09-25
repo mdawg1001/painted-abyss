@@ -51,6 +51,12 @@ test('cardboard barricades sit on open floor and leave a way round',()=>{
  }
 });
 
+test('shootout cover has no procedural crate or blast-wall boxes',()=>{
+ for(const c of SURVIVAL_COVER){
+  assert.ok(c.kind==='cardboard'||c.kind==='desk',`unexpected cover kind ${c.kind}`);
+ }
+});
+
 test('cardboard cover does not block the guard perimeter route',()=>{
  const r=guardPerimeterRoute();
  for(let i=0;i<r.length;i++){

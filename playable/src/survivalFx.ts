@@ -85,16 +85,15 @@ export class SurvivalFx{
   this.points.frustumCulled=false;scene.add(this.points);
   for(let i=0;i<PARTICLES;i++)this.pts.push({v:new THREE.Vector3(),life:0,max:1,grav:0});
  }
- /** Stacked ammo crates, cardboard piles, metal desk, and concrete blast walls, where the sim puts cover. */
+ /** Cardboard barricades and metal desk where the sim puts cover. */
  private buildCover(adopt:(o:THREE.Object3D)=>void){
-  // Stylized, saturated prop paint (flat colour, no photo maps): readable cover at a glance.
-  const wood=new THREE.MeshStandardMaterial({color:0x557d2a,roughness:.8});
-  const band=new THREE.MeshStandardMaterial({color:0x2b3320,roughness:.7,metalness:.3});
-  const concrete=new THREE.MeshStandardMaterial({color:0xb9a88c,roughness:.95});
-  const hazard=new THREE.MeshStandardMaterial({map:canvasTex(64,16,g=>{g.fillStyle='#f2c230';g.fillRect(0,0,64,16);g.fillStyle='#1d1d1d';for(let x=-16;x<64;x+=16){g.beginPath();g.moveTo(x,16);g.lineTo(x+8,16);g.lineTo(x+16,0);g.lineTo(x+8,0);g.closePath();g.fill();}}),roughness:.8});
   for(const c of SURVIVAL_COVER){
    let g:THREE.Group;
-   if(c.kind==='cardboard'){
+   if(c.kind==='desk'){
+    g=createDeskCoverVisual(c.x*0.13+c.z*0.09);
+    g.position.set(c.x,FLOOR_Y,c.z);
+    void upgradeDeskCover(g);
+   }else{
     // Stacks run along local +X; rotate π/2 when the AABB is taller than wide.
     const alongZ=c.hz>c.hx;
     const yaw=(alongZ?Math.PI/2:0)+c.x*0.07+c.z*0.04;
@@ -102,24 +101,6 @@ export class SurvivalFx{
     g=createCardboardCoverVisual(yaw,cluster);
     g.position.set(c.x,FLOOR_Y,c.z);
     void upgradeCardboardCover(g);
-   }else if(c.kind==='desk'){
-    g=createDeskCoverVisual(c.x*0.13+c.z*0.09);
-    g.position.set(c.x,FLOOR_Y,c.z);
-    void upgradeDeskCover(g);
-   }else{
-    g=new THREE.Group();g.position.set(c.x,FLOOR_Y,c.z);
-    if(c.kind==='crates'){
-     const w=c.hx*2,d=c.hz*2;
-     const lower=new THREE.Mesh(new THREE.BoxGeometry(w,1.0,d),wood);lower.position.y=.5;
-     const upper=new THREE.Mesh(new THREE.BoxGeometry(w*.92,.95,d*.92),wood);upper.position.y=1.48;upper.rotation.y=.08;
-     for(const y of [.2,.8,1.25,1.75]){const b=new THREE.Mesh(new THREE.BoxGeometry(w*1.01,.06,d*1.01),band);b.position.y=y;g.add(b);}
-     g.add(lower,upper);
-    }else{
-     const wall=new THREE.Mesh(new THREE.BoxGeometry(c.hx*2,2.1,c.hz*2),concrete);wall.position.y=1.05;
-     const cap=new THREE.Mesh(new THREE.BoxGeometry(c.hx*2+.08,.12,c.hz*2+.08),concrete);cap.position.y=2.12;
-     const stripe=new THREE.Mesh(new THREE.BoxGeometry(c.hx*2+.02,.22,c.hz*2+.02),hazard);stripe.position.y=.32;
-     g.add(wall,cap,stripe);
-    }
    }
    g.traverse(o=>{if((o as THREE.Mesh).isMesh){o.castShadow=true;o.receiveShadow=true;}});
    this.scene.add(g);adopt(g);
