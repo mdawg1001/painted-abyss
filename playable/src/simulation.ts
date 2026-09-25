@@ -1499,21 +1499,29 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  }
  /**
   * Leave every carried item in a ring at `where` (the corpse), then empty the hands.
-  * World pickups that were never taken stay where they are.
+  * Pocket pistol rounds ride on a dropped gun when you had one; otherwise they are lost.
+  * World pickups that were never taken stay where they are. Hatch stash is untouched.
   */
  dropCarriedAt(where:Point){
   const carried=this.inventory.filter((item):item is Item=>item!==null);
+  const pocketRounds=this.pistol.mag+this.pistol.reserve;
   const n=carried.length;
   // Keep loot on the walkable floor — mid-eye drops looked like mystery floating orbs.
   const y=canWalk(where,this.breathWaterY)?FLOOR_Y:this.dropY();
   for(let i=0;i<n;i++){
    const a=(i/n)*Math.PI*2;
-   this.pickups.push({
+   const item=carried[i];
+   const drop:Pickup={
     id:this.nextId++,
-    item:carried[i],
+    item,
     position:{x:where.x+Math.cos(a)*.55,y,z:where.z+Math.sin(a)*.55},
-   });
+   };
+   if(item==='gun'&&pocketRounds>0)drop.rounds=pocketRounds;
+   this.pickups.push(drop);
   }
+  this.pistol.mag=0;
+  this.pistol.reserve=0;
+  this.pistol.reload=0;
   this.inventory=[null,null,null,null,null];
   this.selected=0;
   this.pending=null;
@@ -1548,7 +1556,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.pending=null;
   this.resetFirefight();
   this.spawnGuards();
-  this.say('You wake at the hatch with your pistol and knife. Everything else is on your corpse. The garrison has reset — push through.','blocked');
+  this.say('You wake at the hatch with empty hands. Everything you carried is on your corpse. The garrison has reset — push through.','blocked');
  }
  /**
   * After a guard kill, pull gun / bottle / coat lying on the corpse into his kit.
@@ -2385,14 +2393,18 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.startLookout(g,1+this.rand()*2);
   }
  }
- /** Each life starts the firefight over: kit, pacing, smoke and supplies. */
+ /**
+  * Each death restarts the firefight: pacing, smoke, supplies, empty pistol.
+  * Does NOT refill inventory — `dropCarriedAt` already emptied the hands; restoring
+  * knife/gun here made the hatch stash pointless.
+  */
  resetFirefight(){
   const on=this.director.enabled;
   this.director=new Director();this.director.enabled=on;this.director.reset(this.elapsed);
   this.grenades=[];this.clouds=[];this.smokes=SURVIVAL.smoke.start;
   this.caches=makeCaches();this.damageFrom=[];this.supplyTaken=null;this.lastImpact=null;this.lastKnifeHit=null;
-  this.pistol=makePistol();
-  this.inventory=[...SURVIVAL_KIT,null,null,null];this.selected=1;
+  this.pistol=makePistol(PISTOL.magazine,0);
+  this.pistol.mag=0;
   this.aimDwell=[];
  }
  /** Throw one of your smoke grenades along (dirX, dirZ). */
