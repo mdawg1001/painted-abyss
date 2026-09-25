@@ -7,7 +7,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
-import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playValveStroke, playValveSeat } from './diveAudio';
+import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playSquadCall, playValveStroke, playValveSeat } from './diveAudio';
 import { Gait, wadingDrag, runWeight, WALK_CAMERA_MOTION, type GaitEvent } from './gait';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
@@ -202,8 +202,10 @@ export class CaveWorld extends OceanWorld {
  pistolReloadSeen=0;
  /** Per guard: hit stagger 0..1 (decays) and death fall progress 0..1. */
  guardJolt:number[]=[];guardFall:number[]=[];pistolHitSeen=0;
+ /** Per guard: the red "!" detection notice over his helmet. */
+ guardNotice:THREE.Sprite[]=[];squadAlertSeen=-1;
  guardFlash!:THREE.PointLight;guardFlashGlow!:THREE.Sprite;guardFlashT=0;guardRecoil:number[]=[];guardShotsSeen:number[]=[];
- private _aimTarget=new THREE.Vector3();private _muzzle=new THREE.Vector3();private _shotOrigin=new THREE.Vector3();
+ private _aimTarget=new THREE.Vector3();private _muzzle=new THREE.Vector3();private _shotOrigin=new THREE.Vector3();private _aimDir=new THREE.Vector3();
  /** World crates / suitcase (Poly Haven) keyed by mission chest id. */
  chestVisuals=new Map<number,ChestVisual>();
  /** Chart-scrap scrolls nested in each crate (visible until taken). */
@@ -322,6 +324,16 @@ export class CaveWorld extends OceanWorld {
   this.guardFlashGlow.scale.setScalar(.55);this.guardFlashGlow.visible=false;
   this.scene.add(this.guardFlash,this.guardFlashGlow);
   this.guardJolt=this.sovietGuards.map(()=>0);this.guardFall=this.sovietGuards.map(()=>0);
+  // Detection notice: a hard red "!" that pops over a guard's helmet when he is called in.
+  const noticeTex=(()=>{const c=document.createElement('canvas');c.width=64;c.height=128;const g=c.getContext('2d')!;
+   g.font='bold 112px sans-serif';g.textAlign='center';g.textBaseline='middle';
+   g.lineWidth=12;g.strokeStyle='rgba(20,4,2,.9)';g.strokeText('!',32,68);g.fillStyle='#ff3b2a';g.fillText('!',32,68);
+   return new THREE.CanvasTexture(c);})();
+  this.guardNotice=this.sovietGuards.map(v=>{
+   const s=new THREE.Sprite(new THREE.SpriteMaterial({map:noticeTex,transparent:true,depthWrite:false,depthTest:false,fog:false}));
+   s.scale.set(.2,.4,1);s.position.set(0,2.35,0);s.visible=false;s.renderOrder=11;
+   v.root.add(s);return s;
+  });
   this.playerFlash=new THREE.PointLight(0xffb45a,0,6,1.8);this.playerFlash.castShadow=false;
   this.playerFlashGlow=new THREE.Sprite(new THREE.SpriteMaterial({map:flashTex,color:0xffffff,transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending,opacity:0}));
   this.playerFlashGlow.visible=false;this.playerFlashGlow.renderOrder=10;
@@ -956,6 +968,14 @@ export class CaveWorld extends OceanWorld {
  /** Place each Soviet guard mesh on the bunker floor from sim state. */
  syncSovietGuard(dt:number){
   if(!this.sovietGuards.length)return;
+  // The squad calling each other in: one shout from the nearest caller.
+  const call=this.mission.squadAlertAt;
+  if(call>=0&&call!==this.squadAlertSeen){
+   this.squadAlertSeen=call;
+   let near=Infinity;
+   for(const g of this.mission.guards)if(g.hp>0&&g.noticeAt===call)near=Math.min(near,Math.hypot(g.position.x-this.position.x,g.position.z-this.position.z));
+   if(this.audible()&&near<Infinity)playSquadCall(this.audioContext!,this.master!,near);
+  }
   this._aimTarget.set(this.position.x,this.position.y-.15,this.position.z);
   let flashFrom=-1;
   for(let i=0;i<this.sovietGuards.length;i++){
@@ -966,6 +986,18 @@ export class CaveWorld extends OceanWorld {
    // with a slight twist so a squad of bodies does not fall identically.
    if(g.hp<=0)this.guardFall[i]=Math.min(1,(this.guardFall[i]??0)+dt/.65);else this.guardFall[i]=0;
    const fall=(this.guardFall[i]??0)**2;
+   // Detection notice: pops in with a little overshoot, holds, then fades (1.8 s).
+   const notice=this.guardNotice[i];
+   if(notice){
+    const age=g.noticeAt>=0?this.mission.elapsed-g.noticeAt:99;
+    const show=g.hp>0&&age>=0&&age<1.8;
+    notice.visible=show;
+    if(show){
+     const pop=age<.18?THREE.MathUtils.lerp(.4,1.25,age/.18):age<.3?THREE.MathUtils.lerp(1.25,1,(age-.18)/.12):1;
+     notice.scale.set(.2*pop,.4*pop,1);
+     notice.material.opacity=age>1.3?1-(age-1.3)/.5:1;
+    }
+   }
    visual.root.rotation.order='YXZ';
    visual.root.rotation.set(-fall*1.48,g.heading,fall*(i%2?.22:-.22));
    syncGuardGear(visual,{gun:g.gun,bottle:g.bottle,coat:g.coat});
@@ -1757,6 +1789,12 @@ export class CaveWorld extends OceanWorld {
  }
  /** Per-frame pistol feel: buffered pull, recoil recovery, flash decay, reload snap. */
  updatePistolFeel(dt:number){
+  // Sights: resting the crosshair on a guard is a threat he and his squad react to.
+  if(this.holdingGun()&&this.mission.outcome==='playing'){
+   this.camera.getWorldPosition(this._shotOrigin);this.camera.getWorldDirection(this._aimDir);
+   const o=this._shotOrigin,d=this._aimDir;
+   this.mission.aimAt({x:o.x,y:o.y,z:o.z},{x:d.x,y:d.y,z:d.z},dt);
+  }
   if(this.triggerBufferUntil>=0){
    if(this.time>this.triggerBufferUntil||!this.holdingGun())this.triggerBufferUntil=-1;
    else if(this.mission.pistol.cool<=0)this.pullTrigger();

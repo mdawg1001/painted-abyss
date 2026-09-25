@@ -371,3 +371,36 @@ export function playPistolClick(ctx: AudioContext, master: GainNode, seat = fals
   src.start(start);
   src.onended = () => { src.disconnect(); bp.disconnect(); g.disconnect(); };
 }
+
+/**
+ * Squad call-out: a guard shouting to the others. A short burst of band-limited noise
+ * (the radio / echo in concrete) under two rough voiced barks, pitched down with distance.
+ */
+export function playSquadCall(ctx: AudioContext, master: GainNode, distance: number) {
+  const start = ctx.currentTime + .02;
+  const near = 1 / (1 + Math.max(0, distance) / 9);
+  const out = ctx.createGain(); out.gain.value = .22 + .38 * near; out.connect(master);
+  const nodes: AudioNode[] = [out];
+  // Squelch.
+  const len = .12;
+  const buf = ctx.createBuffer(1, Math.round(ctx.sampleRate * len), ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const sq = ctx.createBufferSource(); sq.buffer = buf;
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1500; bp.Q.value = 1.4;
+  const sqg = ctx.createGain(); sqg.gain.value = .35;
+  sq.connect(bp).connect(sqg).connect(out); sq.start(start); nodes.push(sq, bp, sqg);
+  // Two barks: a sawtooth voice through a vowel-ish formant, falling in pitch.
+  for (const [t, f0] of [[.1, 190], [.34, 165]] as const) {
+    const v = ctx.createOscillator(); v.type = 'sawtooth';
+    v.frequency.setValueAtTime(f0, start + t); v.frequency.exponentialRampToValueAtTime(f0 * .72, start + t + .2);
+    const formant = ctx.createBiquadFilter(); formant.type = 'bandpass'; formant.frequency.value = 750; formant.Q.value = 3;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, start + t);
+    env.gain.linearRampToValueAtTime(.9, start + t + .025);
+    env.gain.exponentialRampToValueAtTime(.001, start + t + .22);
+    v.connect(formant).connect(env).connect(out); v.start(start + t); v.stop(start + t + .24);
+    nodes.push(v, formant, env);
+    if (f0 === 165) v.onended = () => nodes.forEach(n => n.disconnect());
+  }
+}
