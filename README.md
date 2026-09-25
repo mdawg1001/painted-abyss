@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.16.2
+# Painted Abyss — First Dive · 0.16.3
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -13,6 +13,10 @@ Includes a clearly audible inventory select click/snap, quieter first-play tip, 
 ## Surfaces (0.16.2)
 
 The flat band shade is gone. Rock, floor, stone, and moss are the 2K photographic maps again, with the original soft lighting and pore normals. Floor and wall blood stains are 60% lighter than before. Fog, the frame grade, the io HUD, and the red enemy hit flash are unchanged.
+
+## Faster guards (0.16.3)
+
+Corridor guards walk and chase about 15% faster. Role combat speeds, patrol/chase/search, and the walk→run gait blend move with them. Authored foot-slide clip speeds are unchanged so the planted foot still locks to the floor.
 
 ## Frame grade (0.14.3)
 
