@@ -5,7 +5,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
-import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet } from './diveAudio';
+import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playValveStroke, playValveSeat } from './diveAudio';
 import { Gait, wadingDrag, runWeight, WALK_CAMERA_MOTION, type GaitEvent } from './gait';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
@@ -21,8 +21,11 @@ import {
 } from './lifebuoyAsset';
 import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLight } from './sconceAsset';
 import { createWallPosters, upgradeWallPosters, type WallPosters } from './posterAsset';
-import { createWallPipe, upgradeWallPipe, type WallPipe } from './pipeAsset';
 import { createCopperPipe, upgradeCopperPipe, type CopperPipe } from './copperPipeAsset';
+import { createWallPipe, upgradeWallPipe, setPipeWheel, type WallPipe } from './pipeAsset';
+import { startStroke, stepStroke, handPoses, smootherstep, VALVE_STAND, WHEEL_CENTRE, BREAKAWAY_TIME, REGRIP_TIME, type ValveStroke } from './valve';
+import { createValveHands, poseValveHands, resetValveHands, type ValveHandsRig } from './valveHands';
+import { applyHandEnvMap } from './diverHand';
 import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion, applyGuardAim,
  type SovietGuardVisual,
@@ -31,7 +34,9 @@ import { mountTt33 } from './gunAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, distance, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_COUNT, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
- airborne:boolean};
+ airborne:boolean;
+ /** Both hands are on the leak valve wheel. */
+ atWheel:boolean};
 /** Point lights packed per cave chunk. 24 covers every light whose range reaches a chunk; the rest of the set still exists in the scene for spots/shadows. */
 const POINT_CULL_MAX=24;
 type PointCull={box:THREE.Box3;count:{value:number};pos:THREE.Vector3[];col:THREE.Vector3[];dist:Float32Array;decay:Float32Array};
@@ -204,6 +209,12 @@ export class CaveWorld extends OceanWorld {
  wallPipe:WallPipe|null=null;
  /** Tiled pixol3d copper run along the hand-wheel wall in the far south-west cavern. */
  copperPipe:CopperPipe|null=null;
+ /** Both arms, shown only while the leak valve is being worked. */
+ valveHands:ValveHandsRig|null=null;
+ /** Active hand-over-hand turn on the leak valve (null when not at the wheel). */
+ valveStroke:ValveStroke|null=null;
+ /** Where the eye and look were when the hands went to the wheel, and time since. */
+ valveFrom={x:0,y:0,z:0,yaw:0,pitch:0};valveClock=0;
  /** Held FPS knife when inventory knife is selected; torch meshes hide meanwhile. */
  knifeVisual:THREE.Group|null=null;knifeFlashUntil=0;
  /** Time the knife was last drawn (equip animation); null while holstered. */
@@ -347,6 +358,10 @@ export class CaveWorld extends OceanWorld {
   this.mountWallPosters();
   this.mountWallPipe();
   this.mountCopperPipe();
+  this.valveHands=createValveHands();
+  this.scene.add(this.valveHands.root);
+  if(this.knifeEnvMap)applyHandEnvMap(this.valveHands.root,this.knifeEnvMap);
+  this.adoptPointCull(this.valveHands.root,this.heldLightBox,false,false);
   this.pointCullSyncs.push(()=>{
    const p=this.camera.position;
    this.heldLightBox.min.set(p.x-2.2,p.y-2.2,p.z-2.2);
@@ -904,6 +919,7 @@ export class CaveWorld extends OceanWorld {
   }
  }
  applyBreathRespawn(){
+  this.endValve();
   this.mission.respawnAtHatch();
   this.mission.mapOpen=false;
   this.position.copy(this.mission.position);
@@ -1408,13 +1424,15 @@ export class CaveWorld extends OceanWorld {
    }group.position.set(p.position.x,p.position.y+Math.sin(this.time*1.7+p.id)*.12,p.position.z);group.rotation.y=this.time*.45;
   }
  }
- publish(){this.ui({mission:this.mission,playing:this.playing,started:this.started,pointerLocked:this.pointerLocked,error:this.error,audioNotice:this.audioNotice,yaw:this.yaw,onFoot:this.onFoot,airborne:this.airborne});}
+ publish(){this.ui({mission:this.mission,playing:this.playing,started:this.started,pointerLocked:this.pointerLocked,error:this.error,audioNotice:this.audioNotice,yaw:this.yaw,onFoot:this.onFoot,airborne:this.airborne,atWheel:!!this.valveStroke});}
  bind(){
   const on=(target:EventTarget,type:string,fn:EventListener,options?:AddEventListenerOptions)=>{target.addEventListener(type,fn,options);this.listeners.push(()=>target.removeEventListener(type,fn,options));};
   on(window,'keydown',((e:KeyboardEvent)=>{
    if(!this.playing)return;
    if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Tab'].includes(e.code))e.preventDefault();
    this.keys.add(e.code);if(e.repeat)return;
+   // Both hands are on the valve wheel: only pause and mute get through.
+   if(this.valveStroke&&e.code!=='Escape'&&e.code!=='KeyM'){this.publish();return;}
    if(e.code==='Escape'){
     if(this.mission.mapOpen){this.mission.mapOpen=false;this.requestLookLock(false);this.publish();return;}
     if(this.mission.pending!==null){this.mission.pending=null;this.publish();}else this.pause();
@@ -1431,7 +1449,8 @@ export class CaveWorld extends OceanWorld {
     this.publish();return;
    }
    if(this.mission.mapOpen){this.publish();return;}
-   if(e.code==='KeyE')this.mission.interact();if(e.code==='KeyF')this.mission.torch=!this.mission.torch;
+   if(e.code==='KeyE'){if(this.mission.nearValve())this.beginValve();else this.mission.interact();}
+   if(e.code==='KeyF')this.mission.torch=!this.mission.torch;
    if(e.code==='KeyR')this.mission.use();if(e.code==='KeyG')this.mission.drop();if(e.code==='KeyM')this.setSound(!this.sound);
    this.publish();
   }) as EventListener);
@@ -1507,6 +1526,96 @@ export class CaveWorld extends OceanWorld {
   const ctx=this.audioContext,master=this.master;
   if(!ctx||!master||ctx.state!=='running')return;
   playInventoryClick(ctx,master);
+ }
+ /** Both hands go to the leak valve's wheel. Holding E keeps turning; letting go releases it. */
+ beginValve(){
+  const m=this.mission;
+  if(this.valveStroke||!m.nearValve()||!this.valveHands)return;
+  this.valveStroke=startStroke(m.valveTurned);
+  this.valveFrom={x:m.position.x,y:m.position.y,z:m.position.z,yaw:this.yaw,pitch:this.pitch};
+  this.valveClock=0;
+  this.velocity.set(0,0,0);
+  resetValveHands(this.valveHands);
+  this.valveHands.root.visible=true;
+  this.knifeFlashUntil=0;
+  if(m.valveStuck&&(!m.tipsSeen||m.noticeUntil<=m.elapsed))m.say('The wheel is seized. Keep holding E and put your weight into it.','ok');
+ }
+ endValve(){
+  if(!this.valveStroke)return;
+  this.valveStroke=null;
+  if(this.valveHands)this.valveHands.root.visible=false;
+  this.targetYaw=this.yaw;this.targetPitch=this.pitch;
+  this.gait.reset();
+  if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
+ }
+ /** Eye height for working the wheel: standing on the floor, or hovering level with it once flooded. */
+ valveEyeY(){return this.onFoot?WALK_EYE_Y:WHEEL_CENTRE.y+.31;}
+ /**
+  * One frame at the valve. The stroke machine (valve.ts) owns timing and wheel
+  * travel; this places the body, head and arms and applies the effort.
+  */
+ updateValve(dt:number){
+  const m=this.mission,s=this.valveStroke!;
+  this.valveClock+=dt;
+  this.onFoot=canWalk(m.position,m.breathWaterY);
+  this.wasOnFoot=this.onFoot;
+  this.velocity.set(0,0,0);
+  this.gait.step(0,0,false,dt);
+  this.handSwing=null;
+  const hold=this.keys.has('KeyE')&&m.outcome==='playing';
+  const stepped=stepStroke(s,dt,m.valveTurned,hold,m.valveStuck);
+  if(stepped.turn>0)m.turnValve(stepped.turn);
+  const ctx=this.audioContext,master=this.master;
+  const audible=!!(this.sound&&ctx&&master&&ctx.state==='running');
+  if(stepped.strokeStarted&&audible){
+   const strain=s.stage==='breakaway'?1:Math.min(1,Math.max(0,(s.driveTime/.9-1)*1.5));
+   playValveStroke(ctx!,master!,s.stage==='breakaway'?BREAKAWAY_TIME+s.driveTime:s.driveTime,strain);
+  }
+  if(stepped.seated){
+   if(audible)playValveSeat(ctx!,master!);
+   this.shakeAmp=Math.max(this.shakeAmp,.35);
+  }
+  // Step square to the wheel over the first half-second; stay there until the hands are off.
+  const k=smootherstep(this.valveClock/.45);
+  const f=this.valveFrom;
+  const eyeY=this.valveEyeY();
+  m.position.x=THREE.MathUtils.lerp(f.x,VALVE_STAND.x,k);
+  m.position.z=THREE.MathUtils.lerp(f.z,VALVE_STAND.z,k);
+  m.position.y=THREE.MathUtils.lerp(f.y,eyeY,k);
+  if(!this.onFoot){m.buoyancy=0;m.buoyancyTrim=0;}
+  // Hard work on a stiff wheel is exertion: breathing (gas) and legs pay for it.
+  m.update(dt,stepped.effort);
+  this.position.set(m.position.x,m.position.y,m.position.z);
+  // Head: square on the wheel, eyes a little above the hub.
+  const dx=WHEEL_CENTRE.x-this.position.x,dz=WHEEL_CENTRE.z-this.position.z;
+  const lookYaw=Math.atan2(-dx,-dz);
+  const lookPitch=Math.atan2(WHEEL_CENTRE.y+.05-this.position.y,Math.hypot(dx,dz));
+  const dy=Math.atan2(Math.sin(lookYaw-f.yaw),Math.cos(lookYaw-f.yaw));
+  this.yaw=f.yaw+dy*k;this.pitch=THREE.MathUtils.lerp(f.pitch,lookPitch,k);
+  this.targetYaw=this.yaw;this.targetPitch=this.pitch;
+  // Body English: lean into each drive, twist a touch with the wheel, tremble while the stem is seized.
+  let lean=0,roll=0,tremor=0;
+  if(s.stage==='drive'){const u=Math.min(1,s.t/s.driveTime);lean=Math.sin(Math.PI*u)*.014;roll=-Math.sin(Math.PI*u)*.018;}
+  else if(s.stage==='breakaway'){const u=Math.min(1,s.t/BREAKAWAY_TIME);lean=.02*u;roll=-.012*u;tremor=.0022*u;}
+  else if(s.stage==='regripRight'||s.stage==='regripLeft'){const u=Math.min(1,s.t/REGRIP_TIME);roll=(s.stage==='regripRight'?.006:-.006)*Math.sin(Math.PI*u);}
+  const breathe=Math.sin(this.time*1.9)*.003;
+  this.camera.rotation.set(this.pitch-s.seatedPulse*.03,this.yaw,roll);
+  this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
+  this.camera.position.set(this.position.x,this.position.y+breathe,this.position.z)
+   .addScaledVector(this.forward,lean)
+   .addScaledVector(this.right,Math.sin(this.time*47)*tremor)
+   .addScaledVector(this.upAxis,Math.cos(this.time*41)*tremor);
+  if(this.shakeAmp>.001){
+   this.camera.position.addScaledVector(this.upAxis,Math.cos(this.time*37)*this.shakeAmp*.02);
+   this.shakeAmp=Math.max(0,this.shakeAmp-dt*2.8);
+  }
+  if(this.wallPipe)setPipeWheel(this.wallPipe,m.valveTurned);
+  // Torch hangs clipped to the chest harness, angled past the wheel so its spill (not the hot spot) lights the hands.
+  this.torchBody.position.set(.06,-.33,.02);
+  this.torchBody.rotation.set(.3,.38,0);
+  const poses=handPoses(s);
+  poseValveHands(this.valveHands!,this.camera,poses.right,poses.left);
+  if(stepped.finished)this.endValve();
  }
  /** Clicks that arrived while the arm was still recovering; each becomes its own stab. */
  stabQueue=0;
@@ -1597,6 +1706,7 @@ export class CaveWorld extends OceanWorld {
  }
  pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
  reset(){
+  this.endValve();
   this.backgroundMusic?.reset();this.mission=new Mission(readInventoryTipsSeen());
   this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();
   this.onFoot=true;this.wasOnFoot=true;this.gait.reset();
@@ -1622,6 +1732,8 @@ export class CaveWorld extends OceanWorld {
     this.gait.step(0,0,false,dt);
     m.update(dt,false);this.position.copy(m.position);
     this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
+   }else if(this.valveStroke){
+    this.updateValve(dt);
    }else if(!this.holdCamera){
    if(!this.pointerLocked&&this.lookPointer){const bounds=this.renderer.domElement.getBoundingClientRect();this.fallbackTurn=edgeTurn(this.lookPointer.x,bounds.left,bounds.width);}
    else if(!this.pointerLocked&&!this.lookPointer)this.fallbackTurn=0;
@@ -1699,7 +1811,7 @@ export class CaveWorld extends OceanWorld {
    }
    // Presentation-only hover bob when nearly still — never moves mission.position.
    // Walk bob is a light stride; swim keeps the stronger murk drift.
-   if(!this.holdCamera){
+   if(!this.holdCamera&&!this.valveStroke){
    const speed=this.velocity.length();
    let bobBlend=1-THREE.MathUtils.smoothstep(speed,.06,.5);
    let eyeX:number,eyeY:number,eyeZ:number;
@@ -1804,11 +1916,18 @@ export class CaveWorld extends OceanWorld {
   const knifeHeld=this.holdingKnife();
   const torchOn=torchShouldShine(this.mission.torch,selected);
   this.syncHeldTorch();
-  if(this.knifeVisual&&!this.playing){
+  if(this.wallPipe)setPipeWheel(this.wallPipe,this.mission.valveTurned);
+  if(this.valveStroke){
+   // Torch rides on its lanyard/chest clip while both hands work: light stays, lantern mesh goes.
+   this.setTorchMeshesVisible(false);
+   if(this.knifeVisual)this.knifeVisual.visible=false;
+   if(this.gunVisual)this.gunVisual.visible=false;
+  }
+  if(this.knifeVisual&&!this.playing&&!this.valveStroke){
    this.knifeVisual.visible=knifeHeld&&knifeMeshReady(this.knifeVisual);
    if(knifeHeld)poseKnife(this.knifeVisual);
   }
-  if(this.gunVisual&&!this.playing)this.gunVisual.visible=this.holdingGun();
+  if(this.gunVisual&&!this.playing&&!this.valveStroke)this.gunVisual.visible=this.holdingGun();
   this.torchBody.visible=true;
   if(torchOn){
    // Torch murk follows water over the lens: free air reads as the clear surface response.

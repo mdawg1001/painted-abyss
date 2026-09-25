@@ -91,5 +91,5 @@
 - Source: https://sketchfab.com/3d-models/04-doom-pipe-detail-41063ef623eb41f5a981fff8997e54b9
 - Author: gleb_tihon (@gleb_tihon)
 - License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
-- Files: `public/assets/doom-pipe/doom_pipe.glb` — official glTF (793,868 triangles) decimated to ~49k triangles and meshopt-compressed; nothing else altered
-- Floor-to-roof riser with hand-wheel valve on the blind south wall of the far south-west cavern corner (not interactable).
+- Files: `public/assets/doom-pipe/doom_pipe.glb` — official glTF (793,868 triangles) with the hand-wheel split into its own node, decimated to ~67k triangles and meshopt-compressed (`scripts/build-doom-pipe.mjs`); geometry otherwise unaltered
+- Leak-valve riser on the blind south wall of the far south-west cavern corner. Hold E at the wheel to turn the gate valve shut and stop the bunker leak.

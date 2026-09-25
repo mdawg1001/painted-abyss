@@ -267,3 +267,71 @@ export function playRicochet(ctx: AudioContext, master: GainNode) {
   chip.start(start - .02); chip.stop(start + .04);
   whine.onended = () => { whine.disconnect(); wEnv.disconnect(); chip.disconnect(); bp.disconnect(); cEnv.disconnect(); };
 }
+
+/**
+ * One drive stroke on the leak valve: the stem grinding through its packing
+ * (band-passed noise swept with the wheel's speed) over a low metal groan.
+ * `strain` 0..1 raises the groan and grit for the stuck first turn and the seat.
+ */
+export function playValveStroke(ctx: AudioContext, master: GainNode, duration: number, strain: number) {
+  const start = ctx.currentTime;
+  const len = Math.max(.1, duration);
+  const buf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * len)), ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  // Stick-slip grit: noise gated by a jittery ~40 Hz chatter.
+  let phase = 0;
+  for (let i = 0; i < data.length; i++) {
+    phase += (38 + Math.random() * 18) / ctx.sampleRate;
+    const chatter = .45 + .55 * Math.max(0, Math.sin(phase * Math.PI * 2));
+    data[i] = (Math.random() * 2 - 1) * chatter;
+  }
+  const noise = ctx.createBufferSource();
+  noise.buffer = buf;
+  const band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.Q.value = 2.2;
+  // Speed of the wheel follows the smootherstep drive: pitch rises then falls.
+  band.frequency.setValueAtTime(260, start);
+  band.frequency.linearRampToValueAtTime(520 + 260 * strain, start + len * .5);
+  band.frequency.linearRampToValueAtTime(300, start + len);
+  const grit = ctx.createGain();
+  grit.gain.setValueAtTime(0, start);
+  grit.gain.linearRampToValueAtTime(.08 + .06 * strain, start + len * .2);
+  grit.gain.linearRampToValueAtTime(.05 + .05 * strain, start + len * .8);
+  grit.gain.linearRampToValueAtTime(0, start + len);
+  noise.connect(band).connect(grit).connect(master);
+  const groan = ctx.createOscillator();
+  groan.type = 'sawtooth';
+  groan.frequency.setValueAtTime(58 + 30 * strain, start);
+  groan.frequency.linearRampToValueAtTime(72 + 40 * strain, start + len * .5);
+  groan.frequency.linearRampToValueAtTime(55 + 25 * strain, start + len);
+  const low = ctx.createBiquadFilter();
+  low.type = 'lowpass';
+  low.frequency.value = 420;
+  const groanGain = ctx.createGain();
+  groanGain.gain.setValueAtTime(0, start);
+  groanGain.gain.linearRampToValueAtTime(.035 + .05 * strain, start + len * .3);
+  groanGain.gain.linearRampToValueAtTime(0, start + len);
+  groan.connect(low).connect(groanGain).connect(master);
+  noise.start(start); noise.stop(start + len);
+  groan.start(start); groan.stop(start + len);
+  groan.onended = () => { noise.disconnect(); band.disconnect(); grit.disconnect(); groan.disconnect(); low.disconnect(); groanGain.disconnect(); };
+}
+
+/** The gate hitting its seat: a dull, heavy metal clunk that rings briefly through the riser. */
+export function playValveSeat(ctx: AudioContext, master: GainNode) {
+  const start = ctx.currentTime;
+  for (const [f, g, d] of [[92, .22, .5], [233, .08, .35], [611, .03, .22]] as const) {
+    const o = ctx.createOscillator();
+    const e = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(f * 1.08, start);
+    o.frequency.exponentialRampToValueAtTime(f, start + .06);
+    e.gain.setValueAtTime(0, start);
+    e.gain.linearRampToValueAtTime(g, start + .006);
+    e.gain.exponentialRampToValueAtTime(.0008, start + d);
+    o.connect(e).connect(master);
+    o.start(start); o.stop(start + d + .02);
+    o.onended = () => { o.disconnect(); e.disconnect(); };
+  }
+}

@@ -1,105 +1,123 @@
 /**
- * Hidden wall pipe — Sketchfab “04_DOOM_pipe (detail)” by gleb_tihon (CC BY 4.0).
+ * Leak-valve riser — Sketchfab “04_DOOM_pipe (detail)” by gleb_tihon (CC BY 4.0).
  * https://sketchfab.com/3d-models/04-doom-pipe-detail-41063ef623eb41f5a981fff8997e54b9
  *
- * A floor-to-ceiling riser (green main line, clamp collar, red hand-wheel valve,
- * bracket frame and bypass loop) standing against the south wall of the far
- * south-west cavern corner: a dead end the marker routes never lead past, lit
- * only by spill from the nearest sconce and the diver's torch.
+ * The green main line, clamp collar, red hand-wheel gate valve, bracket frame
+ * and bypass loop stand against the south wall of the far south-west cavern
+ * corner: a dead end the marker routes never lead past. Scaled so the handwheel
+ * is a real ~0.3 m wheel at chest height (see valve.ts); a plain run of the same
+ * pipe carries it on up into the roof.
  *
- * Source glTF is ~794k triangles / 25 MB; the shipped GLB is welded, simplified
- * to ~49k triangles and meshopt-compressed (~0.5 MB). See
- * public/assets/doom-pipe/README.md.
+ * The shipped GLB (scripts/build-doom-pipe.mjs) splits the wheel into its own
+ * node, `valveWheel`, pivoted on the spin axis, so turning it is one rotation.
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { MODEL, PIPE_ORIGIN, PIPE_SCALE, PIPE_MODEL_TOP_Y, PIPE_WALL, PIPE_WALL_CLEARANCE, modelToWorld } from './valve';
 import type { SconceMount } from './sconceAsset';
 
 export const PIPE_ASSET_URL='/assets/doom-pipe/doom_pipe.glb';
 export const PIPE_SOURCE='https://sketchfab.com/3d-models/04-doom-pipe-detail-41063ef623eb41f5a981fff8997e54b9';
 export const PIPE_AUTHOR='gleb_tihon';
 export const PIPE_LICENSE='CC BY 4.0';
-
-/**
- * South face of cells (4,24)/(5,24): the inner wall plane sits at z = -98 and the
- * room lies toward +z. Row 25 is solid under cols 4–9, so this stretch is a blind
- * wall behind the west shelf, off every turquoise and amber route. x = -26 sits
- * in the seam between the two cells' wall-face boulders.
- */
-export const PIPE_MOUNT:SconceMount={x:-26,z:-98,yaw:0};
-/** Cave floor mesh plane and roof plane (CaveWorld builds them at y 0 and 8). */
-const CAVE_FLOOR_PLANE=0;
-const CAVE_ROOF_PLANE=8;
-/** Run the riser from just under the sand to just into the roof so neither end shows cut. */
-export const PIPE_BOTTOM_Y=CAVE_FLOOR_PLANE-.05;
-export const PIPE_TOP_Y=CAVE_ROOF_PLANE+.1;
-/** Rear of the bracket frame clears the wall-face boulders (they bulge ~0.25 m past the wall plane). */
-export const PIPE_WALL_CLEARANCE=.35;
-
+/** Cave roof plane (CaveWorld builds it at y 8); the extension runs just into it. */
+export const PIPE_ROOF_Y=8.1;
 /** Albedo multiplier for silt and corrosion on the factory paint. */
 export const PIPE_GRIME=.55;
 
-export type WallPipe={group:THREE.Group;ready:boolean};
+/** Wall face the riser stands on (the south face of cells (4,24)/(5,24)); faces +Z into the room. */
+export const PIPE_MOUNT:SconceMount={x:PIPE_WALL.x,z:PIPE_WALL.z,yaw:0};
+export { PIPE_WALL_CLEARANCE };
 
-const inwardVec=(yaw:number)=>new THREE.Vector3(Math.sin(yaw),0,Math.cos(yaw));
+export type WallPipe={group:THREE.Group;ready:boolean;wheel:THREE.Object3D|null};
 
-export function createWallPipe(mount:SconceMount=PIPE_MOUNT):WallPipe{
+export function createWallPipe():WallPipe{
  const group=new THREE.Group();
  group.name='doomPipe';
- group.userData.mount=mount;
- return{group,ready:false};
+ return{group,ready:false,wheel:null};
 }
 
-/**
- * The authored model is Y-up with the hand-wheel facing +Z and the bracket frame
- * at -Z. Scale it to span floor to roof, put its back against the wall and turn
- * +Z to face into the room.
- */
-export function fitPipeToWall(model:THREE.Object3D,mount:SconceMount){
- model.updateMatrixWorld(true);
- const box=new THREE.Box3().setFromObject(model);
- const size=box.getSize(new THREE.Vector3());
- const scale=(PIPE_TOP_Y-PIPE_BOTTOM_Y)/(size.y||1);
- const centreX=(box.min.x+box.max.x)*.5;
- // Local origin: bottom-centre of the rear face.
- model.position.set(-centreX,-box.min.y,-box.min.z);
+/** Painted steel that reads under the torch instead of going black or blowing out. */
+function weatherMaterials(root:THREE.Object3D){
+ root.traverse(o=>{
+  if(!(o instanceof THREE.Mesh))return;
+  o.castShadow=true;o.receiveShadow=true;
+  const mats=Array.isArray(o.material)?o.material:[o.material];
+  for(const m of mats){
+   if(!(m instanceof THREE.MeshStandardMaterial)||m.userData.weathered)continue;
+   m.userData.weathered=true;
+   // Several source materials leave metallicFactor at the glTF default of 1; with no
+   // cave env map a full metal renders black under point lights.
+   m.metalness=Math.min(m.metalness,.35);
+   m.roughness=Math.max(m.roughness,.55);
+   m.color.multiplyScalar(PIPE_GRIME);
+   // The one emissive part is a small indicator strip; keep it a faint tell, not a lamp.
+   if(m.emissive.getHex()!==0)m.emissiveIntensity=.35;
+   m.needsUpdate=true;
+  }
+ });
+}
+
+/** Plain length of the green main line from the model's cut top up into the roof, with a bolted flange at the joint. */
+function buildRoofRun(green:THREE.Material,flange:THREE.Material):THREE.Group{
+ const g=new THREE.Group();g.name='doomPipeRoofRun';
+ const r=MODEL.topPipeR*PIPE_SCALE;
+ const c=modelToWorld({x:0,y:0,z:MODEL.topPipeZ});
+ const h=PIPE_ROOF_Y-PIPE_MODEL_TOP_Y+.02;
+ const run=new THREE.Mesh(new THREE.CylinderGeometry(r,r,h,24,1,true),green);
+ run.position.set(c.x,PIPE_MODEL_TOP_Y-.01+h/2,c.z);
+ const ring=new THREE.Mesh(new THREE.CylinderGeometry(r*1.28,r*1.28,.035,24),flange);
+ ring.position.set(c.x,PIPE_MODEL_TOP_Y+.012,c.z);
+ g.add(run,ring);
+ for(let i=0;i<8;i++){
+  const a=i/8*Math.PI*2;
+  const bolt=new THREE.Mesh(new THREE.CylinderGeometry(.009,.009,.05,6),flange);
+  bolt.position.set(c.x+Math.cos(a)*r*1.14,PIPE_MODEL_TOP_Y+.012,c.z+Math.sin(a)*r*1.14);
+  g.add(bolt);
+ }
+ g.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
+ return g;
+}
+
+function findMaterial(root:THREE.Object3D,name:string):THREE.Material|null{
+ let found:THREE.Material|null=null;
+ root.traverse(o=>{
+  if(found||!(o instanceof THREE.Mesh))return;
+  const mats=Array.isArray(o.material)?o.material:[o.material];
+  found=mats.find(m=>m.name===name)??null;
+ });
+ return found;
+}
+
+/** Model → world: scale, stand the rear face on the wall, foot in the sand. */
+export function fitPipeToWall(model:THREE.Object3D,_mount:SconceMount=PIPE_MOUNT){
  const pivot=new THREE.Group();
  pivot.name='doomPipeMount';
+ model.position.set(0,-MODEL.minY,-MODEL.backZ);
  pivot.add(model);
- pivot.scale.setScalar(scale);
- pivot.rotation.y=mount.yaw;
- pivot.position.set(mount.x,PIPE_BOTTOM_Y,mount.z).addScaledVector(inwardVec(mount.yaw),PIPE_WALL_CLEARANCE);
+ pivot.scale.setScalar(PIPE_SCALE);
+ pivot.position.set(PIPE_ORIGIN.x,PIPE_ORIGIN.y,PIPE_ORIGIN.z);
  return pivot;
 }
 
+/** Wheel rotation: `turned` radians clockwise as the player (looking −Z) sees it. */
+export function setPipeWheel(visual:WallPipe,turned:number){
+ if(visual.wheel)visual.wheel.rotation.z=-turned;
+}
+
 export async function upgradeWallPipe(visual:WallPipe):Promise<boolean>{
- const mount=visual.group.userData.mount as SconceMount;
  if(typeof document==='undefined')return false;
  try{
   const loader=new GLTFLoader();
   loader.setMeshoptDecoder(MeshoptDecoder);
   const gltf=await loader.loadAsync(PIPE_ASSET_URL);
   const model=gltf.scene;
-  model.traverse(o=>{
-   if(!(o instanceof THREE.Mesh))return;
-   o.castShadow=true;o.receiveShadow=true;
-   const mats=Array.isArray(o.material)?o.material:[o.material];
-   for(const m of mats){
-    if(!(m instanceof THREE.MeshStandardMaterial))continue;
-    // Several source materials leave metallicFactor at the glTF default of 1. With no
-    // cave env map a full metal reads black under point lights, so cap it: painted
-    // steel still catches the torch but keeps its green/red/bone paint.
-    m.metalness=Math.min(m.metalness,.35);
-    m.roughness=Math.max(m.roughness,.55);
-    // Clean studio paint blows out under the dive torch; years underwater grime it down.
-    m.color.multiplyScalar(PIPE_GRIME);
-    // The one emissive part is a small indicator strip; keep it a faint tell, not a lamp.
-    if(m.emissive.getHex()!==0)m.emissiveIntensity=.35;
-    m.needsUpdate=true;
-   }
-  });
-  visual.group.add(fitPipeToWall(model,mount));
+  weatherMaterials(model);
+  visual.group.add(fitPipeToWall(model));
+  visual.wheel=model.getObjectByName('valveWheel')??null;
+  const green=findMaterial(model,'mat_t5'),flange=findMaterial(model,'mat_t6');
+  if(green&&flange)visual.group.add(buildRoofRun(green,flange));
   visual.ready=true;
   return true;
  }catch(err){

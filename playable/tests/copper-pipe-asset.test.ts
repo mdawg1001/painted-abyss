@@ -11,6 +11,7 @@ import {
  copperWallSpan,copperSectionLength,copperMounts,fitCopperRun,
 } from '../src/copperPipeAsset';
 import { PIPE_MOUNT, PIPE_WALL_CLEARANCE, fitPipeToWall } from '../src/pipeAsset';
+import { WHEEL_CENTRE } from '../src/valve';
 import { breathZone, tile } from '../src/simulation';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -79,7 +80,7 @@ test('tiled run spans the hand-wheel wall and tees into that pipe',()=>{
  const mounts=copperMounts(span);
  assert.equal(mounts.length,COPPER_SECTION_COUNT);
  const len=copperSectionLength(span);
- assert.ok(len>4,'each copy is much longer than the old 1.6 m section');
+ assert.ok(len>2.5&&len<3.5,`each copy ${len} m: real-bore copper, not a 2 m-tall rack`);
  // Outer ends sit on the wall corners; inner joints overlap instead of gaping.
  assert.ok(Math.abs((mounts[0].x-len/2)-span.x0)<1e-6);
  assert.ok(Math.abs((mounts[mounts.length-1].x+len/2)-span.x1)<1e-6);
@@ -94,11 +95,13 @@ test('tiled run spans the hand-wheel wall and tees into that pipe',()=>{
  const size=box.getSize(new THREE.Vector3());
  assert.ok(Math.abs(box.min.x-span.x0)<.02&&Math.abs(box.max.x-span.x1)<.02,`run x ${box.min.x}..${box.max.x}`);
  assert.ok(Math.abs(size.x-span.length)<.02,`run length ${size.x} should be the whole wall`);
- // Uniform scale keeps the authored proportions, just much bigger than the 0.39 m corridor pipe.
+ // Uniform scale keeps the authored proportions at a real bore.
  const sectionHeight=len*(authored.y/authored.z);
- assert.ok(sectionHeight>1.2&&sectionHeight<3,`height ${sectionHeight} is a big pipe, not a toy or a room`);
+ assert.ok(sectionHeight>.5&&sectionHeight<1,`height ${sectionHeight} is a pipe rack, not a toy or a room`);
  assert.ok(Math.abs(size.y-sectionHeight)<.02);
- assert.ok(size.z>1&&size.z<sectionHeight+0.2,`depth ${size.z} stays a pipe against the wall`);
+ assert.ok(size.z>.4&&size.z<sectionHeight+0.2,`depth ${size.z} stays a pipe against the wall`);
+ // The rack stays behind the leak valve's handwheel, so the wheel (and the diver at it) is clear.
+ assert.ok(box.max.z<WHEEL_CENTRE.z-.2,`copper front ${box.max.z} is behind the wheel plane ${WHEEL_CENTRE.z}`);
  // Rear face is the same plane as the doom pipe's back. Axis crosses the wheel.
  assert.ok(Math.abs(box.min.z-(span.z+COPPER_WALL_CLEARANCE))<.02,`rear ${box.min.z}`);
  assert.ok(Math.abs((box.min.y+box.max.y)*.5-COPPER_AXIS_Y)<.02);
