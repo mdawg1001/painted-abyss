@@ -1,5 +1,5 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
-import { steerToward, faceStanding, yawToward, wrapAngle, GUARD_STEER_WALK, GUARD_STEER_RUN } from './guardSteering';
+import { steerToward, faceStanding, yawToward, wrapAngle, turnToward, forwardOf, GUARD_STEER_WALK, GUARD_STEER_RUN } from './guardSteering';
 import { VALVE_CLOSE_RAD, VALVE_REACH, VALVE_STAND, WHEEL_CENTRE, leakFlowFraction } from './valve';
 export type Point={x:number;y:number;z:number};
 export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife'|'gun'|'bottle'|'coat';
@@ -90,11 +90,29 @@ export const GUARD_AIM_TOLERANCE=10*Math.PI/180;
  * Chance a shot hits: steady close shots almost always land, long ones in the dark
  * often miss, a running target is much harder, and the first snap shot is rushed.
  */
-export function guardHitChance(distance:number,targetSpeed:number,firstShot:boolean){
+export function guardHitChance(distance:number,targetSpeed:number,firstShot:boolean,shooterSpeed=0){
  const base=Math.max(.3,Math.min(.95,.98-.03*Math.max(0,distance-2)));
  const moving=targetSpeed>2.4?.28:targetSpeed>.6?.12:0;
- return Math.max(.08,Math.min(.95,base-moving-(firstShot?.15:0)));
+ // Firing on the move costs him accuracy too (a steady shuffle, not a sprint).
+ const shuffle=GUARD_MOVING_FIRE_PENALTY*Math.min(1.5,Math.max(0,shooterSpeed));
+ return Math.max(.08,Math.min(.95,base-moving-shuffle-(firstShot?.15:0)));
 }
+/** Hit-chance lost per m/s of his own footwork while firing. */
+export const GUARD_MOVING_FIRE_PENALTY=.09;
+/**
+ * Combat footwork while he shoots (AAA human-enemy practice: TLOU / F.E.A.R. / Halo
+ * enemies keep repositioning between firing positions instead of freezing).
+ * Speeds are a crouched combat walk, not a run; legs last about 1–2 s.
+ */
+export const GUARD_STRAFE={
+ speedMin:.5,speedMax:1.05,
+ /** Faster shuffle while reloading or dodging a charge. */
+ evade:1.45,
+ legMin:.9,legMax:2.2,
+ /** Back off inside this range, press forward beyond `far` (m). */
+ near:3.4,far:8.5,
+ accel:3.2,
+} as const;
 export const GUARD_MELEE_COOLDOWN=1.55;
 /** Bottle fuel the guard drinks as “his air” while chasing. */
 export const GUARD_BOTTLE_AIR=SPARE_BOTTLE_LITRES;
@@ -876,6 +894,10 @@ export type Guard={
  shots:number;lastShotHit:boolean;aim:number;
  gun:boolean;bottle:boolean;coat:boolean;air:number;
  beatStart:number;beatLen:number;beatDir:1|-1;outfit:number;
+ /** Ground velocity (m/s, world). Equals speed along heading except in the firing stance, where he strafes. */
+ vx:number;vz:number;
+ /** Combat footwork: strafe side (+1 his left, −1 his right), time left on this leg, its speed and radial drift. */
+ strafeDir:1|-1;legTime:number;legSpeed:number;legRadial:number;
 };
 export function makeGuard(outfit=0):Guard{
  const beat=guardBeat(outfit);
@@ -891,6 +913,7 @@ export function makeGuard(outfit=0):Guard{
   shots:0,lastShotHit:false,aim:0,
   gun:true,bottle:false,coat:false,air:0,
   beatStart:beat.start,beatLen:beat.len,beatDir:1,outfit,
+  vx:0,vz:0,strafeDir:outfit%2?1:-1,legTime:0,legSpeed:0,legRadial:0,
  };
 }
 /**
@@ -1320,7 +1343,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     g.waypoint=nearestBeatStop(g.position,g.beatStart,g.beatLen);
    }
   }
-  this.steerGuard(dt,g);
+  this.steerGuard(dt,g,playerSpeed);
 
   // Pistol raise: up while engaged, down otherwise (~0.25 s either way).
   g.aim=Math.max(0,Math.min(1,g.aim+(engaged||g.state==='chase'?1:-1)*dt/.25));
@@ -1346,7 +1369,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(g.state==='chase'&&this.guardHasShot(g)&&g.shootCool<=0){
    const aimErr=Math.abs(wrapAngle(Math.atan2(this.position.x-g.position.x,this.position.z-g.position.z)-g.heading));
    if(aimErr<=GUARD_AIM_TOLERANCE&&g.aim>=.99){
-    const hit=this.rand()<guardHitChance(d,playerSpeed,g.firstShot);
+    const hit=this.rand()<guardHitChance(d,playerSpeed,g.firstShot,g.speed);
     g.firstShot=false;
     g.shots+=1;g.lastShotHit=hit;g.ammo-=1;
     g.shootCool=GUARD_GUN_COOLDOWN*(.85+.3*this.rand());
@@ -1385,7 +1408,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   // Budget the turn the long way round too, since he turns through the room, not the wall.
   g.scanTurn=Math.max(turn,Math.PI*2-turn)/GUARD_STEER_WALK.turnRateStanding*.6;
  }
- private steerGuard(dt:number,g:Guard){
+ private steerGuard(dt:number,g:Guard,playerSpeed=0){
   if(g.lastState!==g.state){g.lastState=g.state;g.arrived=false;g.scanTime=0;}
   const water=this.breathWaterY;
   const dry=water<BREATH_WALK_WATER;
@@ -1422,8 +1445,10 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    // Freeze, then square up to where the noise came from.
    faceStanding(g,yawToward(g.position,g.lastKnown),GUARD_STEER_WALK,dt,canMove);
   }else if(g.state==='chase'&&this.guardInFiringStance(g)){
-   // Firing stance: stop, square up and shoot rather than running at you.
-   faceStanding(g,yawToward(g.position,this.position),GUARD_STEER_RUN,dt,canMove);
+   // Firing stance: square up on you and keep his feet moving while he shoots.
+   this.combatFootwork(dt,g,canMove,playerSpeed);
+   g.position.y=WALK_EYE_Y;
+   return;
   }else if(g.state==='chase'){
    const params=tired
     ?{...GUARD_STEER_WALK,maxSpeed:GUARD_SPEED.chaseTired}
@@ -1444,6 +1469,66 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    }
   }
   g.position.y=WALK_EYE_Y;
+  // Outside the firing stance he only ever travels along his facing.
+  g.vx=Math.sin(g.heading)*g.speed;g.vz=Math.cos(g.heading)*g.speed;
+  g.legTime=0;
+ }
+ /**
+  * Shooting on the move. Chest and muzzle stay on you (heading turns at a standing
+  * pivot rate) while the legs strafe side to side in short, unpredictable legs, give
+  * ground when you close in, and press forward when you are far. He never walks out
+  * of his own line of fire or into a wall: a blocked leg flips direction.
+  */
+ private combatFootwork(dt:number,g:Guard,canMove:(x:number,z:number)=>boolean,playerSpeed:number){
+  const before=g.heading;
+  const face=yawToward(g.position,this.position);
+  g.heading=turnToward(g.heading,face,GUARD_STEER_RUN.turnRateStanding*dt);
+  g.turnRate=dt>0?wrapAngle(g.heading-before)/dt:0;
+  const d=distance(g.position,this.position);
+  const reloading=g.reload>0;
+  // You charging him: a sidestep-and-give-ground dodge (F.E.A.R.'s DodgeShuffle).
+  const charged=playerSpeed>2.4&&d<6.5;
+  const f=forwardOf(face);
+  // Unit vector to his left (he faces +Z at yaw 0, so left is +X).
+  const lx=f.z,lz=-f.x;
+  // Is there room for a real step (≈1 m) on that side, still with a line on you?
+  const room=(dir:number)=>{
+   const px=g.position.x+lx*dir*1.1,pz=g.position.z+lz*dir*1.1;
+   return canMove(px,pz)&&visible({x:px,y:g.position.y,z:pz},this.position);
+  };
+  g.legTime-=dt;
+  if(g.legTime<=0){
+   if(this.rand()<.7)g.strafeDir=g.strafeDir===1?-1:1;
+   // Pick the side that has room, so he crosses the lane instead of jittering at a wall.
+   if(!room(g.strafeDir)&&room(-g.strafeDir))g.strafeDir=g.strafeDir===1?-1:1;
+   g.legTime=GUARD_STRAFE.legMin+(GUARD_STRAFE.legMax-GUARD_STRAFE.legMin)*this.rand();
+   g.legSpeed=GUARD_STRAFE.speedMin+(GUARD_STRAFE.speedMax-GUARD_STRAFE.speedMin)*this.rand();
+   g.legRadial=(this.rand()-.45)*.4;
+   // Boxed in on both sides: work the range instead (step in or out).
+   if(!room(1)&&!room(-1)){g.legSpeed=.15;g.legRadial=this.rand()<.5?-.6:.5;}
+  }
+  const side=(reloading||charged?GUARD_STRAFE.evade:g.legSpeed)*g.strafeDir;
+  let radial=g.legRadial;
+  if(d<GUARD_STRAFE.near||charged)radial=-.7;
+  else if(d>GUARD_STRAFE.far&&!reloading)radial=.55;
+  let wx=lx*side+f.x*radial,wz=lz*side+f.z*radial;
+  const want=Math.hypot(wx,wz);
+  if(want>GUARD_STRAFE.evade){wx*=GUARD_STRAFE.evade/want;wz*=GUARD_STRAFE.evade/want;}
+  // Ease velocity toward the wish (feet cannot reverse instantly).
+  const ex=wx-g.vx,ez=wz-g.vz,e=Math.hypot(ex,ez),cap=GUARD_STRAFE.accel*dt;
+  if(e>cap){g.vx+=ex/e*cap;g.vz+=ez/e*cap;}else{g.vx=wx;g.vz=wz;}
+  const nx=g.position.x+g.vx*dt,nz=g.position.z+g.vz*dt;
+  const next={x:nx,y:g.position.y,z:nz};
+  if(canMove(nx,nz)&&visible(next,this.position)){
+   g.position.x=nx;g.position.z=nz;
+  }else{
+   // Wall, prop or lost sight line: plant and step the other way.
+   g.strafeDir=g.strafeDir===1?-1:1;
+   g.legTime=GUARD_STRAFE.legMin+.5;
+   g.legRadial=-g.legRadial;
+   g.vx*=.2;g.vz*=.2;
+  }
+  g.speed=Math.hypot(g.vx,g.vz);
  }
  private updatePredator(dt:number,sprinting:boolean){
   const p=this.predator;const d=distance(p.position,this.position);const canSee=visible(p.position,this.position);

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { applyGuardCombatPose, updateGuardMoveFrame } from './guardCombatPose';
 import { ShaderChunk } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
@@ -946,8 +947,10 @@ export class CaveWorld extends OceanWorld {
    visual.root.position.set(g.position.x,FLOOR_Y,g.position.z);
    visual.root.rotation.set(0,g.heading,0);
    syncGuardGear(visual,{gun:g.gun,bottle:g.bottle,coat:g.coat});
+   // Legs follow real ground velocity (strafe / backpedal while firing), chest follows you.
+   const gaitDir=updateGuardMoveFrame(visual.pose,g.vx,g.vz,g.heading,g.speed,dt);
    if(visual.loco){
-    updateGuardLocomotion(visual.loco,dt,{moving:g.speed>.02,speed:g.speed,state:g.state,turnRate:g.turnRate});
+    updateGuardLocomotion(visual.loco,dt,{moving:g.speed>.02,speed:g.speed,state:g.state,turnRate:g.turnRate,direction:gaitDir});
    }
    if(g.shots!==this.guardShotsSeen[i]){
     const fresh=g.shots>this.guardShotsSeen[i];
@@ -963,7 +966,12 @@ export class CaveWorld extends OceanWorld {
     }
    }
    this.guardRecoil[i]=Math.max(0,(this.guardRecoil[i]??0)-dt*6);
-   applyGuardAim(visual,this._aimTarget,g.aim,this.guardRecoil[i]??0);
+   if(visual.rig&&visual.loco){
+    applyGuardCombatPose(visual.rig,visual.pose,visual.gun,{
+     target:this._aimTarget,aim:g.gun?g.aim:0,engaged:g.state!=='patrol',
+     recoil:this.guardRecoil[i]??0,speed:g.speed,dt,
+    });
+   }else applyGuardAim(visual,this._aimTarget,g.aim,this.guardRecoil[i]??0);
    if(flashFrom===i||(flashFrom<0&&i===0)){
     visual.gun.getWorldPosition(this._muzzle);
     this._muzzle.addScaledVector(this._aimTarget.clone().sub(this._muzzle).normalize(),.28);

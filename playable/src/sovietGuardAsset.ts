@@ -17,6 +17,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { mountTt33 } from './gunAsset';
+import { addGuardFaceMorphs, buildGuardRig, makeGuardCombatState, type GuardRig, type GuardCombatState } from './guardCombatPose';
 import { GUARD_OUTFIT_COLORS } from './simulation';
 
 export const SOVIET_GUARD_SOURCE='https://quaternius.com/packs/ultimateanimatedcharacter.html';
@@ -83,6 +84,10 @@ export type SovietGuardVisual={
  rim:THREE.PointLight;
  /** Index into GUARD_OUTFIT_COLORS. */
  outfit:number;
+ /** Bones for the procedural combat layer (null on the capsule stub). */
+ rig:GuardRig|null;
+ /** Smoothed combat-pose state (pelvis warp, stance, expression, breathing). */
+ pose:GuardCombatState;
 };
 
 type GuardGltfBundle={
@@ -304,6 +309,7 @@ function loadGuardBundle(){
   scene.name='sovietGuardMesh';
   normalizeHumanoid(scene,SOVIET_GUARD_HEIGHT);
   litGuardMaterials(scene);
+  addGuardFaceMorphs(scene);
   const clips=pickLocoClips(gltf.animations);
   if(!clips)throw new Error('Guard GLB missing idle/walk/run clips');
   return{scene,clips};
@@ -369,7 +375,9 @@ export function guardGaitWeights(speed:number,turnRate=0):Record<GuardLocomotion
 export function updateGuardLocomotion(
  loco:SovietGuardLocomotion,
  dt:number,
- opts:{moving:boolean;speed:number;state:string;turnRate?:number},
+ opts:{moving:boolean;speed:number;state:string;turnRate?:number;
+  /** +1 walks forward; −1 plays the gait backwards (backpedalling while firing). */
+  direction?:number},
 ){
  const speed=opts.moving?Math.max(0,opts.speed):0;
  const target=guardGaitWeights(speed,opts.turnRate??0);
@@ -394,7 +402,8 @@ export function updateGuardLocomotion(
  // While pivoting on the spot, shuffle at a slow walking cadence.
  const pivotCadence=Math.min(1,Math.abs(opts.turnRate??0)/2.4)*.55/walkClip.duration;
  const cycles=Math.max(speed/stride,pivotCadence);
- loco.phase=(loco.phase+cycles*Math.max(0,dt))%1;
+ const dir=(opts.direction??1)<0?-1:1;
+ loco.phase=((loco.phase+dir*cycles*Math.max(0,dt))%1+1)%1;
  loco.actions.walk.time=loco.phase*walkClip.duration;
  loco.actions.run.time=loco.phase*runClip.duration;
  loco.mixer.update(dt);
@@ -414,7 +423,7 @@ export function createSovietGuardVisual(outfit=0):SovietGuardVisual{
  const rim=new THREE.PointLight(0xa8c8ff,GUARD_RIM_INTENSITY,3,2);
  rim.name='guardRim';rim.position.set(-.3,2.1,-.7);rim.castShadow=false;
  root.add(fill,rim);
- return{root,body,ready:false,loco:null,fill,rim,outfit,...props};
+ return{root,body,ready:false,loco:null,fill,rim,outfit,rig:null,pose:makeGuardCombatState(outfit),...props};
 }
 
 /**
@@ -434,6 +443,7 @@ export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
   visual.ready=true;
   mountGuardGunOnHand(instance,visual.gun);
   visual.loco=attachGuardLocomotion(instance,clips);
+  visual.rig=buildGuardRig(instance);
   return visual;
  }catch{
   return visual;
