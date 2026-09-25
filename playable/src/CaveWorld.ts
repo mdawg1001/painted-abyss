@@ -903,7 +903,6 @@ export class CaveWorld extends OceanWorld {
   );
   this.trackPointCull(steel,hatchBox);
   const ring=new THREE.MeshBasicMaterial({color:0xf0d48a});
-  const blaze=new THREE.MeshBasicMaterial({color:PALETTE.ivory});
   const hatch=new THREE.Group();
   const door=new THREE.Mesh(new THREE.BoxGeometry(3.6,2.6,.22),steel);
   door.position.y=1.65;
@@ -914,12 +913,6 @@ export class CaveWorld extends OceanWorld {
   hatch.add(door,wheel,rim);
   hatch.position.set(spawn.x,0,spawn.z+2.2);
   this.scene.add(hatch);
-  // Unlit floor blazes so the dry corridor reads with the knife out (torch is off).
-  for(let i=0;i<8;i++){
-   const dash=new THREE.Mesh(new THREE.BoxGeometry(1.1,.04,1.6),blaze);
-   dash.position.set(foot.cx,.06,spawn.z-3.2-i*3.4);
-   this.scene.add(dash);
-  }
 
   const mark=new THREE.MeshBasicMaterial({color:0xffb04a});
   const far=new THREE.Group();
@@ -957,15 +950,14 @@ export class CaveWorld extends OceanWorld {
   this.breathTank=tank;
   this.scene.add(tank);
   // Short-range practicals. Distances stay inside corridor chunks so the cave sconce budget is left alone.
+  // Light only: the old box housings hung unmounted in mid-air at head height (read as floating
+  // black-and-cream slabs), so the corridor keeps the glow without the fixtures.
   const lamps=[{z:spawn.z-2,d:12},{z:16,d:11},{z:8,d:5}];
   for(const lamp of lamps){
    const light=new THREE.PointLight(PALETTE.amber,14,lamp.d,2);
    light.position.set(foot.cx,2.4,lamp.z);
    const lens=new THREE.MeshBasicMaterial({color:PALETTE.amberGlow});
-   const housing=new THREE.Mesh(new THREE.BoxGeometry(.44,.24,.25),new THREE.MeshStandardMaterial({color:PALETTE.steel,roughness:.8}));
-   housing.position.copy(light.position);
-   const bulb=new THREE.Mesh(new THREE.BoxGeometry(.3,.12,.27),lens);housing.add(bulb);
-   this.alarmFixtures.push({light,lens});this.scene.add(light,housing);
+   this.alarmFixtures.push({light,lens});this.scene.add(light);
   }
   this.syncBreathProps();
  }
