@@ -1,3 +1,4 @@
+import { PALETTE } from './artPalette';
 /**
  * Survival firefight visuals: cover, reinforcement doors, supply caches, smoke, grenades,
  * sparks and blood puffs, guard hit flashes, per-guard muzzle glows, and a small pool of
@@ -51,8 +52,8 @@ export class SurvivalFx{
   // Guard key/rim light pool (replaces each guard's own pair).
   for(const v of visuals){v.root.remove(v.fill);v.root.remove(v.rim);}
   for(let i=0;i<LIGHT_SLOTS;i++){
-   const k=new THREE.PointLight(0xffe4c8,0,3.6,2);k.castShadow=false;
-   const r=new THREE.PointLight(0xa8c8ff,0,3,2);r.castShadow=false;
+   const k=new THREE.PointLight(PALETTE.ivory,0,3.6,2);k.castShadow=false;
+   const r=new THREE.PointLight(PALETTE.fill,0,3,2);r.castShadow=false;
    scene.add(k,r);this.keyLights.push(k);this.rimLights.push(r);
   }
   // Per-guard muzzle glow.
@@ -140,7 +141,7 @@ export class SurvivalFx{
     const m=new THREE.MeshStandardMaterial({color:0x3f5b33,roughness:.5,metalness:.5});
     for(let i=0;i<2;i++){const t=new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,.17,10),m);t.position.set(i*.12-.06,.085,0);g.add(t);}
    }
-   const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:.35,color:kind==='medkit'?0xffd0d0:kind==='smoke'?0xc8ffc0:0xffe7a0}));
+   const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:.35,color:PALETTE.ivory}));
    glow.position.y=.35;glow.scale.setScalar(.9);g.add(glow);
    return g;
   };

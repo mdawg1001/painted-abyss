@@ -1,3 +1,4 @@
+import { PALETTE } from './artPalette';
 /**
  * Phase 3 corridor guard mesh + locomotion.
  *
@@ -418,9 +419,9 @@ export function createSovietGuardVisual(outfit=0):SovietGuardVisual{
  root.add(body);
  const props=makeGearProps(root);
  // Key: in front of his chest, like a lamp clipped to the webbing (he faces +Z).
- const fill=new THREE.PointLight(0xffe4c8,GUARD_KEY_INTENSITY,3.6,2);
+ const fill=new THREE.PointLight(PALETTE.ivory,GUARD_KEY_INTENSITY,3.6,2);
  fill.name='guardFill';fill.position.set(.25,1.75,.9);fill.castShadow=false;
- const rim=new THREE.PointLight(0xa8c8ff,GUARD_RIM_INTENSITY,3,2);
+ const rim=new THREE.PointLight(PALETTE.fill,GUARD_RIM_INTENSITY,3,2);
  rim.name='guardRim';rim.position.set(-.3,2.1,-.7);rim.castShadow=false;
  root.add(fill,rim);
  return{root,body,ready:false,loco:null,fill,rim,outfit,rig:null,pose:makeGuardCombatState(outfit),...props};

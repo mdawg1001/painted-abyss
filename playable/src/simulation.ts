@@ -194,7 +194,7 @@ export const GUARD_PATROL_OVERLAP=.25;
  * Cloth dyes — same cut, five colours so they read as a squad, not clones.
  * Olive, khaki, steel-blue, brown, field-teal.
  */
-export const GUARD_OUTFIT_COLORS=[0x4a5a3a,0x8b6b32,0x3d5a6c,0x6a3c28,0x2f5d4a] as const;
+export const GUARD_OUTFIT_COLORS=[0x505b43,0x71694e,0x535e5c,0x645748,0x455c50] as const;
 const TAU_GUARD=Math.PI*2;
 /** Floor-sitting interactables — each chest hides one map fragment. */
 export const CHEST_LABEL:Record<ChestKind,string>={
@@ -1359,7 +1359,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.say('Wall tank. Main cylinder filled.','ok');
    return;
   }
-  if(distance(this.position,EXIT)<4){if(this.hasRelic){this.outcome='won';this.reason='Relic secured. You made it back to the light.';}else this.say('Extraction needs the ammonite relic. Follow the turquoise markers.','blocked');return;}
+  if(distance(this.position,EXIT)<4){if(this.hasRelic){this.outcome='won';this.reason='Relic secured. You made it back to the light.';}else this.say('Extraction needs the ammonite relic. Follow the amber guide arrows.','blocked');return;}
   const chest=this.pending===null?this.nearestChest():undefined;
   const pickup=this.pending===null?this.nearest():this.pickups.find(p=>p.id===this.pending);
   const chestCloser=!!chest&&(!pickup||distance(chest.position,this.position)<=distance(pickup.position,this.position)+.15);

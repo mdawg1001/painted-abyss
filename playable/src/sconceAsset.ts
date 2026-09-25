@@ -1,3 +1,4 @@
+import { PALETTE } from './artPalette';
 /**
  * Wall lamps — Poly Haven “Industrial Caged Sconce”.
  * A single self-contained GLB (the "_b" caged variant) lives in
@@ -15,7 +16,7 @@ export const SCONCE_LICENSE='CC0 1.0 Universal (public domain dedication)';
 export const SCONCE_TARGET_HEIGHT=1.3;
 export const SCONCE_MOUNT_Y=4.4;
 /** Warm incandescent glow for the caged bulb. */
-export const SCONCE_LIGHT_COLOR=0xffb066;
+export const SCONCE_LIGHT_COLOR=PALETTE.amber;
 const SCONCE_LIGHT_INTENSITY=11;
 const SCONCE_LIGHT_DISTANCE=12;
 const SCONCE_LIGHT_DECAY=1.6;
@@ -73,7 +74,7 @@ export function litSconceMaterials(root:THREE.Object3D){
   const mats=Array.isArray(o.material)?o.material:[o.material];
   for(const m of mats){
    if(!(m instanceof THREE.MeshStandardMaterial))continue;
-   m.emissive.setHex(0xffb867);
+   m.emissive.setHex(PALETTE.amber);
    m.emissiveIntensity=2.6;
    m.needsUpdate=true;
   }
@@ -93,7 +94,7 @@ export function createWallSconces(mounts:SconceMount[]):WallSconces{
  const lights:SconceLight[]=[];
  const states=assignSconceStates(mounts.length);
  const stubGeo=new THREE.SphereGeometry(.09,8,6);
- const litStubMat=new THREE.MeshBasicMaterial({color:0xffca7a});
+ const litStubMat=new THREE.MeshBasicMaterial({color:PALETTE.amberGlow});
  // Unlit fixtures get a cold, dark bulb so they read as switched off.
  const darkStubMat=new THREE.MeshBasicMaterial({color:0x2a2118});
  for(let i=0;i<mounts.length;i++){
