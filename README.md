@@ -1,4 +1,11 @@
-# Painted Abyss — First Dive · 0.17.7
+# Painted Abyss — First Dive · 0.17.8
+
+## Progressive prop loading (0.17.8)
+
+The hatch, cave textures, weapons, guards and shared lighting load first. Crates, map scrolls, lifebuoy, posters and the distant valve/copper models upgrade as the player approaches (40–48 m lead distance). At most two prop upgrades run together, after a brief startup head start for essential assets. Basic crate/scroll visuals and gameplay interactions exist immediately; lid state is restored if a crate opens before its model finishes. Loaded props remain available through death and restart. Failed downloads retry up to three times with a cooldown.
+
+Local Chrome checks measured about 65 MB transferred at the hatch versus about 96 MB before this change; this is a startup download comparison, not a frame-rate claim. All original models and texture files are retained.
+
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -50,7 +57,7 @@ Removed the mystery mid-air teal flare orb. Death drops land on the floor instea
 
 The sepia is gone. Dry air is a dark cold teal-grey (fog and background), the key light is cold fluorescent white, the ceiling bounce is cold concrete, and the frame grade slightly desaturates with teal shadows and neutral highlights. Two of every three wall fixtures are cold tubes (every flickering one included); one in three stays a warm orange caged bulb as the accent. The cavern and entrance ceiling spots are fluorescent. The underwater field and the red relic slam are unchanged.
 
-## Hanging tube lights (0.17.7)
+## Hanging tube lights (0.17.8)
 
 18 Poly Haven [Caged Hanging Light](https://polyhaven.com/a/caged_hanging_light) fixtures (CC0) hang on their chains from the bunker ceiling over open floor. Each is a real pendulum (period from g and chain length); your shots, guard fire and bullet impacts within 9 m kick them, so the light pools and the shadows under them sway. 60% of tubes burn steady, 30% are failing (buzzing blackouts), 10% are dying (dark, then bursts); in the final wave every tube stutters, and the relic slam turns them red. A fixed pool of 5 downward spotlights follows the tubes nearest you (no shader recompiles); the nearest casts shadows. Tuning in `playable/src/hangingLightAsset.ts`.
 

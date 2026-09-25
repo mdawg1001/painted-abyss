@@ -120,20 +120,25 @@ function loadScrollObject(){
  return loadPromise;
 }
 
-export function createScrollVisual():ScrollVisual{
+export function createScrollVisual(deferLoad=false):ScrollVisual{
  const root=new THREE.Group();
  root.name='scrollVisual';
  root.visible=false;
  root.add(buildScrollStub());
  const visual:ScrollVisual={root,present:0,ready:false};
- if(typeof document==='undefined')return visual;
- loadScrollObject().then(src=>{
+ if(!deferLoad&&typeof document!=='undefined')void upgradeScrollVisual(visual);
+ return visual;
+}
+
+export async function upgradeScrollVisual(visual:ScrollVisual){
+ if(visual.ready)return true;
+ const root=visual.root;
+ const src=await loadScrollObject();
   const mesh=src.clone(true);
   while(root.children.length)root.remove(root.children[0]);
   root.add(mesh);
   visual.ready=true;
- });
- return visual;
+ return true;
 }
 
 type ScrollKind='military'|'plastic'|'suitcase';

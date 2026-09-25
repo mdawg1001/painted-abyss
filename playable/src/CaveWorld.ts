@@ -1,3 +1,4 @@
+import { PropStreaming } from './propStreaming';
 import { createGuideFixture } from './guideFixture';
 import { PALETTE } from './artPalette';
 import { DRY_DENSITY, DRY_FIELD, FLUORESCENT, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type FrameGrade } from './frameGrade';
@@ -22,7 +23,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
 import { loadCausticAtlas, makeCausticFallbackTexture } from './causticAsset';
 import { createChestVisual, upgradeChestVisual, syncChestOpen, type ChestVisual } from './chestAsset';
-import { createScrollVisual, scrollShouldShow, syncScrollPresent, type ScrollVisual } from './scrollAsset';
+import { createScrollVisual, upgradeScrollVisual, scrollShouldShow, syncScrollPresent, type ScrollVisual } from './scrollAsset';
 import {
  createLifebuoyVisual, upgradeLifebuoyVisual,
  LIFEBUOY_POS, LIFEBUOY_YAW, type LifebuoyVisual,
@@ -31,7 +32,7 @@ import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLig
 import { createHangingLights, stepHangingLights, upgradeHangingLights, type HangingLights } from './hangingLightAsset';
 import { createWallPosters, upgradeWallPosters, type WallPosters } from './posterAsset';
 import { createCopperPipe, upgradeCopperPipe, type CopperPipe } from './copperPipeAsset';
-import { createWallPipe, upgradeWallPipe, setPipeWheel, type WallPipe } from './pipeAsset';
+import { createWallPipe, upgradeWallPipe, setPipeWheel, PIPE_MOUNT, type WallPipe } from './pipeAsset';
 import { startStroke, stepStroke, handPoses, smootherstep, VALVE_STAND, WHEEL_CENTRE, BREAKAWAY_TIME, REGRIP_TIME, type ValveStroke } from './valve';
 import { createValveHands, poseValveHands, resetValveHands, type ValveHandsRig } from './valveHands';
 import { applyHandEnvMap } from './diverHand';
@@ -292,6 +293,8 @@ export class CaveWorld extends OceanWorld {
  _pcx=[0,0,0,0];
  _pcy=[0,0,0,0];
  _adoptTmp=new THREE.Box3();
+ propStreaming=new PropStreaming(performance.now()/1000);
+ lastPropCheck=0;
  alarmFixtures:{light:THREE.PointLight;lens:THREE.MeshBasicMaterial}[]=[];
  gradeHemi!:THREE.HemisphereLight;gradeAmbient!:THREE.AmbientLight;gradeSky!:THREE.DirectionalLight;
  waterMat!:THREE.MeshBasicMaterial;volMat!:THREE.MeshBasicMaterial;
@@ -435,10 +438,12 @@ export class CaveWorld extends OceanWorld {
   visual.root.rotation.y=LIFEBUOY_YAW;
   this.scene.add(visual.root);
   this.lifebuoyVisual=visual;
-  upgradeLifebuoyVisual(visual).then(ok=>{
-   if(!ok||!this.alive)return;
+  this.propStreaming.add('lifebuoy',LIFEBUOY_POS,async()=>{
+   const ok=await upgradeLifebuoyVisual(visual);
+   if(!ok||!this.alive)return ok;
    this.adoptPointCull(visual.root,this.worldBox(visual.root),false,true);
-  });
+   return ok;
+  },40);
  }
  /** Bolt Poly Haven caged sconces to spaced wall faces; warm lights show at once, meshes upgrade in. */
  mountWallSconces(){
@@ -477,30 +482,36 @@ export class CaveWorld extends OceanWorld {
   const visual=createWallPosters();
   this.scene.add(visual.group);
   this.wallPosters=visual;
-  upgradeWallPosters(visual).then(ok=>{
-   if(!ok||!this.alive)return;
+  this.propStreaming.add('posters',visual.group.userData.mount,async()=>{
+   const ok=await upgradeWallPosters(visual);
+   if(!ok||!this.alive)return ok;
    this.adoptPointCull(visual.group,this.worldBox(visual.group),true,true);
-  });
+   return ok;
+  },40);
  }
  /** Repeat the Sketchfab copper section along the hand-wheel wall. */
  mountCopperPipe(){
   const visual=createCopperPipe();
   this.scene.add(visual.group);
   this.copperPipe=visual;
-  upgradeCopperPipe(visual,this.knifeEnvMap).then(ok=>{
-   if(!ok||!this.alive)return;
+  this.propStreaming.add('copper-pipe',PIPE_MOUNT,async()=>{
+   const ok=await upgradeCopperPipe(visual,this.knifeEnvMap);
+   if(!ok||!this.alive)return ok;
    this.adoptPointCull(visual.group,this.worldBox(visual.group),true,true);
-  });
+   return ok;
+  },48);
  }
  /** Bolt the Sketchfab pipe to the blind south-west wall (stub → decimated GLB). */
  mountWallPipe(){
   const visual=createWallPipe();
   this.scene.add(visual.group);
   this.wallPipe=visual;
-  upgradeWallPipe(visual).then(ok=>{
-   if(!ok||!this.alive)return;
+  this.propStreaming.add('valve-pipe',PIPE_MOUNT,async()=>{
+   const ok=await upgradeWallPipe(visual);
+   if(!ok||!this.alive)return ok;
    this.adoptPointCull(visual.group,this.worldBox(visual.group),true,true);
-  });
+   return ok;
+  },48);
  }
  /** Place the three Poly Haven chests and upgrade stubs to glTF in the background. */
  mountChests(){
@@ -508,19 +519,21 @@ export class CaveWorld extends OceanWorld {
    const visual=createChestVisual(chest.kind);
    visual.root.position.set(chest.position.x,chest.position.y,chest.position.z);
    visual.root.rotation.y=chest.yaw;
-   const scroll=createScrollVisual();
+   const scroll=createScrollVisual(true);
    this.scene.add(visual.root);
    // Inside the body, so it inherits the crate yaw and stays in the cavity.
    visual.pivot.add(scroll.root);
    this.chestVisuals.set(chest.id,visual);
    this.scrollVisuals.set(chest.id,scroll);
-   upgradeChestVisual(visual).then(ok=>{
-    if(!this.alive)return;
-    // Re-assert closed pose after swap in case open was toggled during load.
+   this.propStreaming.add(`chest-${chest.id}`,chest.position,async()=>{
+    const ok=await upgradeChestVisual(visual);
+    if(!this.alive)return ok;
     const live=this.mission.chests.find(c=>c.id===chest.id);
     if(visual.lid)visual.lid.rotation.copy(live?.open?visual.openRot:visual.closedRot);
     if(ok)this.adoptPointCull(visual.root,this.worldBox(visual.root),false,true);
-   });
+    return ok;
+   },40);
+   this.propStreaming.add(`scroll-${chest.id}`,chest.position,()=>upgradeScrollVisual(scroll),40);
   }
  }
  syncChests(dt:number){
@@ -2047,7 +2060,10 @@ export class CaveWorld extends OceanWorld {
   this.syncPickups();this.syncChests(0);this.syncBreathProps();this.backgroundMusic?.setDry(true);this.publish();
  }
  animate=()=>{
-  if(!this.alive)return;this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);
+  if(!this.alive)return;
+  const propNow=performance.now()/1000;
+  if(propNow-this.lastPropCheck>=.25){this.lastPropCheck=propNow;this.propStreaming.update(this.position,propNow);}
+  this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);
   if(this.playing){this.time+=dt;const m=this.mission;this.drainStabQueue();
    const pressed=(...keys:string[])=>keys.some(k=>this.keys.has(k))?1:0;
    if(m.mapOpen){
@@ -2310,5 +2326,5 @@ export class CaveWorld extends OceanWorld {
   this.applyPortalOcclusion();
   this.composer.render();
  }
- dispose(){window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
+ dispose(){this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
 }
