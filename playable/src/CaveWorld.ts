@@ -1598,7 +1598,7 @@ export class CaveWorld extends OceanWorld {
  beginValve(){
   const m=this.mission;
   if(this.valveStroke||!m.nearValve()||!this.valveHands)return;
-  this.valveStroke=startStroke(m.valveTurned);
+  this.valveStroke=startStroke(m.valveTurned,m.valveTurnDir);
   this.valveFrom={x:m.position.x,y:m.position.y,z:m.position.z,yaw:this.yaw,pitch:this.pitch};
   this.valveClock=0;
   this.velocity.set(0,0,0);
@@ -1606,6 +1606,7 @@ export class CaveWorld extends OceanWorld {
   this.valveHands.root.visible=true;
   this.knifeFlashUntil=0;
   if(m.valveStuck&&(!m.tipsSeen||m.noticeUntil<=m.elapsed))m.say('The wheel is seized. Keep holding E and put your weight into it.','ok');
+  else if(m.valveSealed&&(!m.tipsSeen||m.noticeUntil<=m.elapsed))m.say('The gate is wedged in its seat. Opening it lets the sea back in.','blocked');
  }
  endValve(){
   if(!this.valveStroke)return;
@@ -1630,8 +1631,10 @@ export class CaveWorld extends OceanWorld {
   this.gait.step(0,0,false,dt);
   this.handSwing=null;
   const hold=this.keys.has('KeyE')&&m.outcome==='playing';
-  const stepped=stepStroke(s,dt,m.valveTurned,hold,m.valveStuck);
-  if(stepped.turn>0)m.turnValve(stepped.turn);
+  // Stuck: a stem never moved since the flood began, or a gate wedged hard into its seat.
+  const stuck=s.dir>0?m.valveStuck:m.valveSealed;
+  const stepped=stepStroke(s,dt,m.valveTurned,hold,stuck);
+  if(stepped.turn!==0)m.turnValve(stepped.turn);
   const ctx=this.audioContext,master=this.master;
   const audible=!!(this.sound&&ctx&&master&&ctx.state==='running');
   if(stepped.strokeStarted&&audible){

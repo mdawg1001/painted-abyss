@@ -119,11 +119,21 @@ export const DRIVE_ARC=THREE_DEG(75);
  */
 export const GRIP_RIGHT=THREE_DEG(30);
 export const GRIP_LEFT=THREE_DEG(255);
+/**
+ * Opening (anticlockwise) mirrors the closing grip left-for-right: the right hand
+ * pushes up the right side from ≈ half past 3 to 1, the left pulls down the left
+ * side from ≈ 11 to half past 8.
+ */
+export const GRIP_RIGHT_OPEN=THREE_DEG(105);
+export const GRIP_LEFT_OPEN=THREE_DEG(330);
+/** +1 winds the wheel clockwise toward the seat (pipe OFF); −1 opens it (pipe ON). */
+export type TurnDir=1|-1;
+export function gripsFor(dir:TurnDir){return dir>0?{right:GRIP_RIGHT,left:GRIP_LEFT}:{right:GRIP_RIGHT_OPEN,left:GRIP_LEFT_OPEN};}
 /** Seconds for a free-running drive stroke. */
 export const DRIVE_TIME=.9;
 /** Seconds to release, carry back and re-take one hand. */
 export const REGRIP_TIME=.6;
-/** First-ever stroke: a valve left open for years is stuck. The hands strain before it gives. */
+/** A stem that has not moved in years (or a gate wedged in its seat) is stuck: the hands strain before it gives. */
 export const BREAKAWAY_TIME=.7;
 /** Wheel creep while the stuck stem is being broken free (radians). */
 export const BREAKAWAY_CREEP=THREE_DEG(2.5);
@@ -162,6 +172,8 @@ export type HandPose={
 
 /** Stroke state machine. Drives wheel angle and both hands; owned by the renderer. */
 export type ValveStroke={
+ /** Which way this visit turns the wheel. */
+ dir:TurnDir;
  stage:'reach'|'breakaway'|'drive'|'regripRight'|'regripLeft'|'release'|'done';
  t:number;
  /** Wheel angle (turned) when this drive began. */
@@ -180,9 +192,12 @@ export type ValveStroke={
  relRight:HandPose|null;relLeft:HandPose|null;
 };
 
-export function startStroke(turned:number):ValveStroke{
- return{stage:'reach',t:0,driveFrom:turned,driveArc:0,driveTime:DRIVE_TIME,rightFrom:GRIP_RIGHT,leftFrom:GRIP_LEFT,right:GRIP_RIGHT,left:GRIP_LEFT,releasing:false,seatedPulse:0,relRight:null,relLeft:null};
+export function startStroke(turned:number,dir:TurnDir=1):ValveStroke{
+ const g=gripsFor(dir);
+ return{dir,stage:'reach',t:0,driveFrom:turned,driveArc:0,driveTime:DRIVE_TIME,rightFrom:g.right,leftFrom:g.left,right:g.right,left:g.left,releasing:false,seatedPulse:0,relRight:null,relLeft:null};
 }
+/** Wheel travel left in this stroke's direction before a stop (the seat, or fully open). */
+function travelLeft(dir:TurnDir,turned:number){return dir>0?VALVE_CLOSE_RAD-turned:turned;}
 
 /** Result of one tick: how far the wheel turned, and whether it is working hard (breathing effort). */
 export type StrokeStep={turn:number;effort:boolean;seated:boolean;strokeStarted:boolean;finished:boolean};
@@ -199,16 +214,19 @@ function toRelease(s:ValveStroke){
 }
 export function stepStroke(s:ValveStroke,dt:number,turned:number,hold:boolean,stuck:boolean):StrokeStep{
  const res:StrokeStep={turn:0,effort:false,seated:false,strokeStarted:false,finished:false};
+ const dir=s.dir,grips=gripsFor(dir);
  if(!hold&&s.stage!=='release'&&s.stage!=='done'){
   // Letting go never throws the wheel: the gate's packing friction holds it where it is.
   toRelease(s);s.releasing=true;
  }
  s.t+=dt;
+ const clampTurn=(x:number)=>Math.max(0,Math.min(VALVE_CLOSE_RAD,x));
  const beginDrive=()=>{
-  if(turned>=VALVE_CLOSE_RAD-1e-6){toRelease(s);return;}
+  const left=travelLeft(dir,turned);
+  if(left<=1e-6){toRelease(s);return;}
   s.stage=stuck?'breakaway':'drive';s.t=0;
   s.driveFrom=turned;
-  s.driveArc=Math.min(DRIVE_ARC,VALVE_CLOSE_RAD-turned);
+  s.driveArc=Math.min(DRIVE_ARC,left);
   s.driveTime=driveDuration(turned)*(s.driveArc/DRIVE_ARC*.6+.4);
   s.rightFrom=s.right;s.leftFrom=s.left;
   res.strokeStarted=true;
@@ -220,14 +238,14 @@ export function stepStroke(s:ValveStroke,dt:number,turned:number,hold:boolean,st
   case 'breakaway':{
    // Static friction: the wheel only creeps while the hands load up, then breaks free.
    const u=clamp01(s.t/BREAKAWAY_TIME);
-   const target=BREAKAWAY_CREEP*u*u;
-   const now=s.driveFrom+target;
-   res.turn=Math.max(0,now-turned);
+   const creep=Math.min(BREAKAWAY_CREEP,travelLeft(dir,s.driveFrom))*u*u;
+   const now=clampTurn(s.driveFrom+dir*creep);
+   res.turn=now-turned;
    res.effort=true;
-   s.right=s.rightFrom+target;s.left=s.leftFrom+target;
+   s.right=s.rightFrom+dir*creep;s.left=s.leftFrom+dir*creep;
    if(u>=1){
     const done=turned+res.turn;
-    s.stage='drive';s.t=0;s.driveFrom=done;s.driveArc=Math.min(DRIVE_ARC-BREAKAWAY_CREEP,VALVE_CLOSE_RAD-done);
+    s.stage='drive';s.t=0;s.driveFrom=done;s.driveArc=Math.min(DRIVE_ARC-creep,travelLeft(dir,done));
     s.driveTime=driveDuration(done)*.85;
     s.rightFrom=s.right;s.leftFrom=s.left;
    }
@@ -235,22 +253,26 @@ export function stepStroke(s:ValveStroke,dt:number,turned:number,hold:boolean,st
   }
   case 'drive':{
    const u=clamp01(s.t/s.driveTime);
-   const target=s.driveFrom+s.driveArc*smootherstep(u);
-   res.turn=Math.max(0,Math.min(VALVE_CLOSE_RAD,target)-turned);
+   const target=clampTurn(s.driveFrom+dir*s.driveArc*smootherstep(u));
+   res.turn=target-turned;
    res.effort=true;
+   // Holding hands ride the rim with the wheel (clock angle follows the wheel angle).
    const along=target-s.driveFrom;
    s.right=s.rightFrom+along;s.left=s.leftFrom+along;
    if(u>=1){
-    if(target>=VALVE_CLOSE_RAD-1e-6){res.seated=true;s.seatedPulse=1;toRelease(s);}
-    else{s.stage='regripRight';s.t=0;}
+    if(travelLeft(dir,target)<=1e-6){
+     // Seating is a hard stop (clunk); winding fully open ends on the soft back-seat.
+     if(dir>0){res.seated=true;s.seatedPulse=1;}
+     toRelease(s);
+    }else{s.stage='regripRight';s.t=0;}
    }
    break;
   }
   case 'regripRight':
-   if(s.t>=REGRIP_TIME){s.right=GRIP_RIGHT;s.stage='regripLeft';s.t=0;}
+   if(s.t>=REGRIP_TIME){s.right=grips.right;s.stage='regripLeft';s.t=0;}
    break;
   case 'regripLeft':
-   if(s.t>=REGRIP_TIME){s.left=GRIP_LEFT;beginDrive();}
+   if(s.t>=REGRIP_TIME){s.left=grips.left;beginDrive();}
    break;
   case 'release':
    if(s.t>=RELEASE_TIME){s.stage='done';res.finished=true;}
@@ -285,20 +307,21 @@ export function handPoses(s:ValveStroke):{right:HandPose;left:HandPose}{
  const hold=(phi:number):HandPose=>({phi,open:0,lift:0,away:0,phase:'grip'});
  switch(s.stage){
   case 'reach':{
+   const g=gripsFor(s.dir);
    const u=clamp01(s.t/REACH_TIME);
    // Arms come up from rest; fingers stay open until the last third, then close.
    const away=1-smootherstep(Math.min(1,u/.7));
    const open=1-smootherstep((u-.65)/.35);
-   return{right:{phi:GRIP_RIGHT,open,lift:.04*(1-smootherstep(u)),away,phase:'reach'},left:{phi:GRIP_LEFT,open,lift:.04*(1-smootherstep(u)),away,phase:'reach'}};
+   return{right:{phi:g.right,open,lift:.04*(1-smootherstep(u)),away,phase:'reach'},left:{phi:g.left,open,lift:.04*(1-smootherstep(u)),away,phase:'reach'}};
   }
   case 'breakaway':case 'drive':return{right:hold(s.right),left:hold(s.left)};
   case 'regripRight':{
    const u=clamp01(s.t/REGRIP_TIME);
-   return{right:regripPose(u,s.right,GRIP_RIGHT),left:hold(s.left)};
+   return{right:regripPose(u,s.right,gripsFor(s.dir).right),left:hold(s.left)};
   }
   case 'regripLeft':{
    const u=clamp01(s.t/REGRIP_TIME);
-   return{right:hold(s.right),left:regripPose(u,s.left,GRIP_LEFT)};
+   return{right:hold(s.right),left:regripPose(u,s.left,gripsFor(s.dir).left)};
   }
   case 'release':case 'done':{
    const u=clamp01(s.t/RELEASE_TIME);

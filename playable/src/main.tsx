@@ -71,7 +71,7 @@ function App(){
   ?chestInteractPrompt(nearChest,!!m?.hasMapFragment(nearChest.fragment))
   :'';
  // At the wheel the prompt shrinks to a flow read-out so the hands stay in view.
- const valvePrompt=snap?.atWheel?`Leak ${Math.round((m?.leakFlow??0)*100)}% · release E to let go`:m?.atValve()?(m.valveSealed?'Valve shut · the leak is stopped':`Hold E · Turn the valve shut${m.valveTurned>0?` · leak ${Math.round(m.leakFlow*100)}%`:''}`):'';
+ const valvePrompt=snap?.atWheel?`Leak ${Math.round((m?.leakFlow??0)*100)}% · release E to let go`:m?.atValve()?(m.valveSealed?(m.floodDraining?'Valve shut · draining · Hold E to open it again':'Valve shut · Hold E to open it again'):`Hold E · Turn the valve shut${m.valveTurned>0?` · leak ${Math.round(m.leakFlow*100)}%`:''}`):'';
  const pickupPrompt=(mm:NonNullable<typeof m>,item:keyof typeof ITEMS)=>{
   if(item==='gun'&&mm.inventory.includes('gun'))return `E · Take rounds from ${ITEMS.gun.name}`;
   const held=mm.inventory[mm.selected];
@@ -128,7 +128,7 @@ function App(){
    <section className="vitals" aria-label="Vitals">
     <div className="vital"><div className="vital-row"><span>{onBailout?'PONY':'AIR'}{ponyReady?` · +${Math.ceil(m.bailout)} L`:''}{airborne?' · OPEN':''}</span><strong className={airLitres<airMax*.2||onBailout?'warning':''}>{airLitres} L</strong></div><div className={`meter air ${onBailout?'bailout':''}`}><i style={{width:`${Math.min(100,airPool/airMax*100)}%`}}/></div></div>
     {!onFoot&&<div className="vital"><div className="vital-row"><span>TRIM</span><strong className={Math.abs(buoyancy)>.55?'warning':''}>{trimLabel}{biasLabel}</strong></div><div className="meter trim" aria-valuemin={-1} aria-valuemax={1} aria-valuenow={+buoyancy.toFixed(2)}><em className="trim-bias" style={{left:`${biasMark}%`}} aria-hidden="true"/><i style={{left:`${trimLeft}%`,width:`${trimWidth}%`}}/></div></div>}
-    <div className="vital"><div className="vital-row"><span>FLOOD · {m.valveSealed?'SEALED':m.leakFlow<.999?'THROTTLED':'LEAK'}</span><strong className={flood>=50?'warning':''}>{flood}%</strong></div><div className="meter flood"><i style={{width:`${flood}%`}}/></div></div>
+    <div className="vital"><div className="vital-row"><span>FLOOD · {m.floodDraining?'DRAINING':m.valveSealed?'SEALED':m.leakFlow<.999?'THROTTLED':'LEAK'}</span><strong className={flood>=50?'warning':''}>{flood}%</strong></div><div className="meter flood"><i style={{width:`${flood}%`}}/></div></div>
     <div className="vital"><div className="vital-row"><span>SUIT</span><strong className={m.health<40?'warning':''}>{Math.ceil(m.health)}</strong></div><div className="meter suit"><i style={{width:`${m.health}%`}}/></div></div>
     <div className="vital"><div className="vital-row"><span>{onFoot?'LEGS':'FINS'}</span><strong>{Math.round(m.stamina)}</strong></div><div className="meter fins"><i style={{width:`${m.stamina}%`}}/></div></div>
    </section>

@@ -9,7 +9,7 @@ import {
  gateFlowFraction,leakFlowFraction,valveOpenFraction,startStroke,stepStroke,handPoses,rimPoint,
  GRIP_LEFT,GRIP_RIGHT,DRIVE_ARC,type ValveStroke,
 } from '../src/valve.ts';
-import {Mission,FLOOR_Y,WALK_EYE_Y,BREATH_RISE_MPS,isOpen,riseBreathWater} from '../src/simulation.ts';
+import {Mission,FLOOR_Y,WALK_EYE_Y,BREATH_RISE_MPS,BREATH_EMPTY_Y,BREATH_DRAIN_K,BREATH_DRAIN_FULL_SECONDS,SURFACE_Y,isOpen,riseBreathWater,drainBreathWater,stepFloodLevel} from '../src/simulation.ts';
 import {createValveHands,poseValveHands,solveElbow,UPPER_ARM,FOREARM,SHOULDER_L,SHOULDER_R} from '../src/valveHands.ts';
 
 const assetDir=path.join(path.dirname(fileURLToPath(import.meta.url)),'../public/assets/doom-pipe');
@@ -61,7 +61,59 @@ test('the leak raises the water only while the valve passes flow',()=>{
  m.turnValve(VALVE_CLOSE_RAD);
  assert.ok(m.valveSealed);
  const w2=m.breathWaterY;m.update(.05);
- assert.equal(m.breathWaterY,w2,'sealed: the water holds');
+ assert.ok(m.breathWaterY<w2,'sealed: the rise stops and the sump starts draining at once');
+ assert.ok(m.floodDraining);
+});
+
+test('the sump drains a full bunker in the configured time, never below empty',()=>{
+ let w=SURFACE_Y,t=0;
+ while(w>BREATH_EMPTY_Y&&t<10_000){w=drainBreathWater(w,1/60);t+=1/60;}
+ assert.ok(Math.abs(t-BREATH_DRAIN_FULL_SECONDS)<.05,`drained in ${t.toFixed(2)} s`);
+ assert.equal(w,BREATH_EMPTY_Y);
+ assert.equal(drainBreathWater(BREATH_EMPTY_Y,10),BREATH_EMPTY_Y);
+ // Gradual: never more than a few millimetres in one 60 Hz frame.
+ assert.ok(SURFACE_Y-drainBreathWater(SURFACE_Y,1/60)<.005);
+ // Torricelli: deep water falls faster than shallow.
+ const deep=SURFACE_Y-drainBreathWater(SURFACE_Y,1),shallow=(BREATH_EMPTY_Y+.2)-drainBreathWater(BREATH_EMPTY_Y+.2,1);
+ assert.ok(deep>shallow*2);
+ assert.ok(BREATH_DRAIN_K>0);
+});
+
+test('drain speed is independent of frame rate',()=>{
+ for(const start of [SURFACE_Y,3,1]){
+  const one=drainBreathWater(start,2);
+  let fine=start;for(let i=0;i<240;i++)fine=drainBreathWater(fine,2/240);
+  let lumpy=start;for(const dt of [.3,.01,.9,.05,.74])lumpy=drainBreathWater(lumpy,dt);
+  assert.ok(Math.abs(one-fine)<1e-9&&Math.abs(one-lumpy)<1e-9,`${start}: ${one} vs ${fine} vs ${lumpy}`);
+ }
+});
+
+test('re-opening mid-drain stops the drain and refills from the current level',()=>{
+ const m=new Mission(true);
+ m.breathWaterY=3;
+ m.turnValve(VALVE_CLOSE_RAD);
+ for(let i=0;i<200;i++)m.update(.05);
+ const low=m.breathWaterY;
+ assert.ok(low<3&&m.floodDraining);
+ m.turnValve(-.5);
+ assert.ok(!m.valveSealed&&!m.floodDraining);
+ m.update(.05);
+ assert.ok(m.breathWaterY>low,'filling again');
+ assert.ok(m.breathWaterY-low<.01,'from where it was, not from a reset level');
+ assert.equal(stepFloodLevel(low,1,m.leakFlow),riseBreathWater(low,1,m.leakFlow));
+ // Shut it again: drains again from the new level.
+ m.turnValve(VALVE_CLOSE_RAD);
+ const again=m.breathWaterY;m.update(.05);
+ assert.ok(m.breathWaterY<again);
+});
+
+test('an emptied bunker announces itself once',()=>{
+ const m=new Mission(true);
+ m.breathWaterY=BREATH_EMPTY_Y+.001;
+ m.turnValve(VALVE_CLOSE_RAD);
+ for(let i=0;i<100;i++)m.update(.05);
+ assert.ok(m.floodDrained&&m.drainDone);
+ assert.match(m.notice,/floor is clear/);
 });
 
 test('the prompt appears only at the wheel',()=>{
@@ -73,8 +125,24 @@ test('the prompt appears only at the wheel',()=>{
  assert.equal(m.nearValve(),false,'not from behind the wheel');
  m.position={x:VALVE_STAND.x,y:WALK_EYE_Y,z:VALVE_STAND.z};
  m.turnValve(VALVE_CLOSE_RAD);
- assert.equal(m.nearValve(),false,'nothing left to turn');
- assert.ok(m.atValve());
+ assert.ok(m.nearValve(),'a shut valve can be opened again');
+ assert.equal(m.valveTurnDir,-1);
+});
+
+test('opening from the seat: stuck first, then hand over hand anticlockwise to fully open',()=>{
+ let turned=VALVE_CLOSE_RAD,t=0;
+ const s=startStroke(turned,-1);
+ let prevR=s.right;
+ while(t<120){
+  const r=stepStroke(s,1/60,turned,true,turned>=VALVE_CLOSE_RAD);
+  assert.ok(r.turn<=0,'opening never winds it shut');
+  assert.equal(r.seated,false,'no seating clunk when opening');
+  turned+=r.turn;t+=1/60;
+  if(s.stage==='drive')assert.ok(s.right<=prevR+1e-9,'right hand rides the rim anticlockwise');
+  prevR=s.right;
+  if(r.finished)break;
+ }
+ assert.ok(Math.abs(turned)<1e-9,'fully open');
 });
 
 /** Run the stroke machine with E held until the valve seats; record every tick. */
