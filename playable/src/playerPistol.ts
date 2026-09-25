@@ -13,9 +13,9 @@
  *   3. `takeDamage(target, amount)` on whatever was hit.
  *
  * Real-world anchors: the TT-33 carries 8 rounds of 7.62×25 mm in a single-stack box
- * magazine; a trained shooter manages roughly 3–5 aimed shots a second; a tactical reload
- * takes about 2 s. Pistol bullets lose almost all their energy within ~1–2 m of water,
- * so a submerged shot barely reaches past arm's length.
+ * magazine; a trained shooter manages roughly 3–5 aimed shots a second; a full magazine
+ * change under stress takes closer to three seconds. Pistol bullets lose almost all their
+ * energy within ~1–2 m of water, so a submerged shot barely reaches past arm's length.
  */
 
 import { SURVIVAL } from './survivalConfig';
@@ -31,8 +31,8 @@ export const PISTOL={
  reserveMax:SURVIVAL.pistol.reserveMax,
  /** Semi-automatic: the fastest one trigger pull can follow the last (s). */
  fireInterval:.18,
- /** Magazine change (s). */
- reloadSeconds:1.9,
+ /** Magazine change (s). Longer than a practised dry reload so empty mags force cover. */
+ reloadSeconds:2.8,
  /** Effective range in air, and in water (m). */
  range:45,
  rangeUnderwater:1.6,

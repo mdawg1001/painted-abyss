@@ -36,6 +36,7 @@ test('hitscan: centre ray, nearest target wins, head vs body, walls block',()=>{
 });
 
 test('semi-automatic: one round per pull, cooldown, magazine, reload from reserve',()=>{
+ assert.ok(PISTOL.reloadSeconds>=2.5,'reload is slow enough that empty mags force cover');
  const p=makePistol(8,10);
  assert.equal(canFire(p),'ready');
  spendRound(p);
@@ -46,6 +47,9 @@ test('semi-automatic: one round per pull, cooldown, magazine, reload from reserv
  assert.equal(p.mag,0);assert.equal(canFire(p),'empty');
  assert.ok(startReload(p));
  assert.equal(canFire(p),'reloading');
+ assert.ok(p.reload>2.4,'reload timer matches the longer magazine change');
+ tickPistol(p,PISTOL.reloadSeconds*.5);
+ assert.equal(canFire(p),'reloading','still changing the magazine halfway through');
  tickPistol(p,PISTOL.reloadSeconds);
  assert.equal(p.mag,8);assert.equal(p.reserve,2);
  // Adjustable capacity.

@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.17.0
+# Painted Abyss — First Dive · 0.17.1
 
 The live build is shown in the game as **BUILD v… · git-sha** (menu and during the dive). After another agent merges a PR, your laptop does **not** update by itself — run:
 
@@ -29,6 +29,10 @@ One Poly Haven [Metal Office Desk](https://polyhaven.com/a/metal_office_desk) si
 ## Stylized colour (0.17.0)
 
 Brighter, louder, Overtide-style picture without touching the 2K rock, wall, stone and moss maps. The frame grade adds luma-preserving saturation and vibrance (near-greys stay neutral), a midtone lift and a gentle multiplicative split tone. Dry air has a bright neutral key with a teal floor bounce so textures keep their own hue; the underwater field is lighter too. Cover crates are painted olive, blast walls are sand concrete with a hazard stripe, reinforcement doors are teal steel in yellow frames. The HUD moves to chunky Barlow Condensed on rounded solid panels with yellow keys, colour-coded meters, a big ammo counter and a yellow selected slot. The vignette is much lighter.
+
+## Slower pistol reload (0.17.1)
+
+Player TT-33 magazine changes take **2.8 s** (was 1.9 s). Empty mags last longer — duck behind cover to reload.
 
 ## Frame grade (0.14.3)
 
