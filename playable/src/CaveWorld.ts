@@ -862,7 +862,7 @@ export class CaveWorld extends OceanWorld {
   const pbox=plinth.geometry.boundingBox?.clone().applyMatrix4(plinth.matrixWorld).expandByScalar(.05)??new THREE.Box3();
   this.trackPointCull(plinthMat,pbox);this.scene.add(plinth);
  }
- /** Hatch, far-end marks, wall tank, and the corridor water volume. Cave meshes stay as built. */
+ /** Hatch, wall tank, and the corridor water volume. Cave meshes stay as built. */
  buildBreath(){
   const foot=breathFootprint();
   this.breathFoot=foot;
@@ -914,20 +914,6 @@ export class CaveWorld extends OceanWorld {
   hatch.position.set(spawn.x,0,spawn.z+2.2);
   this.scene.add(hatch);
 
-  const mark=new THREE.MeshBasicMaterial({color:0xffb04a});
-  const far=new THREE.Group();
-  for(let i=0;i<4;i++){
-   const stripe=new THREE.Mesh(new THREE.BoxGeometry(6.4,.05,.22),mark);
-   stripe.position.set(0,.08,i*.85);
-   far.add(stripe);
-  }
-  const band=new THREE.Mesh(new THREE.BoxGeometry(.1,1.4,2.6),mark);
-  band.position.set(-3.85,1.7,1.2);
-  const bandEast=band.clone();
-  bandEast.position.x=3.85;
-  far.add(band,bandEast);
-  far.position.set(foot.cx,0,foot.minZ+2.4);
-  this.scene.add(far);
 
   const tank=new THREE.Group();
   tank.name='breathTank';
