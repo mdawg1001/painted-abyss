@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { ShaderChunk } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { type PbrMaps, triplanarGlsl } from '../rockMaps';
 import { patchOvertideLighting } from '../overtideSurface';
@@ -121,7 +122,7 @@ export class OceanWorld {
           metalnessFactor=0.0;`);
         // Pore normal maps stay loaded. Lighting uses the geometric normal only.
         shader.fragmentShader=shader.fragmentShader.replace('#include <normal_fragment_maps>','#include <normal_fragment_maps>\nnormal=nonPerturbedNormal;');
-        shader.fragmentShader=patchOvertideLighting(shader.fragmentShader);
+        patchOvertideLighting(shader, ShaderChunk);
       }else shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>\n${detailCode}`);
       if(gain>0&&!usePbr){
         shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.055*gain).toFixed(4)};\n#include <opaque_fragment>`);
