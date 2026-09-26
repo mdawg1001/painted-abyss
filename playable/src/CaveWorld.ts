@@ -1,5 +1,4 @@
 import { PropStreaming } from './propStreaming';
-import { createGuideFixture } from './guideFixture';
 import { PALETTE } from './artPalette';
 import { DRY_DENSITY, DRY_FIELD, FLUORESCENT, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type FrameGrade } from './frameGrade';
 import * as THREE from 'three';
@@ -1582,17 +1581,6 @@ export class CaveWorld extends OceanWorld {
   this.beam.position.set(0,0,-10.45);
   this.torchBody.add(this.beam);
 
-  // Low industrial guide fixtures: amber lens, blackened housing, ivory direction arrow.
-  const guide=(points:number[][],destination:{x:number;z:number})=>{
-   points.forEach(([x,z],i)=>{
-    const next=points[i+1]??[destination.x,destination.z];
-    const fixture=createGuideFixture();fixture.position.set(x,0,z);
-    fixture.rotation.y=Math.atan2(next[0]-x,next[1]-z);
-    this.scene.add(fixture);
-   });
-  };
-  guide([[0,-18],[0,-28],[0,-40],[-12,-48],[-22,-60],[-22,-78],[-16,-90],[0,-98],[0,-108]],RELIC);
-  guide([[12,-94],[24,-87],[30,-80],[32,-65],[32,-49],[32,-33],[32,-19]],EXIT);
 
   // Extraction pool — hero cenote god-ray + floor caustics
   const exit=new THREE.Group();exit.position.set(EXIT.x,.65,EXIT.z);

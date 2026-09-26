@@ -1597,7 +1597,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.say('Wall tank. Main cylinder filled.','ok');
    return;
   }
-  if(distance(this.position,EXIT)<4){if(this.hasRelic){this.outcome='won';this.reason='Relic secured. You made it back to the light.';}else this.say('Extraction needs the ammonite relic. Follow the amber guide arrows.','blocked');return;}
+  if(distance(this.position,EXIT)<4){if(this.hasRelic){this.outcome='won';this.reason='Relic secured. You made it back to the light.';}else this.say('Extraction needs the ammonite relic from the bone alcove.','blocked');return;}
   // Hatch stash — fixed bank near spawn; separate from map-scrap crates.
   if(this.nearStash()){
    if(!this.stashOpen){
@@ -1655,7 +1655,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.valveTurned=0;
    this.drainDone=false;
   }
-  const got=sprung?'Booby trap! Taking the relic opened the flood valve. Water is rising — reach extraction!':pickup.item==='relic'?'Relic recovered! Follow the amber markers to extraction.':`${ITEMS[pickup.item].name} collected.`;
+  const got=sprung?'Booby trap! Taking the relic opened the flood valve. Water is rising — reach extraction!':pickup.item==='relic'?'Relic recovered! Get to the extraction pool.':`${ITEMS[pickup.item].name} collected.`;
   this.pending=null;this.say(old?`${got} Dropped the ${ITEMS[old].name.toLowerCase()}.`:got,'ok');
   if(pickup.item==='relic'&&this.predator.state!=='dead'&&this.predator.state!=='damaged'){
    this.predator.state='alert';this.predator.timer=0;this.predator.lastKnown={...this.position};
