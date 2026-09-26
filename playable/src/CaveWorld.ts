@@ -1799,18 +1799,18 @@ export class CaveWorld extends OceanWorld {
  }
  syncPickups(){
   for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);group.traverse(o=>{o.userData.gunAlive=false;if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
-  for(const p of this.mission.pickups){let group=this.pickupMeshes.get(p.id);if(!group){group=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:p.item==='relic'?0xe2b65e:0x82c8b7,emissive:p.item==='relic'?0xffb020:0x2ad4ff,emissiveIntensity:p.item==='relic'?3.2:2.4,metalness:.4,roughness:.45});
-    if(p.item==='relic'){const points:THREE.Vector3[]=[],radii:number[]=[];for(let i=0;i<=72;i++){const t=i/72,a=t*Math.PI*4.5,r=.03+t*t*.62;points.push(V(Math.cos(a)*r,Math.sin(a)*r,0));radii.push(.01+t*.12);}group.add(this.tube(points,radii,mat,90,8));group.add(new THREE.PointLight(0xffb45a,14,10));}
+  for(const p of this.mission.pickups){let group=this.pickupMeshes.get(p.id);if(!group){group=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:p.item==='relic'?0xe2b65e:0x82c8b7,emissive:p.item==='relic'?0xff9a28:0x1a6a5c,emissiveIntensity:p.item==='relic'?1.35:.95,metalness:.4,roughness:.45});
+    if(p.item==='relic'){const points:THREE.Vector3[]=[],radii:number[]=[];for(let i=0;i<=72;i++){const t=i/72,a=t*Math.PI*4.5,r=.03+t*t*.62;points.push(V(Math.cos(a)*r,Math.sin(a)*r,0));radii.push(.01+t*.12);}group.add(this.tube(points,radii,mat,90,8));group.add(new THREE.PointLight(0xffb45a,5.5,8));}
     else if(p.item==='gun'||p.item==='bottle'||p.item==='coat'){
      const gear=this.gearPickupMesh(p.item);
      group.add(gear);
      if(p.item==='gun'){
-      // Hard neon tell so the floor carbine blows into UnrealBloomPass.
-      group.add(new THREE.PointLight(0x5ce0ff,9,7));
+      // Neon tell so the floor carbine contributes to UnrealBloomPass without washing the corridor.
+      group.add(new THREE.PointLight(0x5ce0ff,2.8,5.5));
       this.propStreaming.add(`pickup-gun-${p.id}`,{x:p.position.x,z:p.position.z},()=>mountAk74u(gear,'pickup'),40);
      }
     }
-    else if(p.item==='sovietKey'){group.add(createSovietKeyPickup());group.add(new THREE.PointLight(0xffc050,8,6.5));}
+    else if(p.item==='sovietKey'){group.add(createSovietKeyPickup());group.add(new THREE.PointLight(0xffc050,2.2,4.5));}
     else group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.3,1),mat));
     group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
     const pickup=group;
@@ -2169,14 +2169,14 @@ export class CaveWorld extends OceanWorld {
   }
   this.gunKick=Math.max(0,this.gunKick-dt*7);
   const f=this.playerFlashT;
-  this.playerFlash.intensity=f>0?90*f*f:0;
+  this.playerFlash.intensity=f>0?36*f*f:0;
   this.playerFlashGlow.visible=f>0;
   this.playerFlashGlow.material.opacity=f;
-  this.playerFlashGlow.scale.setScalar(.12+.22*f);
-  this.playerFlashStar.visible=f>0;this.playerFlashStar.material.opacity=Math.min(1,f*1.6);
-  this.playerFlashStar.scale.setScalar(.14+.16*f);
+  this.playerFlashGlow.scale.setScalar(.05+.08*f);
+  this.playerFlashStar.visible=f>0;this.playerFlashStar.material.opacity=Math.min(1,f*1.5);
+  this.playerFlashStar.scale.setScalar(.1+.1*f);
   this.playerFlashSparks.visible=f>0;this.playerFlashSparks.material.opacity=f;
-  this.playerFlashSparks.scale.setScalar(.28-.08*f);
+  this.playerFlashSparks.scale.setScalar(.2-.07*f);
   this.playerFlashT=Math.max(0,f-dt/.05);
   // Magazine seats: heavier click when a reload finishes.
   const r=this.mission.pistol.reload;
