@@ -15,10 +15,10 @@ First rebuild needs `cd playable && npm ci` once; serve/refresh then bake dist l
 WASD walk (dry corridor) / swim · Shift run/sprint · Space/Q buoyancy (swim) · mouse/trackpad look
 F torch · E collect/extract · 1–5 select · click stab (knife) · R use · G drop · Esc pause
 
-Recover the relic by following turquoise markers. Slot 1 starts with a diving
+Recover the relic from the bone alcove beyond the central pillar. Slot 1 starts with a diving
 knife — select 1 and click near the guardian to stab. If inventory is full,
-press E, choose a slot with 1–5, then E again to swap. Follow amber
-markers through the narrow exit passage and press E at the lit pool.
+press E, choose a slot with 1–5, then E again to swap. Head east
+through the narrow exit passage and press E at the lit pool.
 The bunker is flooding: find the hidden leak valve in the far south-west
 corner of the cavern and hold E to turn its wheel shut. Once shut, the
 water drains away; hold E again to reopen it and the flood returns.
