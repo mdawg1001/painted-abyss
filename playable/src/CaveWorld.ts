@@ -41,7 +41,7 @@ import {
  type SovietGuardVisual,
 } from './sovietGuardAsset';
 import { mountTt33 } from './gunAsset';
-import { Mission, cells, world, CELL, EXIT, RELIC, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_COUNT, STASH_POSITION, STASH_YAW, type BreathFootprint, type BreathTankMount } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_COUNT, STASH_POSITION, STASH_YAW, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
  airborne:boolean;
@@ -846,8 +846,9 @@ export class CaveWorld extends OceanWorld {
   };
   for(const key of cells){const [c,r]=key.split(',').map(Number),p=world(c,r);
    const b=take(c,r);
-   const fg=new THREE.PlaneGeometry(CELL,CELL,2,2);fg.rotateX(-Math.PI/2);fg.translate(p.x,0,p.z);b.floors.push(fg);
-   if(!(c===19&&r===3)){const cg=fg.clone();cg.rotateZ(Math.PI);cg.translate(p.x*2,8,0);b.roofs.push(cg);}
+   // The floor surface is the simulation's floor (FLOOR_Y): everything that stands, lies or walks uses that height.
+   const fg=new THREE.PlaneGeometry(CELL,CELL,2,2);fg.rotateX(-Math.PI/2);fg.translate(p.x,FLOOR_Y,p.z);b.floors.push(fg);
+   if(!(c===19&&r===3)){const cg=fg.clone();cg.rotateZ(Math.PI);cg.translate(p.x*2,8+FLOOR_Y,0);b.roofs.push(cg);}
    for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]])if(!cells.has(`${c+dc},${r+dr}`)){
     const g=new THREE.BoxGeometry(dc?1:CELL+.05,8.5,dr?1:CELL+.05);g.translate(p.x+dc*2.5,4,p.z-dr*2.5);b.walls.push(g);
     for(let n=0;n<3;n++){const stone=new THREE.IcosahedronGeometry(1,1);stone.scale(dc?.7:1.7,1.3+(n%2)*.5,dr?.7:1.7);stone.translate(p.x+dc*2.45,1.3+n*2.5,p.z-dr*2.45);b.details.push(stone);}
@@ -877,14 +878,16 @@ export class CaveWorld extends OceanWorld {
   const bone=this.material(0xc8c0a8,'rock',.82,1.5,rockMaps,mossMaps);
   const boneBox=new THREE.Box3();
   for(let i=0;i<6;i++)for(const s of [-1,1]){
-   const rib=this.tube([V(-3+i*.75,.25,-113),V(-3+i*.75,1.3,-113+s*1.2),V(-3+i*.75,.3,-113+s*2.2)],[.12,.09,.025],bone,12,5);
+   // Rib roots bed a few centimetres into the floor sediment, as a fossil would.
+   const rib=this.tube([V(-3+i*.75,FLOOR_Y+.08,-113),V(-3+i*.75,FLOOR_Y+1.08,-113+s*1.2),V(-3+i*.75,FLOOR_Y+.06,-113+s*2.2)],[.12,.09,.025],bone,12,5);
    rib.castShadow=true;rib.receiveShadow=true;rib.geometry.computeBoundingBox();
    if(rib.geometry.boundingBox)boneBox.union(rib.geometry.boundingBox);
    this.scene.add(rib);
   }
   boneBox.expandByScalar(.05);this.trackPointCull(bone,boneBox);
   const plinthMat=this.material(PALETTE.stone,'rock',.86,1.6,rockMaps,mossMaps);
-  const plinth=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.5,1.2,7),plinthMat);plinth.position.set(RELIC.x,.6,RELIC.z);
+  // Relic rests on the plinth top (RELIC_PLINTH.height above the floor).
+  const plinth=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.5,RELIC_PLINTH.height,7),plinthMat);plinth.position.set(RELIC.x,FLOOR_Y+RELIC_PLINTH.height/2,RELIC.z);
   plinth.castShadow=true;plinth.receiveShadow=true;plinth.updateMatrixWorld();
   plinth.geometry.computeBoundingBox();
   const pbox=plinth.geometry.boundingBox?.clone().applyMatrix4(plinth.matrixWorld).expandByScalar(.05)??new THREE.Box3();
@@ -939,7 +942,7 @@ export class CaveWorld extends OceanWorld {
   const rim=new THREE.Mesh(new THREE.TorusGeometry(.95,.04,8,24),ring);
   rim.position.set(0,1.65,.13);
   hatch.add(door,wheel,rim);
-  hatch.position.set(spawn.x,0,spawn.z+2.2);
+  hatch.position.set(spawn.x,FLOOR_Y,spawn.z+2.2);
   this.scene.add(hatch);
 
 
@@ -986,16 +989,17 @@ export class CaveWorld extends OceanWorld {
   this.volMat.opacity=waterVeilOpacity(this.frameGrade);
   const y=this.mission.breathWaterY;
   const foot=this.breathFoot;
-  const show=y>0.32;
+  // Water below the floor surface is under the slab, not in the room.
+  const show=y>FLOOR_Y+.02;
   if(this.breathWater.visible!==show){
    this.breathWater.visible=show;
    this.breathVolume.visible=show;
   }
   if(show){
    this.breathWater.position.set(this.bunkerBounds.cx,y+.02,this.bunkerBounds.cz);
-   const h=Math.max(.08,y);
+   const h=Math.max(.08,y-FLOOR_Y);
    this.breathVolume.scale.set(foot.width*.94,h,foot.depth*.96);
-   this.breathVolume.position.set(foot.cx,h*.5,foot.cz);
+   this.breathVolume.position.set(foot.cx,FLOOR_Y+h*.5,foot.cz);
   }
   // Floor caustics fade in once there is real water over the floor.
   const cover=THREE.MathUtils.smoothstep(y-FLOOR_Y,.08,.6);
@@ -1650,8 +1654,14 @@ export class CaveWorld extends OceanWorld {
      box.max.set(pickup.position.x+1,pickup.position.y+1,pickup.position.z+1);
     });
     this.adoptPointCull(pickup,box,false,true);
+    // Sim y is the item's underside: lift the mesh so its lowest point sits exactly there.
+    group.rotation.y=(p.id*2.399)%(Math.PI*2);group.updateMatrixWorld(true);
+    group.userData.bottom=-new THREE.Box3().setFromObject(group).min.y;
     this.scene.add(group);this.pickupMeshes.set(p.id,group);
-   }group.position.set(p.position.x,p.position.y+(p.position.y>FLOOR_Y+.5?Math.sin(this.time*1.7+p.id)*.12:0),p.position.z);group.rotation.y=this.time*.45;
+   }
+   // Streamed glTFs replace stubs after spawn, so re-measure the underside now and then.
+   const nowMs=performance.now();if(!(group.userData.bottomAt>nowMs-1000)){group.position.set(0,0,0);group.updateMatrixWorld(true);const bb=new THREE.Box3().setFromObject(group);if(!bb.isEmpty())group.userData.bottom=-bb.min.y;group.userData.bottomAt=nowMs;}
+   group.position.set(p.position.x,p.position.y+(group.userData.bottom??0),p.position.z);
   }
  }
  publish(){this.ui({mission:this.mission,playing:this.playing,started:this.started,pointerLocked:this.pointerLocked,error:this.error,audioNotice:this.audioNotice,yaw:this.yaw,onFoot:this.onFoot,airborne:this.airborne,atWheel:!!this.valveStroke});}

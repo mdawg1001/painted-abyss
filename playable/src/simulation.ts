@@ -1,4 +1,5 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
+import { ITEM_BODY, stepBody, submergedFraction, type BodyState } from './propPhysics';
 import { steerToward, faceStanding, yawToward, wrapAngle, turnToward, forwardOf, GUARD_STEER_WALK, GUARD_STEER_RUN } from './guardSteering';
 import { SURVIVAL, SURVIVAL_COVER, type GuardRole } from './survivalConfig';
 import { Director, patrolPosts, nearestFree, pistolDamage, rayWallPoint, smokeBlocks, smokeAlive, smokeLanding, survivalDoors, makeCaches, type SmokeCloud, type SmokeGrenade, type SupplyCache, type SupplyKind } from './survival';
@@ -21,7 +22,9 @@ export type Pickup={id:number;item:Item;position:Point;
  /** Rounds still in a dropped pistol (a downed guard's). Undefined for the corridor gun. */
  rounds?:number;
  /** Just dropped by a swap: ignored by E until you step away, so a double tap cannot swap it straight back. */
- settling?:boolean};
+ settling?:boolean;
+ /** Falling / floating / resting state (propPhysics). Absent until the item first moves. */
+ body?:BodyState};
 export type PredatorState='patrol'|'alert'|'chase'|'search'|'damaged'|'dead';
 /** Corridor Soviet guard FSM (Phase 3). Separate from the cave ichthyosaur. */
 export type GuardState='patrol'|'alert'|'chase'|'search';
@@ -51,6 +54,15 @@ export const FLOOR_Y=.65;
 export const SURFACE_Y=7.1;
 export const START:Point={x:0,y:3,z:-12};
 export const RELIC:Point={x:0,y:2,z:-112};
+/** Stone plinth the relic lies on. Its top is the support height for anything resting there. */
+export const RELIC_PLINTH={x:0,z:-112,radius:1.05,height:1.0} as const;
+/**
+ * Support height under (x, z): the bunker floor, or the plinth top. Loose items
+ * rest here; `Pickup.position.y` is always the item's underside.
+ */
+export function supportHeight(x:number,z:number){
+ return Math.hypot(x-RELIC_PLINTH.x,z-RELIC_PLINTH.z)<=RELIC_PLINTH.radius?FLOOR_Y+RELIC_PLINTH.height:FLOOR_Y;
+}
 export const EXIT:Point={x:32,y:3,z:-12};
 /**
  * Breath corridor — one addition south of the entrance chamber.
@@ -1166,7 +1178,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  /** Elevated gas effort until this mission elapsed time (bite / panic). */
  gasPanicUntil=0;
  inventory:(Item|null)[]=[...SURVIVAL_KIT,'flare','bandage','air'];selected=1;
- pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},...corridorGearPickups()];nextId=6;
+ pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC,y:FLOOR_Y+RELIC_PLINTH.height}},...corridorGearPickups()];nextId=6;
  chests:Chest[]=createDiveChests();
  /**
   * Persistent hatch stash (localStorage). Survives death, extract, dive-again, and reload.
@@ -1730,7 +1742,20 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.pulse('blocked');
  }
  /** Where a dropped item comes to rest: on the floor on foot, just below you when swimming. */
- dropY(){return canWalk(this.position,this.breathWaterY)?FLOOR_Y:Math.max(1,this.position.y-.4);}
+ /** Let go at hand height (a forearm below the eye); gravity and the water take it from there. */
+ dropY(){return Math.max(supportHeight(this.position.x,this.position.z),this.position.y-.75);}
+ /** Fall, sink, float and settle every loose item for this tick. */
+ stepPickups(dt:number){
+  for(const p of this.pickups){
+   const ground=supportHeight(p.position.x,p.position.z);
+   if(!p.body){
+    // Already on its support and heavy enough to stay there: nothing to integrate.
+    if(Math.abs(p.position.y-ground)<1e-4&&submergedFraction(p.position.y,ITEM_BODY[p.item].height,this.breathWaterY)===0)continue;
+    p.body={vy:0,resting:false};
+   }
+   stepBody(p.item,p.position,p.body,dt,this.breathWaterY,ground);
+  }
+ }
  /** Rounds you get by stripping a pistol you find (the corridor gun comes loaded). */
  pistolRoundsOn(p:Pickup){return p.rounds??PISTOL.magazine;}
  /** Start a magazine change on the pistol (R, or automatically when the last round goes). */
@@ -1988,6 +2013,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   // Knife recovery is the diver's arm, not the guardian: it runs whatever state the guardian is in.
   this.predator.stabCool=Math.max(0,this.predator.stabCool-dt);
   if(this.floodTriggered)this.breathWaterY=stepFloodLevel(this.breathWaterY,dt,this.leakFlow);
+  this.stepPickups(dt);
   if(this.floodDrained&&!this.drainDone){
    this.drainDone=true;
    this.say('The last of the water gurgles away down the sump. The floor is clear.','ok');
