@@ -12,6 +12,7 @@
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 export const AK74U_SOURCE='https://sketchfab.com/3d-models/ak74u-free-animation-2ab66220c48b465e9501067667965569';
 export const AK74U_AUTHOR='BURNER';
@@ -77,10 +78,10 @@ const ttPending:Record<'tt33',Promise<TtProto|null>|null>={tt33:null};
 const ttWaiters:Record<'tt33',Array<(scene:TtProto|null)=>void>>={tt33:[]};
 
 function cloneTree(src:THREE.Object3D,unlit:boolean){
- const clone=src.clone(true);
+ // Skinned FPS arms+gun must use SkeletonUtils.clone or the skeleton binding breaks.
+ const clone=cloneSkeleton(src);
  clone.traverse(o=>{
   if(!(o instanceof THREE.Mesh))return;
-  o.geometry=o.geometry.clone();
   const mats=Array.isArray(o.material)?o.material:[o.material];
   const next=mats.map(m=>{
    const sm=m as THREE.MeshStandardMaterial;
@@ -173,11 +174,12 @@ export function fitAk74u(model:THREE.Object3D,fit:Exclude<GunFit,'guard'>){
  const box0=new THREE.Box3().setFromObject(model);
  const size=box0.getSize(new THREE.Vector3());
  const center=box0.getCenter(new THREE.Vector3());
- pivot.position.copy(center).multiplyScalar(-1);
  if(fit==='held'){
+  // Authored as a standing FPS rig (metres after the FBX ×0.01). Put the eye at the
+  // camera: shift so the top of the bbox sits on the lens and the figure faces −Z.
+  pivot.position.set(-center.x,-(box0.max.y-0.02),-center.z);
   wrap.scale.setScalar(AK74U_HELD_SCALE);
-  // Authored FPS: looking down −Z through the sights. Nudge slightly down/right.
-  wrap.position.set(.04,-.06,-.02);
+  wrap.position.set(0,0,0);
   wrap.traverse(o=>{
    if(!(o instanceof THREE.Mesh))return;
    o.frustumCulled=false;
@@ -185,9 +187,9 @@ export function fitAk74u(model:THREE.Object3D,fit:Exclude<GunFit,'guard'>){
    o.receiveShadow=false;
   });
  }else{
+  pivot.position.copy(center).multiplyScalar(-1);
   const length=Math.max(size.x,size.z,1e-4);
   wrap.scale.setScalar(AK74U_PICKUP_LENGTH/length);
-  // Lay barrel along +X like the old floor prop.
   wrap.rotation.set(0,Math.PI/2,Math.PI/2);
   wrap.updateMatrixWorld(true);
   const box1=new THREE.Box3().setFromObject(wrap);
@@ -326,18 +328,26 @@ function fadeTo(rt:Ak74uRuntime,name:Ak74uClip,fade=.15){
 export function mountAk74u(holder:THREE.Object3D,fit:Exclude<GunFit,'guard'>){
  whenAk(proto=>{
   if(!proto||holder.userData.gunAlive===false)return;
-  const model=cloneTree(proto.scene,true);
+  // Held keeps PBR (normals/AO read under a local fill light). Pickup stays unlit.
+  const model=cloneTree(proto.scene,fit==='pickup');
   const fitted=fitAk74u(model,fit);
   dropStubs(holder);
   holder.add(fitted);
   if(fit==='held'){
+   // Soft fill so MeshStandardMaterial reads in the dark bunker (no world lights on the FPS layer).
+   const fill=new THREE.HemisphereLight(0xc8d4e0,0x1a1510,.95);
+   fill.name='ak74uFill';
+   fitted.add(fill);
+   const key=new THREE.DirectionalLight(0xfff2e0,.55);
+   key.position.set(.2,.4,.6);
+   key.name='ak74uKey';
+   fitted.add(key);
    const mixer=new THREE.AnimationMixer(model);
    const actions=buildActions(mixer,proto.clips);
    const rt:Ak74uRuntime={mixer,actions,current:''};
    holder.userData.ak74u=rt;
    fadeTo(rt,'IDLE',0);
   }else{
-   // Freeze a quiet pose for the floor prop — advance IDLE once so bones settle.
    const mixer=new THREE.AnimationMixer(model);
    const idle=proto.clips.find(c=>c.name==='IDLE');
    if(idle){

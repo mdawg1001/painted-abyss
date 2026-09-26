@@ -68,7 +68,7 @@ export function stashSlotLabel(slot: StashSlot): string {
   flare: 'Signal flare',
   air: 'Pony bottle',
   bandage: 'Sealant kit',
-  gun: 'TT-33 pistol',
+  gun: 'AK-74U',
   bottle: 'Spare air bottle',
   coat: 'Coat',
   sovietKey: 'Soviet key',

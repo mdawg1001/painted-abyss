@@ -445,7 +445,7 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  air:{name:'Pony bottle',short:'Pony',description:`R · Arm a separate bailout cylinder (~${AIR_BAILOUT_LITRES} L). Drains after the main tank.`,hint:'R arm bailout · consumed'},
  bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
- gun:{name:'TT-33 pistol',short:'Pistol',description:'Semi-automatic, 8-round magazine. Click fires one round at the centre of the screen; R changes the magazine. Three body hits or one to the head drop a guard, and every shot brings nearby guards running. Take spare rounds off the guards you drop. If a corridor guard kills you, he takes it.',hint:'Click fire · R reload'},
+ gun:{name:'AK-74U',short:'AK-74U',description:'Compact 5.45 mm carbine with FPS arms viewmodel. Click fires one round at the centre of the screen; R changes the magazine. Three body hits or one to the head drop a guard, and every shot brings nearby guards running. Take spare rounds off the guards you drop. If a corridor guard kills you, he takes it.',hint:'Click fire · R reload'},
  bottle:{name:'Spare air bottle',short:'Bottle',description:`R · Add ${SPARE_BOTTLE_LITRES} L to the main cylinder (consumed). A corridor guard will drink it as his air if he takes it from your corpse.`,hint:'R use · consumed'},
  coat:{name:'Coat',short:'Coat',description:'Carry it. It does not soften guardian bites. If a corridor guard takes it from your corpse, his strikes hurt less.',hint:'Carry · death drops it'},
  sovietKey:{name:'Soviet key',short:'Key',description:'Weathered iron skeleton key with a gold-and-red Soviet emblem. Unlocks the ammonite relic in the bone alcove (consumed on unlock).',hint:'Unlock the relic · consumed'},
@@ -1449,7 +1449,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    // Second pistol: strip rounds only (same as floor pickup).
    if(slot.item==='gun'&&this.inventory.includes('gun')){
     const rounds=slot.rounds??0;
-    if(rounds<=0){this.say('You already carry a TT-33.','blocked');return;}
+    if(rounds<=0){this.say('You already carry an AK-74U.','blocked');return;}
     const take=Math.min(rounds,PISTOL.reserveMax-this.pistol.reserve);
     if(take<=0){this.say('Spare rounds are full.','blocked');return;}
     this.pistol.reserve+=take;
@@ -1683,7 +1683,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   // A second pistol is only worth its rounds: strip the magazine and leave the frame.
   if(pickup.item==='gun'&&this.inventory.includes('gun')){
    const take=Math.min(this.pistolRoundsOn(pickup),PISTOL.reserveMax-this.pistol.reserve);
-   if(take<=0){this.say('You already carry a TT-33 and your spare rounds are full.','blocked');return;}
+   if(take<=0){this.say('You already carry an AK-74U and your spare rounds are full.','blocked');return;}
    this.pistol.reserve+=take;this.pickups=this.pickups.filter(p=>p.id!==pickup.id);
    this.pending=null;this.say(`Stripped its magazine: +${take} rounds.`,'ok');return;
   }
