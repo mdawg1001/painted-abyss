@@ -62,9 +62,16 @@
 - Source: https://sketchfab.com/3d-models/soviet-pistol-tt-33-0e2876969dff4d0ea86e9dbf3cb0dce9
 - Author: Stupid Mad Polygon (@stupidmadpolygon)
 - License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
-- Files: `public/assets/tt33/tt33.glb` (authored mesh, 5,306 triangles)
+- Files: `public/assets/tt33/tt33.glb` (official Sketchfab glTF, 5,306 triangles)
 - The glTF asset extras also name Simon Volt (https://sketchfab.com/tursunovabduseit).
-- Corridor gun mesh on the floor, in the diver's hand, and in the Soviet guard's hand. Replaces the box placeholder only.
+- Mesh in the Soviet guard's hand. The diver's inventory gun is the PolyCube retro gun below.
+
+## 3D Retro Gun Model (Sketchfab)
+- Source: https://sketchfab.com/3d-models/3d-retro-gun-model-free-download-ff244414e90c43fa9bd1bc4c4ca7c0bb
+- Author: PolyCube (@ItsPolyCube)
+- License: Free Standard — https://sketchfab.com/licenses (commercial use allowed under Sketchfab’s basic restrictions; attribution not required by the license)
+- Files: `public/assets/retro-gun/retro_gun.glb` — official Sketchfab viewer mesh (1,220 triangles) with the published `MatGun0pixel.png` albedo and `Metal024_1K_NormalGL.jpg` normal, packed to a self-contained binary glTF
+- Diver inventory gun: viewmodel in hand and corridor floor pickup. Replaces the box placeholder only; fire mode unchanged.
 
 
 ## Lifebuoy (Poly Haven)

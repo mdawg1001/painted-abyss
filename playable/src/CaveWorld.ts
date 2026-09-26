@@ -44,7 +44,7 @@ import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion, applyGuardAim,
  type SovietGuardVisual,
 } from './sovietGuardAsset';
-import { mountTt33 } from './gunAsset';
+import { mountRetroGun } from './gunAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_COUNT, STASH_POSITION, STASH_YAW, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
@@ -1545,7 +1545,7 @@ export class CaveWorld extends OceanWorld {
  holdingGun(){return this.mission.inventory[this.mission.selected]==='gun';}
  holdingKey(){return this.mission.inventory[this.mission.selected]==='sovietKey';}
  holdingTorch(){return holdingTorchItem(this.mission.inventory[this.mission.selected]);}
- /** Unlit pistol in the lower-right. Stub boxes until the TT-33 glTF replaces them. */
+ /** Unlit pistol in the lower-right. Stub boxes until the PolyCube retro gun glTF replaces them. */
  makeHeldGun(){
   const g=new THREE.Group();
   g.name='gunVisual';
@@ -1562,7 +1562,7 @@ export class CaveWorld extends OceanWorld {
   grip.rotation.x=.35;
   stub.add(body,barrel,grip);
   g.add(stub);
-  mountTt33(g,'held');
+  mountRetroGun(g,'held');
   g.position.set(.32,-.28,-.55);
   g.rotation.set(.2,.55,.08);
   g.visible=false;
@@ -1581,7 +1581,7 @@ export class CaveWorld extends OceanWorld {
    stub.add(body,barrel);
    g.add(stub);
    g.userData.gunAlive=true;
-   mountTt33(g,'pickup');
+   mountRetroGun(g,'pickup');
   }else if(item==='bottle'){
    const cyl=new THREE.Mesh(new THREE.CylinderGeometry(.11,.13,.46,10),new THREE.MeshBasicMaterial({color:0x3d8f62}));
    const cap=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,.09,8),new THREE.MeshBasicMaterial({color:0xe4e8ea}));

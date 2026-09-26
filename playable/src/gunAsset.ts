@@ -1,16 +1,27 @@
 /**
- * Soviet pistol TT-33 (Sketchfab, CC BY 4.0).
+ * Player inventory gun — Sketchfab “3D Retro Gun Model - Free Download”
+ * by PolyCube (Free Standard), plus the Soviet TT-33 for guard hands.
  *
  * Replaces the box placeholder only:
- * - diver's held gun (unlit, so it reads with the torch stowed)
- * - corridor floor pickup
- * - pistol in the Soviet guard's hand
+ * - diver's held gun (PolyCube, unlit so it reads with the torch stowed)
+ * - corridor floor pickup (PolyCube)
+ * - pistol in the Soviet guard's hand (TT-33)
  *
  * Guard body scale, AI, and gear rules stay in simulation / sovietGuardAsset.
+ * https://sketchfab.com/3d-models/3d-retro-gun-model-free-download-ff244414e90c43fa9bd1bc4c4ca7c0bb
  * https://sketchfab.com/3d-models/soviet-pistol-tt-33-0e2876969dff4d0ea86e9dbf3cb0dce9
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
+export const RETRO_GUN_SOURCE='https://sketchfab.com/3d-models/3d-retro-gun-model-free-download-ff244414e90c43fa9bd1bc4c4ca7c0bb';
+export const RETRO_GUN_AUTHOR='PolyCube';
+export const RETRO_GUN_AUTHOR_URL='https://sketchfab.com/ItsPolyCube';
+export const RETRO_GUN_LICENSE='Free Standard';
+/** Public path — must match `playable/public/assets/retro-gun/retro_gun.glb`. */
+export const RETRO_GUN_GLB='/assets/retro-gun/retro_gun.glb';
+/** Official Sketchfab viewer face count for the PolyCube gun. */
+export const RETRO_GUN_TRIANGLES=1220;
 
 export const TT33_SOURCE='https://sketchfab.com/3d-models/soviet-pistol-tt-33-0e2876969dff4d0ea86e9dbf3cb0dce9';
 export const TT33_AUTHOR='Stupid Mad Polygon';
@@ -20,7 +31,7 @@ export const TT33_LICENSE='CC BY 4.0';
 export const TT33_GLB='/assets/tt33/tt33.glb';
 
 /**
- * Authored mesh: barrel along −X, grip along −Y, about 0.28 m long.
+ * Authored mesh space: barrel along −X, grip along −Y.
  * Lengths below match the box placeholders these meshes replace.
  */
 export const TT33_HELD_LENGTH=.42;
@@ -34,9 +45,11 @@ export const TT33_GUARD_POS={x:.02,y:-.02,z:-.06} as const;
 
 export type GunFit='held'|'pickup'|'guard';
 
-let proto:THREE.Group|null|undefined;
-let pending:Promise<THREE.Group|null>|null=null;
-const waiters:Array<(scene:THREE.Group|null)=>void>=[];
+type ProtoKind='retro'|'tt33';
+
+const protos:Record<ProtoKind,THREE.Group|null|undefined>={retro:undefined,tt33:undefined};
+const pending:Record<ProtoKind,Promise<THREE.Group|null>|null>={retro:null,tt33:null};
+const waiters:Record<ProtoKind,Array<(scene:THREE.Group|null)=>void>>={retro:[],tt33:[]};
 
 function cloneTree(src:THREE.Object3D,unlit:boolean){
  const clone=src.clone(true);
@@ -67,12 +80,12 @@ function cloneTree(src:THREE.Object3D,unlit:boolean){
 }
 
 /**
- * Center the authored pistol, aim it, and scale it to the placeholder's reach.
+ * Center the pistol, aim it, and scale it to the placeholder's reach.
  * Barrel in the file points along −X.
  */
-export function fitTt33(model:THREE.Object3D,fit:GunFit){
+export function fitGun(model:THREE.Object3D,fit:GunFit,meshName='gunMesh'){
  const wrap=new THREE.Group();
- wrap.name='tt33Mesh';
+ wrap.name=meshName;
  const pivot=new THREE.Group();
  pivot.add(model);
  wrap.add(pivot);
@@ -108,32 +121,40 @@ export function fitTt33(model:THREE.Object3D,fit:GunFit){
  return wrap;
 }
 
-function loadProto(){
- if(!pending){
-  pending=(async()=>{
+export function fitTt33(model:THREE.Object3D,fit:GunFit){
+ return fitGun(model,fit,'tt33Mesh');
+}
+
+export function fitRetroGun(model:THREE.Object3D,fit:GunFit){
+ return fitGun(model,fit,'retroGunMesh');
+}
+
+function loadProto(kind:ProtoKind,url:string,label:string){
+ if(!pending[kind]){
+  pending[kind]=(async()=>{
    try{
-    const gltf=await new GLTFLoader().loadAsync(TT33_GLB);
+    const gltf=await new GLTFLoader().loadAsync(url);
     const scene=gltf.scene;
-    scene.name='tt33Proto';
+    scene.name=kind==='retro'?'retroGunProto':'tt33Proto';
     return scene;
    }catch(err){
-    console.warn('TT-33 mesh failed to load; keeping placeholder.',err);
+    console.warn(`${label} mesh failed to load; keeping placeholder.`,err);
     return null;
    }
   })().then(scene=>{
-   proto=scene;
-   const queued=waiters.splice(0);
+   protos[kind]=scene;
+   const queued=waiters[kind].splice(0);
    for(const fn of queued)fn(scene);
    return scene;
   });
  }
- return pending;
+ return pending[kind]!;
 }
 
-function whenTt33(fn:(scene:THREE.Group|null)=>void){
- if(proto!==undefined){fn(proto);return;}
- waiters.push(fn);
- loadProto();
+function whenProto(kind:ProtoKind,url:string,label:string,fn:(scene:THREE.Group|null)=>void){
+ if(protos[kind]!==undefined){fn(protos[kind]!);return;}
+ waiters[kind].push(fn);
+ loadProto(kind,url,label);
 }
 
 function dropStubs(holder:THREE.Object3D){
@@ -149,13 +170,22 @@ function dropStubs(holder:THREE.Object3D){
  }
 }
 
-/** Swap placeholder children for the TT-33 once the glTF is in. Stubs stay if the load fails. */
-export function mountTt33(holder:THREE.Object3D,fit:GunFit){
- whenTt33(scene=>{
+function mountProto(holder:THREE.Object3D,fit:GunFit,kind:ProtoKind,url:string,label:string){
+ whenProto(kind,url,label,scene=>{
   if(!scene||holder.userData.gunAlive===false)return;
   const unlit=fit!=='guard';
-  const fitted=fitTt33(cloneTree(scene,unlit),fit);
+  const fitted=(kind==='retro'?fitRetroGun:fitTt33)(cloneTree(scene,unlit),fit);
   dropStubs(holder);
   holder.add(fitted);
  });
+}
+
+/** Swap placeholder children for the PolyCube retro gun (inventory held / floor pickup). */
+export function mountRetroGun(holder:THREE.Object3D,fit:Exclude<GunFit,'guard'>){
+ mountProto(holder,fit,'retro',RETRO_GUN_GLB,'Retro gun');
+}
+
+/** Swap placeholder children for the TT-33 (guard hand). Stubs stay if the load fails. */
+export function mountTt33(holder:THREE.Object3D,fit:GunFit){
+ mountProto(holder,fit,'tt33',TT33_GLB,'TT-33');
 }
