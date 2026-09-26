@@ -433,6 +433,9 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .crosshair i:nth-child(3),.crosshair i:nth-child(4){height:2px;width:7px;top:-1px}
 .crosshair i:nth-child(3){left:-12px}.crosshair i:nth-child(4){left:5px}
 .crosshair b{position:absolute;left:-1.5px;top:-1.5px;width:3px;height:3px;border-radius:50%;background:rgba(240,236,224,.9)}
+.crosshair i,.crosshair b{transition:opacity .1s}
+/* Aiming down the sights: the iron sights are the reticle (hit marker still shows). */
+.ads .crosshair i,.ads .crosshair b{opacity:0}
 .crosshair::before,.crosshair::after{content:'';position:absolute;left:-9px;top:-1px;width:18px;height:2px;background:#fff;opacity:0;transition:opacity .08s}
 .crosshair::before{transform:rotate(45deg)}.crosshair::after{transform:rotate(-45deg)}
 .crosshair.hit::before,.crosshair.hit::after{opacity:1}

@@ -70,7 +70,8 @@
 - Source: https://sketchfab.com/3d-models/ak74u-free-animation-2ab66220c48b465e9501067667965569
 - Author: BURNER (@Alexander_Ovelar)
 - License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
-- Files: `public/assets/ak74u/ak74u.glb` — official Sketchfab viewer mesh + published textures, packed with the seven viewmodel clips (`DRAW`, `IDLE`, `INSPEC`, `OLSER`, `RELOAD1`, `RELOAD2`, `SHOOT`)
+- Files: `public/assets/ak74u/ak74u.glb` — the author's official glTF download (mesh, PBR textures, KHR_materials_specular), textures re-encoded to 2048² WebP and clips resampled with glTF-Transform; seven viewmodel clips (`DRAW`, `IDLE`, `INSPEC`, `OLSER`, `RELOAD1`, `RELOAD2`, `SHOOT`)
+- Credit line (from the download's license.txt): This work is based on "AK74U | FREE ANIMATION." (https://sketchfab.com/3d-models/ak74u-free-animation-2ab66220c48b465e9501067667965569) by BURNER (https://sketchfab.com/Alexander_Ovelar) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 - Upstream credits (per Sketchfab description): gun mesh from [Krinkov AKS-74U](https://sketchfab.com/3d-models/krinkov-aks-74u-9f88c016b5524e36850e1961a249dbf1); arms from [Free Arms and Hands Rig](https://sketchfab.com/3d-models/free-arms-and-hands-rig-b7b5691030b44a74ad11ac191771ac02)
 - Diver inventory gun: animated FPS arms+gun viewmodel and corridor floor pickup (gun meshes). Fire mode unchanged; guards still use the TT-33.
 

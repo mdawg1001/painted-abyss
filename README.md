@@ -1,7 +1,19 @@
-# Painted Abyss — First Dive · 0.20.5
+# Painted Abyss — First Dive · 0.20.6
 
 
 
+
+## AK-74U viewmodel fixed: official model, iron sights (0.20.6)
+
+The 0.19.8 carbine was rebuilt from Sketchfab's web-viewer data, which scrambled its UVs (stripy, dotty textures) and swapped the texture slots (gold metal, shiny arms). It now uses the author's official glTF download: black matte steel, red-brown handguard, grey hoodie sleeves and skin-tone hands, exactly as on Sketchfab. Other fixes:
+
+- **Hip view** matches the Sketchfab IDLE view: the carbine rests right of centre, pointing in at the crosshair, with the left hand on the handguard. The old fit hung the rig from the top of its bounding box, so the camera sat in the wrong place.
+- **Aim down sights: hold right mouse.** The carbine comes up onto the rear notch and front post in 0.2 s and the view narrows from 64° to 52°. The crosshair hides because the iron sights are now the reticle; the hit marker still shows. A shouldered stock takes 30% off the muzzle climb and camera kick and steadies the sway.
+- **Animations**: DRAW on equip and SHOOT on every shot. Reloads use RELOAD1 with rounds still in the magazine and RELOAD2 (with the charging handle racked) when it is empty. **V** plays INSPEC. IDLE loops.
+- **No stray lights or glow**: the old viewmodel carried its own hemisphere and directional lights, which lit the whole bunker, plus a cyan emissive undertone that made it glow under bloom. The carbine is now lit by the bunker's own lights plus a faint room reflection, so it stays black steel with warm highlights.
+- The muzzle flash sits on the real muzzle and follows the barrel through recoil and aiming. The floor pickup is the carbine alone at real size (0.73 m), resting on the floor. The camera's near plane moved to 3 cm so the receiver no longer clips.
+
+Asset: 9.6 MB, down from 23.7 MB (WebP 2048² textures, resampled clips), so the lazy load arrives sooner. Credit in `playable/NOTICE.md`.
 
 ## Combat Feedback Manager (0.20.5)
 
