@@ -8,6 +8,7 @@ import { SurvivalFx } from './survivalFx';
 import { survivalDoors } from './survival';
 import { SURVIVAL } from './survivalConfig';
 import { WarFx, pick as pickFx, FLASH_TINT, SPARK_TINT } from './warFx';
+import { attachGuardActions, clearGuardAction, loadGuardActions, playGuardAction, stepGuardAction, type GuardActionState } from './guardActions';
 import { makeGuardCombatState } from './guardCombatPose';
 import { ShaderChunk } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -217,6 +218,8 @@ export class CaveWorld extends OceanWorld {
  pistolReloadSeen=0;
  /** Per guard: hit stagger 0..1 (decays) and death fall progress 0..1. */
  guardJolt:number[]=[];guardFall:number[]=[];pistolHitSeen=0;
+ /** Kevin Iglesias one-shot actions per guard (death / hit flinch / rusher stab); null until loaded. */
+ guardActs:(GuardActionState|null)[]=[];knifeHitSeen=-1;
  /** Per guard: the red "!" detection notice over his helmet. */
  guardNotice:THREE.Sprite[]=[];squadAlertSeen=-1;
  /** Survival firefight visuals (cover, doors, caches, smoke, sparks, light pool). */
@@ -376,9 +379,12 @@ export class CaveWorld extends OceanWorld {
   this.playerFlashGlow.visible=false;this.playerFlashGlow.renderOrder=10;
   const card=(tint:number)=>{const sp=new THREE.Sprite(new THREE.SpriteMaterial({color:tint,transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending,opacity:0}));sp.visible=false;sp.renderOrder=11;return sp;};
   this.playerFlashStar=card(FLASH_TINT);this.playerFlashSparks=card(SPARK_TINT);
-  Promise.all(this.sovietGuards.map(v=>upgradeSovietGuardVisual(v))).then(()=>{
+  Promise.all(this.sovietGuards.map(v=>upgradeSovietGuardVisual(v))).then(async()=>{
    if(!this.alive)return;
    this.syncSovietGuard(0);
+   const clips=await loadGuardActions();
+   if(!clips||!this.alive)return;
+   this.guardActs=this.sovietGuards.map(v=>v.loco?attachGuardActions(v.loco,clips):null);
   });
   this.suspendedParticles();const positions=this.particles.geometry.attributes.position;
   for(let i=0;i<positions.count;i++)positions.setXYZ(i,Math.sin(i*78.23)*37,1+(i%71)/10,-(i*13.23)%122);
@@ -1158,13 +1164,17 @@ export class CaveWorld extends OceanWorld {
    if(g.life!==this.guardLifeSeen[i]){
     this.guardLifeSeen[i]=g.life;this.guardFall[i]=0;this.guardRecoil[i]=0;this.guardJolt[i]=0;
     this.guardShotsSeen[i]=g.shots;this.guardStrikeSeen[i]=g.strikeAt;visual.pose=makeGuardCombatState(i);
+    const fresh=this.guardActs[i];if(fresh)clearGuardAction(fresh);
    }
    if(!g.active){visual.root.visible=false;continue;}
    visual.root.position.set(g.position.x,FLOOR_Y,g.position.z);
    // Shot down: he topples backward from the boots (gravity: slow start, fast finish),
    // with a slight twist so a squad of bodies does not fall identically.
+   const act=this.guardActs[i]??null;
    if(g.hp<=0)this.guardFall[i]=Math.min(1,(this.guardFall[i]??0)+dt/.65);else this.guardFall[i]=0;
-   const fall=(this.guardFall[i]??0)**2;
+   // With the Kevin Iglesias death clip loaded he crumples on his own; the rigid topple is the fallback.
+   if(g.hp<=0&&act)playGuardAction(act,'death');
+   const fall=act?0:(this.guardFall[i]??0)**2;
    // Detection notice: pops in with a little overshoot, holds, then fades (1.8 s).
    const notice=this.guardNotice[i];
    if(notice){
@@ -1185,6 +1195,9 @@ export class CaveWorld extends OceanWorld {
    if(visual.loco){
     updateGuardLocomotion(visual.loco,dt,{moving:g.speed>.02,speed:g.speed,state:g.state,turnRate:g.turnRate,direction:gaitDir});
    }
+   // Rusher knife: the stab clip's wind-up is stretched over the sim's, the thrust lands on the blow.
+   const rusherWind=g.role==='rusher'&&g.hp>0&&g.windup>0&&g.windupTotal>0;
+   if(act&&rusherWind&&act.kind!=='stab'&&act.kind!=='death')playGuardAction(act,'stab');
    if(g.shots!==this.guardShotsSeen[i]){
     const fresh=g.shots>this.guardShotsSeen[i];
     this.guardShotsSeen[i]=g.shots;
@@ -1202,7 +1215,10 @@ export class CaveWorld extends OceanWorld {
    this.guardRecoil[i]=Math.max(0,(this.guardRecoil[i]??0)-dt*6);
    // Your round landing: a hard stagger through chest and head.
    const hit=this.mission.lastPistolHit;
-   if(hit&&hit.guard===i&&hit.shot!==this.pistolHitSeen){this.pistolHitSeen=hit.shot;this.guardJolt[i]=1;}
+   if(hit&&hit.guard===i&&hit.shot!==this.pistolHitSeen){this.pistolHitSeen=hit.shot;this.guardJolt[i]=1;if(act&&g.hp>0)playGuardAction(act,'hit');}
+   const kh=this.mission.lastKnifeHit;
+   if(kh&&kh.guard===i&&kh.at!==this.knifeHitSeen){this.knifeHitSeen=kh.at;if(act&&g.hp>0)playGuardAction(act,'hit');}
+   const actW=act&&visual.loco?stepGuardAction(visual.loco,act,dt,act.kind==='stab'&&rusherWind?1-g.windup/g.windupTotal:null):0;
    this.guardJolt[i]=Math.max(0,(this.guardJolt[i]??0)-dt*4);
    const kick=Math.max(this.guardRecoil[i]??0,this.guardJolt[i]??0);
    // Close attack: grunt at the wind-up, thud or swish at the blow.
@@ -1216,12 +1232,17 @@ export class CaveWorld extends OceanWorld {
     if(landed)this.shakeAmp=Math.max(this.shakeAmp,.7);
    }
    const strikeAge=this.mission.elapsed-g.strikeAt;
-   if(visual.rig&&visual.loco){
+   const clipOwnsBody=!!act&&act.kind==='death'&&actW>.5;
+   const clipStab=!!act&&act.kind==='stab';
+   if(clipOwnsBody){
+    // Dead and crumpling: the clip owns every bone; only the face goes slack.
+    const f=visual.rig?.face;if(f?.morphTargetInfluences){f.morphTargetInfluences[0]=0;f.morphTargetInfluences[1]=1;}
+   }else if(visual.rig&&visual.loco){
     applyGuardCombatPose(visual.rig,visual.pose,visual.gun,{
      target:this._aimTarget,aim:g.gun?g.aim:0,engaged:g.hp>0&&g.state!=='patrol',
      recoil:kick,speed:g.speed,dt,down:g.hp>0?0:1,
-     melee:winding&&g.windupTotal>0?1-g.windup/g.windupTotal:0,
-     strike:g.strikeAt>=0&&strikeAge>=0&&strikeAge<.3?1-strikeAge/.3:0,
+     melee:!clipStab&&winding&&g.windupTotal>0?1-g.windup/g.windupTotal:0,
+     strike:!clipStab&&g.strikeAt>=0&&strikeAge>=0&&strikeAge<.3?1-strikeAge/.3:0,
     });
    }else applyGuardAim(visual,this._aimTarget,g.aim,kick);
    let muzzle:THREE.Vector3|null=null;

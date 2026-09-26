@@ -124,3 +124,10 @@ The copper-pipe distance LOD (`public/assets/copper-pipe/copper_pipe_far.glb`) i
 - Author: OccaSoftware
 - License: Unity Asset Store standard EULA (third-party publisher)
 - Used: crosshair 03 (aim) and 27 (hit marker), downscaled to 128 px in `public/assets/crosshairs/`.
+
+## Human Melee Animations FREE (Unity Asset Store)
+
+- Source: https://assetstore.unity.com/packages/3d/animations/human-melee-animations-free-165785
+- Author: Kevin Iglesias
+- License: Unity Asset Store standard EULA (third-party publisher)
+- Used: Death01, CombatDamage01 and Attack1H01_R, retargeted onto the Quaternius guard rig by `scripts/retarget-kevin-iglesias.mjs` (FBX converted with FBX2glTF, world-space retarget) into `public/assets/soviet-uniform/guard-actions.json`. Guards crumple with the death clip, flinch (upper body) when hit, and knife rushers thrust with the one-handed attack.
