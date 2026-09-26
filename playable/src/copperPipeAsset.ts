@@ -14,6 +14,10 @@ import { CELL, cells, world } from './simulation';
 import { PIPE_MOUNT, PIPE_WALL_CLEARANCE } from './pipeAsset';
 import { WHEEL_CENTRE } from './valve';
 
+export const COPPER_FAR_URL='/assets/copper-pipe/copper_pipe_far.glb';
+export const COPPER_DETAIL_DISTANCE=8;
+export const COPPER_DETAIL_PREFETCH=12;
+export const COPPER_LOD_HYSTERESIS=1;
 export const COPPER_PIPE_URL='/assets/copper-pipe/copper_pipe.glb';
 export const COPPER_SOURCE='https://sketchfab.com/3d-models/copper-pipe-section-91807ce330af449bbd3c59b5ede8ce67';
 export const COPPER_AUTHOR='pixol3d';
@@ -38,7 +42,8 @@ export const COPPER_WALL_CLEARANCE=PIPE_WALL_CLEARANCE;
  */
 export const COPPER_AXIS_Y=WHEEL_CENTRE.y;
 
-export type CopperPipe={group:THREE.Group;ready:boolean};
+export type CopperSection={far:THREE.Object3D;near?:THREE.Object3D;centre:THREE.Vector3;detailed:boolean};
+export type CopperPipe={group:THREE.Group;ready:boolean;sections:CopperSection[];detailReady:boolean;detailLoading:boolean;detailAttempts:number;retryAfter:number;disposed:boolean};
 export type CopperWallSpan={x0:number;x1:number;z:number;yaw:number;length:number};
 
 const inwardVec=(yaw:number)=>new THREE.Vector3(Math.sin(yaw),0,Math.cos(yaw));
@@ -91,7 +96,7 @@ export function copperMounts(span:CopperWallSpan=copperWallSpan()):SconceMount[]
 export function createCopperPipe():CopperPipe{
  const group=new THREE.Group();
  group.name='copperPipe';
- return{group,ready:false};
+ return{group,ready:false,sections:[],detailReady:false,detailLoading:false,detailAttempts:0,retryAfter:0,disposed:false};
 }
 
 /**
@@ -102,7 +107,10 @@ export function createCopperPipe():CopperPipe{
  */
 export function fitCopperPipe(model:THREE.Object3D,mount:SconceMount,length=copperSectionLength()){
  model.updateMatrixWorld(true);
- const box=new THREE.Box3().setFromObject(model);
+ const sourceBounds=model.userData.lodSourceBounds;
+ const box=sourceBounds
+  ?new THREE.Box3(new THREE.Vector3(...sourceBounds.min),new THREE.Vector3(...sourceBounds.max))
+  :new THREE.Box3().setFromObject(model);
  const size=box.getSize(new THREE.Vector3());
  const scale=length/(size.z||1);
  const height=size.y*scale;
@@ -127,27 +135,61 @@ export function fitCopperRun(section:THREE.Object3D,span:CopperWallSpan=copperWa
  return run;
 }
 
+/** Hide/show sections independently; hysteresis avoids flicker at the distance boundary. */
+export function updateCopperPipe(visual:CopperPipe,position:THREE.Vector3){
+ let nearest=Infinity;
+ for(const section of visual.sections){
+  const distance=section.centre.distanceTo(position);
+  nearest=Math.min(nearest,distance);
+  section.detailed=!!section.near && distance<(section.detailed?COPPER_DETAIL_DISTANCE+COPPER_LOD_HYSTERESIS:COPPER_DETAIL_DISTANCE);
+  section.far.visible=!section.detailed;
+  if(section.near)section.near.visible=section.detailed;
+ }
+ return visual.ready&&!visual.disposed&&!visual.detailReady&&!visual.detailLoading&&visual.detailAttempts<3&&Date.now()>=visual.retryAfter&&nearest<COPPER_DETAIL_PREFETCH;
+}
+
+function prepareModel(model:THREE.Object3D,envMap?:THREE.Texture|null){
+ model.traverse(o=>{
+  if(!(o instanceof THREE.Mesh))return;
+  o.castShadow=true;o.receiveShadow=true;
+  for(const m of Array.isArray(o.material)?o.material:[o.material]){
+   if(!(m instanceof THREE.MeshStandardMaterial))continue;
+   if(envMap){m.envMap=envMap;m.envMapIntensity=.65;}
+   m.needsUpdate=true;
+  }
+ });
+}
+
+/** Smaller geometry and textures arrive first; original download waits for approach. */
 export async function upgradeCopperPipe(visual:CopperPipe,envMap?:THREE.Texture|null):Promise<boolean>{
- if(typeof document==='undefined')return false;
+ if(typeof document==='undefined'||visual.disposed)return false;
+ if(visual.ready)return true;
  try{
-  const loader=new GLTFLoader();
-  const gltf=await loader.loadAsync(COPPER_PIPE_URL);
-  const model=gltf.scene;
-  model.traverse(o=>{
-   if(!(o instanceof THREE.Mesh))return;
-   o.castShadow=true;o.receiveShadow=true;
-   const mats=Array.isArray(o.material)?o.material:[o.material];
-   for(const m of mats){
-    if(!(m instanceof THREE.MeshStandardMaterial))continue;
-    if(envMap){m.envMap=envMap;m.envMapIntensity=.65;}
-    m.needsUpdate=true;
-   }
-  });
-  visual.group.add(fitCopperRun(model));
+  const {scene}=await new GLTFLoader().loadAsync(COPPER_FAR_URL);
+  if(visual.disposed)return false;
+  prepareModel(scene,envMap);
+  const run=fitCopperRun(scene);
+  visual.group.add(run);
+  visual.sections=run.children.map(far=>({far,centre:new THREE.Box3().setFromObject(far).getCenter(new THREE.Vector3()),detailed:false}));
   visual.ready=true;
   return true;
+ }catch(err){console.warn('Copper pipe preview failed to load.',err);return false;}
+}
+
+/** Download once for the run; all eight sections share the original geometry/textures. */
+export async function upgradeCopperPipeDetail(visual:CopperPipe,envMap?:THREE.Texture|null):Promise<THREE.Object3D[]>{
+ if(visual.disposed||!visual.ready||visual.detailReady||visual.detailLoading)return [];
+ visual.detailLoading=true;visual.detailAttempts++;
+ try{
+  const {scene}=await new GLTFLoader().loadAsync(COPPER_PIPE_URL);
+  if(visual.disposed)return [];
+  prepareModel(scene,envMap);
+  const run=fitCopperRun(scene);
+  run.children.forEach((near,i)=>{near.visible=false;visual.sections[i].near=near;});
+  visual.group.add(run);visual.detailReady=true;
+  return [...run.children];
  }catch(err){
-  console.warn('Copper pipe failed to load.',err);
-  return false;
- }
+  visual.retryAfter=Date.now()+10000;
+  console.warn('Copper detail unavailable; keeping the distant model.',err);return [];
+ }finally{visual.detailLoading=false;}
 }

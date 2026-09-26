@@ -12,3 +12,7 @@ First Dive ships:
 - `copper_pipe.glb` — the official Sketchfab glTF download (48,634 triangles). Mesh and textures are unchanged.
 
 Wired in `src/copperPipeAsset.ts`. The same glTF is repeated, larger, along the full blind south wall of the far south-west cavern so it joins the hand-wheel pipe already on that wall (not interactable).
+
+- `copper_pipe_far.glb` — derived distance LOD: simplified geometry and 256px textures, 10,258 triangles per rendered section. Created from the credited original; CC BY 4.0 attribution above applies. Original fitting bounds are retained in scene metadata. Rebuild using `scripts/build-copper-lod.mjs`.
+
+Each section uses the original within 8 m, with a 1 m hysteresis band. The original is fetched once on approach; both levels share geometry and textures across their eight copies.
