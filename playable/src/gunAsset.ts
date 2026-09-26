@@ -54,15 +54,39 @@ export const TT33_GUARD_LENGTH=.5;
 export const TT33_GUARD_POS={x:.02,y:-.02,z:-.06} as const;
 
 /**
- * Camera-local rest for the AK74U FPS arms+gun viewmodel.
- * The Sketchfab clip is authored as a first-person aim; keep near the eye.
+ * Camera-local rest for the AK74U viewmodel group (sway and aim offsets are added on top).
+ * The rig itself is placed by `fitAk74u` so the camera sits at AK74U_HIP_EYE.
  */
-export const AK74U_HELD_POS={x:0,y:-.02,z:0} as const;
+export const AK74U_HELD_POS={x:0,y:0,z:0} as const;
 export const AK74U_HELD_ROT={x:0,y:0,z:0} as const;
-/** Uniform scale after drabbing the authored centimetre FBX (root already ×0.01). */
-export const AK74U_HELD_SCALE=1;
-/** Floor pickup length along the barrel (m). */
-export const AK74U_PICKUP_LENGTH=.78;
+/**
+ * The glTF is authored in metres around a standing FPS rig (neck ≈ 1.51 m, carbine facing −Z).
+ * Hip view: the eye sits left of and above the receiver, so the carbine rests right of centre
+ * and points in toward the crosshair (Sketchfab IDLE view).
+ */
+export const AK74U_HIP_EYE={x:-.07,y:1.615,z:-.01} as const;
+/** Aim-down-sights: the eye behind the rear notch, the front post on the crosshair (Sketchfab AIM view). */
+export const AK74U_ADS_EYE={x:.064,y:1.576,z:0} as const;
+/**
+ * Aim-down-sights tuning. Shouldering a folding-stock carbine takes ~0.2 s; the tighter view
+ * is a 1.25× lens-free zoom, and a braced stock soaks up part of the muzzle climb and sway.
+ */
+export const AK74U_ADS={seconds:.2,fov:52,recoilScale:.7,swayScale:.25} as const;
+/** Camera-local offset of the viewmodel at aim blend `aim` (0 hip … 1 sights). */
+export function ak74uAimOffset(aim:number){
+ const k=Math.min(1,Math.max(0,aim));
+ return {
+  x:(AK74U_HIP_EYE.x-AK74U_ADS_EYE.x)*k,
+  y:(AK74U_HIP_EYE.y-AK74U_ADS_EYE.y)*k,
+  z:(AK74U_HIP_EYE.z-AK74U_ADS_EYE.z)*k,
+ };
+}
+/** Room-reflection strength on the carbine: just enough to keep edges readable in the dark (more greys the black finish; the knife uses .45 on bare steel). */
+export const AK74U_ENV_INTENSITY=.1;
+/** Bones that carry the spare magazine parked out of view between reloads. */
+const AK74U_SPARE_MAG_BONES=['carg2'];
+/** Bone of the magazine seated in the carbine. */
+const AK74U_LOADED_MAG_BONE='carg_';
 
 export type GunFit='held'|'pickup'|'guard';
 
@@ -77,7 +101,7 @@ const ttProtos:Record<'tt33',TtProto|null|undefined>={tt33:undefined};
 const ttPending:Record<'tt33',Promise<TtProto|null>|null>={tt33:null};
 const ttWaiters:Record<'tt33',Array<(scene:TtProto|null)=>void>>={tt33:[]};
 
-function cloneTree(src:THREE.Object3D,unlit:boolean){
+function cloneTree(src:THREE.Object3D,unlit:boolean,envMap:THREE.Texture|null=null){
  // Skinned FPS arms+gun must use SkeletonUtils.clone or the skeleton binding breaks.
  const clone=cloneSkeleton(src);
  clone.traverse(o=>{
@@ -90,17 +114,16 @@ function cloneTree(src:THREE.Object3D,unlit:boolean){
     const color=sm.color?sm.color.clone():new THREE.Color(0xffffff);
     color.lerp(new THREE.Color(0x7ae8ff),.18);
     return new THREE.MeshBasicMaterial({
+     name:sm.name,
      map:sm.map??null,
      color,
      side:THREE.DoubleSide,
     });
    }
+   // Authored PBR as-is: the viewmodel is lit by the bunker's own lights. A faint room
+   // reflection (same one the knife uses) keeps the steel edges readable in the dark.
    const copy=sm.clone();
-   copy.envMapIntensity=.45;
-   if(!copy.emissive)copy.emissive=new THREE.Color(0x000000);
-   // Cool neon undertone so held AK / guard TT-33 feed UnrealBloomPass without washing albedo.
-   copy.emissive.setHex(0x183848);
-   copy.emissiveIntensity=.72;
+   if(envMap&&'envMap' in copy){copy.envMap=envMap;copy.envMapIntensity=AK74U_ENV_INTENSITY;}
    copy.needsUpdate=true;
    return copy;
   });
@@ -153,19 +176,42 @@ export function fitTt33(model:THREE.Object3D,fit:GunFit){
  return fitGun(model,fit,'tt33Mesh');
 }
 
-/** Hide arm/hoodie skins so the floor pickup is the carbine only. */
-function stripArms(root:THREE.Object3D){
- root.traverse(o=>{
-  const n=(o.name||'').toLowerCase();
-  if(n.includes('ch08_body')||n.includes('ch08_hoodie')||n.includes('hoodie')){
-   o.visible=false;
-  }
- });
+/** Material name of a mesh (node names in the glTF are just Object_57…; materials are named). */
+function matName(o:THREE.Object3D){
+ const m=(o as THREE.Mesh).material;
+ return ((Array.isArray(m)?m[0]:m)?.name||'').toLowerCase();
+}
+/** Arm and hoodie skins (hidden on the floor pickup): materials Ch08_body / Ch08_body1. */
+function isArmMesh(o:THREE.Object3D){
+ return (o as THREE.Mesh).isMesh===true&&matName(o).startsWith('ch08');
 }
 
 /**
- * Fit the AK74U FPS viewmodel for camera parent (held) or floor (pickup).
- * Held keeps authored FPS orientation; pickup isolates the gun meshes.
+ * The reload's spare magazine is parked on its own bone at the rig's feet. Off the rig (floor
+ * pickup) collapse it to a point tucked inside the loaded magazine, so it neither shows nor
+ * stretches the carbine's bounds.
+ */
+function hideSpareMag(root:THREE.Object3D){
+ root.updateMatrixWorld(true);
+ const find=(prefix:string)=>{let hit:THREE.Object3D|null=null;root.traverse(o=>{if(!hit&&o.name.startsWith(prefix))hit=o;});return hit as THREE.Object3D|null;};
+ const loaded=find(AK74U_LOADED_MAG_BONE);
+ for(const name of AK74U_SPARE_MAG_BONES){
+  const spare=find(name);
+  if(!spare)continue;
+  if(loaded&&spare.parent){
+   const at=loaded.getWorldPosition(new THREE.Vector3());
+   spare.position.copy(spare.parent.worldToLocal(at));
+  }
+  spare.scale.setScalar(1e-4);
+ }
+ root.updateMatrixWorld(true);
+}
+
+/**
+ * Fit the AK74U FPS viewmodel for camera parent (held) or floor (pickup). Both keep the
+ * authored metre scale: the carbine is 0.73 m stock out, like the real AKS-74U.
+ *  - held: the rig hangs so the camera sits at AK74U_HIP_EYE, facing −Z like the camera.
+ *  - pickup: arms hidden, carbine laid on its side, resting on the floor.
  */
 export function fitAk74u(model:THREE.Object3D,fit:Exclude<GunFit,'guard'>){
  const wrap=new THREE.Group();
@@ -173,33 +219,30 @@ export function fitAk74u(model:THREE.Object3D,fit:Exclude<GunFit,'guard'>){
  const pivot=new THREE.Group();
  pivot.add(model);
  wrap.add(pivot);
- if(fit==='pickup')stripArms(model);
- model.updateMatrixWorld(true);
- const box0=new THREE.Box3().setFromObject(model);
- const size=box0.getSize(new THREE.Vector3());
- const center=box0.getCenter(new THREE.Vector3());
  if(fit==='held'){
-  // Authored as a standing FPS rig (metres after the FBX ×0.01). Put the eye at the
-  // camera: shift so the top of the bbox sits on the lens and the figure faces −Z.
-  pivot.position.set(-center.x,-(box0.max.y-0.02),-center.z);
-  wrap.scale.setScalar(AK74U_HELD_SCALE);
-  wrap.position.set(0,0,0);
+  pivot.position.set(-AK74U_HIP_EYE.x,-AK74U_HIP_EYE.y,-AK74U_HIP_EYE.z);
   wrap.traverse(o=>{
    if(!(o instanceof THREE.Mesh))return;
    o.frustumCulled=false;
    o.castShadow=false;
    o.receiveShadow=false;
   });
- }else{
-  pivot.position.copy(center).multiplyScalar(-1);
-  const length=Math.max(size.x,size.z,1e-4);
-  wrap.scale.setScalar(AK74U_PICKUP_LENGTH/length);
-  wrap.rotation.set(0,Math.PI/2,Math.PI/2);
-  wrap.updateMatrixWorld(true);
-  const box1=new THREE.Box3().setFromObject(wrap);
-  wrap.position.set(.18-box1.getCenter(new THREE.Vector3()).x,.02-box1.min.y,0);
-  wrap.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
+  return wrap;
  }
+ // Drop the arm skins outright: hidden meshes still count in bounds (the pickup's floor lift).
+ const arms:THREE.Object3D[]=[];
+ model.traverse(o=>{if(isArmMesh(o))arms.push(o);});
+ for(const o of arms)o.removeFromParent();
+ hideSpareMag(model);
+ // Lay it on its side (barrel toward +X), then sit the lowest vertex on the floor.
+ wrap.rotation.set(0,-Math.PI/2,Math.PI/2);
+ wrap.updateMatrixWorld(true);
+ const box=new THREE.Box3();
+ model.traverse(o=>{if((o as THREE.Mesh).isMesh)box.expandByObject(o,true);});
+ const c=box.getCenter(new THREE.Vector3());
+ // Box is in the wrap's parent frame (wrap sits at the origin), so shift the wrap directly.
+ wrap.position.set(.18-c.x,.02-box.min.y,-c.z);
+ wrap.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;o.frustumCulled=false;}});
  return wrap;
 }
 
@@ -328,48 +371,47 @@ function fadeTo(rt:Ak74uRuntime,name:Ak74uClip,fade=.15){
  }
 }
 
-/** Kick off the 23 MB FPS pack without mounting (idle prefetch after Begin dive). */
+/** Kick off the FPS pack without mounting (idle prefetch after Begin dive). */
 export function prefetchAk74u(){
  return loadAkProto();
 }
 
-/** Swap placeholder for the AK74U viewmodel (held) or floor carbine (pickup). */
-export function mountAk74u(holder:THREE.Object3D,fit:Exclude<GunFit,'guard'>):Promise<boolean>{
+export type Ak74uMountOptions={
+ /** Room reflection for the PBR materials (the knife's env map). */
+ envMap?:THREE.Texture|null;
+ /** Called once the glTF has replaced the stub (e.g. to adopt the bunker's point-light cull). */
+ onMount?:(fitted:THREE.Object3D)=>void;
+};
+
+/**
+ * Swap the placeholder for the AK74U viewmodel (held) or floor carbine (pickup). Mounts once
+ * per holder; resolves true when the glTF is in.
+ * No lights are added: anything put in the viewmodel would light the whole bunker.
+ */
+export function mountAk74u(holder:THREE.Object3D,fit:Exclude<GunFit,'guard'>,opts:Ak74uMountOptions={}):Promise<boolean>{
  if(holder.userData.akMounted)return Promise.resolve(!!holder.userData.ak74u||fit==='pickup');
  holder.userData.akMounted=true;
  return new Promise(resolve=>{
   whenAk(proto=>{
    if(!proto||holder.userData.gunAlive===false){resolve(false);return;}
-   // Held keeps PBR (normals/AO read under a local fill light). Pickup stays unlit.
-   const model=cloneTree(proto.scene,fit==='pickup');
+   // Both fits keep the authored PBR: an unlit black carbine vanishes on the dark floor.
+   const model=cloneTree(proto.scene,false,opts.envMap??null);
+   const mixer=new THREE.AnimationMixer(model);
+   if(fit==='pickup'){
+    // Hold the first IDLE frame so the magazine and bolt sit where the rig puts them.
+    const idle=proto.clips.find(c=>c.name==='IDLE');
+    if(idle){mixer.clipAction(idle).play();mixer.update(0);}
+   }
    const fitted=fitAk74u(model,fit);
    dropStubs(holder);
    holder.add(fitted);
    if(fit==='held'){
-    // Soft fill so MeshStandardMaterial reads in the dark bunker (no world lights on the FPS layer).
-    const fill=new THREE.HemisphereLight(0xc8d4e0,0x1a1510,.95);
-    fill.name='ak74uFill';
-    fitted.add(fill);
-    const key=new THREE.DirectionalLight(0xfff2e0,.55);
-    key.position.set(.2,.4,.6);
-    key.name='ak74uKey';
-    fitted.add(key);
-    const mixer=new THREE.AnimationMixer(model);
     const actions=buildActions(mixer,proto.clips);
     const rt:Ak74uRuntime={mixer,actions,current:''};
     holder.userData.ak74u=rt;
     fadeTo(rt,'IDLE',0);
-   }else{
-    const mixer=new THREE.AnimationMixer(model);
-    const idle=proto.clips.find(c=>c.name==='IDLE');
-    if(idle){
-     const a=mixer.clipAction(idle);
-     a.play();
-     mixer.update(0.05);
-     a.stop();
-    }
-    mixer.stopAllAction();
    }
+   opts.onMount?.(fitted);
    resolve(true);
   });
  });
@@ -407,12 +449,66 @@ export function shootAk74u(holder:THREE.Object3D|null|undefined){
  playAk74u(holder,'SHOOT');
 }
 
-/** Magazine change — scale RELOAD1 (~2s authored) to the pistol reload window. */
-export function reloadAk74u(holder:THREE.Object3D|null|undefined,reloadSeconds=.9){
+/**
+ * Magazine change, stretched to the sim's reload window. An empty gun gets RELOAD2 (mag out,
+ * mag in, then the charging handle racked); a partial mag gets the quicker RELOAD1.
+ */
+export function reloadAk74u(holder:THREE.Object3D|null|undefined,reloadSeconds=.9,empty=false){
  const rt=holder?.userData?.ak74u as Ak74uRuntime|undefined;
- const clip=rt?.actions.RELOAD1?.getClip();
- const dur=clip?.duration||1.2;
- playAk74u(holder,'RELOAD1',{timeScale:Math.max(.5,dur/Math.max(reloadSeconds,.2))});
+ const name:Ak74uClip=empty&&rt?.actions.RELOAD2?'RELOAD2':'RELOAD1';
+ const dur=rt?.actions[name]?.getClip().duration||1.2;
+ playAk74u(holder,name,{timeScale:Math.max(.5,dur/Math.max(reloadSeconds,.2))});
+}
+
+/** Turn the carbine over for a look (INSPEC). Only from rest, so it never cuts a reload or shot. */
+export function inspectAk74u(holder:THREE.Object3D|null|undefined){
+ const rt=holder?.userData?.ak74u as Ak74uRuntime|undefined;
+ if(!rt||rt.current!=='IDLE')return false;
+ playAk74u(holder,'INSPEC');
+ return true;
+}
+
+/** Which clip the held viewmodel is playing ('' before the glTF mounts). */
+export function ak74uClip(holder:THREE.Object3D|null|undefined):Ak74uClip|''{
+ return (holder?.userData?.ak74u as Ak74uRuntime|undefined)?.current??'';
+}
+
+/**
+ * Find the muzzle on the mounted carbine: the centre of the barrel's front face, measured on
+ * the skinned mesh in its current pose. Returns the bone the barrel rides on and the muzzle in
+ * that bone's frame, so a flash parented there follows DRAW / SHOOT / aim like the barrel does.
+ */
+export function ak74uMuzzle(holder:THREE.Object3D):{bone:THREE.Object3D;local:THREE.Vector3}|null{
+ let gun:THREE.SkinnedMesh|null=null;
+ holder.traverse(o=>{if(!gun&&(o as THREE.SkinnedMesh).isSkinnedMesh&&matName(o)==='krinkov')gun=o as THREE.SkinnedMesh;});
+ if(!gun)return null;
+ const mesh=gun as THREE.SkinnedMesh;
+ holder.updateMatrixWorld(true);
+ mesh.skeleton.update();
+ const toHolder=new THREE.Matrix4().copy(holder.matrixWorld).invert();
+ const pos=mesh.geometry.getAttribute('position');
+ const pts:THREE.Vector3[]=[];
+ const v=new THREE.Vector3();
+ let minZ=Infinity,idxMin=0;
+ for(let i=0;i<pos.count;i++){
+  mesh.getVertexPosition(i,v);
+  v.applyMatrix4(mesh.matrixWorld).applyMatrix4(toHolder);
+  pts.push(v.clone());
+  if(v.z<minZ){minZ=v.z;idxMin=i;}
+ }
+ // Barrel's front face: every vertex within 1.5 cm of the foremost one.
+ const at=new THREE.Vector3();let n=0;
+ for(const q of pts)if(q.z<minZ+.015){at.add(q);n++;}
+ at.divideScalar(Math.max(1,n));
+ at.z=minZ-.01;
+ const skin=mesh.geometry.getAttribute('skinIndex');
+ const weight=mesh.geometry.getAttribute('skinWeight');
+ let best=0,bw=-1;
+ for(let k=0;k<4;k++){const w=weight.getComponent(idxMin,k);if(w>bw){bw=w;best=skin.getComponent(idxMin,k);}}
+ const bone=mesh.skeleton.bones[best];
+ if(!bone)return null;
+ const world=at.clone().applyMatrix4(holder.matrixWorld);
+ return {bone,local:bone.worldToLocal(world)};
 }
 
 /** Swap placeholder children for the TT-33 (guard hand). Stubs stay if the load fails. */

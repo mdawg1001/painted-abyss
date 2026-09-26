@@ -48,8 +48,8 @@ import {
  type SovietGuardVisual,
 } from './sovietGuardAsset';
 import {
- mountAk74u, prefetchAk74u, updateAk74u, drawAk74u, shootAk74u, reloadAk74u,
- AK74U_HELD_POS, AK74U_HELD_ROT,
+ mountAk74u, prefetchAk74u, updateAk74u, drawAk74u, shootAk74u, reloadAk74u, inspectAk74u, ak74uMuzzle, ak74uAimOffset,
+ AK74U_HELD_POS, AK74U_HELD_ROT, AK74U_ADS,
 } from './gunAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_COUNT, STASH_POSITION, STASH_YAW, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
@@ -229,6 +229,13 @@ export class CaveWorld extends OceanWorld {
  pistolReloadSeen=0;
  /** Last frame the inventory gun was the held prop (for DRAW on select). */
  gunHeldSeen=false;
+ /** Right mouse held (aim down sights) and the 0…1 shoulder blend that follows it. */
+ aimHeld=false;aimBlend=0;
+ /** Base lens (deg); aiming narrows it to AK74U_ADS.fov. */
+ baseFov=64;
+ /** Muzzle on the carbine's barrel bone, measured once the glTF mounts. */
+ _muzzleAt=new THREE.Vector3();
+ akMuzzle:{bone:THREE.Object3D;local:THREE.Vector3}|null=null;
  /** Per guard: hit stagger 0..1 (decays) and death fall progress 0..1. */
  guardJolt:number[]=[];guardFall:number[]=[];pistolHitSeen=0;
  /** Kevin Iglesias one-shot actions per guard (death / hit flinch / rusher stab); null until loaded. */
@@ -349,7 +356,8 @@ export class CaveWorld extends OceanWorld {
   this.ui=ui;this.rockMaps=loadCaveRockMaps(this.renderer);this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
   // Dirty ivory field. The three grades assign this color; they do not blend it.
   this.scene.background=new THREE.Color(DRY_FIELD);this.scene.fog=new THREE.FogExp2(DRY_FIELD,DRY_DENSITY);
-  this.camera.far=130;this.camera.fov=64;this.camera.updateProjectionMatrix();
+  // Near plane at 3 cm: the carbine's receiver sits ~8 cm from the eye in the hip hold.
+  this.camera.near=.03;this.camera.far=130;this.camera.fov=this.baseFov;this.camera.updateProjectionMatrix();
   // No filmic shoulder — the clip pass clamps contrast.
   this.renderer.toneMappingExposure=1;this.renderer.toneMapping=THREE.NoToneMapping;
   this.setPixelRatio();
@@ -465,7 +473,7 @@ export class CaveWorld extends OceanWorld {
  }
  /**
   * First Begin dive: knife + guards + FX maps, then arm prop streaming.
-  * The 23 MB AK pack waits until the player draws or approaches the floor gun (or a short idle prefetch).
+  * The 9.6 MB AK pack waits until the player draws or approaches the floor gun (or a short idle prefetch).
   */
  bootEssentials(){
   if(this.essentialsBooted)return;
@@ -1616,7 +1624,7 @@ export class CaveWorld extends OceanWorld {
   grip.rotation.x=.35;
   stub.add(body,barrel,grip);
   g.add(stub);
-  // Do not mount the 23 MB AK here — ensureHeldAk() loads on first draw / idle prefetch.
+  // Do not mount the 9.6 MB AK here — ensureHeldAk() loads on first draw / idle prefetch.
   g.position.set(AK74U_HELD_POS.x,AK74U_HELD_POS.y,AK74U_HELD_POS.z);
   g.rotation.set(AK74U_HELD_ROT.x,AK74U_HELD_ROT.y,AK74U_HELD_ROT.z);
   g.visible=false;
@@ -1625,7 +1633,12 @@ export class CaveWorld extends OceanWorld {
  /** Ensure the held FPS AK is downloading / mounted (stub until then). */
  ensureHeldAk(){
   if(!this.gunVisual||this.gunVisual.userData.akMounted)return;
-  void mountAk74u(this.gunVisual,'held');
+  const g=this.gunVisual;
+  void mountAk74u(g,'held',{
+   envMap:this.knifeEnvMap,
+   // Viewmodel shades with the same packed bunker lights as the knife and valve hands.
+   onMount:fitted=>{this.adoptPointCull(fitted,this.heldLightBox,false,false);g.userData.muzzleMeasured=false;this.akMuzzle=null;},
+  });
  }
  /** Floor props for corridor gear. Unlit so they read before the torch is out. */
  gearPickupMesh(item:'gun'|'bottle'|'coat'){
@@ -1807,7 +1820,7 @@ export class CaveWorld extends OceanWorld {
      if(p.item==='gun'){
       // Neon tell so the floor carbine contributes to UnrealBloomPass without washing the corridor.
       group.add(new THREE.PointLight(0x5ce0ff,2.8,5.5));
-      this.propStreaming.add(`pickup-gun-${p.id}`,{x:p.position.x,z:p.position.z},()=>mountAk74u(gear,'pickup'),40);
+      this.propStreaming.add(`pickup-gun-${p.id}`,{x:p.position.x,z:p.position.z},()=>mountAk74u(gear,'pickup',{envMap:this.knifeEnvMap}),40);
      }
     }
     else if(p.item==='sovietKey'){group.add(createSovietKeyPickup());group.add(new THREE.PointLight(0xffc050,2.2,4.5));}
@@ -1858,6 +1871,7 @@ export class CaveWorld extends OceanWorld {
    if(this.mission.mapOpen){this.publish();return;}
    if(e.code==='KeyE'){if(this.mission.nearValve())this.beginValve();else this.mission.interact();}
    if(e.code==='KeyF')this.mission.torch=!this.mission.torch;
+   if(e.code==='KeyV'&&this.holdingGun()&&this.aimBlend===0)inspectAk74u(this.gunVisual);
    if(e.code==='KeyT'){this.camera.getWorldDirection(this._aimDir);this.mission.throwSmoke(this._aimDir.x,this._aimDir.z);}
    if(e.code==='KeyR')this.mission.use();if(e.code==='KeyG')this.mission.drop();if(e.code==='KeyM')this.setSound(!this.sound);
    this.publish();
@@ -1871,7 +1885,11 @@ export class CaveWorld extends OceanWorld {
    if(document.pointerLockElement!==canvas)this.requestLookLock(false);
    // Primary click: pistol in hand fires; knife in hand stabs.
    if(e.button===0){if(this.holdingGun())this.pullTrigger();else this.tryStab();}
+   // Secondary: hold to aim down the sights.
+   if(e.button===2)this.aimHeld=true;
   }) as EventListener);
+  on(window,'pointerup',((e:PointerEvent)=>{if(e.button===2)this.aimHeld=false;}) as EventListener);
+  on(canvas,'contextmenu',((e:Event)=>e.preventDefault()) as EventListener);
   on(document,'pointermove',((e:PointerEvent)=>{if(!this.playing)return;
    const locked=document.pointerLockElement===canvas;
    if(locked){this.lookPointer=null;this.fallbackTurn=0;const delta=lookDelta(this.targetYaw,this.targetPitch,e.movementX,e.movementY);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;return;}
@@ -2097,42 +2115,54 @@ export class CaveWorld extends OceanWorld {
   }
  }
  /**
-  * Put the flash at the real muzzle: the front-centre of the TT-33's bounds in the
-  * viewmodel's own frame (barrel along −Z). Measured once the glTF has replaced the stub.
+  * Put the flash at the real muzzle: the barrel's front face on the skinned carbine, tracked
+  * on its bone so the flash rides DRAW / SHOOT / aim with the barrel.
   */
  placePlayerMuzzle(){
-  const gun=this.gunVisual;if(!gun||gun.userData.muzzleMeasured)return;
-  const box=new THREE.Box3(),tmp=new THREE.Box3(),inv=new THREE.Matrix4(),rel=new THREE.Matrix4();
-  gun.updateMatrixWorld(true);inv.copy(gun.matrixWorld).invert();
-  let real=false;
-  gun.traverse(o=>{
-   const mesh=o as THREE.Mesh;
-   if(!mesh.isMesh)return;
-   for(let a:THREE.Object3D|null=o;a&&a!==gun;a=a.parent)if(a.userData.gunStub)return;
-   mesh.geometry.computeBoundingBox();
-   tmp.copy(mesh.geometry.boundingBox!).applyMatrix4(rel.multiplyMatrices(inv,mesh.matrixWorld));
-   box.union(tmp);real=true;
-  });
-  if(!real)return;
-  // Bore line: upper part of the slide, just past its front face.
-  const at=new THREE.Vector3((box.min.x+box.max.x)/2,box.max.y-(box.max.y-box.min.y)*.18,box.min.z-.02);
+  const gun=this.gunVisual;if(!gun)return;
+  if(!gun.userData.muzzleMeasured){
+   if(!gun.userData.ak74u)return;
+   this.akMuzzle=ak74uMuzzle(gun);
+   gun.userData.muzzleMeasured=!!this.akMuzzle;
+  }
+  const mz=this.akMuzzle;if(!mz)return;
+  gun.updateMatrixWorld(true);
+  const at=this._muzzleAt.copy(mz.local);
+  mz.bone.localToWorld(at);gun.worldToLocal(at);
   this.playerFlash.position.copy(at);this.playerFlashGlow.position.copy(at);
   this.playerFlashStar.position.copy(at);this.playerFlashSparks.position.copy(at);
-  gun.userData.muzzleMeasured=true;
  }
  /**
   * Juice hook: view recoil. The view kicks up (with a little random yaw) and most of the
   * climb recovers by itself over ~0.25 s, like a real pistol settling back on target.
   */
  pistolRecoil(){
-  this.targetPitch=Math.min(1.4,this.targetPitch+PISTOL.recoilPitch);
-  this.targetYaw+=(Math.random()*2-1)*PISTOL.recoilYaw;
-  this.recoilDebt+=PISTOL.recoilPitch*PISTOL.recoilRecover;
+  // A shouldered stock soaks up part of the climb.
+  const brace=1-(1-AK74U_ADS.recoilScale)*this.aimEase();
+  this.targetPitch=Math.min(1.4,this.targetPitch+PISTOL.recoilPitch*brace);
+  this.targetYaw+=(Math.random()*2-1)*PISTOL.recoilYaw*brace;
+  this.recoilDebt+=PISTOL.recoilPitch*brace*PISTOL.recoilRecover;
   this.gunKick=1;
  }
  /** Juice hook: camera shake, a short sharp punch rather than a long wobble. */
  pistolCameraShake(){
-  this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.gunFireHeavy.intensity,COMBAT_FEEDBACK.gunFireHeavy.duration);
+  // A shouldered stock soaks up part of the kick.
+  this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.gunFireHeavy.intensity*(1-(1-AK74U_ADS.recoilScale)*this.aimEase()),COMBAT_FEEDBACK.gunFireHeavy.duration);
+ }
+ /** Smoothed aim blend (0 hip … 1 sights). */
+ aimEase(){const a=this.aimBlend;return a*a*(3-2*a);}
+ /**
+  * Aim down sights: while the right button is held with the carbine up (not mid-reload or
+  * inspect), the rig slides onto the sight line and the lens narrows.
+  */
+ updateAim(dt:number){
+  const can=this.playing&&this.aimHeld&&this.holdingGun()&&!this.valveStroke&&this.mission.pistol.reload<=0&&!this.mission.mapOpen;
+  const step=dt/AK74U_ADS.seconds;
+  this.aimBlend=can?Math.min(1,this.aimBlend+step):Math.max(0,this.aimBlend-step);
+  const e=this.aimEase();
+  const fov=this.baseFov+(AK74U_ADS.fov-this.baseFov)*e;
+  if(Math.abs(this.camera.fov-fov)>1e-3){this.camera.fov=fov;this.camera.updateProjectionMatrix();}
+  document.documentElement.classList.toggle('ads',e>.5);
  }
  /** Sounds and feedback for the pistol's combat cue. */
  consumePistolCue(){
@@ -2180,10 +2210,12 @@ export class CaveWorld extends OceanWorld {
   this.playerFlashT=Math.max(0,f-dt/.05);
   // Magazine seats: heavier click when a reload finishes.
   const r=this.mission.pistol.reload;
-  if(this.pistolReloadSeen===0&&r>0)reloadAk74u(this.gunVisual,PISTOL.reloadSeconds);
+  if(this.pistolReloadSeen===0&&r>0)reloadAk74u(this.gunVisual,PISTOL.reloadSeconds,this.mission.pistol.mag===0);
   if(this.pistolReloadSeen>0&&r===0&&this.audible())playPistolClick(this.audioContext!,this.master!,true);
   this.pistolReloadSeen=r;
   updateAk74u(this.gunVisual,dt);
+  this.updateAim(dt);
+  if(this.playerFlashT>0)this.placePlayerMuzzle();
  }
  flashKnife(){
   if(!this.knifeVisual||!knifeMeshReady(this.knifeVisual))return;
@@ -2260,7 +2292,7 @@ export class CaveWorld extends OceanWorld {
    },400);
   }
  }
- pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
+ pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.aimHeld=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
  reset(){
   this.endValve();
   this.backgroundMusic?.reset();this.mission=new Mission(readInventoryTipsSeen());
@@ -2459,11 +2491,11 @@ export class CaveWorld extends OceanWorld {
      if(!this.gunHeldSeen)drawAk74u(this.gunVisual);
      this.gunHeldSeen=true;
      // Soft sway only — DRAW / IDLE / SHOOT / RELOAD drive the arms+gun pose.
-     const bob=bobBlend;
+     const aim=this.aimEase(),bob=bobBlend*(1-(1-AK74U_ADS.swayScale)*aim),off=ak74uAimOffset(aim);
      this.gunVisual.position.set(
-      AK74U_HELD_POS.x+Math.sin(this.time*.7)*.008*bob,
-      AK74U_HELD_POS.y+Math.sin(this.time*1.05)*.01*bob,
-      AK74U_HELD_POS.z+Math.cos(this.time*.55)*.006*bob,
+      AK74U_HELD_POS.x+off.x+Math.sin(this.time*.7)*.008*bob,
+      AK74U_HELD_POS.y+off.y+Math.sin(this.time*1.05)*.01*bob,
+      AK74U_HELD_POS.z+off.z+Math.cos(this.time*.55)*.006*bob,
      );
      this.gunVisual.rotation.set(AK74U_HELD_ROT.x,AK74U_HELD_ROT.y,AK74U_HELD_ROT.z);
     }else{

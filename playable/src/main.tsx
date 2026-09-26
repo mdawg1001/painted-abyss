@@ -232,6 +232,8 @@ function App(){
     {!onFoot&&<div><kbd>Space/Q</kbd><span>Buoyancy</span></div>}
     <div><kbd>1–5</kbd><span>Select</span></div>
     <div><kbd>Click</kbd><span>{m.inventory[m.selected]==='gun'?'Fire':'Stab'}</span></div>
+    {m.inventory[m.selected]==='gun'&&<div><kbd>Right click</kbd><span>Aim (hold)</span></div>}
+    {m.inventory[m.selected]==='gun'&&<div><kbd>V</kbd><span>Inspect</span></div>}
     <div><kbd>T</kbd><span>Smoke</span></div>
     <div><kbd>F</kbd><span>Torch</span></div>
     <div><kbd>E</kbd><span>Interact</span></div>
