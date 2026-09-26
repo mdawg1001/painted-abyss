@@ -23,22 +23,22 @@ export type FeedbackTick={
 
 const ZERO:FeedbackOffset={x:0,y:0,z:0};
 
-/** Presets — tuned loud enough to read over walk bob / view recoil. */
+/** Presets — punchy but not nauseating; sits between the first quiet pass and the loud crank. */
 export const COMBAT_FEEDBACK={
  /** Player gunshot — short sharp punch. */
- gunFire:{intensity:.85,duration:.16},
+ gunFire:{intensity:.55,duration:.14},
  /** Heavier carbine / close blast. */
- gunFireHeavy:{intensity:1.35,duration:.22},
+ gunFireHeavy:{intensity:.9,duration:.2},
  /** Guard round that lands on you. */
- takeDamage:{intensity:1.8,duration:.32},
+ takeDamage:{intensity:1.15,duration:.28},
  /** Guard melee that lands. */
- meleeHit:{intensity:2.4,duration:.38},
+ meleeHit:{intensity:1.55,duration:.32},
  /** Guardian / predator connected hit. */
- predatorHit:{intensity:2.0,duration:.34},
- /** Headshot hitstop (ms) — readable freeze, not a blink. */
- hitstopHead:140,
+ predatorHit:{intensity:1.3,duration:.28},
+ /** Headshot hitstop (ms). */
+ hitstopHead:90,
  /** Kill hitstop (ms). */
- hitstopKill:220,
+ hitstopKill:150,
 } as const;
 
 export class CombatFeedbackManager{
@@ -120,13 +120,13 @@ export class CombatFeedbackManager{
 
 /**
  * Deterministic multi-sine “noise” scaled by amplitude.
- * At intensity 1 the peak offset is ~12–15 cm — punchy without nauseating.
+ * At intensity 1 the peak offset is ~8–10 cm — readable over bob, not a whip.
  */
 export function noiseOffset(phaseTime:number,amplitude:number):FeedbackOffset{
  const a=amplitude;
  return{
-  x:Math.sin(phaseTime*53.1)*a*.12+Math.sin(phaseTime*97.3)*a*.055,
-  y:Math.cos(phaseTime*41.7)*a*.10+Math.sin(phaseTime*67.9)*a*.045,
-  z:Math.sin(phaseTime*29.5+1.7)*a*.06,
+  x:Math.sin(phaseTime*53.1)*a*.08+Math.sin(phaseTime*97.3)*a*.036,
+  y:Math.cos(phaseTime*41.7)*a*.07+Math.sin(phaseTime*67.9)*a*.03,
+  z:Math.sin(phaseTime*29.5+1.7)*a*.04,
  };
 }

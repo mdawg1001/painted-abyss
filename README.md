@@ -1,11 +1,11 @@
-# Painted Abyss — First Dive · 0.20.4
+# Painted Abyss — First Dive · 0.20.5
 
 
 
 
-## Combat Feedback Manager (0.20.4)
+## Combat Feedback Manager (0.20.5)
 
-`playable/src/combatFeedback.ts` — punchy screen shake + readable hitstop. Fire / damage kick the camera (~10–20 cm peaks); headshots freeze sim ~140 ms, kills ~220 ms while rendering continues. Wired through CaveWorld’s animate loop via `simDt` and camera-local shake.
+`playable/src/combatFeedback.ts` — punchy screen shake + hitstop, dialed back from the loud pass. Fire / damage kick the camera (~6–12 cm peaks); headshots freeze sim ~90 ms, kills ~150 ms while rendering continues. Wired through CaveWorld’s animate loop via `simDt` and camera-local shake.
 
 ## AK74U FPS inventory gun (0.19.8)
 
