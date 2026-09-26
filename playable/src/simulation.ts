@@ -1507,7 +1507,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   // Item ↔ item swap. Second pistol: strip rounds instead of holding two frames.
   if(slot.item==='gun'&&held!=='gun'&&this.inventory.includes('gun')){
    const rounds=slot.rounds??0;
-   if(rounds<=0){this.say('You already carry a TT-33.','blocked');return;}
+   if(rounds<=0){this.say('You already carry an AK-74U.','blocked');return;}
    const take=Math.min(rounds,PISTOL.reserveMax-this.pistol.reserve);
    if(take<=0){this.say('Spare rounds are full.','blocked');return;}
    this.pistol.reserve+=take;
