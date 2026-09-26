@@ -84,6 +84,16 @@ test('COMBAT_FEEDBACK presets are positive',()=>{
  assert.ok(COMBAT_FEEDBACK.meleeHit.intensity>COMBAT_FEEDBACK.gunFire.intensity);
 });
 
+test('loud presets are readable over walk bob (intensity ≥ 0.8, hitstop ≥ 100 ms)',()=>{
+ assert.ok(COMBAT_FEEDBACK.gunFire.intensity>=.8);
+ assert.ok(COMBAT_FEEDBACK.gunFireHeavy.intensity>=1.2);
+ assert.ok(COMBAT_FEEDBACK.hitstopHead>=100);
+ assert.ok(COMBAT_FEEDBACK.hitstopKill>=180);
+ // Peak offset at intensity 1 should clear ~8 cm so fire is unmistakable
+ const peak=noiseOffset(0.25,1);
+ assert.ok(Math.hypot(peak.x,peak.y,peak.z)>0.08);
+});
+
 test('reset clears shake and hitstop',()=>{
  const fx=new CombatFeedbackManager();
  fx.triggerScreenShake(1,1);

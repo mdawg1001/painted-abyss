@@ -1984,7 +1984,7 @@ export class CaveWorld extends OceanWorld {
   }
   if(stepped.seated){
    if(audible)playValveSeat(ctx!,master!);
-   this.combatFeedback.triggerScreenShake(.35,.18);
+   this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.gunFire.intensity,.2);
   }
   // Step square to the wheel over the first half-second; stay there until the hands are off.
   const k=smootherstep(this.valveClock/.45);
@@ -2200,13 +2200,19 @@ export class CaveWorld extends OceanWorld {
   }
   if(cue==='stab-guard'||cue==='stab-guard-kill'){
    if(audible)playStabSound(ctx!,master!,true);
-   this.combatFeedback.triggerScreenShake(cue==='stab-guard-kill'?.45:.3,.2);
+   this.combatFeedback.triggerScreenShake(
+    cue==='stab-guard-kill'?COMBAT_FEEDBACK.meleeHit.intensity:COMBAT_FEEDBACK.gunFireHeavy.intensity,
+    cue==='stab-guard-kill'?COMBAT_FEEDBACK.meleeHit.duration:COMBAT_FEEDBACK.gunFireHeavy.duration,
+   );
    if(cue==='stab-guard-kill')this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopKill);
    return;
   }
   if(cue==='stab-hit'||cue==='break'||cue==='kill'){
    if(audible)playStabSound(ctx!,master!,true);
-   this.combatFeedback.triggerScreenShake(cue==='kill'?COMBAT_FEEDBACK.predatorHit.intensity:.32,COMBAT_FEEDBACK.predatorHit.duration);
+   this.combatFeedback.triggerScreenShake(
+    cue==='kill'?COMBAT_FEEDBACK.predatorHit.intensity:COMBAT_FEEDBACK.gunFireHeavy.intensity,
+    COMBAT_FEEDBACK.predatorHit.duration,
+   );
    if(cue==='kill'){
     this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopKill);
     if(audible)playGuardianDeath(ctx!,master!);

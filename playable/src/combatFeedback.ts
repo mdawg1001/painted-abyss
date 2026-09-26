@@ -2,7 +2,7 @@
  * Combat Feedback Manager — punchy screen shake + brief hitstop.
  *
  * `triggerScreenShake` drives a decaying noise offset on the camera (heavy fire /
- * taking damage). `triggerHitstop` freezes sim updates for a few milliseconds while
+ * taking damage). `triggerHitstop` freezes sim updates for a readable beat while
  * rendering continues, so critical hits and kills feel weighty without a full pause.
  *
  * Pure module (no Three.js) so feel tuning stays unit-testable; CaveWorld samples
@@ -23,22 +23,22 @@ export type FeedbackTick={
 
 const ZERO:FeedbackOffset={x:0,y:0,z:0};
 
-/** Presets matched to existing First Dive combat juice. */
+/** Presets — tuned loud enough to read over walk bob / view recoil. */
 export const COMBAT_FEEDBACK={
  /** Player gunshot — short sharp punch. */
- gunFire:{intensity:.22,duration:.12},
+ gunFire:{intensity:.85,duration:.16},
  /** Heavier carbine / close blast. */
- gunFireHeavy:{intensity:.38,duration:.18},
+ gunFireHeavy:{intensity:1.35,duration:.22},
  /** Guard round that lands on you. */
- takeDamage:{intensity:.5,duration:.22},
+ takeDamage:{intensity:1.8,duration:.32},
  /** Guard melee that lands. */
- meleeHit:{intensity:.7,duration:.28},
+ meleeHit:{intensity:2.4,duration:.38},
  /** Guardian / predator connected hit. */
- predatorHit:{intensity:.55,duration:.24},
- /** Headshot hitstop (ms). */
- hitstopHead:45,
+ predatorHit:{intensity:2.0,duration:.34},
+ /** Headshot hitstop (ms) — readable freeze, not a blink. */
+ hitstopHead:140,
  /** Kill hitstop (ms). */
- hitstopKill:70,
+ hitstopKill:220,
 } as const;
 
 export class CombatFeedbackManager{
@@ -118,12 +118,15 @@ export class CombatFeedbackManager{
  }
 }
 
-/** Deterministic multi-sine “noise” scaled by amplitude (metres at intensity 1). */
+/**
+ * Deterministic multi-sine “noise” scaled by amplitude.
+ * At intensity 1 the peak offset is ~12–15 cm — punchy without nauseating.
+ */
 export function noiseOffset(phaseTime:number,amplitude:number):FeedbackOffset{
  const a=amplitude;
  return{
-  x:Math.sin(phaseTime*53.1)*a*.04+Math.sin(phaseTime*97.3)*a*.018,
-  y:Math.cos(phaseTime*41.7)*a*.035+Math.sin(phaseTime*67.9)*a*.014,
-  z:Math.sin(phaseTime*29.5+1.7)*a*.02,
+  x:Math.sin(phaseTime*53.1)*a*.12+Math.sin(phaseTime*97.3)*a*.055,
+  y:Math.cos(phaseTime*41.7)*a*.10+Math.sin(phaseTime*67.9)*a*.045,
+  z:Math.sin(phaseTime*29.5+1.7)*a*.06,
  };
 }
