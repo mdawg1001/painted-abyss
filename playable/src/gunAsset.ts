@@ -98,9 +98,9 @@ function cloneTree(src:THREE.Object3D,unlit:boolean){
    const copy=sm.clone();
    copy.envMapIntensity=.45;
    if(!copy.emissive)copy.emissive=new THREE.Color(0x000000);
-   // Cool neon undertone — enough for UnrealBloomPass, not a white wash.
+   // Cool neon undertone so held AK / guard TT-33 feed UnrealBloomPass without washing albedo.
    copy.emissive.setHex(0x183848);
-   copy.emissiveIntensity=.85;
+   copy.emissiveIntensity=.72;
    copy.needsUpdate=true;
    return copy;
   });

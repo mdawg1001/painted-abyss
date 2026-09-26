@@ -2169,10 +2169,10 @@ export class CaveWorld extends OceanWorld {
   }
   this.gunKick=Math.max(0,this.gunKick-dt*7);
   const f=this.playerFlashT;
-  this.playerFlash.intensity=f>0?60*f*f:0;
+  this.playerFlash.intensity=f>0?36*f*f:0;
   this.playerFlashGlow.visible=f>0;
   this.playerFlashGlow.material.opacity=f;
-  this.playerFlashGlow.scale.setScalar(.08+.14*f);
+  this.playerFlashGlow.scale.setScalar(.05+.08*f);
   this.playerFlashStar.visible=f>0;this.playerFlashStar.material.opacity=Math.min(1,f*1.5);
   this.playerFlashStar.scale.setScalar(.1+.1*f);
   this.playerFlashSparks.visible=f>0;this.playerFlashSparks.material.opacity=f;
