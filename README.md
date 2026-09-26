@@ -1,7 +1,11 @@
-# Painted Abyss — First Dive · 0.19.3
+# Painted Abyss — First Dive · 0.19.4
 
 
 
+
+## Guard animations from the Asset Store (0.19.4)
+
+Three Kevin Iglesias clips (Human Melee Animations FREE, Unity Asset Store) now play on the guards. **Death**: a shot-down guard drops to his knees and pitches forward onto the floor instead of toppling like a plank. **Hit**: every pistol or knife hit on a living guard makes his upper body flinch (legs keep running, so no foot sliding). **Stab**: knife rushers wind up and thrust with the one-handed attack, stretched so the thrust lands exactly when the sim lands the blow. The clips are retargeted in world space onto the Quaternius guard rig by `scripts/retarget-kevin-iglesias.mjs` (needs FBX2glTF: `npm i fbx2gltf`), with the feet kept on the shins and every joint kept above the floor. If the clip file fails to load, the old procedural fall still works.
 ## Asset Store FX (0.19.3)
 
 First assets pulled from the Unity Asset Store into the web game (textures only; credits in `playable/NOTICE.md`). **War FX** (Jean Moreno): your TT-33 and every guard pistol now fire a hard star flash with a spark star over the old glow; your rounds leave concrete bullet holes on the real rock, floor and cover surface they hit (48 kept, the oldest recycles) with a spark star; smoke grenades use the War FX smoke puff; sparks, dust and blood particles are round soft glows instead of squares. **Crosshairs** (OccaSoftware): new aim reticle, and the hit marker is their X card, still white / gold on a headshot / red on a kill. `scripts/import-war-fx.py` rebuilds the textures from the downloaded `.unitypackage` files.
