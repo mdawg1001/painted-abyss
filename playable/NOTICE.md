@@ -110,3 +110,17 @@
 - Leak-valve riser on the blind south wall of the far south-west cavern corner. Hold E at the wheel to turn the gate valve shut and stop the bunker leak.
 
 The copper-pipe distance LOD (`public/assets/copper-pipe/copper_pipe_far.glb`) is a modified version of pixol3d's CC BY 4.0 Copper Pipe Section credited above: mesh simplification and 256px texture resizing. The original file is retained unchanged.
+
+## War FX (Unity Asset Store)
+
+- Source: https://assetstore.unity.com/packages/vfx/particles/war-fx-5669
+- Author: Jean Moreno (JMO Assets)
+- License: Unity Asset Store standard EULA (third-party publisher; not the Unity Companion License)
+- Used: muzzle-flash star and spark cards, concrete bullet holes, smoke puff and glow circle textures only (the Unity particle prefabs are not used), converted by `scripts/import-war-fx.py` into `public/assets/war_fx/`.
+
+## Crosshairs (Unity Asset Store)
+
+- Source: https://assetstore.unity.com/packages/2d/gui/icons/crosshairs-216732
+- Author: OccaSoftware
+- License: Unity Asset Store standard EULA (third-party publisher)
+- Used: crosshair 03 (aim) and 27 (hit marker), downscaled to 128 px in `public/assets/crosshairs/`.

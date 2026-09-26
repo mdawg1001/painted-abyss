@@ -1,6 +1,10 @@
-# Painted Abyss — First Dive · 0.19.2
+# Painted Abyss — First Dive · 0.19.3
 
 
+
+## Asset Store FX (0.19.3)
+
+First assets pulled from the Unity Asset Store into the web game (textures only; credits in `playable/NOTICE.md`). **War FX** (Jean Moreno): your TT-33 and every guard pistol now fire a hard star flash with a spark star over the old glow; your rounds leave concrete bullet holes on the real rock, floor and cover surface they hit (48 kept, the oldest recycles) with a spark star; smoke grenades use the War FX smoke puff; sparks, dust and blood particles are round soft glows instead of squares. **Crosshairs** (OccaSoftware): new aim reticle, and the hit marker is their X card, still white / gold on a headshot / red on a kill. `scripts/import-war-fx.py` rebuilds the textures from the downloaded `.unitypackage` files.
 ## Crouch and sneak (0.19.2)
 
 Hold **C** on foot to crouch, Hitman-style. The camera drops about 0.6 m and you move at half walking speed with no running (so no running noise). Guards find you **35% harder to see**: every distance at which a guard can pick you up is cut to 0.65 (close-contact 2.5 m to 1.6 m, in-view 9 m to 5.9 m, lit torch 16 m to 10.4 m), and a searching guard needs you within 65% of his usual range to re-acquire you. Crouching is not invisibility: close in, in his view, he still sees you, and a guard already chasing you keeps you. Use it to slip past patrols when ammo is low or you would rather not start a firefight. Tuning in `SURVIVAL.stealth` (`playable/src/survivalConfig.ts`).

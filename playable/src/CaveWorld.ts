@@ -7,6 +7,7 @@ import { PISTOL } from './playerPistol';
 import { SurvivalFx } from './survivalFx';
 import { survivalDoors } from './survival';
 import { SURVIVAL } from './survivalConfig';
+import { WarFx, pick as pickFx, FLASH_TINT, SPARK_TINT } from './warFx';
 import { makeGuardCombatState } from './guardCombatPose';
 import { ShaderChunk } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -204,6 +205,11 @@ export class CaveWorld extends OceanWorld {
  /** Muzzle flash light + glow at the firing guard's pistol; per-guard shot counters. */
  /** Your TT-33: muzzle flash (light + glow on the viewmodel), view recoil, viewmodel kick. */
  playerFlash!:THREE.PointLight;playerFlashGlow!:THREE.Sprite;playerFlashT=0;
+ /** War FX cards: star flash + spark star on your TT-33 (Unity Asset Store textures). */
+ playerFlashStar!:THREE.Sprite;playerFlashSparks!:THREE.Sprite;
+ /** War FX: guard flash cards, bullet-hole decals and impact sparks. */
+ warFx!:WarFx;
+ private _impactRay=new THREE.Raycaster();
  /** Viewmodel kick 0..1 (decays), and pitch still owed back by recoil recovery (rad). */
  gunKick=0;recoilDebt=0;
  /** A click that landed inside the semi-auto interval fires as soon as it opens. */
@@ -353,6 +359,7 @@ export class CaveWorld extends OceanWorld {
   this.scene.add(this.guardFlash,this.guardFlashGlow);
   this.guardJolt=this.sovietGuards.map(()=>0);this.guardFall=this.sovietGuards.map(()=>0);
   this.fx=new SurvivalFx(this.scene,this.sovietGuards,flashTex,o=>this.adoptPointCull(o,this.worldBox(o),true,true));
+  this.warFx=new WarFx(this.scene);
   this.guardLifeSeen=this.sovietGuards.map(()=>-1);this.guardWindupSeen=this.sovietGuards.map(()=>0);this.guardStrikeSeen=this.sovietGuards.map(()=>-1);
   // Detection notice: a hard red "!" that pops over a guard's helmet when he is called in.
   const noticeTex=(()=>{const c=document.createElement('canvas');c.width=64;c.height=128;const g=c.getContext('2d')!;
@@ -367,6 +374,8 @@ export class CaveWorld extends OceanWorld {
   this.playerFlash=new THREE.PointLight(0xffb45a,0,6,1.8);this.playerFlash.castShadow=false;
   this.playerFlashGlow=new THREE.Sprite(new THREE.SpriteMaterial({map:flashTex,color:0xffffff,transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending,opacity:0}));
   this.playerFlashGlow.visible=false;this.playerFlashGlow.renderOrder=10;
+  const card=(tint:number)=>{const sp=new THREE.Sprite(new THREE.SpriteMaterial({color:tint,transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending,opacity:0}));sp.visible=false;sp.renderOrder=11;return sp;};
+  this.playerFlashStar=card(FLASH_TINT);this.playerFlashSparks=card(SPARK_TINT);
   Promise.all(this.sovietGuards.map(v=>upgradeSovietGuardVisual(v))).then(()=>{
    if(!this.alive)return;
    this.syncSovietGuard(0);
@@ -402,7 +411,8 @@ export class CaveWorld extends OceanWorld {
   this.camera.add(this.gunVisual);
   // Muzzle sits just past the TT-33's barrel (viewmodel faces −Z).
   this.playerFlash.position.set(0,.05,-.34);this.playerFlashGlow.position.set(0,.05,-.34);
-  this.gunVisual.add(this.playerFlash,this.playerFlashGlow);
+  this.playerFlashStar.position.set(0,.05,-.34);this.playerFlashSparks.position.set(0,.05,-.34);
+  this.gunVisual.add(this.playerFlash,this.playerFlashGlow,this.playerFlashStar,this.playerFlashSparks);
   this.keyVisual=createSovietKeyHeld();
   this.camera.add(this.keyVisual);
   this.keyVisual.visible=false;
@@ -1037,8 +1047,31 @@ export class CaveWorld extends OceanWorld {
  }
  /** Place each Soviet guard mesh on the bunker floor from sim state. */
  /** Restart / respawn: clear smoke, sparks, door swings and the seen-event markers. */
+ /**
+  * Where a round from the eye toward `p` really meets rendered rock, floor or cover (for
+  * decals): the sim's grid wall sits behind the bulging stones, the renderer knows the face.
+  */
+ surfaceHit(p:{x:number;y:number;z:number}){
+  const from=this.camera.getWorldPosition(new THREE.Vector3());
+  const dir=new THREE.Vector3(p.x,p.y,p.z).sub(from);const len=dir.length();if(len<1e-3)return null;dir.divideScalar(len);
+  this._impactRay.set(from,dir);this._impactRay.far=len+1.2;this._impactRay.near=.2;this._impactRay.camera=this.camera;this._impactRay.params.Points.threshold=0;
+  const hits=this._impactRay.intersectObjects(this.scene.children,true);
+  for(const h of hits){
+   const o=h.object as THREE.Mesh;
+   if(!o.isMesh||(o as unknown as THREE.SkinnedMesh).isSkinnedMesh||!h.face||o.name==='bulletHole')continue;
+   let shown=true;for(let a:THREE.Object3D|null=o;a;a=a.parent)if(!a.visible){shown=false;break;}
+   if(!shown)continue;
+   const mats=Array.isArray(o.material)?o.material:[o.material];
+   if(mats.some(m=>m.transparent||(m as THREE.MeshBasicMaterial).isMeshBasicMaterial))continue;
+   const normal=h.face.normal.clone().transformDirection(o.matrixWorld);
+   if(normal.dot(dir)>0)normal.negate();
+   return{point:h.point,normal};
+  }
+  return null;
+ }
  resetSurvivalFx(){
   this.fx?.reset();
+  this.warFx?.clear();
   this.cueSeen=this.mission.elapsed;this.cloudSeen=-1;this.impactSeen=-1;this.hitFxSeen=-1;this.knifeFxSeen=-1;this.supplySeen=-1;
   this.guardLifeSeen=this.sovietGuards.map(()=>-1);
  }
@@ -1078,7 +1111,7 @@ export class CaveWorld extends OceanWorld {
   }
   // Your rounds: sparks and dust on rock, blood and a thwack on a guard.
   const imp=m.lastImpact;
-  if(imp&&imp.shot!==this.impactSeen){this.impactSeen=imp.shot;this.fx.burst(imp.point,'spark',8);this.fx.burst(imp.point,'dust',6);}
+  if(imp&&imp.shot!==this.impactSeen){this.impactSeen=imp.shot;this.fx.burst(imp.point,'spark',8);this.fx.burst(imp.point,'dust',6);this.warFx.impact(imp.point,this.position,this.surfaceHit(imp.point));}
   const hit=m.lastPistolHit;
   if(hit&&hit.shot!==this.hitFxSeen){
    this.hitFxSeen=hit.shot;this.fx.burst(hit.point,'blood',hit.killed?16:9);
@@ -1104,6 +1137,7 @@ export class CaveWorld extends OceanWorld {
   }
   this.fx.syncCaches(m.caches,this.time,o=>this.adoptPointCull(o,this.worldBox(o),true,true),c=>m.canTakeCache(c));
   this.fx.update(dt,this.time,m.elapsed,this.camera,this.sovietGuards,m.guards,m.clouds,m.grenades);
+  this.warFx.update(dt);
  }
  syncSovietGuard(dt:number){
   if(!this.sovietGuards.length)return;
@@ -1196,6 +1230,7 @@ export class CaveWorld extends OceanWorld {
     muzzle.addScaledVector(this._aimTarget.clone().sub(muzzle).normalize(),.28);
    }
    this.fx.syncGuard(i,visual,g,this.mission.elapsed,flashFrom===i,muzzle,dt);
+   if(muzzle)this.warFx.guardShot(muzzle);
    if(flashFrom===i||(flashFrom<0&&i===0)){
     visual.gun.getWorldPosition(this._muzzle);
     this._muzzle.addScaledVector(this._aimTarget.clone().sub(this._muzzle).normalize(),.28);
@@ -1920,6 +1955,11 @@ export class CaveWorld extends OceanWorld {
   this.placePlayerMuzzle();
   this.playerFlashT=1;
   this.playerFlashGlow.material.rotation=Math.random()*Math.PI*2;
+  // War FX: one of three star cards and a spark star, each shot a fresh pick and spin.
+  const t=this.warFx.t;
+  for(const [sp,list] of [[this.playerFlashStar,t.flash],[this.playerFlashSparks,t.sparks]] as const){
+   sp.material.map=pickFx(list);sp.material.rotation=Math.random()*Math.PI*2;sp.material.needsUpdate=true;
+  }
  }
  /**
   * Put the flash at the real muzzle: the front-centre of the TT-33's bounds in the
@@ -1942,6 +1982,7 @@ export class CaveWorld extends OceanWorld {
   // Bore line: upper part of the slide, just past its front face.
   const at=new THREE.Vector3((box.min.x+box.max.x)/2,box.max.y-(box.max.y-box.min.y)*.18,box.min.z-.02);
   this.playerFlash.position.copy(at);this.playerFlashGlow.position.copy(at);
+  this.playerFlashStar.position.copy(at);this.playerFlashSparks.position.copy(at);
   gun.userData.muzzleMeasured=true;
  }
  /**
@@ -1990,6 +2031,10 @@ export class CaveWorld extends OceanWorld {
   this.playerFlashGlow.visible=f>0;
   this.playerFlashGlow.material.opacity=f;
   this.playerFlashGlow.scale.setScalar(.05+.08*f);
+  this.playerFlashStar.visible=f>0;this.playerFlashStar.material.opacity=Math.min(1,f*1.4);
+  this.playerFlashStar.scale.setScalar(.07+.07*f);
+  this.playerFlashSparks.visible=f>0;this.playerFlashSparks.material.opacity=f;
+  this.playerFlashSparks.scale.setScalar(.16-.07*f);
   this.playerFlashT=Math.max(0,f-dt/.05);
   // Magazine seats: heavier click when a reload finishes.
   const r=this.mission.pistol.reload;

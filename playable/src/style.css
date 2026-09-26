@@ -542,3 +542,22 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .depth small{display:block;margin-top:2px;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#9fe3c8;opacity:.85;text-align:right}
 .vignette{transition:box-shadow .25s ease}
 .playing .vignette.crouched{box-shadow:inset 0 0 110px 34px rgba(0,8,6,.82)}
+
+/* Crosshair and hit marker: OccaSoftware "Crosshairs" (Unity Asset Store) cards 03 and 27.
+   The images are white; colour comes from the mask fill so hit, headshot and kill still tint. */
+.crosshair i,.crosshair b{display:none}
+.crosshair::after{display:none}
+.crosshair{--xh:30px}
+.crosshair{background:none}
+.crosshair::before{
+  content:'';position:absolute;left:calc(var(--xh)/-2);top:calc(var(--xh)/-2);width:var(--xh);height:var(--xh);
+  transform:none;opacity:.92;background:#f4f1e8;
+  -webkit-mask:url(/assets/crosshairs/crosshair_03.png) center/contain no-repeat;mask:url(/assets/crosshairs/crosshair_03.png) center/contain no-repeat;
+  filter:drop-shadow(0 0 1px rgba(0,0,0,.9));transition:none;
+}
+.crosshair.hit::before{
+  --xh:34px;background:#fff;opacity:1;
+  -webkit-mask-image:url(/assets/crosshairs/crosshair_27.png);mask-image:url(/assets/crosshairs/crosshair_27.png);
+}
+.crosshair.head::before{background:#ffd27a;--xh:38px}
+.crosshair.kill::before{background:#ff5a4a;--xh:42px}
