@@ -60,7 +60,7 @@ export function isStashItem(item: Item): item is StashItem {
 export function stashSlotLabel(slot: StashSlot): string {
  if (!slot) return 'empty';
  if (slot.kind === 'ammo') return `${slot.amount} rounds`;
- if (slot.item === 'gun' && slot.rounds) return `TT-33 (+${slot.rounds})`;
+ if (slot.item === 'gun' && slot.rounds) return `AK-74U (+${slot.rounds})`;
  const names: Record<StashItem, string> = {
   knife: 'Diving knife',
   stone: 'Limestone',
@@ -68,7 +68,7 @@ export function stashSlotLabel(slot: StashSlot): string {
   flare: 'Signal flare',
   air: 'Pony bottle',
   bandage: 'Sealant kit',
-  gun: 'TT-33 pistol',
+  gun: 'AK-74U',
   bottle: 'Spare air bottle',
   coat: 'Coat',
   sovietKey: 'Soviet key',

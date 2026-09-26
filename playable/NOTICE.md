@@ -64,14 +64,15 @@
 - License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
 - Files: `public/assets/tt33/tt33.glb` (official Sketchfab glTF, 5,306 triangles)
 - The glTF asset extras also name Simon Volt (https://sketchfab.com/tursunovabduseit).
-- Mesh in the Soviet guard's hand. The diver's inventory gun is the PolyCube retro gun below.
+- Mesh in the Soviet guard's hand. The diver's inventory gun is the AK74U FPS viewmodel below.
 
-## 3D Retro Gun Model (Sketchfab)
-- Source: https://sketchfab.com/3d-models/3d-retro-gun-model-free-download-ff244414e90c43fa9bd1bc4c4ca7c0bb
-- Author: PolyCube (@ItsPolyCube)
-- License: Free Standard — https://sketchfab.com/licenses (commercial use allowed under Sketchfab’s basic restrictions; attribution not required by the license)
-- Files: `public/assets/retro-gun/retro_gun.glb` — official Sketchfab viewer mesh (1,220 triangles) with the published `MatGun0pixel.png` albedo and `Metal024_1K_NormalGL.jpg` normal, packed to a self-contained binary glTF
-- Diver inventory gun: viewmodel in hand and corridor floor pickup. Replaces the box placeholder only; fire mode unchanged.
+## AK74U | FREE ANIMATION (Sketchfab)
+- Source: https://sketchfab.com/3d-models/ak74u-free-animation-2ab66220c48b465e9501067667965569
+- Author: BURNER (@Alexander_Ovelar)
+- License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
+- Files: `public/assets/ak74u/ak74u.glb` — official Sketchfab viewer mesh + published textures, packed with the seven viewmodel clips (`DRAW`, `IDLE`, `INSPEC`, `OLSER`, `RELOAD1`, `RELOAD2`, `SHOOT`)
+- Upstream credits (per Sketchfab description): gun mesh from [Krinkov AKS-74U](https://sketchfab.com/3d-models/krinkov-aks-74u-9f88c016b5524e36850e1961a249dbf1); arms from [Free Arms and Hands Rig](https://sketchfab.com/3d-models/free-arms-and-hands-rig-b7b5691030b44a74ad11ac191771ac02)
+- Diver inventory gun: animated FPS arms+gun viewmodel and corridor floor pickup (gun meshes). Fire mode unchanged; guards still use the TT-33.
 
 
 ## Lifebuoy (Poly Haven)

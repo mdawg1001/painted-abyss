@@ -1,11 +1,11 @@
-# Painted Abyss — First Dive · 0.19.7
+# Painted Abyss — First Dive · 0.19.8
 
 
 
 
-## PolyCube retro gun inventory (0.19.6)
+## AK74U FPS inventory gun (0.19.8)
 
-Sketchfab [3D Retro Gun Model - Free Download](https://sketchfab.com/3d-models/3d-retro-gun-model-free-download-ff244414e90c43fa9bd1bc4c4ca7c0bb) (PolyCube, Free Standard) — official viewer mesh under `playable/public/assets/retro-gun/`. Replaces the diver’s held gun and corridor floor pickup; Soviet guards still carry the TT-33. Credit in `playable/NOTICE.md`.
+Sketchfab [AK74U | FREE ANIMATION](https://sketchfab.com/3d-models/ak74u-free-animation-2ab66220c48b465e9501067667965569) (BURNER / @Alexander_Ovelar, CC BY 4.0) — official viewer mesh + `DRAW` / `IDLE` / `SHOOT` / `RELOAD*` clips under `playable/public/assets/ak74u/`. Replaces the diver’s held gun (animated FPS arms+carbine) and corridor floor pickup; Soviet guards still carry the TT-33. Credit in `playable/NOTICE.md`.
 
 ## Cast-iron radiators (0.19.6)
 

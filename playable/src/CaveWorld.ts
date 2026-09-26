@@ -44,7 +44,10 @@ import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion, applyGuardAim,
  type SovietGuardVisual,
 } from './sovietGuardAsset';
-import { mountRetroGun } from './gunAsset';
+import {
+ mountAk74u, updateAk74u, drawAk74u, shootAk74u, reloadAk74u,
+ AK74U_HELD_POS, AK74U_HELD_ROT,
+} from './gunAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_COUNT, STASH_POSITION, STASH_YAW, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
@@ -217,6 +220,8 @@ export class CaveWorld extends OceanWorld {
  /** A click that landed inside the semi-auto interval fires as soon as it opens. */
  triggerBufferUntil=-1;
  pistolReloadSeen=0;
+ /** Last frame the inventory gun was the held prop (for DRAW on select). */
+ gunHeldSeen=false;
  /** Per guard: hit stagger 0..1 (decays) and death fall progress 0..1. */
  guardJolt:number[]=[];guardFall:number[]=[];pistolHitSeen=0;
  /** Kevin Iglesias one-shot actions per guard (death / hit flinch / rusher stab); null until loaded. */
@@ -1545,7 +1550,7 @@ export class CaveWorld extends OceanWorld {
  holdingGun(){return this.mission.inventory[this.mission.selected]==='gun';}
  holdingKey(){return this.mission.inventory[this.mission.selected]==='sovietKey';}
  holdingTorch(){return holdingTorchItem(this.mission.inventory[this.mission.selected]);}
- /** Unlit pistol in the lower-right. Stub boxes until the PolyCube retro gun glTF replaces them. */
+ /** FPS AK74U arms+gun viewmodel. Stub boxes until the Sketchfab glTF + clips mount. */
  makeHeldGun(){
   const g=new THREE.Group();
   g.name='gunVisual';
@@ -1562,9 +1567,9 @@ export class CaveWorld extends OceanWorld {
   grip.rotation.x=.35;
   stub.add(body,barrel,grip);
   g.add(stub);
-  mountRetroGun(g,'held');
-  g.position.set(.32,-.28,-.55);
-  g.rotation.set(.2,.55,.08);
+  mountAk74u(g,'held');
+  g.position.set(AK74U_HELD_POS.x,AK74U_HELD_POS.y,AK74U_HELD_POS.z);
+  g.rotation.set(AK74U_HELD_ROT.x,AK74U_HELD_ROT.y,AK74U_HELD_ROT.z);
   g.visible=false;
   return g;
  }
@@ -1581,7 +1586,7 @@ export class CaveWorld extends OceanWorld {
    stub.add(body,barrel);
    g.add(stub);
    g.userData.gunAlive=true;
-   mountRetroGun(g,'pickup');
+   mountAk74u(g,'pickup');
   }else if(item==='bottle'){
    const cyl=new THREE.Mesh(new THREE.CylinderGeometry(.11,.13,.46,10),new THREE.MeshBasicMaterial({color:0x3d8f62}));
    const cap=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,.09,8),new THREE.MeshBasicMaterial({color:0xe4e8ea}));
@@ -1984,6 +1989,7 @@ export class CaveWorld extends OceanWorld {
    this.pistolMuzzleFlash();
    this.pistolRecoil();
    this.pistolCameraShake();
+   shootAk74u(this.gunVisual);
    if(this.audible())playGunshot(this.audioContext!,this.master!,0);
   }
   this.consumePistolCue();
@@ -2078,8 +2084,10 @@ export class CaveWorld extends OceanWorld {
   this.playerFlashT=Math.max(0,f-dt/.05);
   // Magazine seats: heavier click when a reload finishes.
   const r=this.mission.pistol.reload;
+  if(this.pistolReloadSeen===0&&r>0)reloadAk74u(this.gunVisual,PISTOL.reloadSeconds);
   if(this.pistolReloadSeen>0&&r===0&&this.audible())playPistolClick(this.audioContext!,this.master!,true);
   this.pistolReloadSeen=r;
+  updateAk74u(this.gunVisual,dt);
  }
  flashKnife(){
   if(!this.knifeVisual||!knifeMeshReady(this.knifeVisual))return;
@@ -2334,13 +2342,21 @@ export class CaveWorld extends OceanWorld {
     }
    }
    if(this.gunVisual){
-    this.gunVisual.visible=this.holdingGun();
-    if(this.gunVisual.visible){
-     // Kick: slide back and muzzle flip on each shot; reload: tip the gun down and in.
-     const k=this.gunKick*this.gunKick,p=this.mission.pistol;
-     const rl=p.reload>0?Math.sin(Math.PI*(1-p.reload/PISTOL.reloadSeconds)):0;
-     this.gunVisual.position.set(.32+Math.sin(this.time*.7)*.02*bobBlend-.05*rl,-.28+Math.sin(this.time*1.05)*.02*bobBlend+.02*k-.12*rl,-.55+.07*k);
-     this.gunVisual.rotation.set(.2+.32*k-.7*rl,.55+.25*rl,.08+.3*rl);
+    const held=this.holdingGun();
+    this.gunVisual.visible=held;
+    if(held){
+     if(!this.gunHeldSeen)drawAk74u(this.gunVisual);
+     this.gunHeldSeen=true;
+     // Soft sway only — DRAW / IDLE / SHOOT / RELOAD drive the arms+gun pose.
+     const bob=bobBlend;
+     this.gunVisual.position.set(
+      AK74U_HELD_POS.x+Math.sin(this.time*.7)*.008*bob,
+      AK74U_HELD_POS.y+Math.sin(this.time*1.05)*.01*bob,
+      AK74U_HELD_POS.z+Math.cos(this.time*.55)*.006*bob,
+     );
+     this.gunVisual.rotation.set(AK74U_HELD_ROT.x,AK74U_HELD_ROT.y,AK74U_HELD_ROT.z);
+    }else{
+     this.gunHeldSeen=false;
     }
    }
    if(this.keyVisual){
