@@ -8,6 +8,7 @@ import { GUARD_KEY_GRADE, GUARD_RIM_GRADE } from './frameGrade';
  * Everything is pooled and created once; `update` only moves and fades things.
  */
 import * as THREE from 'three';
+import { warFxTextures } from './warFx';
 import { SURVIVAL, SURVIVAL_COVER } from './survivalConfig';
 import { survivalDoors, smokeDensity, smokeRadius, type SmokeCloud, type SmokeGrenade, type SupplyCache } from './survival';
 import { FLOOR_Y, type Guard, type Point } from './simulation';
@@ -23,8 +24,8 @@ function canvasTex(w:number,h:number,draw:(g:CanvasRenderingContext2D)=>void){
  const c=document.createElement('canvas');c.width=w;c.height=h;draw(c.getContext('2d')!);
  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;return t;
 }
-/** Soft, lumpy smoke puff. */
-function smokeTexture(){
+/** Soft, lumpy smoke puff (procedural fallback, kept for tests and tools). */
+export function smokeTexture(){
  return canvasTex(128,128,g=>{
   for(let i=0;i<26;i++){
    const x=64+(Math.random()-.5)*50,y=64+(Math.random()-.5)*50,r=18+Math.random()*30;
@@ -67,7 +68,8 @@ export class SurvivalFx{
   this.buildCover(adopt);
   this.buildDoors(adopt);
   this.buildCaches(adopt);
-  this.smokeMat=new THREE.SpriteMaterial({map:smokeTexture(),color:0x9aa096,transparent:true,depthWrite:false,opacity:0,fog:true});
+  // War FX smoke puff (Unity Asset Store texture) replaces the procedural puff.
+  this.smokeMat=new THREE.SpriteMaterial({map:warFxTextures().smoke,color:0xa8ada4,transparent:true,depthWrite:false,opacity:0,fog:true});
   for(let c=0;c<SURVIVAL.smoke.maxClouds+2;c++){
    const group=new THREE.Group();group.visible=false;
    const sprites:THREE.Sprite[]=[],seeds:number[]=[];
@@ -81,7 +83,8 @@ export class SurvivalFx{
   const geo=new THREE.BufferGeometry();
   geo.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(PARTICLES*3).fill(-999),3));
   geo.setAttribute('color',new THREE.Float32BufferAttribute(new Float32Array(PARTICLES*3),3));
-  this.points=new THREE.Points(geo,new THREE.PointsMaterial({size:.06,vertexColors:true,transparent:true,depthWrite:false,sizeAttenuation:true}));
+  // Round, soft War FX glow card per particle instead of hard squares.
+  this.points=new THREE.Points(geo,new THREE.PointsMaterial({size:.09,map:warFxTextures().glow,vertexColors:true,transparent:true,depthWrite:false,sizeAttenuation:true}));
   this.points.frustumCulled=false;scene.add(this.points);
   for(let i=0;i<PARTICLES;i++)this.pts.push({v:new THREE.Vector3(),life:0,max:1,grav:0});
  }
@@ -281,7 +284,7 @@ export class SurvivalFx{
     const a=sd+time*.05*(k%2?1:-1),rr=r*(.2+.65*((sd*7.13)%1));
     s.position.set(Math.cos(a)*rr,.4+((sd*3.7)%1)*1.9+Math.sin(time*.3+sd)*.1,Math.sin(a)*rr);
     s.scale.setScalar(r*(.75+.35*((sd*1.9)%1)));
-    s.material.opacity=Math.min(.62,dens*.62);
+    s.material.opacity=Math.min(.5,dens*.5);
     s.material.rotation=sd+time*.03;
    });
   }
