@@ -35,6 +35,7 @@ import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLig
 import { createHangingLights, stepHangingLights, upgradeHangingLights, type HangingLights } from './hangingLightAsset';
 import { createWallPosters, upgradeWallPosters, type WallPosters } from './posterAsset';
 import { createCopperPipe, upgradeCopperPipe, upgradeCopperPipeDetail, updateCopperPipe, type CopperPipe } from './copperPipeAsset';
+import { createWallRadiators, upgradeWallRadiators, type WallRadiators } from './radiatorAsset';
 import { createWallPipe, upgradeWallPipe, setPipeWheel, PIPE_MOUNT, type WallPipe } from './pipeAsset';
 import { startStroke, stepStroke, handPoses, smootherstep, VALVE_STAND, WHEEL_CENTRE, BREAKAWAY_TIME, REGRIP_TIME, type ValveStroke } from './valve';
 import { createValveHands, poseValveHands, resetValveHands, type ValveHandsRig } from './valveHands';
@@ -251,6 +252,8 @@ export class CaveWorld extends OceanWorld {
  wallPipe:WallPipe|null=null;
  /** Tiled pixol3d copper run along the hand-wheel wall in the far south-west cavern. */
  copperPipe:CopperPipe|null=null;
+ /** Sketchfab cast-iron radiators on breath-corridor / lab walls. */
+ wallRadiators:WallRadiators|null=null;
  /** Both arms, shown only while the leak valve is being worked. */
  valveHands:ValveHandsRig|null=null;
  /** Active hand-over-hand turn on the leak valve (null when not at the wheel). */
@@ -437,6 +440,7 @@ export class CaveWorld extends OceanWorld {
   this.mountWallSconces();
   this.mountHangingLights();
   this.mountWallPosters();
+  this.mountWallRadiators();
   this.mountWallPipe();
   this.mountCopperPipe();
   this.valveHands=createValveHands();
@@ -514,6 +518,21 @@ export class CaveWorld extends OceanWorld {
    this.adoptPointCull(visual.group,this.worldBox(visual.group),true,true);
    return ok;
   },40);
+ }
+ /** Bolt Sketchfab cast-iron radiators to breath-corridor / lab walls (stub → glTF). */
+ mountWallRadiators(){
+  const visual=createWallRadiators();
+  this.scene.add(visual.group);
+  this.wallRadiators=visual;
+  const anchor=visual.mounts[0]??{x:0,z:0};
+  this.propStreaming.add('radiators',anchor,async()=>{
+   const ok=await upgradeWallRadiators(visual,this.knifeEnvMap);
+   if(!ok||!this.alive)return ok;
+   for(const child of visual.group.children){
+    this.adoptPointCull(child,this.worldBox(child),true,true);
+   }
+   return ok;
+  },44);
  }
  /** Repeat the Sketchfab copper section along the hand-wheel wall. */
  mountCopperPipe(){

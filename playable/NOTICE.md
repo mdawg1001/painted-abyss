@@ -102,6 +102,14 @@
 - This work is based on "Copper Pipe Section" (https://sketchfab.com/3d-models/copper-pipe-section-91807ce330af449bbd3c59b5ede8ce67) by pixol3d (https://sketchfab.com/pixol3d) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
 - Repeated along the full blind south wall of the far south-west cavern and joined to the hand-wheel riser on that wall (not interactable). The glTF is unchanged; the run is copies of that one section.
 
+## Vintage Cast Iron Radiator (Sketchfab)
+- Source: https://sketchfab.com/3d-models/vintage-cast-iron-radiator-3d-model-7d4d8077bc524dbeb11a28ca09badf57
+- Author: Ati (https://sketchfab.com/azripxd)
+- License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
+- Files: `public/assets/vintage-radiator/vintage_radiator.glb` — official Sketchfab glTF (10,000 triangles), unchanged
+- This work is based on "Vintage Cast Iron Radiator 3D Model" (https://sketchfab.com/3d-models/vintage-cast-iron-radiator-3d-model-7d4d8077bc524dbeb11a28ca09badf57) by Ati (https://sketchfab.com/azripxd) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- Several wall-mounted copies on the Soviet breath corridor and entrance / approach lab walls (installed heating; not interactable).
+
 ## 04_DOOM_pipe (detail) (Sketchfab)
 - Source: https://sketchfab.com/3d-models/04-doom-pipe-detail-41063ef623eb41f5a981fff8997e54b9
 - Author: gleb_tihon (@gleb_tihon)
