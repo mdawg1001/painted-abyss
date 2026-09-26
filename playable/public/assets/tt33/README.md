@@ -12,4 +12,4 @@ The glTF asset extras also name Simon Volt (https://sketchfab.com/tursunovabduse
 First Dive ships:
 - `tt33.glb` — official Sketchfab glTF binary (5,306 triangles)
 
-Used as the corridor gun mesh: on the floor, in the diver's hand, and in the Soviet guard's hand. It does not add a new fire mode.
+Used as the Soviet guard hand mesh. The diver's inventory gun is the PolyCube retro gun under `../retro-gun/`.

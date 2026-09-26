@@ -1,7 +1,11 @@
-# Painted Abyss — First Dive · 0.19.6
+# Painted Abyss — First Dive · 0.19.7
 
 
 
+
+## PolyCube retro gun inventory (0.19.6)
+
+Sketchfab [3D Retro Gun Model - Free Download](https://sketchfab.com/3d-models/3d-retro-gun-model-free-download-ff244414e90c43fa9bd1bc4c4ca7c0bb) (PolyCube, Free Standard) — official viewer mesh under `playable/public/assets/retro-gun/`. Replaces the diver’s held gun and corridor floor pickup; Soviet guards still carry the TT-33. Credit in `playable/NOTICE.md`.
 
 ## Cast-iron radiators (0.19.6)
 
