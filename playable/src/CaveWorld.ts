@@ -18,6 +18,7 @@ import { Gait, wadingDrag, runWeight, WALK_CAMERA_MOTION, type GaitEvent } from 
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
 import { KNIFE_CLICK_BUFFER, createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, knifeMeshReady, HELD_VIEW_POS, HELD_VIEW_ROT, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_TIME, KNIFE_EQUIP_TIME, stabOffset, equipOffset } from './knifeAsset';
+import { createSovietKeyHeld, createSovietKeyPickup } from './sovietKeyAsset';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { loadBloodMaps, makeSoftBlobTexture, type BloodMaps } from './bloodAsset';
 import { loadCausticAtlas, makeCausticFallbackTexture } from './causticAsset';
@@ -250,6 +251,7 @@ export class CaveWorld extends OceanWorld {
  knifeEquipAt:number|null=null;
  /** Held gun. Visible only while that slot is selected. It does not fire. */
  gunVisual:THREE.Group|null=null;
+ keyVisual:THREE.Group|null=null;
  /** PMREM for Poly Haven metal/wood specular on the held knife. */
  knifeEnvMap:THREE.Texture|null=null;
  shakeAmp=0;
@@ -398,6 +400,9 @@ export class CaveWorld extends OceanWorld {
   // Muzzle sits just past the TT-33's barrel (viewmodel faces −Z).
   this.playerFlash.position.set(0,.05,-.34);this.playerFlashGlow.position.set(0,.05,-.34);
   this.gunVisual.add(this.playerFlash,this.playerFlashGlow);
+  this.keyVisual=createSovietKeyHeld();
+  this.camera.add(this.keyVisual);
+  this.keyVisual.visible=false;
   this.syncHeldTorch();
   upgradeKnifeVisual(this.knifeVisual,this.knifeEnvMap).then(()=>{
    if(!this.alive||!this.knifeVisual)return;
@@ -1075,7 +1080,7 @@ export class CaveWorld extends OceanWorld {
   if(hit&&hit.shot!==this.hitFxSeen){
    this.hitFxSeen=hit.shot;this.fx.burst(hit.point,'blood',hit.killed?16:9);
    const g=m.guards[hit.guard];
-   if(a&&g)playFleshHit(ctx!,pannedBus(ctx!,master!,this.panFor(g.position),.9),hit.headshot&&g.role==='heavy');
+   if(a&&g)playFleshHit(ctx!,pannedBus(ctx!,master!,this.panFor(g.position),.9),hit.headshot&&(g.role==='heavy'||g.role==='officer'));
   }
   const kh=m.lastKnifeHit;
   if(kh&&kh.at!==this.knifeFxSeen){
@@ -1460,6 +1465,7 @@ export class CaveWorld extends OceanWorld {
  }
  holdingKnife(){return this.mission.inventory[this.mission.selected]==='knife';}
  holdingGun(){return this.mission.inventory[this.mission.selected]==='gun';}
+ holdingKey(){return this.mission.inventory[this.mission.selected]==='sovietKey';}
  holdingTorch(){return holdingTorchItem(this.mission.inventory[this.mission.selected]);}
  /** Unlit pistol in the lower-right. Stub boxes until the TT-33 glTF replaces them. */
  makeHeldGun(){
@@ -1638,6 +1644,7 @@ export class CaveWorld extends OceanWorld {
   for(const p of this.mission.pickups){let group=this.pickupMeshes.get(p.id);if(!group){group=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:p.item==='relic'?0xe2b65e:0x82c8b7,emissive:p.item==='relic'?0x6b3c07:0x153c36,emissiveIntensity:.7,metalness:.4,roughness:.45});
     if(p.item==='relic'){const points:THREE.Vector3[]=[],radii:number[]=[];for(let i=0;i<=72;i++){const t=i/72,a=t*Math.PI*4.5,r=.03+t*t*.62;points.push(V(Math.cos(a)*r,Math.sin(a)*r,0));radii.push(.01+t*.12);}group.add(this.tube(points,radii,mat,90,8));group.add(new THREE.PointLight(0xefbb68,3.5,7));}
     else if(p.item==='gun'||p.item==='bottle'||p.item==='coat')group.add(this.gearPickupMesh(p.item));
+    else if(p.item==='sovietKey')group.add(createSovietKeyPickup());
     else group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.3,1),mat));
     group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
     const pickup=group;
@@ -2064,6 +2071,7 @@ export class CaveWorld extends OceanWorld {
   this.shakeAmp=0;this.knifeFlashUntil=0;this.knifeEquipAt=null;this.stabQueue=0;
   if(this.knifeVisual){poseKnife(this.knifeVisual);this.knifeVisual.visible=this.holdingKnife()&&knifeMeshReady(this.knifeVisual);}
   if(this.gunVisual)this.gunVisual.visible=this.holdingGun();
+  if(this.keyVisual)this.keyVisual.visible=this.holdingKey();
   this.syncHeldTorch();
   if(this.bloodGroup){
    this.bloodGroup.visible=false;this.bloodLife=0;
@@ -2240,6 +2248,12 @@ export class CaveWorld extends OceanWorld {
      this.gunVisual.rotation.set(.2+.32*k-.7*rl,.55+.25*rl,.08+.3*rl);
     }
    }
+   if(this.keyVisual){
+    this.keyVisual.visible=this.holdingKey();
+    if(this.keyVisual.visible){
+     this.keyVisual.position.set(.28+Math.sin(this.time*.7)*.012*bobBlend,-.22+Math.sin(this.time*1.05)*.014*bobBlend,-.42);
+    }
+   }
    this.updatePistolFeel(dt);
    this.updateBlood(dt);
    }
@@ -2291,12 +2305,14 @@ export class CaveWorld extends OceanWorld {
    this.setTorchMeshesVisible(false);
    if(this.knifeVisual)this.knifeVisual.visible=false;
    if(this.gunVisual)this.gunVisual.visible=false;
+   if(this.keyVisual)this.keyVisual.visible=false;
   }
   if(this.knifeVisual&&!this.playing&&!this.valveStroke){
    this.knifeVisual.visible=knifeHeld&&knifeMeshReady(this.knifeVisual);
    if(knifeHeld)poseKnife(this.knifeVisual);
   }
   if(this.gunVisual&&!this.playing&&!this.valveStroke)this.gunVisual.visible=this.holdingGun();
+  if(this.keyVisual&&!this.playing&&!this.valveStroke)this.keyVisual.visible=this.holdingKey();
   this.torchBody.visible=true;
   if(torchOn){
    // Torch murk follows water over the lens: free air reads as the clear surface response.

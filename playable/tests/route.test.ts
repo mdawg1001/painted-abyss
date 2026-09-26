@@ -4,7 +4,7 @@ import {Mission,moveBody,distance,terminalSwimSpeed,isolateGuards} from '../src/
 test('full dive can be completed through collision and live AI with sprinting and usable supplies',()=>{
  const m=new Mission();isolateGuards(m);const states=new Set<string>();
  // Force-model speeds are ~2.2 / ~3.5 m/s; oversized air so route timing is not gas-gated.
- m.air=900;
+ m.air=1e6;
  // Bite lethality is covered in mission tests; this route proves pathing + AI under slow swim.
  m.health=500;
  const cruise=terminalSwimSpeed(false),sprint=terminalSwimSpeed(true);
@@ -32,9 +32,10 @@ test('full dive can be completed through collision and live AI with sprinting an
   assert.equal(m.outcome,'playing',m.reason);
  }
  m.torch=false;
- swim(0,-44);swim(-20,-48);swim(-20,-56);swim(-20,-88);swim(0,-92);swim(0,-112);
+ swim(0,-44);swim(-20,-48);swim(-20,-70);swim(-12,-96);swim(-4,-104);swim(0,-112);
+ m.inventory[m.inventory.indexOf(null)>=0?m.inventory.indexOf(null):0]='sovietKey';
  m.selected=0;m.interact();if(!m.hasRelic)m.interact();assert.ok(m.hasRelic);
- swim(0,-92);swim(24,-92);swim(28,-84);swim(32,-80);swim(32,-12);
+ swim(-4,-104);swim(0,-96);swim(12,-92);swim(24,-92);swim(28,-84);swim(32,-80);swim(32,-12);
  m.interact();assert.equal(m.outcome,'won');
  assert.ok(states.has('alert')||states.has('chase'));
  console.log(JSON.stringify({routeSeconds:Math.round(m.elapsed),health:m.health,states:[...states],cruise:+cruise.toFixed(3),sprint:+sprint.toFixed(3)}));

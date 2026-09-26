@@ -5,7 +5,7 @@
  * seconds, damage in health points (player and guards both use 0–max hp).
  */
 
-export type GuardRole='assault'|'rusher'|'flanker'|'heavy';
+export type GuardRole='assault'|'rusher'|'flanker'|'heavy'|'officer';
 
 export const SURVIVAL={
  /** Hard cap on guards alive at once (also the size of the visual pool). */
@@ -32,6 +32,11 @@ export const SURVIVAL={
   rusher:{hp:110,headMult:1,speed:3.62,combatSpeed:3.62,range:0,burst:[0,0] as [number,number],burstGap:1,restMin:1,restMax:1,accuracy:0,damage:0,reaction:[.2,.35] as [number,number],armed:false},
   /** Heavy: helmet and flak — headshots do 60 %; long suppressive bursts, slow walk. */
   heavy:{hp:280,headMult:.6,speed:1.5,combatSpeed:1.21,range:11,burst:[5,7] as [number,number],burstGap:.13,restMin:1.4,restMax:2.2,accuracy:.5,damage:18,reaction:[.7,1.05] as [number,number],armed:true},
+  /**
+   * Main officer: the only guard who carries the Soviet relic key.
+   * Same combat AI as the rest; tougher kit, peaking-cap silhouette. Never reinforced.
+   */
+  officer:{hp:240,headMult:.7,speed:1.85,combatSpeed:1.35,range:10,burst:[4,6] as [number,number],burstGap:.14,restMin:1.2,restMax:1.9,accuracy:.62,damage:16,reaction:[.55,.9] as [number,number],armed:true},
  },
 
  // ── Guard fire discipline (why a crowd stays survivable) ───────────────────────
@@ -82,8 +87,8 @@ export const SURVIVAL={
   behindArc:110*Math.PI/180,behindSafeDistance:26,
   /** Took this much damage in the last `mercyWindow` s: next arrival waits `mercyDelay` longer. */
   mercyDamage:55,mercyWindow:8,mercyDelay:4,
-  /** Role mix for reinforcements (weights), and heavy limits. */
-  roleWeights:{assault:45,rusher:25,flanker:20,heavy:10} as Record<GuardRole,number>,
+  /** Role mix for reinforcements (weights), and heavy limits. Officer is never reinforced (exactly one main). */
+  roleWeights:{assault:45,rusher:25,flanker:20,heavy:10,officer:0} as Record<GuardRole,number>,
   maxHeavy:1,maxHeavyFinal:2,
   /** Downed bodies are recycled after this long if you are not looking at them. */
   corpseSeconds:18,

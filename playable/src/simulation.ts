@@ -17,7 +17,7 @@ export {
  type StashCue, type StashItem, type StashSlot,
 } from './stash';
 export type Point={x:number;y:number;z:number};
-export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife'|'gun'|'bottle'|'coat';
+export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife'|'gun'|'bottle'|'coat'|'sovietKey';
 export type Pickup={id:number;item:Item;position:Point;
  /** Rounds still in a dropped pistol (a downed guard's). Undefined for the corridor gun. */
  rounds?:number;
@@ -269,6 +269,25 @@ export function stashInteractPrompt(m:{
  return 'E · Close chest';
 }
 
+/** True when this guard is the unique main officer who carries the Soviet relic key. */
+export const isMainGuard=(g:{role:GuardRole})=>g.role==='officer';
+
+/** World / HUD prompt for a floor pickup (relic gate + key wording). */
+export function pickupInteractPrompt(m:{
+ inventory:(Item|null)[];
+ selected:number;
+},item:Item):string{
+ if(item==='relic'){
+  if(m.inventory.includes('sovietKey'))return 'E · Unlock relic';
+  return 'E · Locked · needs key';
+ }
+ if(item==='sovietKey')return 'E · Take Soviet key';
+ if(item==='gun'&&m.inventory.includes('gun'))return `E · Take rounds from ${ITEMS.gun.name}`;
+ const held=m.inventory[m.selected];
+ if(!m.inventory.includes(null)&&held)return `E · Swap ${ITEMS[held].name} for ${ITEMS[item].name}`;
+ return `E · Pick up ${ITEMS[item].name}`;
+}
+
 export function createDiveChests():Chest[]{
  return [
   // West shelf — west cavern fragment.
@@ -429,6 +448,7 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  gun:{name:'TT-33 pistol',short:'Pistol',description:'Semi-automatic, 8-round magazine. Click fires one round at the centre of the screen; R changes the magazine. Three body hits or one to the head drop a guard, and every shot brings nearby guards running. Take spare rounds off the guards you drop. If a corridor guard kills you, he takes it.',hint:'Click fire · R reload'},
  bottle:{name:'Spare air bottle',short:'Bottle',description:`R · Add ${SPARE_BOTTLE_LITRES} L to the main cylinder (consumed). A corridor guard will drink it as his air if he takes it from your corpse.`,hint:'R use · consumed'},
  coat:{name:'Coat',short:'Coat',description:'Carry it. It does not soften guardian bites. If a corridor guard takes it from your corpse, his strikes hurt less.',hint:'Carry · death drops it'},
+ sovietKey:{name:'Soviet key',short:'Key',description:'Weathered iron skeleton key with a gold-and-red Soviet emblem. Unlocks the ammonite relic in the bone alcove (consumed on unlock).',hint:'Unlock the relic · consumed'},
 };
 /**
  * Inventory items that occupy the FPS hand instead of the dive torch.
@@ -436,7 +456,7 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  * selected slot is not one of these (knife today; other hand-props later).
  */
 export function occupiesFpsHand(item:Item|null):boolean{
- return item==='knife'||item==='gun';
+ return item==='knife'||item==='gun'||item==='sovietKey';
 }
 /** Corridor floor gear. Not on the hatch. */
 export function corridorGearPickups():Pickup[]{
@@ -1243,7 +1263,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.spawnGuards();
   this.killedByGuard=false;
   if(!tipsSeen){
-   this.notice='Find the relic. WASD walk · Shift run · 1–5 select · click stabs.';
+   this.notice='Find the main guard. Take his Soviet key, unlock the relic, extract. WASD walk · Shift run · 1–5 select · click stabs.';
    this.noticeUntil=9;this.feedbackKind='select';
   }
  }
@@ -1646,6 +1666,16 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   }
   if(chest?.open&&!pickup){this.say(`The ${CHEST_LABEL[chest.kind]} is empty.`,'blocked');return;}
   if(!pickup||distance(pickup.position,this.position)>3.2||!visible(this.position,pickup.position)){this.pending=null;return;}
+  // Ammonite relic: locked until you hold the Soviet key from the main officer (key is consumed).
+  if(pickup.item==='relic'){
+   const keySlot=this.inventory.indexOf('sovietKey');
+   if(keySlot<0){
+    this.say('Needs the Soviet key. Locked.','blocked');
+    this.pulse('blocked');
+    return;
+   }
+   this.inventory[keySlot]=null;
+  }
   // A second pistol is only worth its rounds: strip the magazine and leave the frame.
   if(pickup.item==='gun'&&this.inventory.includes('gun')){
    const take=Math.min(this.pistolRoundsOn(pickup),PISTOL.reserveMax-this.pistol.reserve);
@@ -1667,7 +1697,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.valveTurned=0;
    this.drainDone=false;
   }
-  const got=sprung?'Booby trap! Taking the relic opened the flood valve. Water is rising — reach extraction!':pickup.item==='relic'?'Relic recovered! Get to the extraction pool.':`${ITEMS[pickup.item].name} collected.`;
+  const got=sprung?'Booby trap! Taking the relic opened the flood valve. Water is rising — reach extraction!':pickup.item==='relic'?'Relic unlocked. Get to the extraction pool.':`${ITEMS[pickup.item].name} collected.`;
   this.pending=null;this.say(old?`${got} Dropped the ${ITEMS[old].name.toLowerCase()}.`:got,'ok');
   if(pickup.item==='relic'&&this.predator.state!=='dead'&&this.predator.state!=='damaged'){
    this.predator.state='alert';this.predator.timer=0;this.predator.lastKnown={...this.position};
@@ -1707,6 +1737,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(item==='gun'){this.reloadPistol();return;}
   // Coat does not change your damage; it is only carried, then lost.
   if(item==='coat'){this.pulse('blocked');return;}
+  // Key is carry-only until spent unlocking the relic.
+  if(item==='sovietKey'){this.pulse('blocked');return;}
   this.pulse('blocked');
  }
  /** Where a dropped item comes to rest: on the floor on foot, just below you when swimming. */
@@ -1876,6 +1908,12 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     const id=this.nextId++;
     this.pickups.push({id,item:'gun',rounds:Math.max(SURVIVAL.dropRounds,g.ammo),position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}});
     g.dropId=id;g.gun=false;
+   }
+   // Main officer drops the only Soviet key that unlocks the ammonite relic.
+   if(isMainGuard(g)){
+    const side={x:-Math.cos(g.heading)*.4,z:Math.sin(g.heading)*.4};
+    this.pickups.push({id:this.nextId++,item:'sovietKey',position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}});
+    if(this.noticeUntil<=this.elapsed)this.say('The officer drops a Soviet key.','ok');
    }
    return true;
   }
@@ -2374,7 +2412,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   g.progressPos={x:at.x,z:at.z};g.progressAt=this.elapsed;
   g.slot=0;g.slotDrift=(this.rand()<.5?-1:1)*(.07+.08*this.rand());g.slotFlipAt=3+this.rand()*3;
   g.flankSide=this.rand()<.5?1:-1;
-  g.coat=role==='heavy';
+  g.coat=role==='heavy'||role==='officer';
   return g;
  }
  deactivateGuard(g:Guard){
@@ -2391,7 +2429,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  }
  /**
   * Mission start / each life: the opening garrison. Two sentries hold the first chamber
-  * (the first contact comes quickly), the cavern has three, and a heavy guards the relic.
+  * (the first contact comes quickly), the cavern has three, and the main officer
+  * (Soviet key) patrols the west cavern — away from the hatch stash and the relic alcove.
   * The rest of the pool waits behind the doors.
   */
  spawnGuards(){
@@ -2402,7 +2441,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    {x0:-28,x1:28,z0:-96,z1:-44,role:'assault'},
    {x0:-28,x1:28,z0:-96,z1:-44,role:'rusher'},
    {x0:-28,x1:28,z0:-96,z1:-44,role:'flanker'},
-   {x0:-12,x1:12,z0:-120,z1:-104,role:'heavy'},
+   // Main officer beat: west mid-cavern — seek him for the key; not on the relic or hatch.
+   {x0:-28,x1:-2,z0:-88,z1:-52,role:'officer'},
   ];
   const posts=patrolPosts();
   const used:number[]=[];
@@ -2548,7 +2588,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   }
   // Guards cover their advance with smoke now and then.
   if(D.phase!=='intro'&&D.phase!=='lull'&&now>=D.guardSmokeReady){
-   const thrower=live.find(g=>(g.role==='assault'||g.role==='heavy')&&g.state==='chase'&&g.sees&&distance(g.position,this.position)>=8&&distance(g.position,this.position)<=18);
+   const thrower=live.find(g=>(g.role==='assault'||g.role==='heavy'||g.role==='officer')&&g.state==='chase'&&g.sees&&distance(g.position,this.position)>=8&&distance(g.position,this.position)<=18);
    if(thrower){this.guardThrowSmoke(thrower);D.guardSmokeReady=now+SURVIVAL.smoke.guardCooldown;}
   }
   // Recycle long-dead bodies out of your sight (their dropped pistols stay on the floor).
