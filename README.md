@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.18.2
+# Painted Abyss — First Dive · 0.18.3
 
 ## Progressive prop loading (0.17.8)
 
