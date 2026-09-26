@@ -17,6 +17,14 @@ export {
  type StashCue, type StashItem, type StashSlot,
 } from './stash';
 export type Point={x:number;y:number;z:number};
+/**
+ * Global simulation rate vs wall clock. Frame dt is wall-clock-capped then
+ * multiplied by this so gameplay (move, AI, timers, gas) runs faster without
+ * changing meshes, materials, or shaders.
+ */
+export const GAME_TIME_SCALE=5;
+/** Max wall-clock seconds accepted from one animation frame before scaling. */
+export const MAX_FRAME_DT=.05;
 export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife'|'gun'|'bottle'|'coat'|'sovietKey';
 export type Pickup={id:number;item:Item;position:Point;
  /** Rounds still in a dropped pistol (a downed guard's). Undefined for the corridor gun. */
@@ -2009,7 +2017,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   return 'hit';
  }
  update(dt:number,sprinting=false){
-  if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;
+  if(this.outcome!=='playing')return;dt=Math.min(dt,MAX_FRAME_DT*GAME_TIME_SCALE);this.elapsed+=dt;
   // Knife recovery is the diver's arm, not the guardian: it runs whatever state the guardian is in.
   this.predator.stabCool=Math.max(0,this.predator.stabCool-dt);
   if(this.floodTriggered)this.breathWaterY=stepFloodLevel(this.breathWaterY,dt,this.leakFlow);

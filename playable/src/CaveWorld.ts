@@ -41,7 +41,7 @@ import {
  type SovietGuardVisual,
 } from './sovietGuardAsset';
 import { mountTt33 } from './gunAsset';
-import { Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_COUNT, STASH_POSITION, STASH_YAW, type BreathFootprint, type BreathTankMount } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_COUNT, STASH_POSITION, STASH_YAW, GAME_TIME_SCALE, MAX_FRAME_DT, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
  airborne:boolean;
@@ -2091,7 +2091,7 @@ export class CaveWorld extends OceanWorld {
     updateCopperPipe(visual,this.position);
    });
   }
-  this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);
+  this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),MAX_FRAME_DT)*GAME_TIME_SCALE;
   if(this.playing){this.time+=dt;const m=this.mission;this.drainStabQueue();
    const pressed=(...keys:string[])=>keys.some(k=>this.keys.has(k))?1:0;
    if(m.mapOpen){
@@ -2213,7 +2213,7 @@ export class CaveWorld extends OceanWorld {
     eyeZ=this.position.z+this.upAxis.z*bobY+this.right.z*bobSide+this.forward.z*bobFwd;
    }
    // Translation only — look-stick (yaw/pitch) stays as-is. Cap follow-dt so a hitch frame cannot teleport the eye.
-   const follow=this.onFoot?1:1-Math.exp(-80*Math.min(dt,.018));
+   const follow=this.onFoot?1:1-Math.exp(-80*Math.min(dt,.018*GAME_TIME_SCALE));
    this.camera.position.x=THREE.MathUtils.lerp(this.camera.position.x,eyeX,follow);
    this.camera.position.y=THREE.MathUtils.lerp(this.camera.position.y,eyeY,follow);
    this.camera.position.z=THREE.MathUtils.lerp(this.camera.position.z,eyeZ,follow);
