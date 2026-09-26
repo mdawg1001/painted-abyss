@@ -1,0 +1,54 @@
+// GAME_URL points to a Vite dev server, PLAYWRIGHT_MODULE to an installed Playwright.
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const url=(process.env.GAME_URL||'http://127.0.0.1:5184')+'/?test=1';
+const sizes=()=>{const m=window.__abyss.rockMaps;return ['rock','sand','moss'].flatMap(k=>['diff','nor','arm'].map(t=>m[k][t].image.width));};
+const full=url=>/\/rocks\/[^/]+\/(diff|nor|arm)\.ktx2(?:\?|$)/.test(url)&&!url.includes('import');
+(async()=>{
+ const browser=await chromium.launch({channel:'chrome',headless:true});
+ try{
+  const page=await browser.newPage({viewport:{width:1280,height:800}});
+  const errors=[],requests=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  page.on('console',m=>{if(/WebGL.*(INVALID|error)|THREE.*(Error|error)|GL_INVALID/.test(m.text()))errors.push(m.text());});
+  page.on('request',r=>{if(full(r.url()))requests.push(r.url());});
+  let release;const gate=new Promise(r=>release=r);
+  await page.route('**/*.ktx2*',async route=>{if(full(route.request().url()))await gate;await route.continue();});
+  await page.goto(url,{waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.__abyss,null,{timeout:60000});
+  await page.evaluate(()=>window.__abyss.rockMaps.previewsReady);
+  assert.deepEqual(await page.evaluate(sizes),Array(9).fill(256));
+  assert.equal(requests.length,0,'originals must not download on menu');
+  await page.evaluate(()=>{window.__maps=Object.values(window.__abyss.rockMaps).filter(x=>x?.diff).flatMap(x=>[x.diff,x.nor,x.arm]);window.__abyss.sound=false;window.__abyss.start();});
+  await page.waitForTimeout(1000);
+  fs.mkdirSync('test-results',{recursive:true});
+  await page.screenshot({path:'test-results/textures-preview.png'});
+  release();
+  await page.waitForFunction(()=>['rock','sand','moss'].every(k=>['diff','nor','arm'].every(t=>window.__abyss.rockMaps[k][t].image.width===2048)),null,{timeout:120000});
+  await page.waitForTimeout(500);
+  assert.equal(await page.evaluate(()=>window.__maps.every(t=>Object.values(window.__abyss.rockMaps).some(s=>s?.diff===t||s?.nor===t||s?.arm===t))),true,'shader-bound texture identities survive upgrades');
+  await page.screenshot({path:'test-results/textures-full.png'});
+  assert.equal(requests.length,9);
+  await page.evaluate(()=>{window.__abyss.reset();window.__abyss.start();});
+  await page.waitForTimeout(2800);assert.equal(requests.length,9,'restart does not redownload originals');
+  assert.deepEqual(errors,[]);
+  console.log('Preview -> full detail: all nine maps; stable shader references; restart reused maps; no WebGL errors.');
+  await page.close();
+  const failure=await browser.newPage();
+  await failure.route('**/rock_face_03/diff.ktx2',route=>route.abort());
+  await failure.goto(url,{waitUntil:'domcontentloaded'});await failure.waitForFunction(()=>window.__abyss);
+  await failure.evaluate(()=>window.__abyss.rockMaps.previewsReady);
+  await failure.evaluate(()=>window.__abyss.rockMaps.startDetail());
+  await failure.waitForFunction(()=>window.__abyss.rockMaps.moss.arm.image.width===2048,null,{timeout:120000});
+  assert.deepEqual(await failure.evaluate(sizes),[256,...Array(8).fill(2048)]);
+  console.log('Failed full-detail request retained its preview; remaining upgrades completed.');
+  await failure.close();
+  const disposed=await browser.newPage();let loads=0;
+  disposed.on('request',r=>{if(full(r.url()))loads++;});
+  await disposed.goto(url,{waitUntil:'domcontentloaded'});await disposed.waitForFunction(()=>window.__abyss);
+  await disposed.evaluate(async()=>{const m=window.__abyss.rockMaps;await m.previewsReady;m.startDetail();m.dispose();});
+  await disposed.waitForTimeout(2500);assert.equal(loads,0);
+  console.log('Disposal cancelled queued detail downloads.');
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exit(1)});

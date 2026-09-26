@@ -10,6 +10,16 @@ import mossDiff from './assets/rocks/mossy_rock/diff.ktx2?url';
 import mossNor from './assets/rocks/mossy_rock/nor.ktx2?url';
 import mossArm from './assets/rocks/mossy_rock/arm.ktx2?url';
 
+import rockDiffPreview from './assets/rocks/rock_face_03/preview/diff.ktx2?url';
+import rockNorPreview from './assets/rocks/rock_face_03/preview/nor.ktx2?url';
+import rockArmPreview from './assets/rocks/rock_face_03/preview/arm.ktx2?url';
+import sandDiffPreview from './assets/rocks/dry_riverbed_rock/preview/diff.ktx2?url';
+import sandNorPreview from './assets/rocks/dry_riverbed_rock/preview/nor.ktx2?url';
+import sandArmPreview from './assets/rocks/dry_riverbed_rock/preview/arm.ktx2?url';
+import mossDiffPreview from './assets/rocks/mossy_rock/preview/diff.ktx2?url';
+import mossNorPreview from './assets/rocks/mossy_rock/preview/nor.ktx2?url';
+import mossArmPreview from './assets/rocks/mossy_rock/preview/arm.ktx2?url';
+
 /** Packed Poly Haven PBR set: albedo + OpenGL normal + ARM (AO/Rough/Metal). */
 export type PbrMaps = {
   diff: THREE.Texture;
@@ -20,16 +30,21 @@ export type PbrMaps = {
   key: string;
 };
 
-export type CaveRockMaps = { rock: PbrMaps; sand: PbrMaps; moss: PbrMaps };
+export type CaveRockMaps = {
+  rock: PbrMaps; sand: PbrMaps; moss: PbrMaps;
+  /** Settles after all previews have loaded (failed previews retain a neutral fallback). */
+  previewsReady: Promise<void>;
+  startDetail(): void;
+  dispose(): void;
+};
 
-/** One transcoder for the whole dive. `./basis/` is `public/basis`, copied from three's KTX2Loader build. */
-let ktx2Loader: KTX2Loader | null = null;
-
-function pendingMap(colorMap: boolean): THREE.CompressedTexture {
+function pendingMap(kind: 'diff' | 'nor' | 'arm'): THREE.CompressedTexture {
   const data = new Uint8Array(4 * 4 * 4);
+  const pixel = kind === 'diff' ? [160,160,160,255] : kind === 'nor' ? [128,128,255,255] : [255,255,0,255];
+  for(let i=0;i<data.length;i+=4)data.set(pixel,i);
   // RGBA until the transcoder reports the GPU format. A few frames may sample this flat block.
   const format = THREE.RGBAFormat as unknown as THREE.CompressedPixelFormat;
-  return new THREE.CompressedTexture(
+  const texture = new THREE.CompressedTexture(
     [{ data, width: 4, height: 4 }],
     4, 4,
     format,
@@ -40,12 +55,17 @@ function pendingMap(colorMap: boolean): THREE.CompressedTexture {
     THREE.LinearFilter,
     THREE.LinearFilter,
     8,
-    colorMap ? THREE.SRGBColorSpace : THREE.NoColorSpace,
+    kind === 'diff' ? THREE.SRGBColorSpace : THREE.NoColorSpace,
   );
+  texture.needsUpdate = true;
+  return texture;
 }
 
 /** Copy a transcoded KTX2 onto the texture already bound in the rock shaders. */
 function adopt(dst: THREE.CompressedTexture, src: THREE.CompressedTexture, colorMap: boolean) {
+  // WebGL2 texture storage is immutable: release the old GPU allocation before resizing.
+  // Keep this JS texture object so every existing shader uniform still references it.
+  dst.dispose();
   dst.mipmaps = src.mipmaps;
   dst.image = src.image;
   dst.format = src.format;
@@ -59,44 +79,59 @@ function adopt(dst: THREE.CompressedTexture, src: THREE.CompressedTexture, color
   dst.needsUpdate = true;
 }
 
-/**
- * Load cave rock/floor/moss maps. Returns compressed textures immediately; mip data
- * arrives after the Basis transcoder finishes. Resolution stays 2048.
- */
+/** Preview first; full originals are streamed serially after the first Begin/Resume. */
 export function loadCaveRockMaps(renderer: THREE.WebGLRenderer): CaveRockMaps {
-  if (!ktx2Loader) {
-    ktx2Loader = new KTX2Loader();
-    ktx2Loader.setTranscoderPath('./basis/');
-  }
-  ktx2Loader.detectSupport(renderer);
-  const load = (url: string, colorMap: boolean) => {
-    const tex = pendingMap(colorMap);
-    ktx2Loader!.load(url, (loaded) => adopt(tex, loaded, colorMap), undefined, (err) => {
-      console.error('Rock map failed to transcode', url, err);
+  const loader = new KTX2Loader().setTranscoderPath('./basis/').setWorkerLimit(2).detectSupport(renderer);
+  let disposed = false, started = false;
+  const abort = new AbortController();
+  const entries: {texture: THREE.CompressedTexture; preview: string; full: string; color: boolean}[] = [];
+  const makeSet = (key: string, scale: number, previews: string[], originals: string[]): PbrMaps => {
+    const textures = (['diff','nor','arm'] as const).map((kind,i) => {
+      const texture = pendingMap(kind);
+      entries.push({texture,preview:previews[i],full:originals[i],color:kind==='diff'});
+      return texture;
     });
-    return tex;
+    return {diff:textures[0],nor:textures[1],arm:textures[2],key,scale};
   };
+  const rock = makeSet('rock_face_03',.22,[rockDiffPreview,rockNorPreview,rockArmPreview],[rockDiff,rockNor,rockArm]);
+  const sand = makeSet('dry_riverbed_rock',.28,[sandDiffPreview,sandNorPreview,sandArmPreview],[sandDiff,sandNor,sandArm]);
+  const moss = makeSet('mossy_rock',.26,[mossDiffPreview,mossNorPreview,mossArmPreview],[mossDiff,mossNor,mossArm]);
+  const load = async (entry: typeof entries[number], url: string) => {
+    try {
+      const texture = await loader.loadAsync(url);
+      if(!disposed)adopt(entry.texture,texture,entry.color);
+      texture.dispose();
+    } catch(error) {
+      // A failed upgrade leaves the already-rendering preview intact.
+      if(!disposed)console.warn('Cave texture unavailable; retaining current detail',url,error);
+    }
+  };
+  const previewsReady = Promise.all(entries.map(entry=>load(entry,entry.preview))).then(()=>{});
+  const wait = (ms: number) => new Promise<void>(resolve=>{
+    if(disposed){resolve();return;}
+    const finish=()=>{clearTimeout(timer);abort.signal.removeEventListener('abort',finish);resolve();};
+    const timer=setTimeout(finish,ms);
+    abort.signal.addEventListener('abort',finish,{once:true});
+  });
   return {
-    rock: {
-      diff: load(rockDiff, true),
-      nor: load(rockNor, false),
-      arm: load(rockArm, false),
-      scale: 0.22,
-      key: 'rock_face_03',
+    rock,sand,moss,previewsReady,
+    startDetail(){
+      if(started||disposed)return;
+      started=true;
+      void (async()=>{
+        await previewsReady;
+        await wait(2000); // Let the first playable frames and essential props settle.
+        for(const entry of entries){
+          if(disposed)return;
+          await load(entry,entry.full); // One download/transcode/upload upgrade at a time.
+          await wait(250); // Give rendering time between large texture uploads.
+        }
+      })();
     },
-    sand: {
-      diff: load(sandDiff, true),
-      nor: load(sandNor, false),
-      arm: load(sandArm, false),
-      scale: 0.28,
-      key: 'dry_riverbed_rock',
-    },
-    moss: {
-      diff: load(mossDiff, true),
-      nor: load(mossNor, false),
-      arm: load(mossArm, false),
-      scale: 0.26,
-      key: 'mossy_rock',
+    dispose(){
+      if(disposed)return;
+      disposed=true;abort.abort();loader.dispose();
+      for(const entry of entries)entry.texture.dispose();
     },
   };
 }

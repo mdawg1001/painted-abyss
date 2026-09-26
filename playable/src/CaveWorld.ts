@@ -2021,6 +2021,7 @@ export class CaveWorld extends OceanWorld {
   if(this.mission.outcome!=='playing')this.reset();
   // One-time tip is already on this mission when tipsSeen is false; persist so the next launch stays quiet.
   if(!this.mission.tipsSeen)writeInventoryTipsSeen();
+  this.rockMaps.startDetail();
   this.playing=true;this.started=true;this.keys.clear();this.clock.getDelta();this.testingAudio=false;
   this.onFoot=canWalk(this.mission.position,this.mission.breathWaterY);
   this.wasOnFoot=this.onFoot;
@@ -2327,5 +2328,5 @@ export class CaveWorld extends OceanWorld {
   this.applyPortalOcclusion();
   this.composer.render();
  }
- dispose(){this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
+ dispose(){this.rockMaps.dispose();this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
 }
