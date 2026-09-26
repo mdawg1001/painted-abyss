@@ -1,9 +1,9 @@
-# Painted Abyss — First Dive · 0.20.2
+# Painted Abyss — First Dive · 0.20.4
 
 
 
 
-## Combat Feedback Manager (0.20.2)
+## Combat Feedback Manager (0.20.4)
 
 `playable/src/combatFeedback.ts` — punchy screen shake + readable hitstop. Fire / damage kick the camera (~10–20 cm peaks); headshots freeze sim ~140 ms, kills ~220 ms while rendering continues. Wired through CaveWorld’s animate loop via `simDt` and camera-local shake.
 

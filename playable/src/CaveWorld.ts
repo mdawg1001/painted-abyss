@@ -1805,7 +1805,7 @@ export class CaveWorld extends OceanWorld {
      const gear=this.gearPickupMesh(p.item);
      group.add(gear);
      if(p.item==='gun'){
-      // Neon tell so the floor carbine contributes to UnrealBloomPass.
+      // Neon tell so the floor carbine contributes to UnrealBloomPass without washing the corridor.
       group.add(new THREE.PointLight(0x5ce0ff,2.8,5.5));
       this.propStreaming.add(`pickup-gun-${p.id}`,{x:p.position.x,z:p.position.z},()=>mountAk74u(gear,'pickup'),40);
      }
@@ -2173,10 +2173,10 @@ export class CaveWorld extends OceanWorld {
   this.playerFlashGlow.visible=f>0;
   this.playerFlashGlow.material.opacity=f;
   this.playerFlashGlow.scale.setScalar(.05+.08*f);
-  this.playerFlashStar.visible=f>0;this.playerFlashStar.material.opacity=Math.min(1,f*1.4);
-  this.playerFlashStar.scale.setScalar(.07+.07*f);
+  this.playerFlashStar.visible=f>0;this.playerFlashStar.material.opacity=Math.min(1,f*1.5);
+  this.playerFlashStar.scale.setScalar(.1+.1*f);
   this.playerFlashSparks.visible=f>0;this.playerFlashSparks.material.opacity=f;
-  this.playerFlashSparks.scale.setScalar(.16-.07*f);
+  this.playerFlashSparks.scale.setScalar(.2-.07*f);
   this.playerFlashT=Math.max(0,f-dt/.05);
   // Magazine seats: heavier click when a reload finishes.
   const r=this.mission.pistol.reload;
