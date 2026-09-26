@@ -115,7 +115,7 @@
 - License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
 - Files: `public/assets/vintage-radiator/vintage_radiator.glb` — official Sketchfab glTF (10,000 triangles), unchanged
 - This work is based on "Vintage Cast Iron Radiator 3D Model" (https://sketchfab.com/3d-models/vintage-cast-iron-radiator-3d-model-7d4d8077bc524dbeb11a28ca09badf57) by Ati (https://sketchfab.com/azripxd) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
-- Several wall-mounted copies on the Soviet breath corridor and entrance / approach lab walls (installed heating; not interactable).
+- Four room-scale wall-mounted copies (~1.35 m) on memorable Soviet breath-corridor and entrance-lab walls (installed heating; not interactable).
 
 ## 04_DOOM_pipe (detail) (Sketchfab)
 - Source: https://sketchfab.com/3d-models/04-doom-pipe-detail-41063ef623eb41f5a981fff8997e54b9
