@@ -30,7 +30,7 @@ import {
 import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLight } from './sconceAsset';
 import { createHangingLights, stepHangingLights, upgradeHangingLights, type HangingLights } from './hangingLightAsset';
 import { createWallPosters, upgradeWallPosters, type WallPosters } from './posterAsset';
-import { createCopperPipe, upgradeCopperPipe, type CopperPipe } from './copperPipeAsset';
+import { createCopperPipe, upgradeCopperPipe, upgradeCopperPipeDetail, updateCopperPipe, type CopperPipe } from './copperPipeAsset';
 import { createWallPipe, upgradeWallPipe, setPipeWheel, PIPE_MOUNT, type WallPipe } from './pipeAsset';
 import { startStroke, stepStroke, handPoses, smootherstep, VALVE_STAND, WHEEL_CENTRE, BREAKAWAY_TIME, REGRIP_TIME, type ValveStroke } from './valve';
 import { createValveHands, poseValveHands, resetValveHands, type ValveHandsRig } from './valveHands';
@@ -2065,6 +2065,14 @@ export class CaveWorld extends OceanWorld {
   if(!this.alive)return;
   const propNow=performance.now()/1000;
   if(propNow-this.lastPropCheck>=.25){this.lastPropCheck=propNow;this.propStreaming.update(this.position,propNow);}
+  if(this.copperPipe&&updateCopperPipe(this.copperPipe,this.position)){
+   const visual=this.copperPipe;
+   void upgradeCopperPipeDetail(visual,this.knifeEnvMap).then(parts=>{
+    if(!this.alive)return;
+    for(const part of parts)this.adoptPointCull(part,this.worldBox(part),true,true);
+    updateCopperPipe(visual,this.position);
+   });
+  }
   this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);
   if(this.playing){this.time+=dt;const m=this.mission;this.drainStabQueue();
    const pressed=(...keys:string[])=>keys.some(k=>this.keys.has(k))?1:0;
@@ -2328,5 +2336,5 @@ export class CaveWorld extends OceanWorld {
   this.applyPortalOcclusion();
   this.composer.render();
  }
- dispose(){this.rockMaps.dispose();this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
+ dispose(){if(this.copperPipe)this.copperPipe.disposed=true;this.rockMaps.dispose();this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
 }

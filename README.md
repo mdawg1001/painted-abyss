@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.18.4
+# Painted Abyss — First Dive · 0.18.5
 
 ## Progressive prop loading (0.17.8)
 
@@ -206,3 +206,9 @@ Run the focused HTTP regression check with `node --test playable/tests/asset-cac
 Rock, floor, and moss first use 256×256 KTX2 previews (718,863 bytes combined). These are the exact lower mip levels from the nine original 2048×2048 maps, with the same color space, normal maps, and packed ARM channels; the originals are unchanged. Once previews have settled and the player has first pressed Begin/Resume, a two-second delay gives initial gameplay time to settle before the game upgrades one map at a time, with a short gap between upgrades. Failed upgrades retain the preview. Restarting a dive reuses the loaded maps; disposing the world cancels queued upgrades. Total eventual downloads include both preview and original files, but only the small previews compete for initial loading.
 
 Regenerate previews with `node playable/scripts/build-texture-previews.mjs`. Verify their exact mip data with `node --test playable/tests/texture-previews.test.cjs`. The standalone `playable/tests/texture-streaming-browser.cjs` exercises real GPU rendering, upgrade failures, restart reuse, and disposal against a Vite dev server (`GAME_URL`, default port 5184); set `PLAYWRIGHT_MODULE` to an installed Playwright module when needed.
+
+## Copper pipe distance detail
+
+The eight copper sections use a 1,457,764-byte distant model with 10,258 triangles per section (82,064 for the full run, about 79% fewer than the original 389,072). The authored geometry is simplified offline and its textures reduced to 256px; original bounds keep the wall placement and joints aligned. The unchanged 12,449,960-byte original downloads once when the player comes within 12 metres of any section. Each section switches to the original within 8 metres and back to the distant model beyond 9 metres. Loaded originals are reused on return visits and mission restarts. Failed detail downloads retain the distant model and retry at most three times with a ten-second cooldown.
+
+The offline generation script is `playable/scripts/build-copper-lod.mjs`; its header lists the optional build-tool dependencies. Normal game builds need no extra dependencies. `playable/tests/copper-lod-browser.cjs` checks actual rendering, fitting, distance switching, download reuse, and failure fallback against a Vite dev server.

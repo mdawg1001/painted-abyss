@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import {
  COPPER_PIPE_URL,COPPER_SOURCE,COPPER_AUTHOR,COPPER_LICENSE,
  COPPER_SECTION_COUNT,COPPER_JOINT_OVERLAP,COPPER_WALL_CLEARANCE,COPPER_AXIS_Y,
- copperWallSpan,copperSectionLength,copperMounts,fitCopperRun,
+ copperWallSpan,copperSectionLength,copperMounts,fitCopperRun,createCopperPipe,updateCopperPipe,
 } from '../src/copperPipeAsset';
 import { PIPE_MOUNT, PIPE_WALL_CLEARANCE, fitPipeToWall } from '../src/pipeAsset';
 import { WHEEL_CENTRE } from '../src/valve';
@@ -163,4 +163,31 @@ test('fitted copper volume meets the loaded hand-wheel pipe',async()=>{
  const disc=new THREE.Box3().setFromObject(wheel);
  assert.ok(copper.min.y<disc.min.y&&copper.max.y>disc.max.y,'copper surrounds the wheel height');
  assert.ok(copper.min.x<disc.min.x&&copper.max.x>disc.max.x,'copper crosses the wheel along the wall');
+});
+
+
+test('distant asset is smaller and keeps the authored fitting bounds',()=>{
+ const file=path.join(root,'public/assets/copper-pipe/copper_pipe_far.glb');
+ assert.ok(fs.statSync(file).size<2_000_000);
+ const json=glbJson(file);
+ const tris=json.nodes.reduce((n:number,node:any)=>n+(node.mesh===undefined?0:json.meshes[node.mesh].primitives.reduce((s:number,p:any)=>s+json.accessors[p.indices].count/3,0)),0);
+ assert.ok(tris<11000,`distant section has ${tris} triangles`);
+ const bounds=json.scenes[0].extras.lodSourceBounds;
+ assert.ok(bounds.min.every(Number.isFinite)&&bounds.max.every(Number.isFinite));
+ assert.ok(Math.abs(bounds.max[2]-bounds.min[2]-48.792)<.01);
+});
+
+test('section detail selection has hysteresis and original fetches wait for approach',()=>{
+ const visual=createCopperPipe();visual.ready=true;
+ visual.sections=[0,20].map(x=>({far:new THREE.Group(),near:new THREE.Group(),centre:new THREE.Vector3(x,0,0),detailed:false}));
+ const at=(x:number)=>updateCopperPipe(visual,new THREE.Vector3(x,0,0));
+ assert.equal(at(40),false);assert.ok(visual.sections.every(s=>s.far.visible&&!s.near!.visible));
+ assert.equal(at(11),true,'prefetch original near any section');
+ at(7);assert.equal(visual.sections[0].detailed,true);assert.equal(visual.sections[1].detailed,false);
+ at(8.5);assert.equal(visual.sections[0].detailed,true,'retain near until nine metres');
+ at(9.1);assert.equal(visual.sections[0].detailed,false);
+ at(8.5);assert.equal(visual.sections[0].detailed,false,'retain far until eight metres');
+ visual.detailLoading=true;assert.equal(at(5),false,'no duplicate download');
+ visual.detailLoading=false;visual.detailReady=true;assert.equal(at(5),false,'reuse originals');
+ visual.detailReady=false;visual.disposed=true;assert.equal(at(5),false,'no work after disposal');
 });

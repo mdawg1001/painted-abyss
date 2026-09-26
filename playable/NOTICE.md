@@ -108,3 +108,5 @@
 - License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
 - Files: `public/assets/doom-pipe/doom_pipe.glb` — official glTF (793,868 triangles) with the hand-wheel split into its own node, decimated to ~67k triangles and meshopt-compressed (`scripts/build-doom-pipe.mjs`); geometry otherwise unaltered
 - Leak-valve riser on the blind south wall of the far south-west cavern corner. Hold E at the wheel to turn the gate valve shut and stop the bunker leak.
+
+The copper-pipe distance LOD (`public/assets/copper-pipe/copper_pipe_far.glb`) is a modified version of pixol3d's CC BY 4.0 Copper Pipe Section credited above: mesh simplification and 256px texture resizing. The original file is retained unchanged.
