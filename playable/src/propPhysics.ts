@@ -32,9 +32,9 @@ export type ItemBody = {
 
 /**
  * Real-world figures (rounded). Density = mass / volume decides sink or float:
- * knife 6250, stone 2700, relic (fossil) 2600, gun 7000, pony full 1110,
- * spare bottle 1140, soaked coat 1070 → sink; driftwood 500, flare 830,
- * sealant kit 800 → float.
+ * knife 6250, stone 2700, relic (fossil) 2600, gun 7000, soviet key 6667,
+ * pony full 1110, spare bottle 1140, soaked coat 1070 → sink; driftwood 500,
+ * flare 830, sealant kit 800 → float.
  */
 export const ITEM_BODY: Record<Item, ItemBody> = {
  knife: { mass: .25, volume: .00004, height: .03, area: .006, cd: 1.1 },
@@ -47,6 +47,8 @@ export const ITEM_BODY: Record<Item, ItemBody> = {
  gun: { mass: .85, volume: .00012, height: .035, area: .02, cd: 1.1 },
  bottle: { mass: 8.0, volume: .007, height: .18, area: .1, cd: .9 },
  coat: { mass: 1.5, volume: .0014, height: .05, area: .35, cd: 1.3 },
+ // Weathered iron skeleton key — dense metal, sinks like the knife.
+ sovietKey: { mass: .08, volume: .000012, height: .02, area: .004, cd: 1.1 },
 };
 
 export const itemDensity = (item: Item) => ITEM_BODY[item].mass / ITEM_BODY[item].volume;

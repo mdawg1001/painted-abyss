@@ -10,7 +10,7 @@ const run=(item:Item,y:number,waterY:number,seconds:number,ground=FLOOR_Y)=>{
 };
 
 test('densities follow the real materials: steel, stone and fossil sink; wood and flare float',()=>{
- for(const i of ['knife','stone','relic','gun','bottle','air','coat'] as Item[])assert.ok(!itemFloats(i),`${i} ${itemDensity(i).toFixed(0)} kg/m³ sinks`);
+ for(const i of ['knife','stone','relic','gun','bottle','air','coat','sovietKey'] as Item[])assert.ok(!itemFloats(i),`${i} ${itemDensity(i).toFixed(0)} kg/m³ sinks`);
  for(const i of ['wood','flare','bandage'] as Item[])assert.ok(itemFloats(i),`${i} ${itemDensity(i).toFixed(0)} kg/m³ floats`);
 });
 
