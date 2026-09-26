@@ -1,0 +1,129 @@
+/**
+ * Combat Feedback Manager — punchy screen shake + brief hitstop.
+ *
+ * `triggerScreenShake` drives a decaying noise offset on the camera (heavy fire /
+ * taking damage). `triggerHitstop` freezes sim updates for a few milliseconds while
+ * rendering continues, so critical hits and kills feel weighty without a full pause.
+ *
+ * Pure module (no Three.js) so feel tuning stays unit-testable; CaveWorld samples
+ * the offset into camera space each frame.
+ */
+export type FeedbackOffset={x:number;y:number;z:number};
+
+export type FeedbackTick={
+ /** Sim dt: 0 while hitstopping, else the real frame dt. */
+ simDt:number;
+ /** Camera-local shake offset (metres) for this frame. */
+ offset:FeedbackOffset;
+ /** Current shake envelope (0..intensity). */
+ amplitude:number;
+ /** True while hitstop still has time left. */
+ hitstopping:boolean;
+};
+
+const ZERO:FeedbackOffset={x:0,y:0,z:0};
+
+/** Presets matched to existing First Dive combat juice. */
+export const COMBAT_FEEDBACK={
+ /** Player gunshot — short sharp punch. */
+ gunFire:{intensity:.22,duration:.12},
+ /** Heavier carbine / close blast. */
+ gunFireHeavy:{intensity:.38,duration:.18},
+ /** Guard round that lands on you. */
+ takeDamage:{intensity:.5,duration:.22},
+ /** Guard melee that lands. */
+ meleeHit:{intensity:.7,duration:.28},
+ /** Guardian / predator connected hit. */
+ predatorHit:{intensity:.55,duration:.24},
+ /** Headshot hitstop (ms). */
+ hitstopHead:45,
+ /** Kill hitstop (ms). */
+ hitstopKill:70,
+} as const;
+
+export class CombatFeedbackManager{
+ private shakeIntensity=0;
+ private shakeDuration=0;
+ private shakeElapsed=0;
+ private hitstopRemainingMs=0;
+
+ /**
+  * Shake the camera with a random/noise offset for `duration` seconds.
+  * Overlapping calls keep the stronger remaining envelope.
+  */
+ triggerScreenShake(intensity:number,duration:number):void{
+  const i=Math.max(0,intensity);
+  const d=Math.max(0,duration);
+  if(d<=0||i<=0)return;
+  const remain=Math.max(0,this.shakeDuration-this.shakeElapsed);
+  const current=remain>0?this.shakeIntensity*(remain/Math.max(this.shakeDuration,1e-6)):0;
+  if(i>=current){
+   this.shakeIntensity=i;
+   this.shakeDuration=d;
+   this.shakeElapsed=0;
+  }else{
+   this.shakeDuration=this.shakeElapsed+Math.max(remain,d);
+  }
+ }
+
+ /**
+  * Momentarily pause sim updates (not rendering) for `durationMillis`.
+  * Stacks by taking the longer remaining freeze.
+  */
+ triggerHitstop(durationMillis:number):void{
+  const ms=Math.max(0,durationMillis);
+  if(ms<=0)return;
+  this.hitstopRemainingMs=Math.max(this.hitstopRemainingMs,ms);
+ }
+
+ get isHitstopping():boolean{return this.hitstopRemainingMs>0;}
+
+ /**
+  * Advance real-time timers. Call every rendered frame with wall-clock `realDt`.
+  * `phaseTime` feeds the noise function (keep advancing during hitstop).
+  */
+ tick(realDt:number,phaseTime=0):FeedbackTick{
+  const dt=Math.max(0,realDt);
+  // Any frame that begins while hitstopping freezes the whole frame (even if the
+  // remaining millis expire mid-tick) so a 50 ms stop isn't eaten by a 40 ms dt.
+  const beganHitstopping=this.hitstopRemainingMs>0;
+  if(beganHitstopping){
+   this.hitstopRemainingMs=Math.max(0,this.hitstopRemainingMs-dt*1000);
+  }
+  const hitstopping=this.hitstopRemainingMs>0;
+  const simDt=beganHitstopping?0:dt;
+
+  let amplitude=0;
+  if(this.shakeDuration>0&&this.shakeElapsed<this.shakeDuration){
+   // Shake keeps moving during hitstop so the freeze still feels alive.
+   this.shakeElapsed+=dt;
+   const t=Math.min(1,this.shakeElapsed/this.shakeDuration);
+   const ease=(1-t)*(1-t);
+   amplitude=this.shakeIntensity*ease;
+  }else{
+   this.shakeIntensity=0;
+   this.shakeDuration=0;
+   this.shakeElapsed=0;
+  }
+
+  const offset=amplitude>1e-6?noiseOffset(phaseTime,amplitude):ZERO;
+  return{simDt,offset,amplitude,hitstopping};
+ }
+
+ reset():void{
+  this.shakeIntensity=0;
+  this.shakeDuration=0;
+  this.shakeElapsed=0;
+  this.hitstopRemainingMs=0;
+ }
+}
+
+/** Deterministic multi-sine “noise” scaled by amplitude (metres at intensity 1). */
+export function noiseOffset(phaseTime:number,amplitude:number):FeedbackOffset{
+ const a=amplitude;
+ return{
+  x:Math.sin(phaseTime*53.1)*a*.04+Math.sin(phaseTime*97.3)*a*.018,
+  y:Math.cos(phaseTime*41.7)*a*.035+Math.sin(phaseTime*67.9)*a*.014,
+  z:Math.sin(phaseTime*29.5+1.7)*a*.02,
+ };
+}
