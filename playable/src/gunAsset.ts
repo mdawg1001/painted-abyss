@@ -86,17 +86,21 @@ function cloneTree(src:THREE.Object3D,unlit:boolean){
   const next=mats.map(m=>{
    const sm=m as THREE.MeshStandardMaterial;
    if(unlit){
+    // Pickup meshes stay unlit but get a cyan lift so they read under bloom.
+    const color=sm.color?sm.color.clone():new THREE.Color(0xffffff);
+    color.lerp(new THREE.Color(0x7ae8ff),.18);
     return new THREE.MeshBasicMaterial({
      map:sm.map??null,
-     color:sm.color?sm.color.clone():new THREE.Color(0xffffff),
+     color,
      side:THREE.DoubleSide,
     });
    }
    const copy=sm.clone();
    copy.envMapIntensity=.45;
    if(!copy.emissive)copy.emissive=new THREE.Color(0x000000);
-   copy.emissive.setHex(0x222426);
-   copy.emissiveIntensity=.35;
+   // Cool neon undertone so held AK / guard TT-33 feed UnrealBloomPass without washing albedo.
+   copy.emissive.setHex(0x183848);
+   copy.emissiveIntensity=.72;
    copy.needsUpdate=true;
    return copy;
   });
