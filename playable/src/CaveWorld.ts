@@ -1,6 +1,7 @@
 import { PropStreaming } from './propStreaming';
 import { PALETTE } from './artPalette';
 import { DRY_DENSITY, DRY_FIELD, FLUORESCENT, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type FrameGrade } from './frameGrade';
+import { POST_FX_DPR_CAP, createBloomPass, createImpactFx, createImpactPass, resizeBloomPass, type ImpactFx, type ImpactPass } from './postFx';
 import * as THREE from 'three';
 import { applyGuardCombatPose, updateGuardMoveFrame } from './guardCombatPose';
 import { PISTOL } from './playerPistol';
@@ -14,6 +15,7 @@ import { ShaderChunk } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
 import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playSquadCall, pannedBus, playDoorBang, playSmokePop, playGrunt, playMeleeHit, playFleshHit, playSupply, playValveStroke, playValveSeat, playStashOpen, playStashClose, playStashDeposit, playStashWithdraw } from './diveAudio';
@@ -203,6 +205,10 @@ export class CaveWorld extends OceanWorld {
  /** Rest pose for the camera-parented lantern (local space). */
  torchRestPos=V(HELD_VIEW_POS.x,HELD_VIEW_POS.y,HELD_VIEW_POS.z);torchRestRot=new THREE.Euler(HELD_VIEW_ROT.x,HELD_VIEW_ROT.y,HELD_VIEW_ROT.z);
  composer!:EffectComposer;
+ /** Soft neon bloom (half-res UnrealBloomPass) + damage/dash chroma/vignette. */
+ bloom!:UnrealBloomPass;impactPass!:ImpactPass;impactFx:ImpactFx=createImpactFx();
+ /** Rising-edge trackers for impact FX (health drop + Shift sprint/run). */
+ fxHealthSeen=100;fxBursting=false;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
  /** Five Soviet guards (Quaternius soldier, dyed kits). */
  sovietGuards:SovietGuardVisual[]=[];
@@ -1740,9 +1746,15 @@ export class CaveWorld extends OceanWorld {
   ];
  }
  buildComposer(){
+  const w=this.host.clientWidth||1,h=this.host.clientHeight||1;
   this.composer=new EffectComposer(this.renderer);
   this.composer.addPass(new RenderPass(this.scene,this.camera));
-  // UnrealBloomPass skipped: bright-pass + 5 mip blurs on Retina made swim frames hitch.
+  // Soft neon bloom at half-res + capped DPR — avoids the old Retina hitch that dropped this pass.
+  this.bloom=createBloomPass(w,h);
+  this.composer.addPass(this.bloom);
+  this.impactPass=createImpactPass();
+  this.impactPass.setSize(w,h);
+  this.composer.addPass(this.impactPass);
   // Clip sits in front of output. Tone mapping is off, so this clamp is the grade.
   this.clipPass=createClipGradePass();
   this.composer.addPass(this.clipPass);
@@ -1750,7 +1762,7 @@ export class CaveWorld extends OceanWorld {
   this.setPixelRatio();
  }
  setPixelRatio(){
-  const dpr=Math.min(window.devicePixelRatio||1,1.5);
+  const dpr=Math.min(window.devicePixelRatio||1,POST_FX_DPR_CAP);
   this.renderer.setPixelRatio(dpr);
   this.composer?.setPixelRatio(dpr);
  }
@@ -1760,19 +1772,36 @@ export class CaveWorld extends OceanWorld {
   this.camera.aspect=w/h;this.camera.updateProjectionMatrix();
   this.setPixelRatio();
   this.renderer.setSize(w,h);this.composer?.setSize(w,h);
+  if(this.bloom)resizeBloomPass(this.bloom,w,h);
+  this.impactPass?.setSize(w,h);
+ }
+ /** Rising edge of Shift run (on foot) or Shift sprint (swim) — no dedicated dash. */
+ noteBurstMovement(bursting:boolean){
+  if(bursting&&!this.fxBursting)this.impactFx.pulseDash();
+  this.fxBursting=bursting;
+ }
+ /** Health drop → hit chroma/vignette; decay both channels into the impact pass. */
+ stepImpactFx(dt:number){
+  const hp=this.mission.health;
+  if(hp<this.fxHealthSeen-0.5)this.impactFx.pulseHit();
+  this.fxHealthSeen=hp;
+  this.impactFx.step(dt);
+  this.impactPass?.setIntensity(this.impactFx.intensity);
  }
  syncPickups(){
   for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);group.traverse(o=>{o.userData.gunAlive=false;if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
-  for(const p of this.mission.pickups){let group=this.pickupMeshes.get(p.id);if(!group){group=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:p.item==='relic'?0xe2b65e:0x82c8b7,emissive:p.item==='relic'?0x6b3c07:0x153c36,emissiveIntensity:.7,metalness:.4,roughness:.45});
-    if(p.item==='relic'){const points:THREE.Vector3[]=[],radii:number[]=[];for(let i=0;i<=72;i++){const t=i/72,a=t*Math.PI*4.5,r=.03+t*t*.62;points.push(V(Math.cos(a)*r,Math.sin(a)*r,0));radii.push(.01+t*.12);}group.add(this.tube(points,radii,mat,90,8));group.add(new THREE.PointLight(0xefbb68,3.5,7));}
+  for(const p of this.mission.pickups){let group=this.pickupMeshes.get(p.id);if(!group){group=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:p.item==='relic'?0xe2b65e:0x82c8b7,emissive:p.item==='relic'?0xff9a28:0x1a6a5c,emissiveIntensity:p.item==='relic'?1.35:.95,metalness:.4,roughness:.45});
+    if(p.item==='relic'){const points:THREE.Vector3[]=[],radii:number[]=[];for(let i=0;i<=72;i++){const t=i/72,a=t*Math.PI*4.5,r=.03+t*t*.62;points.push(V(Math.cos(a)*r,Math.sin(a)*r,0));radii.push(.01+t*.12);}group.add(this.tube(points,radii,mat,90,8));group.add(new THREE.PointLight(0xffb45a,5.5,8));}
     else if(p.item==='gun'||p.item==='bottle'||p.item==='coat'){
      const gear=this.gearPickupMesh(p.item);
      group.add(gear);
      if(p.item==='gun'){
+      // Neon tell so the floor carbine contributes to UnrealBloomPass.
+      group.add(new THREE.PointLight(0x5ce0ff,2.8,5.5));
       this.propStreaming.add(`pickup-gun-${p.id}`,{x:p.position.x,z:p.position.z},()=>mountAk74u(gear,'pickup'),40);
      }
     }
-    else if(p.item==='sovietKey')group.add(createSovietKeyPickup());
+    else if(p.item==='sovietKey'){group.add(createSovietKeyPickup());group.add(new THREE.PointLight(0xffc050,2.2,4.5));}
     else group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.3,1),mat));
     group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
     const pickup=group;
@@ -2118,7 +2147,7 @@ export class CaveWorld extends OceanWorld {
   }
   this.gunKick=Math.max(0,this.gunKick-dt*7);
   const f=this.playerFlashT;
-  this.playerFlash.intensity=f>0?26*f*f:0;
+  this.playerFlash.intensity=f>0?36*f*f:0;
   this.playerFlashGlow.visible=f>0;
   this.playerFlashGlow.material.opacity=f;
   this.playerFlashGlow.scale.setScalar(.05+.08*f);
@@ -2211,6 +2240,7 @@ export class CaveWorld extends OceanWorld {
   this.onFoot=true;this.wasOnFoot=true;this.gait.reset();
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
   this.shakeAmp=0;this.knifeFlashUntil=0;this.knifeEquipAt=null;this.stabQueue=0;
+  this.impactFx.reset();this.fxHealthSeen=this.mission.health;this.fxBursting=false;
   if(this.knifeVisual){poseKnife(this.knifeVisual);this.knifeVisual.visible=this.holdingKnife()&&knifeMeshReady(this.knifeVisual);}
   if(this.gunVisual)this.gunVisual.visible=this.holdingGun();
   if(this.keyVisual)this.keyVisual.visible=this.holdingKey();
@@ -2280,6 +2310,7 @@ export class CaveWorld extends OceanWorld {
     // Hold C: crouch-walk. Half speed, no running, and the guards' eyes lose 35% of their reach.
     m.crouching=!!pressed('KeyC');
     const wantRun=!m.crouching&&!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&localZ>0;
+    this.noteBurstMovement(wantRun);
     const wadeDepth=Math.max(0,m.breathWaterY-FLOOR_Y);
     const crouchSlow=m.crouching?SURVIVAL.stealth.speedFactor:1;
     const events=this.gait.step(localX,localZ,wantRun,dt,wadingDrag(wadeDepth)*crouchSlow);
@@ -2307,6 +2338,7 @@ export class CaveWorld extends OceanWorld {
    }
    m.buoyancy=updateBuoyancy(m.buoyancy,bcd,dt,m.buoyancyTrim);
    const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.01;
+   this.noteBurstMovement(sprint);
    stepSwimVelocity(this.velocity,this.move,m.buoyancy,sprint,dt);
    moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);
    // Corridor flood is a local ceiling. The cave column is unchanged.
@@ -2321,6 +2353,7 @@ export class CaveWorld extends OceanWorld {
     this.onFoot=canWalk(m.position,m.breathWaterY);
     this.velocity.set(0,0,0);
     this.gait.step(0,0,false,dt);
+    this.noteBurstMovement(false);
     m.update(dt,false);this.position.copy(m.position);
     this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
    }
@@ -2419,6 +2452,7 @@ export class CaveWorld extends OceanWorld {
    if(m.outcome==='lost')this.applyBreathRespawn();
    else if(m.outcome!=='playing')this.pause();
   }
+  this.stepImpactFx(this.playing?dt:0);
   // Three fields, assigned. Depth and the exit do not tint the fog.
   const fog=this.scene.fog as THREE.FogExp2;
   const corridorAir=breathingFreeAir(this.position,this.mission.breathWaterY);
