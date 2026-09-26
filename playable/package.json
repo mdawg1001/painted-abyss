@@ -1,13 +1,13 @@
 {
   "name": "painted-abyss-first-dive",
-  "version": "0.17.8",
+  "version": "0.17.9",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "node --import tsx --test tests/*.test.ts",
+    "test": "node --import tsx --test tests/*.test.ts tests/*.test.cjs",
     "start": "node serve.mjs",
     "refresh": "node refresh.mjs"
   },
