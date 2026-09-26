@@ -1,11 +1,11 @@
-# Painted Abyss — First Dive · 0.19.5
+# Painted Abyss — First Dive · 0.19.6
 
 
 
 
-## Cast-iron radiators (0.19.5)
+## Cast-iron radiators (0.19.6)
 
-Sketchfab [Vintage Cast Iron Radiator](https://sketchfab.com/3d-models/vintage-cast-iron-radiator-3d-model-7d4d8077bc524dbeb11a28ca09badf57) (Ati, CC BY 4.0) — official glTF under `playable/public/assets/vintage-radiator/`. Twelve human-scale units sit flush on the breath-corridor and entrance / approach lab walls as installed heating (clear of the hatch stash and guard centerline). Credit in `playable/NOTICE.md`.
+Sketchfab [Vintage Cast Iron Radiator](https://sketchfab.com/3d-models/vintage-cast-iron-radiator-3d-model-7d4d8077bc524dbeb11a28ca09badf57) (Ati, CC BY 4.0) — official glTF under `playable/public/assets/vintage-radiator/`. Four room-scale units (~1.35 m tall) sit flush on memorable breath-corridor and entrance-lab walls as installed heating (clear of the hatch stash and guard centerline). Credit in `playable/NOTICE.md`.
 
 ## Guard animations from the Asset Store (0.19.4)
 
@@ -204,7 +204,7 @@ New mission rules live in `playable/src/simulation.ts`; cave rendering and input
 - **Dive chests** (CC0 1.0): [Wooden Military Crate](https://polyhaven.com/a/wooden_military_crate) (Prabhjinder Singh), [Plastic Crate 02](https://polyhaven.com/a/plastic_crate_02) (Fabi_G), [Vintage Suitcase](https://polyhaven.com/a/vintage_suitcase) (Maximilian Schuster). Floor props under `playable/public/assets/chests/`. The military crate and suitcase open with **E**, then **E** takes the chart scrap. The plastic crate has no lid — the scrap is already visible and **E** grabs it.
 - **Map scrap scroll** (CC BY 4.0): [Scroll (game ready asset)](https://sketchfab.com/3d-models/scroll-game-ready-asset-c1503d2292c74faebf83a5937646c1c7) (Aparicio Silva 3D). Authored mesh and PBR maps under `playable/public/assets/scroll/`. It sits in the open-top plastic crate the whole time, and inside a lidded crate after that crate is opened.
 - **Copper pipe section** (CC BY 4.0): [Copper Pipe Section](https://sketchfab.com/3d-models/copper-pipe-section-91807ce330af449bbd3c59b5ede8ce67) (pixol3d). Official glTF under `playable/public/assets/copper-pipe/`. The same section is repeated along the full blind south wall of the far south-west cavern, joined to the hand-wheel pipe.
-- **Vintage cast-iron radiator** (CC BY 4.0): [Vintage Cast Iron Radiator 3D Model](https://sketchfab.com/3d-models/vintage-cast-iron-radiator-3d-model-7d4d8077bc524dbeb11a28ca09badf57) (Ati). Official glTF under `playable/public/assets/vintage-radiator/`. Several wall-mounted copies on the breath corridor and entrance / approach lab walls.
+- **Vintage cast-iron radiator** (CC BY 4.0): [Vintage Cast Iron Radiator 3D Model](https://sketchfab.com/3d-models/vintage-cast-iron-radiator-3d-model-7d4d8077bc524dbeb11a28ca09badf57) (Ati). Official glTF under `playable/public/assets/vintage-radiator/`. Four room-scale wall units on the breath corridor and entrance lab.
 
 ## Validation and limits
 

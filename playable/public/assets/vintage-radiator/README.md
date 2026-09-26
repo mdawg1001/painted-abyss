@@ -16,5 +16,5 @@ First Dive ships:
 - `vintage_radiator.glb` — the official Sketchfab glTF download (10,000 triangles).
   Mesh and textures are unchanged.
 
-Wired in `src/radiatorAsset.ts`. Several copies sit flush on breath-corridor and
-entrance-lab walls as installed cast-iron heating (human-scale height).
+Wired in `src/radiatorAsset.ts`. Four copies sit flush on memorable breath-corridor
+and entrance-lab walls as installed cast-iron heating (~1.35 m tall).

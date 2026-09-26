@@ -3,9 +3,9 @@
  * (CC BY 4.0).
  * https://sketchfab.com/3d-models/vintage-cast-iron-radiator-3d-model-7d4d8077bc524dbeb11a28ca09badf57
  *
- * Official Sketchfab glTF, unchanged. Several units sit flush on Soviet breath-
- * corridor and entrance-lab walls as installed heating — human-scale height,
- * clear of the hatch stash and the guard wall-clearance path.
+ * Official Sketchfab glTF, unchanged. Four room-scale units sit flush on
+ * memorable Soviet breath-corridor and entrance-lab walls as installed
+ * heating — clear of the hatch stash and the guard wall-clearance path.
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
@@ -19,13 +19,16 @@ export const RADIATOR_AUTHOR_URL='https://sketchfab.com/azripxd';
 export const RADIATOR_LICENSE='CC BY 4.0';
 
 /**
- * Real cast-iron column radiator height (m). The authored mesh is ~2 m tall in
- * Sketchfab units; uniform scale brings it to this.
+ * Room-scale cast-iron radiator height (m) — waist-to-chest / window-sill for a
+ * standing adult. The authored mesh is ~2 m tall in Sketchfab units; uniform
+ * scale brings it to this (width ~1.35 m, depth ~0.43 m).
  */
-export const RADIATOR_TARGET_HEIGHT=.92;
+export const RADIATOR_TARGET_HEIGHT=1.35;
+/** Exact count of wall units (memorable corridor + lab faces only). */
+export const RADIATOR_COUNT=4;
 /**
  * Rear face stand-off from the wall plane into the room (m). Clears rock face
- * bumps without floating; depth after scale is ~0.29 m, so the front stays
+ * bumps without floating; depth after scale is ~0.43 m, so the front stays
  * well inside GUARD_WALL_CLEARANCE (1.3 m).
  */
 export const RADIATOR_WALL_CLEARANCE=.22;
@@ -41,36 +44,27 @@ const inwardVec=(yaw:number)=>new THREE.Vector3(Math.sin(yaw),0,Math.cos(yaw));
 const alongVec=(yaw:number)=>new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));
 
 /**
- * Curated wall mounts: breath-corridor long walls + entrance / approach lab
- * faces. Along-wall offsets and slight yaw jitter so they read as bolted
- * heating rather than a perfect grid. Yaw 0 / ±π/2 follow wallSconceMounts
- * (inward normal into the room).
+ * Four memorable wall mounts: mid breath corridor (both long walls) + entrance
+ * lab (both long walls). Along-wall offsets and slight yaw jitter so they read
+ * as bolted heating. Yaw ±π/2 follows wallSconceMounts (inward into the room).
  */
 export function radiatorMounts():RadiatorMount[]{
  const mounts:RadiatorMount[]=[
-  // Breath corridor — west wall (inward +X), staggered along Z toward the cave.
-  {x:-6,z:20,yaw:Math.PI/2,along:-.35,yawJitter:.04,label:'breath-west-a'},
-  {x:-6,z:12,yaw:Math.PI/2,along:.55,yawJitter:-.03,label:'breath-west-b'},
-  {x:-6,z:4,yaw:Math.PI/2,along:-.2,yawJitter:.02,label:'breath-west-c'},
-  // Breath corridor — east wall (inward −X), offset from the west cluster.
-  {x:2,z:16,yaw:-Math.PI/2,along:.4,yawJitter:-.05,label:'breath-east-a'},
-  {x:2,z:8,yaw:-Math.PI/2,along:-.45,yawJitter:.03,label:'breath-east-b'},
-  {x:2,z:0,yaw:-Math.PI/2,along:.25,yawJitter:-.02,label:'breath-east-c'},
-  // Entrance lab — west + east long walls.
-  {x:-14,z:-8,yaw:Math.PI/2,along:.3,yawJitter:.05,label:'lab-west-a'},
-  {x:-14,z:-16,yaw:Math.PI/2,along:-.5,yawJitter:-.04,label:'lab-west-b'},
-  {x:14,z:-8,yaw:-Math.PI/2,along:-.35,yawJitter:.03,label:'lab-east-a'},
-  {x:14,z:-16,yaw:-Math.PI/2,along:.45,yawJitter:-.06,label:'lab-east-b'},
-  // Approach corridor south of the entrance (cols 10–12).
-  {x:-6,z:-28,yaw:Math.PI/2,along:.2,yawJitter:.02,label:'approach-west'},
-  {x:6,z:-36,yaw:-Math.PI/2,along:-.3,yawJitter:-.03,label:'approach-east'},
+  // Breath corridor — mid run, west then east (opposite sides, different Z).
+  {x:-6,z:12,yaw:Math.PI/2,along:.4,yawJitter:-.03,label:'breath-west'},
+  {x:2,z:8,yaw:-Math.PI/2,along:-.35,yawJitter:.04,label:'breath-east'},
+  // Entrance lab — west + east long walls (first chamber past the hatch corridor).
+  {x:-14,z:-12,yaw:Math.PI/2,along:-.25,yawJitter:.05,label:'lab-west'},
+  {x:14,z:-16,yaw:-Math.PI/2,along:.45,yawJitter:-.04,label:'lab-east'},
  ];
  const spawn=breathHatchSpawn();
- return mounts.filter(m=>{
+ const kept=mounts.filter(m=>{
   if(Math.hypot(m.x-STASH_POSITION.x,m.z-STASH_POSITION.z)<RADIATOR_STASH_CLEAR)return false;
   if(Math.hypot(m.x-spawn.x,m.z-spawn.z)<RADIATOR_HATCH_CLEAR)return false;
   return true;
  });
+ if(kept.length!==RADIATOR_COUNT)throw new Error(`expected ${RADIATOR_COUNT} radiator mounts, got ${kept.length}`);
+ return kept;
 }
 
 /** Procedural stand-in: dark iron box on the floor until the glTF arrives. */
@@ -78,7 +72,7 @@ export function buildRadiatorStub(mount:RadiatorMount):THREE.Group{
  const root=new THREE.Group();
  root.name='radiatorStub';
  const h=RADIATOR_TARGET_HEIGHT;
- const w=.88,d=.28;
+ const w=1.28,d=.42;
  const mat=new THREE.MeshStandardMaterial({
   color:0x3a3530,roughness:.72,metalness:.45,
   emissive:0x1a1510,emissiveIntensity:.12,
