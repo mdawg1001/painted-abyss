@@ -519,6 +519,8 @@ export function moveBody(p:Point,dx:number,dy:number,dz:number,r=.48){
  const steps=Math.max(1,Math.ceil(Math.hypot(dx,dy,dz)/.25));
  for(let n=0;n<steps;n++)for(const [axis,delta] of [['x',dx],['y',dy],['z',dz]] as const){const next={...p,[axis]:p[axis]+delta/steps};if(fits(next,r))p[axis]=next[axis];}
 }
+/** Multiplier on every guard pick-up distance: `SURVIVAL.stealth.sightFactor` while crouched, 1 standing. */
+export function stealthSightFactor(crouching:boolean){return crouching?SURVIVAL.stealth.sightFactor:1;}
 export function visible(a:Point,b:Point){const n=Math.ceil(distance(a,b)/.4);for(let i=0;i<=n;i++){const t=n?i/n:0;if(!isOpen(a.x+(b.x-a.x)*t,a.z+(b.z-a.z)*t))return false;}return true;}
 function predatorCell(col:number,row:number){return col>=4&&col<=18&&row>=12&&row<=28&&cells.has(`${col},${row}`);}
 /** Minimum diver↔guardian spawn separation each dive (metres). */
@@ -1196,6 +1198,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  mapOpen=false;
  pending:number|null=null;outcome:'playing'|'won'|'lost'='playing';reason='';
  /** First-play inventory guidance only; repeating select/use text is intentionally silent. */
+ /** Holding crouch (C) on foot: guards find you 35% harder to see (see SURVIVAL.stealth). */
+ crouching=false;
  tipsSeen=false;notice='';noticeUntil=0;feedbackKind:FeedbackKind='';feedbackPulse=0;
  predator={
   position:world(16,19),state:'patrol' as PredatorState,timer:0,lost:0,lastKnown:world(16,19),waypoint:0,bite:0,heading:0,
@@ -2078,8 +2082,12 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   // notices anyone right beside him whichever way he faces.
   const toward=Math.atan2(this.position.x-g.position.x,this.position.z-g.position.z);
   const inView=Math.abs(wrapAngle(toward-g.heading))<=GUARD_FOV_HALF;
-  const sense=canSee&&(d<2.5||(inView&&d<(this.torch?16:9))||(sprinting&&d<11));
+  // Crouched you are a smaller, lower shape: every pick-up distance shrinks (Hitman-style sneak).
+  const k=stealthSightFactor(this.crouching);
+  const sense=canSee&&(d<2.5*k||(inView&&d<(this.torch?16:9)*k)||(sprinting&&!this.crouching&&d<11));
   const tracking=canSee&&d<GUARD_GUN_RANGE+8;
+  // A guard who has lost you has to find you again: crouching counts against that too.
+  const reacquire=canSee&&d<(GUARD_GUN_RANGE+8)*k;
   if(g.state==='patrol'&&sense){
    g.state='alert';g.timer=0;g.lastKnown={...this.position};g.firstShot=true;
    this.squadAlert(g,'spotted');
@@ -2091,7 +2099,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    // Sight lost: go to where he last saw you and search from there.
    if(g.lost>SURVIVAL.loseSightSeconds){g.state='search';g.timer=0;g.arrived=false;}
   }else if(g.state==='search'){
-   if(sense||tracking){
+   if(sense||reacquire){
     g.state='chase';g.timer=0;g.lost=0;g.lastKnown={...this.position};
     if(g.team<=this.elapsed)this.squadAlert(g,'spotted');
    }else if(g.arrived&&g.timer>SURVIVAL.searchSeconds){

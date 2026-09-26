@@ -1,5 +1,9 @@
-# Painted Abyss — First Dive · 0.19.1
+# Painted Abyss — First Dive · 0.19.2
 
+
+## Crouch and sneak (0.19.2)
+
+Hold **C** on foot to crouch, Hitman-style. The camera drops about 0.6 m and you move at half walking speed with no running (so no running noise). Guards find you **35% harder to see**: every distance at which a guard can pick you up is cut to 0.65 (close-contact 2.5 m to 1.6 m, in-view 9 m to 5.9 m, lit torch 16 m to 10.4 m), and a searching guard needs you within 65% of his usual range to re-acquire you. Crouching is not invisibility: close in, in his view, he still sees you, and a guard already chasing you keeps you. Use it to slip past patrols when ammo is low or you would rather not start a firefight. Tuning in `SURVIVAL.stealth` (`playable/src/survivalConfig.ts`).
 ## Progressive prop loading (0.17.8)
 
 The hatch, cave textures, weapons, guards and shared lighting load first. Crates, map scrolls, lifebuoy, posters and the distant valve/copper models upgrade as the player approaches (40–48 m lead distance). At most two prop upgrades run together, after a brief startup head start for essential assets. Basic crate/scroll visuals and gameplay interactions exist immediately; lid state is restored if a crate opens before its model finishes. Loaded props remain available through death and restart. Failed downloads retry up to three times with a cooldown.

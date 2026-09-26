@@ -97,6 +97,13 @@ export const SURVIVAL={
  // ── Perception ─────────────────────────────────────────────────────────────────
  /** Your pistol is heard this far (through walls: sound carries). Hearing gives position, not sight. */
  gunshotHearing:30,
+ /**
+  * Crouch (hold C), Hitman-style sneaking. A crouched body is a smaller, lower silhouette:
+  * every distance at which a guard can pick you up is cut to `sightFactor` (0.65 = 35 % harder
+  * to see), including a searching guard re-acquiring you. A guard already hunting you in a chase
+  * keeps you. Crouched you move at `speedFactor` of a walk, cannot run, and make no running noise.
+  */
+ stealth:{sightFactor:.65,speedFactor:.5,eyeDrop:.62,blendSeconds:.22},
  /** Sight lost this long → he goes to where he last saw you and searches. */
  loseSightSeconds:2.2,
  searchSeconds:7,
