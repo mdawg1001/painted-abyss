@@ -1,3 +1,4 @@
+import { CombatFeedbackManager, COMBAT_FEEDBACK } from './combatFeedback';
 import { PropStreaming } from './propStreaming';
 import { PALETTE } from './artPalette';
 import { DRY_DENSITY, DRY_FIELD, FLUORESCENT, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type FrameGrade } from './frameGrade';
@@ -280,7 +281,12 @@ export class CaveWorld extends OceanWorld {
  keyVisual:THREE.Group|null=null;
  /** PMREM for Poly Haven metal/wood specular on the held knife. */
  knifeEnvMap:THREE.Texture|null=null;
- shakeAmp=0;
+ /** Timed screen shake + hitstop (critical hits / kills freeze sim, not render). */
+ combatFeedback=new CombatFeedbackManager();
+ /** Real-time phase clock for shake noise (keeps advancing during hitstop). */
+ shakeClock=0;
+ /** Last sampled shake offset (camera-local metres) from `combatFeedback.tick`. */
+ combatShakeOffset={x:0,y:0,z:0};
  /** Soft additive caustic floor pools under major light shafts. */
  causticPools:THREE.Mesh[]=[];
  /** Rising water in the breath corridor only. */
@@ -1273,7 +1279,10 @@ export class CaveWorld extends OceanWorld {
       playGunshot(ctx,bus,Math.hypot(g.position.x-this.position.x,g.position.z-this.position.z));
       if(!g.lastShotHit)playRicochet(ctx,master);
      }
-     this.shakeAmp=Math.max(this.shakeAmp,g.lastShotHit?.5:.12);
+     this.combatFeedback.triggerScreenShake(
+      g.lastShotHit?COMBAT_FEEDBACK.takeDamage.intensity:COMBAT_FEEDBACK.gunFire.intensity*.55,
+      g.lastShotHit?COMBAT_FEEDBACK.takeDamage.duration:.1,
+     );
     }
    }
    this.guardRecoil[i]=Math.max(0,(this.guardRecoil[i]??0)-dt*6);
@@ -1293,7 +1302,7 @@ export class CaveWorld extends OceanWorld {
     this.guardStrikeSeen[i]=g.strikeAt;
     const landed=this.mission.lastStrike?.at===g.strikeAt&&this.mission.lastStrike.landed;
     if(this.audible())playMeleeHit(this.audioContext!,pannedBus(this.audioContext!,this.master!,this.panFor(g.position),1),!!landed);
-    if(landed)this.shakeAmp=Math.max(this.shakeAmp,.7);
+    if(landed)this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.meleeHit.intensity,COMBAT_FEEDBACK.meleeHit.duration);
    }
    const strikeAge=this.mission.elapsed-g.strikeAt;
    const clipOwnsBody=!!act&&act.kind==='death'&&actW>.5;
@@ -1975,7 +1984,7 @@ export class CaveWorld extends OceanWorld {
   }
   if(stepped.seated){
    if(audible)playValveSeat(ctx!,master!);
-   this.shakeAmp=Math.max(this.shakeAmp,.35);
+   this.combatFeedback.triggerScreenShake(.35,.18);
   }
   // Step square to the wheel over the first half-second; stay there until the hands are off.
   const k=smootherstep(this.valveClock/.45);
@@ -2007,10 +2016,7 @@ export class CaveWorld extends OceanWorld {
    .addScaledVector(this.forward,lean)
    .addScaledVector(this.right,Math.sin(this.time*47)*tremor)
    .addScaledVector(this.upAxis,Math.cos(this.time*41)*tremor);
-  if(this.shakeAmp>.001){
-   this.camera.position.addScaledVector(this.upAxis,Math.cos(this.time*37)*this.shakeAmp*.02);
-   this.shakeAmp=Math.max(0,this.shakeAmp-dt*2.8);
-  }
+  this.applyCombatShake();
   if(this.wallPipe)setPipeWheel(this.wallPipe,m.valveTurned);
   // Torch hangs clipped to the chest harness, angled past the wheel so its spill (not the hot spot) lights the hands.
   this.torchBody.position.set(.06,-.33,.02);
@@ -2070,6 +2076,15 @@ export class CaveWorld extends OceanWorld {
   this.publish();
  }
  audible(){const ctx=this.audioContext;return !!(this.sound&&ctx&&this.master&&ctx.state==='running');}
+ /** Apply the latest combat-feedback shake in camera space (right / up / forward). */
+ applyCombatShake(){
+  const o=this.combatShakeOffset;
+  if(Math.abs(o.x)+Math.abs(o.y)+Math.abs(o.z)<1e-6)return;
+  this.camera.position
+   .addScaledVector(this.right,o.x)
+   .addScaledVector(this.upAxis,o.y)
+   .addScaledVector(this.forward,o.z);
+ }
  /** Juice hook: muzzle flash. A hot point light and an additive glow card at the barrel, ~50 ms. */
  pistolMuzzleFlash(){
   this.placePlayerMuzzle();
@@ -2116,7 +2131,9 @@ export class CaveWorld extends OceanWorld {
   this.gunKick=1;
  }
  /** Juice hook: camera shake, a short sharp punch rather than a long wobble. */
- pistolCameraShake(){this.shakeAmp=Math.max(this.shakeAmp,.22);}
+ pistolCameraShake(){
+  this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.gunFireHeavy.intensity,COMBAT_FEEDBACK.gunFireHeavy.duration);
+ }
  /** Sounds and feedback for the pistol's combat cue. */
  consumePistolCue(){
   const cue=this.mission.combatCue;
@@ -2127,6 +2144,11 @@ export class CaveWorld extends OceanWorld {
   if(cue==='pistol-reload'){if(a)playPistolClick(ctx,master);return;}
   if(cue==='pistol-hit'||cue==='pistol-head'||cue==='pistol-kill'){
    if(a)playHitMarker(ctx,master,cue==='pistol-kill'?'kill':cue==='pistol-head'?'head':'hit');
+   if(cue==='pistol-head')this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopHead);
+   if(cue==='pistol-kill'){
+    this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopKill);
+    this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.gunFireHeavy.intensity*1.15,COMBAT_FEEDBACK.gunFireHeavy.duration);
+   }
   }
  }
  /** Per-frame pistol feel: buffered pull, recoil recovery, flash decay, reload snap. */
@@ -2178,13 +2200,15 @@ export class CaveWorld extends OceanWorld {
   }
   if(cue==='stab-guard'||cue==='stab-guard-kill'){
    if(audible)playStabSound(ctx!,master!,true);
-   this.shakeAmp=Math.max(this.shakeAmp,cue==='stab-guard-kill'?.45:.3);
+   this.combatFeedback.triggerScreenShake(cue==='stab-guard-kill'?.45:.3,.2);
+   if(cue==='stab-guard-kill')this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopKill);
    return;
   }
   if(cue==='stab-hit'||cue==='break'||cue==='kill'){
    if(audible)playStabSound(ctx!,master!,true);
-   this.shakeAmp=Math.max(this.shakeAmp,cue==='kill'?.55:.32);
+   this.combatFeedback.triggerScreenShake(cue==='kill'?COMBAT_FEEDBACK.predatorHit.intensity:.32,COMBAT_FEEDBACK.predatorHit.duration);
    if(cue==='kill'){
+    this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopKill);
     if(audible)playGuardianDeath(ctx!,master!);
     this.spawnBlood(this.mission.predator.position,'kill');
    }else{
@@ -2239,7 +2263,7 @@ export class CaveWorld extends OceanWorld {
   this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();
   this.onFoot=true;this.wasOnFoot=true;this.gait.reset();
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
-  this.shakeAmp=0;this.knifeFlashUntil=0;this.knifeEquipAt=null;this.stabQueue=0;
+  this.combatFeedback.reset();this.shakeClock=0;this.knifeFlashUntil=0;this.knifeEquipAt=null;this.stabQueue=0;
   this.impactFx.reset();this.fxHealthSeen=this.mission.health;this.fxBursting=false;
   if(this.knifeVisual){poseKnife(this.knifeVisual);this.knifeVisual.visible=this.holdingKnife()&&knifeMeshReady(this.knifeVisual);}
   if(this.gunVisual)this.gunVisual.visible=this.holdingGun();
@@ -2263,7 +2287,13 @@ export class CaveWorld extends OceanWorld {
     updateCopperPipe(visual,this.position);
    });
   }
-  this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);
+  this.frame=requestAnimationFrame(this.animate);
+  const realDt=Math.min(this.clock.getDelta(),.05);
+  this.shakeClock+=realDt;
+  const feedback=this.combatFeedback.tick(realDt,this.shakeClock);
+  this.combatShakeOffset=feedback.offset;
+  // Hitstop freezes sim updates (mission, movement, AI) while rendering continues.
+  const dt=feedback.simDt;
   if(this.playing){this.time+=dt;const m=this.mission;this.drainStabQueue();
    const pressed=(...keys:string[])=>keys.some(k=>this.keys.has(k))?1:0;
    if(m.mapOpen){
@@ -2399,13 +2429,8 @@ export class CaveWorld extends OceanWorld {
    this.camera.position.x=THREE.MathUtils.lerp(this.camera.position.x,eyeX,follow);
    this.camera.position.y=THREE.MathUtils.lerp(this.camera.position.y,eyeY,follow);
    this.camera.position.z=THREE.MathUtils.lerp(this.camera.position.z,eyeZ,follow);
-   // Light combat shake (decays); applied after bob so it does not fight hover.
-   if(this.shakeAmp>0.001){
-    const s=this.shakeAmp;
-    this.camera.position.addScaledVector(this.right,Math.sin(this.time*48)*s*.04);
-    this.camera.position.addScaledVector(this.upAxis,Math.cos(this.time*37)*s*.03);
-    this.shakeAmp=Math.max(0,this.shakeAmp-dt*2.8);
-   }
+   // Combat feedback shake (noise envelope); applied after bob so it does not fight hover.
+   this.applyCombatShake();
    const knifeHeld=this.holdingKnife();
    this.applyTorchHover(bobBlend);
    if(this.knifeVisual){

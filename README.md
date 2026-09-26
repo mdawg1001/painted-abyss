@@ -3,6 +3,10 @@
 
 
 
+## Combat Feedback Manager (0.20.1)
+
+`playable/src/combatFeedback.ts` — `triggerScreenShake(intensity, duration)` drives a decaying noise camera offset (heavy fire / taking damage); `triggerHitstop(durationMillis)` freezes sim updates for a few milliseconds while rendering continues (crits / kills). Wired through CaveWorld’s animate loop via `simDt` and camera-local shake.
+
 ## AK74U FPS inventory gun (0.19.8)
 
 Sketchfab [AK74U | FREE ANIMATION](https://sketchfab.com/3d-models/ak74u-free-animation-2ab66220c48b465e9501067667965569) (BURNER / @Alexander_Ovelar, CC BY 4.0) — official viewer mesh + `DRAW` / `IDLE` / `SHOOT` / `RELOAD*` clips under `playable/public/assets/ak74u/`. Replaces the diver’s held gun (animated FPS arms+carbine) and corridor floor pickup; Soviet guards still carry the TT-33. Credit in `playable/NOTICE.md`.
