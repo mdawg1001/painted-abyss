@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.18.3
+# Painted Abyss — First Dive · 0.18.4
 
 ## Progressive prop loading (0.17.8)
 
@@ -200,3 +200,9 @@ This is intentionally prototype-quality: one level, one procedural creature, sim
 The built-game server (`node playable/serve.mjs`) reuses downloaded assets. Vite-generated files with content hashes in their names are cached for a year; a changed file gets a new URL on the next build. Fixed-name models, textures, and audio use content-based ETags: unchanged requests receive an empty HTTP 304 response, while changed files are downloaded again. HTML and build-status responses remain uncached so new builds are discovered. Restart an already-running server once after installing this update. This improves repeat visits; the initial visit still needs to download assets.
 
 Run the focused HTTP regression check with `node --test playable/tests/asset-cache.test.cjs`. It covers unchanged responses, same-size file edits, weak/list validators, HEAD requests, cache policy, and path containment.
+
+## Progressive cave texture detail
+
+Rock, floor, and moss first use 256×256 KTX2 previews (718,863 bytes combined). These are the exact lower mip levels from the nine original 2048×2048 maps, with the same color space, normal maps, and packed ARM channels; the originals are unchanged. Once previews have settled and the player has first pressed Begin/Resume, a two-second delay gives initial gameplay time to settle before the game upgrades one map at a time, with a short gap between upgrades. Failed upgrades retain the preview. Restarting a dive reuses the loaded maps; disposing the world cancels queued upgrades. Total eventual downloads include both preview and original files, but only the small previews compete for initial loading.
+
+Regenerate previews with `node playable/scripts/build-texture-previews.mjs`. Verify their exact mip data with `node --test playable/tests/texture-previews.test.cjs`. The standalone `playable/tests/texture-streaming-browser.cjs` exercises real GPU rendering, upgrade failures, restart reuse, and disposal against a Vite dev server (`GAME_URL`, default port 5184); set `PLAYWRIGHT_MODULE` to an installed Playwright module when needed.
