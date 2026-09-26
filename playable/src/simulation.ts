@@ -4,6 +4,17 @@ import { SURVIVAL, SURVIVAL_COVER, type GuardRole } from './survivalConfig';
 import { Director, patrolPosts, nearestFree, pistolDamage, rayWallPoint, smokeBlocks, smokeAlive, smokeLanding, survivalDoors, makeCaches, type SmokeCloud, type SmokeGrenade, type SupplyCache, type SupplyKind } from './survival';
 import { PISTOL, makePistol, tickPistol, startReload, canFire, spendRound, takeDamage, hitscan, type PistolState } from './playerPistol';
 import { VALVE_CLOSE_RAD, VALVE_REACH, VALVE_STAND, WHEEL_CENTRE, leakFlowFraction } from './valve';
+import {
+ STASH_AMMO_PACK, STASH_CAPACITY, STASH_POSITION, STASH_REACH,
+ firstEmptyStashSlot, firstFilledStashSlot, isStashItem, readStash,
+ stashSlotLabel, writeStash,
+ type StashCue, type StashSlot,
+} from './stash';
+export {
+ STASH_AMMO_PACK, STASH_CAPACITY, STASH_POSITION, STASH_REACH, STASH_STORAGE_KEY, STASH_YAW,
+ emptyStash, isStashItem, readStash, stashSlotLabel, writeStash,
+ type StashCue, type StashItem, type StashSlot,
+} from './stash';
 export type Point={x:number;y:number;z:number};
 export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife'|'gun'|'bottle'|'coat';
 export type Pickup={id:number;item:Item;position:Point;
@@ -217,6 +228,33 @@ export function chestInteractPrompt(chest:Chest,taken:boolean){
  if(!chestHasLid(chest.kind))return taken?`The ${label} is empty`:'E · Grab chart scrap';
  if(!chest.open)return `E · Open ${label}`;
  return taken?`The ${label} is empty`:'E · Take chart scrap';
+}
+
+/** HUD line for the hatch stash while in reach. */
+export function stashInteractPrompt(m:{
+ stashOpen:boolean;
+ stash:StashSlot[];
+ stashFocus:number;
+ inventory:(Item|null)[];
+ selected:number;
+ pistol:{reserve:number};
+}){
+ if(!m.stashOpen)return 'E · Open chest';
+ const held=m.inventory[m.selected];
+ const focus=m.stash[m.stashFocus]??null;
+ if(held==='relic')return 'Relic must leave the map — cannot store';
+ if(held&&isStashItem(held)){
+  if(focus===null||firstEmptyStashSlot(m.stash)>=0)return `E · Store ${ITEMS[held].name}`;
+  if(focus)return `E · Swap for ${stashSlotLabel(focus)}`;
+ }
+ if(!held&&m.pistol.reserve>0&&firstEmptyStashSlot(m.stash)>=0)return 'E · Store ammo';
+ if(focus){
+  if(!held)return `E · Take ${stashSlotLabel(focus)}`;
+  return `E · Swap for ${stashSlotLabel(focus)}`;
+ }
+ const filled=firstFilledStashSlot(m.stash);
+ if(filled>=0)return `E · Take ${stashSlotLabel(m.stash[filled])}`;
+ return 'E · Close chest';
 }
 
 export function createDiveChests():Chest[]{
@@ -1110,6 +1148,16 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  inventory:(Item|null)[]=[...SURVIVAL_KIT,'flare','bandage','air'];selected=1;
  pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC}},...corridorGearPickups()];nextId=6;
  chests:Chest[]=createDiveChests();
+ /**
+  * Persistent hatch stash (localStorage). Survives death, extract, dive-again, and reload.
+  * Not wiped by respawn — corpse loot and chest loot stay separate.
+  */
+ stash:StashSlot[]=readStash();
+ stashOpen=false;
+ /** Which stash slot 1–5 / click targets while the lid is open. */
+ stashFocus=0;
+ /** Audio cue for CaveWorld (cleared when consumed). */
+ stashCue:StashCue='';
  /** Collected cave-chart scraps (taken from the crates). */
  mapFragments:MapFragmentId[]=[];
  /** Dive HUD chart overlay (Tab). */
@@ -1284,6 +1332,166 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    .filter(c=>distance(c.position,this.position)<3.4&&visible(this.position,{...c.position,y:c.position.y+.4}))
    .sort((a,b)=>distance(a.position,this.position)-distance(b.position,this.position))[0];
  }
+ /** True when standing at the hatch stash with line of sight. */
+ nearStash(){
+  const p=STASH_POSITION;
+  return distance(this.position,p)<STASH_REACH&&visible(this.position,{...p,y:p.y+.4});
+ }
+ /** Persist current stash slots (death / extract / reload all read this key). */
+ private persistStash(){
+  writeStash(this.stash);
+ }
+ selectStashFocus(i:number){
+  if(i<0||i>=STASH_CAPACITY)return;
+  this.stashFocus=i;
+  this.pulse('select');
+ }
+ closeStash(){
+  if(!this.stashOpen)return;
+  this.stashOpen=false;
+  this.stashCue='close';
+ }
+ /**
+  * Move between inventory[selected] and stash[stashFocus] (deposit / withdraw / swap).
+  * Relic cannot enter the chest. Ammo packs use spare pistol reserve.
+  */
+ private transferWithStash(){
+  let focus=this.stashFocus;
+  if(focus<0||focus>=STASH_CAPACITY)focus=0;
+  const held=this.inventory[this.selected];
+  if(held==='relic'){
+   this.say('The ammonite relic must leave the map — it cannot go in the chest.','blocked');
+   return;
+  }
+  let slot=this.stash[focus];
+  // Prefer an empty slot when depositing into a filled focus.
+  if(held&&isStashItem(held)&&slot!==null){
+   const empty=firstEmptyStashSlot(this.stash);
+   if(empty>=0){focus=empty;slot=null;this.stashFocus=empty;}
+  }
+  // Holding nothing: withdraw, store ammo, or close.
+  if(!held){
+   // Empty focus → store ammo if possible, else withdraw from another slot, else close.
+   if(slot===null){
+    if(this.pistol.reserve>0){
+     const empty=firstEmptyStashSlot(this.stash);
+     if(empty>=0){
+      const take=Math.min(STASH_AMMO_PACK,this.pistol.reserve);
+      this.pistol.reserve-=take;
+      this.stash[empty]={kind:'ammo',amount:take};
+      this.stashFocus=empty;
+      this.persistStash();
+      this.stashCue='deposit';
+      this.say(`Stored ${take} spare rounds.`,'ok');
+      const next=firstEmptyStashSlot(this.stash);
+      if(next>=0)this.stashFocus=next;
+      return;
+     }
+    }
+    const filled=firstFilledStashSlot(this.stash);
+    if(filled>=0){focus=filled;slot=this.stash[filled];this.stashFocus=filled;}
+    else{
+     this.closeStash();
+     this.say('Chest closed.','ok');
+     return;
+    }
+   }
+   if(!slot)return;
+   // Withdraw focused slot into the selected (empty) inventory slot — or ammo into reserve.
+   if(slot.kind==='ammo'){
+    if(this.pistol.reserve>=PISTOL.reserveMax){this.say('Spare rounds are full.','blocked');return;}
+    const room=PISTOL.reserveMax-this.pistol.reserve;
+    const take=Math.min(slot.amount,room);
+    this.pistol.reserve+=take;
+    if(take>=slot.amount)this.stash[focus]=null;
+    else this.stash[focus]={kind:'ammo',amount:slot.amount-take};
+    this.persistStash();
+    this.stashCue='withdraw';
+    this.say(`Took ${take} spare rounds.`,'ok');
+    return;
+   }
+   // Second pistol: strip rounds only (same as floor pickup).
+   if(slot.item==='gun'&&this.inventory.includes('gun')){
+    const rounds=slot.rounds??0;
+    if(rounds<=0){this.say('You already carry a TT-33.','blocked');return;}
+    const take=Math.min(rounds,PISTOL.reserveMax-this.pistol.reserve);
+    if(take<=0){this.say('Spare rounds are full.','blocked');return;}
+    this.pistol.reserve+=take;
+    if(take>=rounds)this.stash[focus]=null;
+    else this.stash[focus]={kind:'item',item:'gun',rounds:rounds-take};
+    this.persistStash();
+    this.stashCue='withdraw';
+    this.say(`Stripped ${take} rounds from the stashed pistol.`,'ok');
+    return;
+   }
+   this.inventory[this.selected]=slot.item;
+   if(slot.item==='gun'&&slot.rounds){
+    this.pistol.reserve=Math.min(PISTOL.reserveMax,this.pistol.reserve+slot.rounds);
+   }
+   this.stash[focus]=null;
+   this.persistStash();
+   this.stashCue='withdraw';
+   this.say(`Took ${ITEMS[slot.item].name}.`,'ok');
+   return;
+  }
+  // Holding a bankable item — deposit or swap.
+  if(!isStashItem(held)){this.pulse('blocked');return;}
+  if(slot===null){
+   // Empty slot: deposit. Prefer storing ammo when holding gun with reserve and empty hands path already handled.
+   this.stash[focus]={kind:'item',item:held};
+   this.inventory[this.selected]=null;
+   this.persistStash();
+   this.stashCue='deposit';
+   this.say(`Stored ${ITEMS[held].name}.`,'ok');
+   // Point at the next empty slot so a follow-up E can store ammo instead of yanking this back out.
+   const next=firstEmptyStashSlot(this.stash);
+   if(next>=0)this.stashFocus=next;
+   return;
+  }
+  // Swap with stash slot.
+  if(slot.kind==='ammo'){
+   // Swap item for ammo pack: put ammo into reserve, item into chest.
+   if(this.pistol.reserve+slot.amount>PISTOL.reserveMax&&this.pistol.reserve>=PISTOL.reserveMax){
+    this.say('Spare rounds are full — cannot take the ammo pack.','blocked');return;
+   }
+   const take=Math.min(slot.amount,PISTOL.reserveMax-this.pistol.reserve);
+   this.pistol.reserve+=take;
+   this.stash[focus]={kind:'item',item:held};
+   this.inventory[this.selected]=null;
+   if(take<slot.amount){
+    // Leftover ammo needs a free slot — drop remainder back if possible.
+    const empty=firstEmptyStashSlot(this.stash);
+    if(empty>=0)this.stash[empty]={kind:'ammo',amount:slot.amount-take};
+   }
+   this.persistStash();
+   this.stashCue='deposit';
+   this.say(`Stored ${ITEMS[held].name}, took ${take} rounds.`,'ok');
+   return;
+  }
+  // Item ↔ item swap. Second pistol: strip rounds instead of holding two frames.
+  if(slot.item==='gun'&&held!=='gun'&&this.inventory.includes('gun')){
+   const rounds=slot.rounds??0;
+   if(rounds<=0){this.say('You already carry a TT-33.','blocked');return;}
+   const take=Math.min(rounds,PISTOL.reserveMax-this.pistol.reserve);
+   if(take<=0){this.say('Spare rounds are full.','blocked');return;}
+   this.pistol.reserve+=take;
+   if(take>=rounds)this.stash[focus]=null;
+   else this.stash[focus]={kind:'item',item:'gun',rounds:rounds-take};
+   this.persistStash();
+   this.stashCue='withdraw';
+   this.say(`Stripped ${take} rounds from the stashed pistol.`,'ok');
+   return;
+  }
+  const outRounds=slot.item==='gun'?slot.rounds:undefined;
+  this.stash[focus]={kind:'item',item:held};
+  this.inventory[this.selected]=slot.item;
+  if(slot.item==='gun'&&outRounds){
+   this.pistol.reserve=Math.min(PISTOL.reserveMax,this.pistol.reserve+outRounds);
+  }
+  this.persistStash();
+  this.stashCue='withdraw';
+  this.say(`Swapped ${ITEMS[held].name} for ${ITEMS[slot.item].name}.`,'ok');
+ }
  nearBreathTank(){
   const t=breathTankMounts()[this.breathTankIndex];
   if(!t)return false;
@@ -1291,21 +1499,29 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  }
  /**
   * Leave every carried item in a ring at `where` (the corpse), then empty the hands.
-  * World pickups that were never taken stay where they are.
+  * Pocket pistol rounds ride on a dropped gun when you had one; otherwise they are lost.
+  * World pickups that were never taken stay where they are. Hatch stash is untouched.
   */
  dropCarriedAt(where:Point){
   const carried=this.inventory.filter((item):item is Item=>item!==null);
+  const pocketRounds=this.pistol.mag+this.pistol.reserve;
   const n=carried.length;
   // Keep loot on the walkable floor — mid-eye drops looked like mystery floating orbs.
   const y=canWalk(where,this.breathWaterY)?FLOOR_Y:this.dropY();
   for(let i=0;i<n;i++){
    const a=(i/n)*Math.PI*2;
-   this.pickups.push({
+   const item=carried[i];
+   const drop:Pickup={
     id:this.nextId++,
-    item:carried[i],
+    item,
     position:{x:where.x+Math.cos(a)*.55,y,z:where.z+Math.sin(a)*.55},
-   });
+   };
+   if(item==='gun'&&pocketRounds>0)drop.rounds=pocketRounds;
+   this.pickups.push(drop);
   }
+  this.pistol.mag=0;
+  this.pistol.reserve=0;
+  this.pistol.reload=0;
   this.inventory=[null,null,null,null,null];
   this.selected=0;
   this.pending=null;
@@ -1322,6 +1538,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.claimGuardLoot(corpse);
    this.killedByGuard=false;
   }
+  if(this.stashOpen)this.closeStash();
   const water=this.breathWaterY;
   this.breathTankIndex=nextBreathTankIndex(this.breathTankIndex);
   this.breathWaterY=water;
@@ -1339,7 +1556,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.pending=null;
   this.resetFirefight();
   this.spawnGuards();
-  this.say('You wake at the hatch with your pistol and knife. Everything else is on your corpse. The garrison has reset — push through.','blocked');
+  this.say('You wake at the hatch with empty hands. Everything you carried is on your corpse. The garrison has reset — push through.','blocked');
  }
  /**
   * After a guard kill, pull gun / bottle / coat lying on the corpse into his kit.
@@ -1381,6 +1598,20 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    return;
   }
   if(distance(this.position,EXIT)<4){if(this.hasRelic){this.outcome='won';this.reason='Relic secured. You made it back to the light.';}else this.say('Extraction needs the ammonite relic. Follow the amber guide arrows.','blocked');return;}
+  // Hatch stash — fixed bank near spawn; separate from map-scrap crates.
+  if(this.nearStash()){
+   if(!this.stashOpen){
+    this.stashOpen=true;
+    this.stashCue='open';
+    if(firstFilledStashSlot(this.stash)<0)this.stashFocus=0;
+    else if(!this.stash[this.stashFocus])this.stashFocus=Math.max(0,firstFilledStashSlot(this.stash));
+    this.say('Stash open. E stores or takes · click a slot · Esc closes.','ok');
+    return;
+   }
+   this.transferWithStash();
+   return;
+  }
+  if(this.stashOpen)this.closeStash();
   const chest=this.pending===null?this.nearestChest():undefined;
   const pickup=this.pending===null?this.nearest():this.pickups.find(p=>p.id===this.pending);
   const chestCloser=!!chest&&(!pickup||distance(chest.position,this.position)<=distance(pickup.position,this.position)+.15);
@@ -1734,6 +1965,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?(onFoot?-8:-18):17)*dt));
   if(this.air<=0&&this.bailout<=0){this.outcome='lost';this.reason='Your air ran out. Arm the pony earlier or climb and calm your kick.';return;}
   if(this.pending!==null&&!this.pickups.some(p=>p.id===this.pending&&distance(p.position,this.position)<3.2))this.pending=null;
+  // Walk away from the hatch stash → lid closes (contents stay persisted).
+  if(this.stashOpen&&!this.nearStash())this.closeStash();
   // Corridor guards run even while the cave guardian is dead / flinching.
   const playerSpeed=this.lastPlayerPos&&dt>0?Math.hypot(this.position.x-this.lastPlayerPos.x,this.position.z-this.lastPlayerPos.z)/dt:0;
   tickPistol(this.pistol,dt);
@@ -2160,14 +2393,18 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.startLookout(g,1+this.rand()*2);
   }
  }
- /** Each life starts the firefight over: kit, pacing, smoke and supplies. */
+ /**
+  * Each death restarts the firefight: pacing, smoke, supplies, empty pistol.
+  * Does NOT refill inventory — `dropCarriedAt` already emptied the hands; restoring
+  * knife/gun here made the hatch stash pointless.
+  */
  resetFirefight(){
   const on=this.director.enabled;
   this.director=new Director();this.director.enabled=on;this.director.reset(this.elapsed);
   this.grenades=[];this.clouds=[];this.smokes=SURVIVAL.smoke.start;
   this.caches=makeCaches();this.damageFrom=[];this.supplyTaken=null;this.lastImpact=null;this.lastKnifeHit=null;
-  this.pistol=makePistol();
-  this.inventory=[...SURVIVAL_KIT,null,null,null];this.selected=1;
+  this.pistol=makePistol(PISTOL.magazine,0);
+  this.pistol.mag=0;
   this.aimDwell=[];
  }
  /** Throw one of your smoke grenades along (dirX, dirZ). */
