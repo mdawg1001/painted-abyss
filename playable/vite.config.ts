@@ -32,7 +32,16 @@ function buildInfoPlugin():Plugin{
 
 export default defineConfig({
  base:'./',
- build:{chunkSizeWarningLimit:800},
+ build:{
+  chunkSizeWarningLimit:800,
+  rollupOptions:{
+   output:{
+    manualChunks(id){
+     if(id.includes('node_modules/three'))return 'three';
+    },
+   },
+  },
+ },
  define:{
   __APP_VERSION__:JSON.stringify(pkg.version),
   __APP_BUILD_SHA__:JSON.stringify(sha),

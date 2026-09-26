@@ -1,6 +1,6 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {CaveWorld,type Snapshot} from './CaveWorld';
+import type {CaveWorld as CaveWorldType,Snapshot} from './CaveWorld';
 import {smokeAt} from './survival';
 import {SURVIVAL} from './survivalConfig';
 import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,pickupInteractPrompt,isMainGuard,liveGuard,MAP_FRAGMENT_ORDER,STASH_CAPACITY,type Item,type StashSlot} from './simulation';
@@ -76,9 +76,23 @@ function Compass({yaw,objective}:{yaw:number;objective?:{deg:number;label:string
 }
 
 function App(){
- const host=useRef<HTMLDivElement>(null),engine=useRef<CaveWorld|null>(null);const [snap,setSnap]=useState<Snapshot|null>(null),[error,setError]=useState('');
+ const host=useRef<HTMLDivElement>(null),engine=useRef<CaveWorldType|null>(null);const [snap,setSnap]=useState<Snapshot|null>(null),[error,setError]=useState('');
  const [staleMsg,setStaleMsg]=useState('');
- useEffect(()=>{if(!host.current)return;let instance:CaveWorld;try{instance=new CaveWorld(host.current,s=>setSnap({...s}));engine.current=instance;if(import.meta.env.DEV&&new URLSearchParams(location.search).has('test'))(window as any).__abyss=instance;}catch(e){console.error(e);setError('The cave needs WebGL. Enable graphics acceleration in a desktop browser, then reload.');}return()=>{instance?.dispose();engine.current=null;};},[]);
+ useEffect(()=>{if(!host.current)return;let instance:CaveWorldType|null=null;let cancelled=false;
+  // Code-split the Three.js world so the menu shell paints before the dive chunk parses.
+  void import('./CaveWorld').then(({CaveWorld})=>{
+   if(cancelled||!host.current)return;
+   try{
+    instance=new CaveWorld(host.current,s=>setSnap({...s}));
+    engine.current=instance;
+    if(import.meta.env.DEV&&new URLSearchParams(location.search).has('test'))(window as any).__abyss=instance;
+   }catch(e){
+    console.error(e);
+    setError('The cave needs WebGL. Enable graphics acceleration in a desktop browser, then reload.');
+   }
+  });
+  return()=>{cancelled=true;instance?.dispose();engine.current=null;};
+ },[]);
  useEffect(()=>{
   let alive=true;
   const check=()=>{

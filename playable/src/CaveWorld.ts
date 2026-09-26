@@ -32,7 +32,7 @@ import {
  LIFEBUOY_POS, LIFEBUOY_YAW, type LifebuoyVisual,
 } from './lifebuoyAsset';
 import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLight } from './sconceAsset';
-import { createHangingLights, stepHangingLights, upgradeHangingLights, type HangingLights } from './hangingLightAsset';
+import { createHangingLights, hangingLightMounts, stepHangingLights, upgradeHangingLights, type HangingLights } from './hangingLightAsset';
 import { createWallPosters, upgradeWallPosters, type WallPosters } from './posterAsset';
 import { createCopperPipe, upgradeCopperPipe, upgradeCopperPipeDetail, updateCopperPipe, type CopperPipe } from './copperPipeAsset';
 import { createWallRadiators, upgradeWallRadiators, type WallRadiators } from './radiatorAsset';
@@ -45,7 +45,7 @@ import {
  type SovietGuardVisual,
 } from './sovietGuardAsset';
 import {
- mountAk74u, updateAk74u, drawAk74u, shootAk74u, reloadAk74u,
+ mountAk74u, prefetchAk74u, updateAk74u, drawAk74u, shootAk74u, reloadAk74u,
  AK74U_HELD_POS, AK74U_HELD_ROT,
 } from './gunAsset';
 import { Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_COUNT, STASH_POSITION, STASH_YAW, type BreathFootprint, type BreathTankMount } from './simulation';
@@ -316,8 +316,11 @@ export class CaveWorld extends OceanWorld {
  _pcx=[0,0,0,0];
  _pcy=[0,0,0,0];
  _adoptTmp=new THREE.Box3();
- propStreaming=new PropStreaming(performance.now()/1000);
+ propStreaming=new PropStreaming();
  lastPropCheck=0;
+ /** Knife / guards / FX maps — started on Begin dive so the menu only pays for rock previews + JS. */
+ essentialsBooted=false;
+ akPrefetchTimer=0;
  alarmFixtures:{light:THREE.PointLight;lens:THREE.MeshBasicMaterial}[]=[];
  gradeHemi!:THREE.HemisphereLight;gradeAmbient!:THREE.AmbientLight;gradeSky!:THREE.DirectionalLight;
  waterMat!:THREE.MeshBasicMaterial;volMat!:THREE.MeshBasicMaterial;
@@ -347,13 +350,7 @@ export class CaveWorld extends OceanWorld {
   this.gradeSky=new THREE.DirectionalLight(dry.sun,dry.sunI);this.gradeSky.position.set(-8,30,-20);
   this.scene.add(this.gradeHemi,this.gradeAmbient,this.gradeSky);
   this.buildCave();this.buildBreath();this.buildLights();this.buildComposer();
-  loadCausticAtlas().then(tex=>{
-   if(!this.alive)return;
-   for(const pool of this.causticPools){
-    const mat=pool.material as THREE.ShaderMaterial;
-    if(mat.uniforms.uMap)mat.uniforms.uMap.value=tex;
-   }
-  });
+  // Caustic atlas + blood maps wait for Begin dive (see bootEssentials).
   this.guardian=this.ichthyosaur(.9);this.scene.add(this.guardian.group);
   this.guardian.group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
   const eyeMat=new THREE.MeshBasicMaterial({color:0xe0a772});
@@ -387,13 +384,7 @@ export class CaveWorld extends OceanWorld {
   this.playerFlashGlow.visible=false;this.playerFlashGlow.renderOrder=10;
   const card=(tint:number)=>{const sp=new THREE.Sprite(new THREE.SpriteMaterial({color:tint,transparent:true,depthWrite:false,depthTest:false,blending:THREE.AdditiveBlending,opacity:0}));sp.visible=false;sp.renderOrder=11;return sp;};
   this.playerFlashStar=card(FLASH_TINT);this.playerFlashSparks=card(SPARK_TINT);
-  Promise.all(this.sovietGuards.map(v=>upgradeSovietGuardVisual(v))).then(async()=>{
-   if(!this.alive)return;
-   this.syncSovietGuard(0);
-   const clips=await loadGuardActions();
-   if(!clips||!this.alive)return;
-   this.guardActs=this.sovietGuards.map(v=>v.loco?attachGuardActions(v.loco,clips):null);
-  });
+  // Guard glTF + TT-33 wait for Begin dive (stubs patrol until then).
   this.suspendedParticles();const positions=this.particles.geometry.attributes.position;
   for(let i=0;i<positions.count;i++)positions.setXYZ(i,Math.sin(i*78.23)*37,1+(i%71)/10,-(i*13.23)%122);
   this.particles.geometry.computeBoundingSphere();
@@ -411,9 +402,8 @@ export class CaveWorld extends OceanWorld {
   this.decoyMesh=new THREE.Mesh(new THREE.IcosahedronGeometry(.18,1),new THREE.MeshBasicMaterial({color:0xff7040}));
   this.decoyMesh.add(new THREE.PointLight(0xff6831,12,12));this.scene.add(this.decoyMesh);
   this.buildBlood();
-  loadBloodMaps().then(maps=>{if(this.alive)this.applyBloodMaps(maps);});
   // Mount knife stub immediately so selecting slot 1 always shows a held prop;
-  // Poly Haven glTF upgrades the mesh when ready (with RoomEnvironment specular).
+  // Poly Haven glTF upgrades on Begin dive (with RoomEnvironment specular).
   const pmrem=new THREE.PMREMGenerator(this.renderer);
   this.knifeEnvMap=pmrem.fromScene(new RoomEnvironment(),.04).texture;
   pmrem.dispose();
@@ -423,7 +413,7 @@ export class CaveWorld extends OceanWorld {
   this.knifeVisual.visible=false;
   this.gunVisual=this.makeHeldGun();
   this.camera.add(this.gunVisual);
-  // Muzzle sits just past the TT-33's barrel (viewmodel faces −Z).
+  // Muzzle sits just past the barrel (viewmodel faces −Z).
   this.playerFlash.position.set(0,.05,-.34);this.playerFlashGlow.position.set(0,.05,-.34);
   this.playerFlashStar.position.set(0,.05,-.34);this.playerFlashSparks.position.set(0,.05,-.34);
   this.gunVisual.add(this.playerFlash,this.playerFlashGlow,this.playerFlashStar,this.playerFlashSparks);
@@ -431,14 +421,6 @@ export class CaveWorld extends OceanWorld {
   this.camera.add(this.keyVisual);
   this.keyVisual.visible=false;
   this.syncHeldTorch();
-  upgradeKnifeVisual(this.knifeVisual,this.knifeEnvMap).then(()=>{
-   if(!this.alive||!this.knifeVisual)return;
-   applyKnifeEnvMap(this.knifeVisual,this.knifeEnvMap!);
-   poseKnife(this.knifeVisual);
-   this.knifeVisual.visible=this.holdingKnife();
-   this.syncHeldTorch();
-   this.adoptPointCull(this.knifeVisual,this.heldLightBox,false,false);
-  });
   this.mountChests();
   this.mountStash();
   this.mountLifebuoy();
@@ -448,6 +430,9 @@ export class CaveWorld extends OceanWorld {
   this.mountWallRadiators();
   this.mountWallPipe();
   this.mountCopperPipe();
+  for(const job of this.fx.coverJobs){
+   this.propStreaming.add(job.id,job.position,job.load,36);
+  }
   this.valveHands=createValveHands();
   this.scene.add(this.valveHands.root);
   if(this.knifeEnvMap)applyHandEnvMap(this.valveHands.root,this.knifeEnvMap);
@@ -466,6 +451,45 @@ export class CaveWorld extends OceanWorld {
   this.adoptPointCull(this.guardian.group,this.guardianLightBox,false,true);
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
  }
+ /**
+  * First Begin dive: knife + guards + FX maps, then arm prop streaming.
+  * The 23 MB AK pack waits until the player draws or approaches the floor gun (or a short idle prefetch).
+  */
+ bootEssentials(){
+  if(this.essentialsBooted)return;
+  this.essentialsBooted=true;
+  loadCausticAtlas().then(tex=>{
+   if(!this.alive)return;
+   for(const pool of this.causticPools){
+    const mat=pool.material as THREE.ShaderMaterial;
+    if(mat.uniforms.uMap)mat.uniforms.uMap.value=tex;
+   }
+  });
+  loadBloodMaps().then(maps=>{if(this.alive)this.applyBloodMaps(maps);});
+  if(this.knifeVisual){
+   upgradeKnifeVisual(this.knifeVisual,this.knifeEnvMap).then(()=>{
+    if(!this.alive||!this.knifeVisual)return;
+    applyKnifeEnvMap(this.knifeVisual,this.knifeEnvMap!);
+    poseKnife(this.knifeVisual);
+    this.knifeVisual.visible=this.holdingKnife();
+    this.syncHeldTorch();
+    this.adoptPointCull(this.knifeVisual,this.heldLightBox,false,false);
+   });
+  }
+  Promise.all(this.sovietGuards.map(v=>upgradeSovietGuardVisual(v))).then(async()=>{
+   if(!this.alive)return;
+   this.syncSovietGuard(0);
+   const clips=await loadGuardActions();
+   if(!clips||!this.alive)return;
+   this.guardActs=this.sovietGuards.map(v=>v.loco?attachGuardActions(v.loco,clips):null);
+  });
+  this.propStreaming.arm(performance.now()/1000);
+  // Prefetch AK after essentials settle so picking up the corridor carbine is instant.
+  window.clearTimeout(this.akPrefetchTimer);
+  this.akPrefetchTimer=window.setTimeout(()=>{
+   if(this.alive)void prefetchAk74u();
+  },2800);
+ }
  /** Place the Poly Haven lifebuoy on the start-chamber floor and upgrade in the background. */
  mountLifebuoy(){
   const visual=createLifebuoyVisual();
@@ -480,26 +504,34 @@ export class CaveWorld extends OceanWorld {
    return ok;
   },40);
  }
- /** Bolt Poly Haven caged sconces to spaced wall faces; warm lights show at once, meshes upgrade in. */
+ /** Bolt Poly Haven caged sconces to spaced wall faces; warm lights show at once, meshes stream in after Begin dive. */
  mountWallSconces(){
   const mounts=wallSconceMounts();
   const {group,lights}=createWallSconces(mounts);
   this.scene.add(group);
   this.wallSconceLights=lights;
-  upgradeWallSconces(group,mounts,lights).then(ok=>{
-   if(!ok||!this.alive)return;
+  const anchor=mounts[0]??{x:0,z:0};
+  this.propStreaming.add('sconces',anchor,async()=>{
+   const ok=await upgradeWallSconces(group,mounts,lights);
+   if(!ok||!this.alive)return ok;
    for(const child of group.children){
     if((child as THREE.Light).isLight||child.name==='sconceStub')continue;
     this.adoptPointCull(child,this.worldBox(child),true,true);
    }
-  });
+   return ok;
+  },48);
  }
- /** Hang the caged ceiling lamps on their cables; stubs light at once, the glTF upgrades in. */
+ /** Hang the caged ceiling lamps on their cables; stubs light at once, the glTF streams after Begin dive. */
  mountHangingLights(){
   const h=createHangingLights();
   this.scene.add(h.group);
   this.hanging=h;
-  upgradeHangingLights(h).then(ok=>{if(!ok||!this.alive)return;});
+  const anchor=hangingLightMounts()[0]??{x:0,z:0};
+  this.propStreaming.add('hanging-lights',anchor,async()=>{
+   const ok=await upgradeHangingLights(h);
+   if(!ok||!this.alive)return ok;
+   return ok;
+  },56);
  }
  /** Gunfire and impacts this frame shake the lamps; the final wave makes them stutter. */
  stepHanging(dt:number,slamTint:number|null){
@@ -614,11 +646,13 @@ export class CaveWorld extends OceanWorld {
   visual.root.name='hatchStash';
   this.scene.add(visual.root);
   this.stashVisual=visual;
-  upgradeChestVisual(visual).then(ok=>{
-   if(!this.alive||!this.stashVisual)return;
+  this.propStreaming.add('hatch-stash',STASH_POSITION,async()=>{
+   const ok=await upgradeChestVisual(visual);
+   if(!this.alive||!this.stashVisual)return ok;
    if(visual.lid)visual.lid.rotation.copy(this.mission.stashOpen?visual.openRot:visual.closedRot);
    if(ok)this.adoptPointCull(visual.root,this.worldBox(visual.root),false,true);
-  });
+   return ok;
+  },40);
  }
  syncStash(dt:number){
   const visual=this.stashVisual;if(!visual)return;
@@ -1550,7 +1584,7 @@ export class CaveWorld extends OceanWorld {
  holdingGun(){return this.mission.inventory[this.mission.selected]==='gun';}
  holdingKey(){return this.mission.inventory[this.mission.selected]==='sovietKey';}
  holdingTorch(){return holdingTorchItem(this.mission.inventory[this.mission.selected]);}
- /** FPS AK74U arms+gun viewmodel. Stub boxes until the Sketchfab glTF + clips mount. */
+ /** FPS AK74U arms+gun viewmodel. Stub boxes until the Sketchfab glTF + clips mount (after Begin dive / draw). */
  makeHeldGun(){
   const g=new THREE.Group();
   g.name='gunVisual';
@@ -1567,11 +1601,16 @@ export class CaveWorld extends OceanWorld {
   grip.rotation.x=.35;
   stub.add(body,barrel,grip);
   g.add(stub);
-  mountAk74u(g,'held');
+  // Do not mount the 23 MB AK here — ensureHeldAk() loads on first draw / idle prefetch.
   g.position.set(AK74U_HELD_POS.x,AK74U_HELD_POS.y,AK74U_HELD_POS.z);
   g.rotation.set(AK74U_HELD_ROT.x,AK74U_HELD_ROT.y,AK74U_HELD_ROT.z);
   g.visible=false;
   return g;
+ }
+ /** Ensure the held FPS AK is downloading / mounted (stub until then). */
+ ensureHeldAk(){
+  if(!this.gunVisual||this.gunVisual.userData.akMounted)return;
+  void mountAk74u(this.gunVisual,'held');
  }
  /** Floor props for corridor gear. Unlit so they read before the torch is out. */
  gearPickupMesh(item:'gun'|'bottle'|'coat'){
@@ -1586,7 +1625,7 @@ export class CaveWorld extends OceanWorld {
    stub.add(body,barrel);
    g.add(stub);
    g.userData.gunAlive=true;
-   mountAk74u(g,'pickup');
+   // Floor AK mounts via propStreaming when the diver approaches (see syncPickups).
   }else if(item==='bottle'){
    const cyl=new THREE.Mesh(new THREE.CylinderGeometry(.11,.13,.46,10),new THREE.MeshBasicMaterial({color:0x3d8f62}));
    const cap=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,.09,8),new THREE.MeshBasicMaterial({color:0xe4e8ea}));
@@ -1726,7 +1765,13 @@ export class CaveWorld extends OceanWorld {
   for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);group.traverse(o=>{o.userData.gunAlive=false;if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
   for(const p of this.mission.pickups){let group=this.pickupMeshes.get(p.id);if(!group){group=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:p.item==='relic'?0xe2b65e:0x82c8b7,emissive:p.item==='relic'?0x6b3c07:0x153c36,emissiveIntensity:.7,metalness:.4,roughness:.45});
     if(p.item==='relic'){const points:THREE.Vector3[]=[],radii:number[]=[];for(let i=0;i<=72;i++){const t=i/72,a=t*Math.PI*4.5,r=.03+t*t*.62;points.push(V(Math.cos(a)*r,Math.sin(a)*r,0));radii.push(.01+t*.12);}group.add(this.tube(points,radii,mat,90,8));group.add(new THREE.PointLight(0xefbb68,3.5,7));}
-    else if(p.item==='gun'||p.item==='bottle'||p.item==='coat')group.add(this.gearPickupMesh(p.item));
+    else if(p.item==='gun'||p.item==='bottle'||p.item==='coat'){
+     const gear=this.gearPickupMesh(p.item);
+     group.add(gear);
+     if(p.item==='gun'){
+      this.propStreaming.add(`pickup-gun-${p.id}`,{x:p.position.x,z:p.position.z},()=>mountAk74u(gear,'pickup'),40);
+     }
+    }
     else if(p.item==='sovietKey')group.add(createSovietKeyPickup());
     else group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.3,1),mat));
     group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
@@ -2134,6 +2179,7 @@ export class CaveWorld extends OceanWorld {
   if(this.mission.outcome!=='playing')this.reset();
   // One-time tip is already on this mission when tipsSeen is false; persist so the next launch stays quiet.
   if(!this.mission.tipsSeen)writeInventoryTipsSeen();
+  this.bootEssentials();
   this.rockMaps.startDetail();
   this.playing=true;this.started=true;this.keys.clear();this.clock.getDelta();this.testingAudio=false;
   this.onFoot=canWalk(this.mission.position,this.mission.breathWaterY);
@@ -2345,6 +2391,7 @@ export class CaveWorld extends OceanWorld {
     const held=this.holdingGun();
     this.gunVisual.visible=held;
     if(held){
+     this.ensureHeldAk();
      if(!this.gunHeldSeen)drawAk74u(this.gunVisual);
      this.gunHeldSeen=true;
      // Soft sway only — DRAW / IDLE / SHOOT / RELOAD drive the arms+gun pose.
@@ -2473,5 +2520,5 @@ export class CaveWorld extends OceanWorld {
   this.applyPortalOcclusion();
   this.composer.render();
  }
- dispose(){if(this.copperPipe)this.copperPipe.disposed=true;this.rockMaps.dispose();this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
+ dispose(){window.clearTimeout(this.akPrefetchTimer);if(this.copperPipe)this.copperPipe.disposed=true;this.rockMaps.dispose();this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
 }
