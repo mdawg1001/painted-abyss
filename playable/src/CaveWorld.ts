@@ -6,6 +6,7 @@ import { applyGuardCombatPose, updateGuardMoveFrame } from './guardCombatPose';
 import { PISTOL } from './playerPistol';
 import { SurvivalFx } from './survivalFx';
 import { survivalDoors } from './survival';
+import { SURVIVAL } from './survivalConfig';
 import { makeGuardCombatState } from './guardCombatPose';
 import { ShaderChunk } from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
@@ -232,6 +233,8 @@ export class CaveWorld extends OceanWorld {
  wallSconceLights:SconceLight[]=[];
  /** Poly Haven caged hanging lamps: swinging, flickering tungsten pools with shadows. */
  hanging:HangingLights|null=null;
+ /** 0 standing → 1 fully crouched (camera only). */
+ crouchBlend=0;
  hangingSeen:{pistol:number;guards:number[];impact:number}={pistol:0,guards:[],impact:-1};
  /** Sketchfab PotatoWit soviet posters hung on one cave wall. */
  wallPosters:WallPosters|null=null;
@@ -2135,9 +2138,12 @@ export class CaveWorld extends OceanWorld {
     const fx=this.forward.x/flat,fz=this.forward.z/flat;
     this.right.set(-fz,0,fx);
     const localZ=pressed('KeyW')-pressed('KeyS'),localX=pressed('KeyD')-pressed('KeyA');
-    const wantRun=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&localZ>0;
+    // Hold C: crouch-walk. Half speed, no running, and the guards' eyes lose 35% of their reach.
+    m.crouching=!!pressed('KeyC');
+    const wantRun=!m.crouching&&!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&localZ>0;
     const wadeDepth=Math.max(0,m.breathWaterY-FLOOR_Y);
-    const events=this.gait.step(localX,localZ,wantRun,dt,wadingDrag(wadeDepth));
+    const crouchSlow=m.crouching?SURVIVAL.stealth.speedFactor:1;
+    const events=this.gait.step(localX,localZ,wantRun,dt,wadingDrag(wadeDepth)*crouchSlow);
     const v=this.gait.instantaneousSpeed(),d=this.gait.dir;
     // Body frame → world: x = right, z = forward.
     this.velocity.set((this.right.x*d.x+fx*d.z)*v,0,(this.right.z*d.x+fz*d.z)*v);
@@ -2150,6 +2156,7 @@ export class CaveWorld extends OceanWorld {
     for(const e of events)this.onGaitEvent(e,wadeDepth);
     m.update(dt,runWeight(this.gait.speed)>.5);this.position.copy(m.position);
    }else{
+   m.crouching=false;
    // Kick = look / strafe only. Space/Q drive BCD buoyancy, not equal XYZ thrust.
    this.move.copy(this.forward).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));
    const bcd=pressed('Space')-pressed('KeyQ','ControlLeft','ControlRight');
@@ -2198,7 +2205,10 @@ export class CaveWorld extends OceanWorld {
     const flat=Math.hypot(this.forward.x,this.forward.z)||1;
     const fx=this.forward.x/flat,fz=this.forward.z/flat;
     eyeX=this.position.x+(-fz)*(h.x+sway)+fx*h.z;
-    eyeY=this.position.y+h.y+breathe;
+    // Crouch lowers the eye smoothly (presentation; the sim keeps one body height).
+    const st=SURVIVAL.stealth;
+    this.crouchBlend=THREE.MathUtils.clamp(this.crouchBlend+(this.mission.crouching?1:-1)*dt/st.blendSeconds,0,1);
+    eyeY=this.position.y+h.y+breathe-st.eyeDrop*THREE.MathUtils.smoothstep(this.crouchBlend,0,1);
     eyeZ=this.position.z+fx*(h.x+sway)+fz*h.z;
     this.camera.rotation.set(this.pitch+h.pitch,this.yaw+h.yaw,h.roll);
     this.handSwing=pose;
