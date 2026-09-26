@@ -86,9 +86,9 @@ function cloneTree(src:THREE.Object3D,unlit:boolean){
   const next=mats.map(m=>{
    const sm=m as THREE.MeshStandardMaterial;
    if(unlit){
-    // Pickup meshes stay unlit but get a cyan lift so they read under bloom.
+    // Pickup meshes stay unlit but get a hard cyan lift so bloom catches them.
     const color=sm.color?sm.color.clone():new THREE.Color(0xffffff);
-    color.lerp(new THREE.Color(0x7ae8ff),.18);
+    color.lerp(new THREE.Color(0x5ce0ff),.42);
     return new THREE.MeshBasicMaterial({
      map:sm.map??null,
      color,
@@ -98,9 +98,9 @@ function cloneTree(src:THREE.Object3D,unlit:boolean){
    const copy=sm.clone();
    copy.envMapIntensity=.45;
    if(!copy.emissive)copy.emissive=new THREE.Color(0x000000);
-   // Cool neon undertone so held AK / guard TT-33 feed UnrealBloomPass without washing albedo.
-   copy.emissive.setHex(0x183848);
-   copy.emissiveIntensity=.72;
+   // Hot cyan neon so held AK / guard TT-33 scream into UnrealBloomPass.
+   copy.emissive.setHex(0x2ad4ff);
+   copy.emissiveIntensity=2.4;
    copy.needsUpdate=true;
    return copy;
   });
@@ -347,13 +347,18 @@ export function mountAk74u(holder:THREE.Object3D,fit:Exclude<GunFit,'guard'>):Pr
    holder.add(fitted);
    if(fit==='held'){
     // Soft fill so MeshStandardMaterial reads in the dark bunker (no world lights on the FPS layer).
-    const fill=new THREE.HemisphereLight(0xc8d4e0,0x1a1510,.95);
+    const fill=new THREE.HemisphereLight(0xa8e8ff,0x1a1510,1.35);
     fill.name='ak74uFill';
     fitted.add(fill);
-    const key=new THREE.DirectionalLight(0xfff2e0,.55);
+    const key=new THREE.DirectionalLight(0xfff2e0,.7);
     key.position.set(.2,.4,.6);
     key.name='ak74uKey';
     fitted.add(key);
+    // Persistent neon tell on the carbine so UnrealBloomPass always has something hot.
+    const neon=new THREE.PointLight(0x2ad4ff,4.5,1.8,2);
+    neon.name='ak74uNeon';
+    neon.position.set(0,.05,-.35);
+    fitted.add(neon);
     const mixer=new THREE.AnimationMixer(model);
     const actions=buildActions(mixer,proto.clips);
     const rt:Ak74uRuntime={mixer,actions,current:''};

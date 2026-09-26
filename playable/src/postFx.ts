@@ -5,9 +5,9 @@
  *   RenderPass → UnrealBloomPass → ImpactPass (chroma + vignette + mild crunch)
  *   → clip grade → OutputPass
  *
- * Bloom is intentionally thresholded so only emissive / additive practicals
- * (muzzle, neon pickups, shafts) glow — not the whole cave. Impact intensity
- * is pulsed from damage and sprint/run rising edges, then decays.
+ * Tuned loud on purpose: neon / muzzle / pickups bloom hard; damage and Shift
+ * sprint/run slam chroma + vignette with a slow decay so the punch is felt.
+ * DPR stays capped; rock maps stay in the scene.
  */
 import * as THREE from 'three';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
@@ -16,21 +16,25 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 /** Cap device pixel ratio when the bloom stack is live (Retina + UnrealBloomPass hitch). */
 export const POST_FX_DPR_CAP = 1.25;
 
-/** Soft bloom: high threshold, modest strength — neon / muzzle / pickups only. */
-export const BLOOM_STRENGTH = 0.28;
-export const BLOOM_RADIUS = 0.42;
-export const BLOOM_THRESHOLD = 0.88;
+/** Loud neon bloom — low threshold so emissives/muzzle/pickups blow out. */
+export const BLOOM_STRENGTH = 1.35;
+export const BLOOM_RADIUS = 0.95;
+export const BLOOM_THRESHOLD = 0.28;
 /** Bloom render targets run at this fraction of the canvas (perf). */
 export const BLOOM_RES_SCALE = 0.5;
 
-/** Chromatic / vignette peaks and decay (seconds to ease back to idle). */
+/**
+ * Chromatic / vignette peaks and decay.
+ * IMPACT_DECAY is the exp falloff rate — lower = longer punch (~1.5–2 s visible).
+ */
 export const IMPACT_HIT_PEAK = 1;
-export const IMPACT_DASH_PEAK = 0.72;
-export const IMPACT_DECAY = 2.4;
-/** Always-on mild pixel crunch (screen pixels per sample). 1 = off-ish; 2–3 = crunchy. */
-export const CRUNCH_PIXEL = 1.75;
-export const IMPACT_CHROMA_MAX = 0.0048;
-export const IMPACT_VIGNETTE_MAX = 0.72;
+export const IMPACT_DASH_PEAK = 1;
+export const IMPACT_DECAY = 0.85;
+/** Always-on pixel crunch (screen pixels per sample). */
+export const CRUNCH_PIXEL = 2.4;
+/** UV channel split at full intensity — unmistakable RGB fringe. */
+export const IMPACT_CHROMA_MAX = 0.022;
+export const IMPACT_VIGNETTE_MAX = 0.95;
 
 export type ImpactFx = {
   /** Combined 0..1 drive for the impact pass (hit + dash). */
@@ -60,7 +64,7 @@ export function createImpactFx(): ImpactFx {
       fx.dash *= k;
       if (fx.hit < 0.01) fx.hit = 0;
       if (fx.dash < 0.01) fx.dash = 0;
-      fx.intensity = Math.min(1, fx.hit * 0.85 + fx.dash * 0.55);
+      fx.intensity = Math.min(1, fx.hit * 1.0 + fx.dash * 0.95);
     },
     reset() {
       fx.hit = 0;
@@ -84,25 +88,25 @@ const IMPACT_SHADER = {
   fragmentShader: `uniform sampler2D tDiffuse;uniform float uIntensity;uniform float uChroma;uniform float uVignette;uniform float uCrunch;uniform vec2 uResolution;varying vec2 vUv;
 void main(){
   vec2 uv=vUv;
-  // Mild always-on pixel crunch — keeps 2K albedo, reads retro at presentation.
+  // Pixel crunch — keeps 2K albedo, reads retro at presentation.
   if(uCrunch>1.01){
     vec2 grid=max(uResolution/uCrunch,vec2(1.0));
     uv=(floor(uv*grid)+.5)/grid;
   }
   float i=clamp(uIntensity,0.0,1.0);
   float aber=uChroma*i;
-  // Radial chromatic split (Ultrakill-ish) — stronger toward the rim.
+  // Hard radial chromatic split — centre still fringes a little so the hit is obvious.
   vec2 fromCentre=uv-.5;
   float radial=length(fromCentre);
   vec2 dir=radial>1e-4?fromCentre/radial:vec2(1.0,0.0);
-  vec2 off=dir*aber*(.35+radial);
+  vec2 off=dir*aber*(.55+radial*1.6);
   float r=texture2D(tDiffuse,uv+off).r;
   float g=texture2D(tDiffuse,uv).g;
   float b=texture2D(tDiffuse,uv-off).b;
   vec3 c=vec3(r,g,b);
-  // Damage/dash vignette: darken the corners; idle stays nearly clear.
-  float vig=smoothstep(.35,1.15,radial);
-  c*=1.0-vig*(uVignette*(.12+.88*i));
+  // Damage/dash vignette: crush the corners hard; idle still has a faint rim.
+  float vig=smoothstep(.18,1.05,radial);
+  c*=1.0-vig*(uVignette*(.18+.82*i));
   gl_FragColor=vec4(c,1.0);
 }`,
 };

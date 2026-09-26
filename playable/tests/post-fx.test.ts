@@ -9,6 +9,8 @@ import {
  IMPACT_HIT_PEAK,
  IMPACT_DASH_PEAK,
  IMPACT_DECAY,
+ IMPACT_CHROMA_MAX,
+ IMPACT_VIGNETTE_MAX,
  CRUNCH_PIXEL,
  createImpactFx,
  createImpactPass,
@@ -21,11 +23,19 @@ test('post FX caps Retina DPR below uncapped devicePixelRatio', () => {
  assert.ok(POST_FX_DPR_CAP >= 1, 'still at least 1×');
 });
 
-test('UnrealBloomPass tunables stay soft and thresholded for neon only', () => {
- assert.ok(BLOOM_STRENGTH > 0 && BLOOM_STRENGTH < 0.6, 'modest strength');
- assert.ok(BLOOM_RADIUS > 0 && BLOOM_RADIUS < 1);
- assert.ok(BLOOM_THRESHOLD >= 0.8, 'high threshold keeps rock albedo out of bloom');
+test('UnrealBloomPass is loud and low-threshold for obvious neon', () => {
+ assert.ok(BLOOM_STRENGTH >= 1.0, 'strength must read as bloom, not a soft haze');
+ assert.ok(BLOOM_RADIUS >= 0.8);
+ assert.ok(BLOOM_THRESHOLD <= 0.4, 'low threshold so emissives/muzzle blow out');
  assert.equal(BLOOM_RES_SCALE, 0.5);
+});
+
+test('impact chroma/vignette peaks are extreme and decay slowly', () => {
+ assert.ok(IMPACT_CHROMA_MAX >= 0.015, 'RGB fringe must be unmistakable');
+ assert.ok(IMPACT_VIGNETTE_MAX >= 0.9);
+ assert.ok(IMPACT_DECAY <= 1.2, 'slow decay so the punch hangs');
+ assert.equal(IMPACT_HIT_PEAK, 1);
+ assert.equal(IMPACT_DASH_PEAK, 1);
 });
 
 test('impact FX pulses on hit and dash, then decays', () => {
@@ -36,11 +46,12 @@ test('impact FX pulses on hit and dash, then decays', () => {
  fx.pulseDash();
  assert.equal(fx.dash, IMPACT_DASH_PEAK);
  fx.step(0);
- assert.ok(fx.intensity > 0.5, 'combined intensity after both pulses');
- // ~0.5 s of decay at IMPACT_DECAY
+ assert.ok(fx.intensity > 0.9, 'combined intensity near peak after both pulses');
+ // Still loud after ~0.5 s (slow decay), then gone after a few seconds.
  for (let i = 0; i < 30; i++) fx.step(1 / 60);
- assert.ok(fx.intensity < 0.55, 'decays within a short window');
- assert.ok(fx.hit < IMPACT_HIT_PEAK);
+ assert.ok(fx.intensity > 0.45, 'still felt after half a second');
+ for (let i = 0; i < 180; i++) fx.step(1 / 60);
+ assert.ok(fx.intensity < 0.15, 'eventually decays');
  fx.reset();
  assert.equal(fx.intensity, 0);
  assert.equal(fx.hit, 0);
@@ -65,8 +76,8 @@ test('impact pass exposes intensity + size uniforms', () => {
  pass.setSize(1280, 720);
  assert.equal(pass.uniforms.uResolution.value.x, 1280);
  assert.equal(pass.uniforms.uResolution.value.y, 720);
- assert.ok(CRUNCH_PIXEL >= 1 && CRUNCH_PIXEL <= 3, 'mild crunch only');
- assert.ok(IMPACT_DECAY > 1);
+ assert.ok(CRUNCH_PIXEL >= 2 && CRUNCH_PIXEL <= 4);
+ assert.ok(IMPACT_DECAY > 0.4);
 });
 
 test('bloom pass builds at half resolution', () => {
