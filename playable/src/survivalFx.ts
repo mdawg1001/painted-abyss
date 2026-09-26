@@ -205,8 +205,10 @@ export class SurvivalFx{
  /** Per-guard role props, hit flash and muzzle glow. */
  syncGuard(i:number,visual:SovietGuardVisual,g:Guard,elapsed:number,shot:boolean,muzzle:THREE.Vector3|null,dt:number){
   visual.root.visible=g.active;
-  visual.root.scale.setScalar(g.role==='heavy'?1.12:1);
+  visual.root.scale.setScalar(g.role==='heavy'?1.12:g.role==='officer'?1.14:1);
   const k=this.knifeFor(i,visual);if(k)k.visible=g.active&&g.role==='rusher';
+  const cap=visual.root.getObjectByName('officerCap');
+  if(cap)cap.visible=g.active&&g.role==='officer';
   // Hit flash: a hard red pulse on his kit for a tenth of a second.
   const since=elapsed-g.hitAt;
   this.flash(visual,g.hitAt>=0&&since>=0&&since<.12?1-since/.12:0);

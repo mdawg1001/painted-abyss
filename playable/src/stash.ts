@@ -36,7 +36,8 @@ export type StashItem =
  | 'knife'
  | 'gun'
  | 'bottle'
- | 'coat';
+ | 'coat'
+ | 'sovietKey';
 
 export type Item = StashItem | 'relic';
 
@@ -70,6 +71,7 @@ export function stashSlotLabel(slot: StashSlot): string {
   gun: 'TT-33 pistol',
   bottle: 'Spare air bottle',
   coat: 'Coat',
+  sovietKey: 'Soviet key',
  };
  return names[slot.item];
 }

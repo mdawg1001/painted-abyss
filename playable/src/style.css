@@ -335,6 +335,7 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .slot.gun{color:#d5dbe0}
 .slot.bottle{color:#7dcea0}
 .slot.coat{color:#d4b48a}
+.slot.sovietKey{color:#c9a227}
 .slot-thumb{
   width:40px;height:40px;object-fit:contain;display:block;margin:2px auto 0;
   filter:drop-shadow(0 1px 2px rgba(0,0,0,.55));

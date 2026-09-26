@@ -20,6 +20,7 @@ import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js
 import { mountTt33 } from './gunAsset';
 import { addGuardFaceMorphs, buildGuardRig, makeGuardCombatState, type GuardRig, type GuardCombatState } from './guardCombatPose';
 import { GUARD_OUTFIT_COLORS } from './simulation';
+import { createOfficerCap } from './sovietKeyAsset';
 
 export const SOVIET_GUARD_SOURCE='https://quaternius.com/packs/ultimateanimatedcharacter.html';
 export const SOVIET_GUARD_AUTHOR='Quaternius';
@@ -424,6 +425,8 @@ export function createSovietGuardVisual(outfit=0):SovietGuardVisual{
  const rim=new THREE.PointLight(PALETTE.fill,GUARD_RIM_INTENSITY,3,2);
  rim.name='guardRim';rim.position.set(-.3,2.1,-.7);rim.castShadow=false;
  root.add(fill,rim);
+ const officerCap=createOfficerCap(SOVIET_GUARD_HEIGHT);
+ root.add(officerCap);
  return{root,body,ready:false,loco:null,fill,rim,outfit,rig:null,pose:makeGuardCombatState(outfit),...props};
 }
 

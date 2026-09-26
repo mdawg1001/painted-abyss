@@ -3,7 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {CaveWorld,type Snapshot} from './CaveWorld';
 import {smokeAt} from './survival';
 import {SURVIVAL} from './survivalConfig';
-import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,MAP_FRAGMENT_ORDER,STASH_CAPACITY,type Item,type StashSlot} from './simulation';
+import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,pickupInteractPrompt,isMainGuard,liveGuard,MAP_FRAGMENT_ORDER,STASH_CAPACITY,type Item,type StashSlot} from './simulation';
 import {DiveMap} from './DiveMap';
 import {KNIFE_THUMB_URL} from './knifeAsset';
 import {APP_VERSION,APP_BUILD_LABEL,APP_BUILD_SHA} from './version';
@@ -23,6 +23,16 @@ function Icon({item}:{item:Item|null}){
   gun:<><rect x="8" y="20" width="22" height="6" rx="1" fill="#9aa3aa"/><rect x="28" y="18" width="12" height="4" rx="1" fill="#d5dbe0"/><rect x="14" y="26" width="5" height="12" rx="1" fill="#3a3028"/></>,
   bottle:<><rect x="18" y="12" width="12" height="26" rx="5" fill="#3d8f62"/><rect x="21" y="6" width="6" height="8" rx="1.5" fill="#e4e8ea"/></>,
   coat:<><path fill="#c49662" d="M14 16l10 5 10-5 6 7-5 18H13L8 23z"/><path fill="#6e5340" d="M20 20h8v8h-8z"/></>,
+  sovietKey:<g>
+   <rect x="22" y="20" width="5" height="22" rx="1.5" fill="#3a3d42"/>
+   <rect x="14" y="38" width="13" height="4" rx="1" fill="#26282c"/>
+   <rect x="14" y="43" width="7" height="3" rx="1" fill="#26282c"/>
+   <ellipse cx="24.5" cy="14" rx="11" ry="9" fill="#2e3136"/>
+   <ellipse cx="24.5" cy="14" rx="6" ry="5" fill="#1a1c1e"/>
+   <circle cx="24.5" cy="14" r="5" fill="#c9a227"/>
+   <circle cx="24.5" cy="14" r="3.6" fill="#8b1a1a"/>
+   <path fill="#e8c84a" d="M24.5 10.2l1.1 2.2 2.4.4-1.7 1.7.4 2.4-2.2-1.1-2.2 1.1.4-2.4-1.7-1.7 2.4-.4z"/>
+  </g>,
  };
  return <svg viewBox="0 0 48 48" fill="none" aria-hidden="true">{item?paths[item]:null}</svg>;
 }
@@ -95,16 +105,20 @@ function App(){
   :'';
  // At the wheel the prompt shrinks to a flow read-out so the hands stay in view.
  const valvePrompt=snap?.atWheel?`Leak ${Math.round((m?.leakFlow??0)*100)}% · release E to let go`:m?.atValve()?(m.valveSealed?(m.floodDraining?'Valve shut · draining · Hold E to open it again':'Valve shut · Hold E to open it again'):`Hold E · Turn the valve shut${m.valveTurned>0?` · leak ${Math.round(m.leakFlow*100)}%`:''}`):'';
- const pickupPrompt=(mm:NonNullable<typeof m>,item:keyof typeof ITEMS)=>{
-  if(item==='gun'&&mm.inventory.includes('gun'))return `E · Take rounds from ${ITEMS.gun.name}`;
-  const held=mm.inventory[mm.selected];
-  if(!mm.inventory.includes(null)&&held)return `E · Swap ${ITEMS[held].name} for ${ITEMS[item].name}`;
-  return `E · Pick up ${ITEMS[item].name}`;
- };
+ const pickupPrompt=(mm:NonNullable<typeof m>,item:keyof typeof ITEMS)=>pickupInteractPrompt(mm,item);
  const cachePrompt=nearCache?(nearCache.kind==='ammo'?`Walk over · Ammo box (+${SURVIVAL.supplies.ammo} rounds)`:nearCache.kind==='medkit'?`Walk over · Field dressing (+${SURVIVAL.supplies.medkit} suit)`:`Walk over · Smoke grenade`):'';
  const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':valvePrompt?valvePrompt:extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):stashPrompt?stashPrompt:chestPrompt?chestPrompt:nearest?pickupPrompt(m!,nearest.item):cachePrompt;
  const heading=(((-(snap?.yaw??0)*180)/Math.PI)%360+360)%360;
- const goal=m?(m.hasRelic?{p:EXIT,label:'EXTRACT'}:{p:RELIC,label:'RELIC'}):null;
+ const goal=(()=>{
+  if(!m)return null;
+  if(m.hasRelic)return{p:EXIT,label:'EXTRACT'};
+  if(m.inventory.includes('sovietKey'))return{p:RELIC,label:'RELIC'};
+  const keyDrop=m.pickups.find(p=>p.item==='sovietKey');
+  if(keyDrop)return{p:keyDrop.position,label:'KEY'};
+  const officer=m.guards.find(g=>liveGuard(g)&&isMainGuard(g));
+  if(officer)return{p:officer.position,label:'OFFICER'};
+  return{p:RELIC,label:'RELIC'};
+ })();
  const objective=m&&goal?{deg:compassDeg(goal.p.x-m.position.x,goal.p.z-m.position.z),label:`${goal.label} ${Math.round(Math.hypot(goal.p.x-m.position.x,goal.p.z-m.position.z))} m`}:undefined;
  const phaseLabel=m&&m.director.enabled?({intro:'',build:m.director.cycle?'THEY ARE COMING BACK HARDER':'CONTACT — THEY ARE COMING',peak:'OVERRUN — KEEP MOVING',lull:'LULL — RELOAD · RESUPPLY · MOVE',final:'FINAL PUSH — GET THE RELIC OUT'} as Record<string,string>)[m.director.phase]:'';
  const smokeVeil=m?Math.min(.82,smokeAt(m.clouds,m.position,m.elapsed)*.9):0;
@@ -145,7 +159,8 @@ function App(){
   {!playing&&<header><div className="brand"><span className="brand-mark">◉</span> PAINTED ABYSS<small>THE DROWNED SHELF</small></div><div className="build-label">FIRST DIVE <span> / </span> {APP_VERSION}</div></header>}
   {playing&&m&&<>
    <section className="objectives" aria-label="Objectives">
-    <div className={`obj ${m.hasRelic?'done':''}`}><span className="obj-icon" aria-hidden="true">◆</span>{m.hasRelic?'Carry the ammonite relic':'Recover the ammonite relic'}</div>
+    <div className={`obj ${m.guards.some(g=>isMainGuard(g)&&g.active&&g.hp<=0)||m.inventory.includes('sovietKey')||m.pickups.some(p=>p.item==='sovietKey')||m.hasRelic?'done':''}`}><span className="obj-icon" aria-hidden="true">★</span>{m.inventory.includes('sovietKey')||m.hasRelic?'Soviet key taken':m.pickups.some(p=>p.item==='sovietKey')?'Take the Soviet key':'Find and kill the main guard'}</div>
+    <div className={`obj ${m.hasRelic?'done':''}`}><span className="obj-icon" aria-hidden="true">◆</span>{m.hasRelic?'Carry the ammonite relic':m.inventory.includes('sovietKey')?'Unlock the ammonite relic':'Unlock the ammonite relic (needs key)'}</div>
     <div className={`obj ${mapComplete?'done':''}`}><span className="obj-icon" aria-hidden="true">▣</span>{mapComplete?'Cave chart fitted':'Find map scraps in crates'}{mapCount>0&&!mapComplete?` (${mapCount}/3)`:''}</div>
     <div className="obj"><span className="obj-icon" aria-hidden="true">○</span>Reach the extraction pool</div>
    </section>
@@ -179,7 +194,7 @@ function App(){
     </div>
    </>}
    <div className="inventory" aria-label="Inventory">
-    <div className="slots">{m.inventory.map((item,i)=>{const selected=i===m.selected;const pulse=selected&&m.feedbackKind?m.feedbackKind:'';return <div className={`slot ${selected?'selected':''} ${item==='relic'?'relic':''} ${item==='flare'?'flare':''} ${item==='knife'?'knife':''} ${item==='gun'?'gun':''} ${item==='bottle'?'bottle':''} ${item==='coat'?'coat':''} ${pulse?`pulse-${pulse}`:''}`} key={selected?`${i}-p${m.feedbackPulse}`:i}><kbd>{i+1}</kbd><Icon item={item}/>{selected&&<em className="slot-mark" aria-hidden="true">●</em>}</div>;})}</div>
+    <div className="slots">{m.inventory.map((item,i)=>{const selected=i===m.selected;const pulse=selected&&m.feedbackKind?m.feedbackKind:'';return <div className={`slot ${selected?'selected':''} ${item==='relic'?'relic':''} ${item==='flare'?'flare':''} ${item==='knife'?'knife':''} ${item==='gun'?'gun':''} ${item==='bottle'?'bottle':''} ${item==='coat'?'coat':''} ${item==='sovietKey'?'sovietKey':''} ${pulse?`pulse-${pulse}`:''}`} key={selected?`${i}-p${m.feedbackPulse}`:i}><kbd>{i+1}</kbd><Icon item={item}/>{selected&&<em className="slot-mark" aria-hidden="true">●</em>}</div>;})}</div>
    </div>
    {m.stashOpen&&<div className="stash-panel" aria-label="Stash chest">
     <div className="stash-title">STASH <span>{m.stash.filter(Boolean).length}/{STASH_CAPACITY}</span></div>
@@ -233,7 +248,7 @@ function App(){
    <div className="menu-actions"><button onClick={()=>{const w=engine.current;if(w){w.setSound(!w.sound);w.publish();}}}>{engine.current?.sound===false?'Sound off':'Sound on'}</button><button onClick={()=>engine.current?.testSound()}>Test sound</button>{snap?.started&&!terminal&&<button onClick={()=>{engine.current?.reset();engine.current?.start();}}>Restart dive</button>}</div>
    <p className="sound-help" role="status">{snap?.audioNotice||'Test sound plays two clear tones. During the dive, hear your music.'}</p>
    <div className="dive-note">2–4 MINUTES <span>·</span> DESKTOP / HEADPHONES <span>·</span> PROTOTYPE {APP_VERSION}</div>
-   </section><aside className="briefing"><div className="eyebrow">BEFORE YOU DESCEND</div><ol><li><b>Wake at the hatch.</b><span>A corridor joins the south of the cave. You start with only about 5% corridor water — WASD walk, Shift run. The cylinder does not burn until you swim. When corridor water rises past your eyes you leave the floor and swim with the usual buoyancy controls. Water rises there only and stays when you die. The wall tank is on a middle mount — after you die it is somewhere else. Press E to fill your cylinder. A gun, a spare bottle, and a coat lie farther up the corridor. Five Soviet guards patrol the dry floor in different kit colours — they stop where the water is too deep and cannot see through walls. Death drops whatever you carry on the corpse; if one of them killed you he takes the gun, bottle, and coat and will use them. You wake with empty hands. Entering the flooded cave always means swimming.</span></li><li><b>Find the relic.</b><span>It rests in the bone alcove, beyond the central pillar.</span></li><li><b>Chart scraps in the crates.</b><span>The plastic crate has no lid — the scrap is already visible; press E to grab it. Lidded crates open with E, then E takes the scrap. Tab reviews the field chart. Exits stay unmarked until all three fit.</span></li><li><b>Make room for your discovery.</b><span>Five slots, no backpack. E picks up at once; with all five full it swaps with the item in your hand (pick that slot with 1–5 first) and the old item drops at your feet. Slot 1 starts with a diving knife.</span></li><li><b>Escape through the east fissure.</b><span>Follow amber lights north to the extraction pool. The guardian cannot enter the narrow passage.</span></li></ol><div className="control-grid"><span><kbd>W A S D</kbd> Walk then swim</span><span><kbd>Shift</kbd> Run / sprint</span><span><kbd>Space / Q</kbd> Buoyancy (swim)</span><span><kbd>[ ]</kbd> Set trim bias</span><span><kbd>X</kbd> Clear trim</span><span><kbd>F</kbd> Torch</span><span><kbd>E</kbd> Collect / open crate</span><span><kbd>Tab</kbd> Cave chart</span><span><kbd>1–5</kbd> Select slot</span><span><kbd>Click</kbd> Stab (knife) / fire (pistol)</span><span><kbd>R</kbd> Use / reload</span><span><kbd>T</kbd> Throw smoke</span><span><kbd>G</kbd> Drop selected</span></div><p className="look-note">Move the mouse or trackpad to look — right looks right. No button held. If the browser limits the pointer, hold left or right of center to keep turning through 360° without leaving the dive window. Arrow keys also look. <kbd>Esc</kbd> pauses; <kbd>M</kbd> mutes.</p><p className="tip">Inventory: <kbd>1</kbd> selects the diving knife, then <kbd>click</kbd> stabs at close range — wound it and it rages; cut deep and it breaks off slow, or sinks bloody when killed. <kbd>R</kbd> uses consumables (air, sealant, flares). Crates yield chart scraps — <kbd>Tab</kbd> opens the field chart; exits stay unmarked until all three fit. A one-time tip appears on the first dive only. Rock blocks its sight; a flare distracts it while you move away. Killing is optional — extraction still only needs the relic.</p></aside></div>}
+   </section><aside className="briefing"><div className="eyebrow">BEFORE YOU DESCEND</div><ol><li><b>Wake at the hatch.</b><span>A corridor joins the south of the cave. You start with only about 5% corridor water — WASD walk, Shift run. The cylinder does not burn until you swim. When corridor water rises past your eyes you leave the floor and swim with the usual buoyancy controls. Water rises there only and stays when you die. The wall tank is on a middle mount — after you die it is somewhere else. Press E to fill your cylinder. A gun, a spare bottle, and a coat lie farther up the corridor. Five Soviet guards patrol the dry floor in different kit colours — they stop where the water is too deep and cannot see through walls. Death drops whatever you carry on the corpse; if one of them killed you he takes the gun, bottle, and coat and will use them. You wake with empty hands. Entering the flooded cave always means swimming.</span></li><li><b>Kill the main guard for the key.</b><span>One officer in a peaking cap patrols the west cavern — not at the hatch and not on the relic. His Soviet key unlocks the ammonite in the bone alcove (consumed on unlock). Extract still requires carrying the relic out.</span></li><li><b>Chart scraps in the crates.</b><span>The plastic crate has no lid — the scrap is already visible; press E to grab it. Lidded crates open with E, then E takes the scrap. Tab reviews the field chart. Exits stay unmarked until all three fit.</span></li><li><b>Make room for your discovery.</b><span>Five slots, no backpack. E picks up at once; with all five full it swaps with the item in your hand (pick that slot with 1–5 first) and the old item drops at your feet. Slot 1 starts with a diving knife.</span></li><li><b>Escape through the east fissure.</b><span>Follow amber lights north to the extraction pool. The guardian cannot enter the narrow passage.</span></li></ol><div className="control-grid"><span><kbd>W A S D</kbd> Walk then swim</span><span><kbd>Shift</kbd> Run / sprint</span><span><kbd>Space / Q</kbd> Buoyancy (swim)</span><span><kbd>[ ]</kbd> Set trim bias</span><span><kbd>X</kbd> Clear trim</span><span><kbd>F</kbd> Torch</span><span><kbd>E</kbd> Collect / open crate</span><span><kbd>Tab</kbd> Cave chart</span><span><kbd>1–5</kbd> Select slot</span><span><kbd>Click</kbd> Stab (knife) / fire (pistol)</span><span><kbd>R</kbd> Use / reload</span><span><kbd>T</kbd> Throw smoke</span><span><kbd>G</kbd> Drop selected</span></div><p className="look-note">Move the mouse or trackpad to look — right looks right. No button held. If the browser limits the pointer, hold left or right of center to keep turning through 360° without leaving the dive window. Arrow keys also look. <kbd>Esc</kbd> pauses; <kbd>M</kbd> mutes.</p><p className="tip">Inventory: <kbd>1</kbd> selects the diving knife, then <kbd>click</kbd> stabs at close range — wound it and it rages; cut deep and it breaks off slow, or sinks bloody when killed. <kbd>R</kbd> uses consumables (air, sealant, flares). Crates yield chart scraps — <kbd>Tab</kbd> opens the field chart; exits stay unmarked until all three fit. A one-time tip appears on the first dive only. Rock blocks its sight; a flare distracts it while you move away. Killing is optional — extraction still only needs the relic.</p></aside></div>}
  </main>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);
