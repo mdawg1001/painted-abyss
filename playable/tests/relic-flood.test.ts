@@ -11,13 +11,15 @@ test('flood stays dormant until a successful relic pickup, then latches across d
  m.interact();assert.equal(m.floodTriggered,false);
  m.position={...RELIC};
  m.turnValve(VALVE_CLOSE_RAD); // Pre-closing cannot bypass the booby trap.
- m.interact();assert.ok(m.hasRelic);assert.ok(m.floodTriggered);
+ m.inventory[2]='sovietKey';
+ m.interact();assert.ok(m.hasRelic);assert.ok(m.floodTriggered);assert.equal(m.inventory.includes('sovietKey'),false);
  assert.equal(m.valveTurned,0);
  m.update(.05);assert.ok(m.breathWaterY>BREATH_WATER_START);
  m.drop();assert.equal(m.hasRelic,false);
  const before=m.breathWaterY;m.update(.05);assert.ok(m.breathWaterY>before);
  m.turnValve(VALVE_CLOSE_RAD);
  const wet=m.breathWaterY;m.update(.05);assert.ok(m.breathWaterY<wet);
+ m.inventory[2]='sovietKey';
  m.interact();assert.ok(m.hasRelic);assert.ok(m.valveSealed,'recollecting cannot retrigger the valve');
  m.respawnAtHatch();assert.ok(m.floodTriggered);assert.ok(m.valveSealed);
  m.turnValve(-VALVE_CLOSE_RAD);
