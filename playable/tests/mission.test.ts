@@ -1,9 +1,17 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,KNIFE_COOLDOWN,PREDATOR_HP_MAX,PREDATOR_BREAK_HP,createDiveChests,CHEST_LABEL,chestHasLid,chestInteractPrompt,MAP_FRAGMENT_ORDER,MAP_FRAGMENT_LABEL,torchShouldShine,holdingTorchItem,occupiesFpsHand,predatorSpawnCandidates,randomPredatorSpawn,PREDATOR_SPAWN_CELLS,playerSpawnCandidates,randomPlayerSpawn,PLAYER_SPAWN_CELLS,SPAWN_SEPARATION,breathHatchSpawn,isolateGuards,PREDATOR_SWIM_DEPTH,
+import {Mission,START,RELIC,EXIT,world,moveBody,visible,fits,pathBetween,lookDelta,edgeTurn,FREE_LOOK_RATE,torchModulation,TORCH_BASELINE,beerLambertTransmit,torchBetas,distance,cells,SURFACE_Y,FLOOR_Y,hydrostaticDepth,ata,gasDrainRate,AIR_MAIN_MAX,AIR_BAILOUT_MAX,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,SAC_CRUISE_LPM,updateBuoyancy,updateBuoyancyTrim,stepSwimVelocity,terminalSwimSpeed,terminalBuoyancySpeed,PREDATOR_SPEED,SWIM_BUOYANCY_ACCEL,SWIM_KICK_VERTICAL_SCALE,BCD_TRIM_BIAS_MAX,KNIFE_RANGE,BITE_RANGE,KNIFE_DAMAGE,KNIFE_COOLDOWN,PREDATOR_HP_MAX,PREDATOR_BREAK_HP,createDiveChests,CHEST_LABEL,chestHasLid,chestInteractPrompt,MAP_FRAGMENT_ORDER,MAP_FRAGMENT_LABEL,torchShouldShine,holdingTorchItem,occupiesFpsHand,predatorSpawnCandidates,randomPredatorSpawn,PREDATOR_SPAWN_CELLS,playerSpawnCandidates,randomPlayerSpawn,PLAYER_SPAWN_CELLS,SPAWN_SEPARATION,breathHatchSpawn,isolateGuards,PREDATOR_SWIM_DEPTH,GAME_TIME_SCALE,MAX_FRAME_DT,
 } from '../src/simulation';
 const advance=(m:Mission,seconds:number)=>{isolateGuards(m);for(let i=0;i<seconds*60;i++)m.update(1/60);};
+test('game runs at 5x wall-clock simulation scale',()=>{
+ assert.equal(GAME_TIME_SCALE,5);
+ assert.equal(MAX_FRAME_DT,.05);
+ const m=new Mission();isolateGuards(m);
+ const before=m.elapsed;
+ m.update(MAX_FRAME_DT*GAME_TIME_SCALE,false);
+ assert.ok(Math.abs(m.elapsed-before-MAX_FRAME_DT*GAME_TIME_SCALE)<1e-9,'scaled frame dt must not be re-clamped below 5x');
+});
 test('hydrostatic depth and ata share one surface plane',()=>{
  assert.equal(hydrostaticDepth(SURFACE_Y),0);
  assert.equal(hydrostaticDepth(FLOOR_Y),SURFACE_Y-FLOOR_Y);

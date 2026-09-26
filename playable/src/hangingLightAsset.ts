@@ -14,7 +14,7 @@
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { cells, world } from './simulation';
+import { cells, world, GAME_TIME_SCALE } from './simulation';
 
 export const HANGING_LIGHT_SOURCE = 'https://polyhaven.com/a/caged_hanging_light';
 export const HANGING_LIGHT_LICENSE = 'CC0 1.0 Universal (public domain dedication)';
@@ -251,7 +251,8 @@ const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), down = new THREE.V
  */
 export function stepHangingLights(h: HangingLights, dt: number, t: number, eye: THREE.Vector3, kicks: { x: number; z: number; power?: number }[], panic: number, tint: number | null) {
  const H = HANGING_LIGHT;
- dt = Math.min(dt, 1 / 20);
+ // Cap scales with GAME_TIME_SCALE so sped-up frames still swing fully.
+ dt = Math.min(dt, GAME_TIME_SCALE / 20);
  for (const l of h.lamps) {
   for (const k of kicks) {
    const dx = l.x - k.x, dz = l.z - k.z, d = Math.hypot(dx, dz);
