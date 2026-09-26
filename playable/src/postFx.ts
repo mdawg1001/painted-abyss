@@ -5,8 +5,9 @@
  *   RenderPass → UnrealBloomPass → ImpactPass (chroma + vignette + mild crunch)
  *   → clip grade → OutputPass
  *
- * Tuned loud on purpose: neon / muzzle / pickups bloom hard; damage and Shift
- * sprint/run slam chroma + vignette with a slow decay so the punch is felt.
+ * Bloom is hard-capped (high threshold, modest strength/radius) so the bunker
+ * stays readable at rest — neon guns / muzzle still glow, no full-screen white
+ * disk. Damage and Shift sprint/run keep punchy chroma + vignette with slow decay.
  * DPR stays capped; rock maps stay in the scene.
  */
 import * as THREE from 'three';
@@ -16,10 +17,10 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 /** Cap device pixel ratio when the bloom stack is live (Retina + UnrealBloomPass hitch). */
 export const POST_FX_DPR_CAP = 1.25;
 
-/** Loud neon bloom — low threshold so emissives/muzzle/pickups blow out. */
-export const BLOOM_STRENGTH = 1.35;
-export const BLOOM_RADIUS = 0.95;
-export const BLOOM_THRESHOLD = 0.28;
+/** Hard-capped bloom — only hot emissives / muzzle / neon pass; bunker stays readable. */
+export const BLOOM_STRENGTH = 0.4;
+export const BLOOM_RADIUS = 0.4;
+export const BLOOM_THRESHOLD = 0.82;
 /** Bloom render targets run at this fraction of the canvas (perf). */
 export const BLOOM_RES_SCALE = 0.5;
 

@@ -23,14 +23,14 @@ test('post FX caps Retina DPR below uncapped devicePixelRatio', () => {
  assert.ok(POST_FX_DPR_CAP >= 1, 'still at least 1×');
 });
 
-test('UnrealBloomPass is loud and low-threshold for obvious neon', () => {
- assert.ok(BLOOM_STRENGTH >= 1.0, 'strength must read as bloom, not a soft haze');
- assert.ok(BLOOM_RADIUS >= 0.8);
- assert.ok(BLOOM_THRESHOLD <= 0.4, 'low threshold so emissives/muzzle blow out');
+test('UnrealBloomPass is hard-capped so the bunker stays readable', () => {
+ assert.ok(BLOOM_STRENGTH > 0 && BLOOM_STRENGTH <= 0.5, 'modest strength — no full-screen wash');
+ assert.ok(BLOOM_RADIUS > 0 && BLOOM_RADIUS <= 0.5, 'tight radius — no giant disk');
+ assert.ok(BLOOM_THRESHOLD >= 0.75, 'high threshold keeps rock/water/lights out of bloom');
  assert.equal(BLOOM_RES_SCALE, 0.5);
 });
 
-test('impact chroma/vignette peaks are extreme and decay slowly', () => {
+test('impact chroma/vignette peaks stay extreme and decay slowly', () => {
  assert.ok(IMPACT_CHROMA_MAX >= 0.015, 'RGB fringe must be unmistakable');
  assert.ok(IMPACT_VIGNETTE_MAX >= 0.9);
  assert.ok(IMPACT_DECAY <= 1.2, 'slow decay so the punch hangs');
