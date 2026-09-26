@@ -12,4 +12,4 @@ The glTF asset extras also name Simon Volt (https://sketchfab.com/tursunovabduse
 First Dive ships:
 - `tt33.glb` — official Sketchfab glTF binary (5,306 triangles)
 
-Used as the Soviet guard hand mesh. The diver's inventory gun is the PolyCube retro gun under `../retro-gun/`.
+Used as the Soviet guard hand mesh. The diver's inventory gun is the AK74U FPS viewmodel under `../ak74u/`.
