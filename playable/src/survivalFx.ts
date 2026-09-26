@@ -51,6 +51,8 @@ export class SurvivalFx{
  smokeMat:THREE.SpriteMaterial;
  points:THREE.Points;pts:Particle[]=[];next=0;
  flashMats=new WeakMap<THREE.Object3D,{m:THREE.MeshStandardMaterial;e:THREE.Color;i:number}[]>();
+ /** Stub → glTF upgrades for cardboard / desk cover; CaveWorld streams these by proximity. */
+ coverJobs:{id:string;position:{x:number;z:number};load:()=>Promise<boolean>}[]=[];
  constructor(scene:THREE.Scene,visuals:SovietGuardVisual[],glowTex:THREE.Texture,adopt:(o:THREE.Object3D)=>void){
   this.scene=scene;
   // Guard key/rim light pool (replaces each guard's own pair).
@@ -104,11 +106,21 @@ export class SurvivalFx{
     const cluster=3+(Math.abs(Math.round(c.x*2+c.z))%2); // 3 or 4 stacks
     g=createCardboardCoverVisual(yaw,cluster);
     g.position.set(c.x,FLOOR_Y,c.z);
-    void upgradeCardboardCover(g);
+    const root=g;
+    this.coverJobs.push({
+     id:`cardboard-${c.x}-${c.z}`,
+     position:{x:c.x,z:c.z},
+     load:()=>upgradeCardboardCover(root),
+    });
    }else if(c.kind==='desk'){
     g=createDeskCoverVisual(c.x*0.13+c.z*0.09);
     g.position.set(c.x,FLOOR_Y,c.z);
-    void upgradeDeskCover(g);
+    const root=g;
+    this.coverJobs.push({
+     id:`desk-${c.x}-${c.z}`,
+     position:{x:c.x,z:c.z},
+     load:()=>upgradeDeskCover(root),
+    });
    }else{
     g=new THREE.Group();g.position.set(c.x,FLOOR_Y,c.z);
     if(c.kind==='crates'){

@@ -324,40 +324,50 @@ function fadeTo(rt:Ak74uRuntime,name:Ak74uClip,fade=.15){
  }
 }
 
+/** Kick off the 23 MB FPS pack without mounting (idle prefetch after Begin dive). */
+export function prefetchAk74u(){
+ return loadAkProto();
+}
+
 /** Swap placeholder for the AK74U viewmodel (held) or floor carbine (pickup). */
-export function mountAk74u(holder:THREE.Object3D,fit:Exclude<GunFit,'guard'>){
- whenAk(proto=>{
-  if(!proto||holder.userData.gunAlive===false)return;
-  // Held keeps PBR (normals/AO read under a local fill light). Pickup stays unlit.
-  const model=cloneTree(proto.scene,fit==='pickup');
-  const fitted=fitAk74u(model,fit);
-  dropStubs(holder);
-  holder.add(fitted);
-  if(fit==='held'){
-   // Soft fill so MeshStandardMaterial reads in the dark bunker (no world lights on the FPS layer).
-   const fill=new THREE.HemisphereLight(0xc8d4e0,0x1a1510,.95);
-   fill.name='ak74uFill';
-   fitted.add(fill);
-   const key=new THREE.DirectionalLight(0xfff2e0,.55);
-   key.position.set(.2,.4,.6);
-   key.name='ak74uKey';
-   fitted.add(key);
-   const mixer=new THREE.AnimationMixer(model);
-   const actions=buildActions(mixer,proto.clips);
-   const rt:Ak74uRuntime={mixer,actions,current:''};
-   holder.userData.ak74u=rt;
-   fadeTo(rt,'IDLE',0);
-  }else{
-   const mixer=new THREE.AnimationMixer(model);
-   const idle=proto.clips.find(c=>c.name==='IDLE');
-   if(idle){
-    const a=mixer.clipAction(idle);
-    a.play();
-    mixer.update(0.05);
-    a.stop();
+export function mountAk74u(holder:THREE.Object3D,fit:Exclude<GunFit,'guard'>):Promise<boolean>{
+ if(holder.userData.akMounted)return Promise.resolve(!!holder.userData.ak74u||fit==='pickup');
+ holder.userData.akMounted=true;
+ return new Promise(resolve=>{
+  whenAk(proto=>{
+   if(!proto||holder.userData.gunAlive===false){resolve(false);return;}
+   // Held keeps PBR (normals/AO read under a local fill light). Pickup stays unlit.
+   const model=cloneTree(proto.scene,fit==='pickup');
+   const fitted=fitAk74u(model,fit);
+   dropStubs(holder);
+   holder.add(fitted);
+   if(fit==='held'){
+    // Soft fill so MeshStandardMaterial reads in the dark bunker (no world lights on the FPS layer).
+    const fill=new THREE.HemisphereLight(0xc8d4e0,0x1a1510,.95);
+    fill.name='ak74uFill';
+    fitted.add(fill);
+    const key=new THREE.DirectionalLight(0xfff2e0,.55);
+    key.position.set(.2,.4,.6);
+    key.name='ak74uKey';
+    fitted.add(key);
+    const mixer=new THREE.AnimationMixer(model);
+    const actions=buildActions(mixer,proto.clips);
+    const rt:Ak74uRuntime={mixer,actions,current:''};
+    holder.userData.ak74u=rt;
+    fadeTo(rt,'IDLE',0);
+   }else{
+    const mixer=new THREE.AnimationMixer(model);
+    const idle=proto.clips.find(c=>c.name==='IDLE');
+    if(idle){
+     const a=mixer.clipAction(idle);
+     a.play();
+     mixer.update(0.05);
+     a.stop();
+    }
+    mixer.stopAllAction();
    }
-   mixer.stopAllAction();
-  }
+   resolve(true);
+  });
  });
 }
 
