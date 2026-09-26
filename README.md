@@ -1,6 +1,9 @@
-# Painted Abyss — First Dive · 0.19.10
+# Painted Abyss — First Dive · 0.20.1
 
-## Combat Feedback Manager (0.19.10)
+
+
+
+## Combat Feedback Manager (0.20.1)
 
 `playable/src/combatFeedback.ts` — `triggerScreenShake(intensity, duration)` drives a decaying noise camera offset (heavy fire / taking damage); `triggerHitstop(durationMillis)` freezes sim updates for a few milliseconds while rendering continues (crits / kills). Wired through CaveWorld’s animate loop via `simDt` and camera-local shake.
 
