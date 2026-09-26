@@ -24,16 +24,16 @@ const GOLD = () =>
   color: 0xc9a227,
   metalness: 0.85,
   roughness: 0.32,
-  emissive: 0x8a5010,
-  emissiveIntensity: 0.85,
+  emissive: 0xffb020,
+  emissiveIntensity: 2.6,
  });
 const RED = () =>
  new THREE.MeshStandardMaterial({
   color: 0x8b1a1a,
   metalness: 0.35,
   roughness: 0.45,
-  emissive: 0x901018,
-  emissiveIntensity: 0.7,
+  emissive: 0xff2030,
+  emissiveIntensity: 2.2,
  });
 
 /** Hammer + sickle + wheat wreath + red star on a gold disc (local Z facing out). */
