@@ -44,6 +44,7 @@ import { createWallPipe, upgradeWallPipe, setPipeWheel, PIPE_MOUNT, type WallPip
 import { startStroke, stepStroke, handPoses, smootherstep, VALVE_STAND, WHEEL_CENTRE, BREAKAWAY_TIME, REGRIP_TIME, type ValveStroke } from './valve';
 import { createValveHands, poseValveHands, resetValveHands, type ValveHandsRig } from './valveHands';
 import { applyHandEnvMap } from './diverHand';
+import { SpeedFov, SPEED_FOV } from './speedFov';
 import { StyleMeter, type StyleEvent, type StyleView } from './styleMeter';
 import { makeTech, stepTech, requestJump, requestSlide, techOwnsMovement, STAND_HEIGHT, type TechState } from './movementTech';
 import {
@@ -240,7 +241,9 @@ export class CaveWorld extends OceanWorld {
  /** Right mouse held (aim down sights) and the 0…1 shoulder blend that follows it. */
  aimHeld=false;aimBlend=0;
  /** Base lens (deg); aiming narrows it to AK74U_ADS.fov. */
- baseFov=64;
+ baseFov=SPEED_FOV.MIN_FOV;
+ /** Speed-driven lens on a spring (speedFov.ts); reads this.velocity, never writes it. */
+ speedFov=new SpeedFov();
  /** Muzzle on the carbine's barrel bone, measured once the glTF mounts. */
  _muzzleAt=new THREE.Vector3();
  akMuzzle:{bone:THREE.Object3D;local:THREE.Vector3}|null=null;
@@ -1142,7 +1145,7 @@ export class CaveWorld extends OceanWorld {
   this.mission.respawnAtHatch();
   this.mission.mapOpen=false;
   // Dying ends the run of style.
-  this.style.reset();this.tech=makeTech();
+  this.style.reset();this.tech=makeTech();this.speedFov.reset();
   this.resetSurvivalFx();
   this.position.copy(this.mission.position);
   this.velocity.set(0,0,0);
@@ -2270,10 +2273,19 @@ export class CaveWorld extends OceanWorld {
   const can=this.playing&&this.aimHeld&&this.holdingGun()&&!this.valveStroke&&this.mission.pistol.reload<=0&&!this.mission.mapOpen;
   const step=dt/AK74U_ADS.seconds;
   this.aimBlend=can?Math.min(1,this.aimBlend+step):Math.max(0,this.aimBlend-step);
+  document.documentElement.classList.toggle('ads',this.aimEase()>.5);
+ }
+ /**
+  * Lens per frame: the speed spring sets the hip FOV, aiming blends toward the sights' fixed
+  * lens (a scope does not breathe with your speed), and the peripheral stretch follows the
+  * spring. Velocity is read only.
+  */
+ applyLens(dt:number){
+  const lens=this.speedFov.update(this.velocity,dt);
   const e=this.aimEase();
-  const fov=this.baseFov+(AK74U_ADS.fov-this.baseFov)*e;
+  const fov=lens+(AK74U_ADS.fov-lens)*e;
   if(Math.abs(this.camera.fov-fov)>1e-3){this.camera.fov=fov;this.camera.updateProjectionMatrix();}
-  document.documentElement.classList.toggle('ads',e>.5);
+  this.impactPass?.setWarp(this.speedFov.warp()*(1-e));
  }
  /** Sounds and feedback for the pistol's combat cue. */
  consumePistolCue(){
@@ -2327,6 +2339,7 @@ export class CaveWorld extends OceanWorld {
   this.pistolReloadSeen=r;
   updateAk74u(this.gunVisual,dt);
   this.updateAim(dt);
+  this.applyLens(dt);
   if(this.playerFlashT>0)this.placePlayerMuzzle();
  }
  flashKnife(){
@@ -2412,7 +2425,7 @@ export class CaveWorld extends OceanWorld {
   this.backgroundMusic?.reset();this.mission=new Mission(readInventoryTipsSeen());
   resetGradeClock(this.gradeClock);this.frameGrade='dry';
   this.resetSurvivalFx();
-  this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();this.style.reset();
+  this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();this.style.reset();this.speedFov.reset();
   this.onFoot=true;this.wasOnFoot=true;this.gait.reset();this.tech=makeTech();
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
   this.combatFeedback.reset();this.shakeClock=0;this.knifeFlashUntil=0;this.knifeEquipAt=null;this.stabQueue=0;
