@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import type {CaveWorld as CaveWorldType,Snapshot} from './CaveWorld';
 import {smokeAt} from './survival';
 import {SURVIVAL} from './survivalConfig';
+import {rifleName} from './rifleCondition';
 import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,pickupInteractPrompt,isMainGuard,liveGuard,MAP_FRAGMENT_ORDER,STASH_CAPACITY,type Item,type StashSlot} from './simulation';
 import {DiveMap} from './DiveMap';
 import {KNIFE_THUMB_URL} from './knifeAsset';
@@ -121,7 +122,7 @@ function App(){
  const valvePrompt=snap?.atWheel?`Leak ${Math.round((m?.leakFlow??0)*100)}% · release E to let go`:m?.atValve()?(m.valveSealed?(m.floodDraining?'Valve shut · draining · Hold E to open it again':'Valve shut · Hold E to open it again'):`Hold E · Turn the valve shut${m.valveTurned>0?` · leak ${Math.round(m.leakFlow*100)}%`:''}`):'';
  const pickupPrompt=(mm:NonNullable<typeof m>,item:keyof typeof ITEMS)=>pickupInteractPrompt(mm,item);
  const cachePrompt=nearCache?(nearCache.kind==='ammo'?`Walk over · Ammo box (+${SURVIVAL.supplies.ammo} rounds)`:nearCache.kind==='medkit'?`Walk over · Field dressing (+${SURVIVAL.supplies.medkit} suit)`:`Walk over · Smoke grenade`):'';
- const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':valvePrompt?valvePrompt:extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):stashPrompt?stashPrompt:chestPrompt?chestPrompt:nearest?pickupPrompt(m!,nearest.item):cachePrompt;
+ const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':valvePrompt?valvePrompt:extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):stashPrompt?stashPrompt:chestPrompt?chestPrompt:nearest?pickupInteractPrompt(m!,nearest.item,nearest):cachePrompt;
  const heading=(((-(snap?.yaw??0)*180)/Math.PI)%360+360)%360;
  const goal=(()=>{
   if(!m)return null;
@@ -212,7 +213,7 @@ function App(){
    {m.inventory[m.selected]==='gun'&&<>
     <div className={`crosshair${m.lastPistolHit&&m.elapsed-m.lastPistolHit.at<.22?(m.lastPistolHit.killed?' hit kill':m.lastPistolHit.headshot?' hit head':' hit'):''}`} aria-hidden="true"><i/><i/><i/><i/><b/></div>
     <div className={`ammo${m.pistol.mag===0?' empty':''}${m.pistol.reload>0?' reloading':''}`} aria-label={`Pistol ${m.pistol.mag} in magazine, ${m.pistol.reserve} spare`}>
-     <strong>{m.pistol.reload>0?'—':m.pistol.mag}</strong><span>/ {m.pistol.reserve}</span><em>{m.pistol.reload>0?'RELOADING':m.pistol.mag===0?(m.pistol.reserve>0?'R · RELOAD':'NO ROUNDS'):'AK-74U'}</em>
+     <strong>{m.pistol.reload>0?'—':m.pistol.mag}</strong><span>/ {m.pistol.reserve}</span><em className={m.jammed?'jam':''}>{m.jammed?'JAMMED · R':m.pistol.reload>0?'RELOADING':m.pistol.mag===0?(m.pistol.reserve>0?'R · RELOAD':'NO ROUNDS'):rifleName(m.gunCond)}</em>
     </div>
    </>}
    <div className="inventory" aria-label="Inventory">

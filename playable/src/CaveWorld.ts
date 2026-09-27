@@ -53,6 +53,7 @@ import {
  mountAk74u, prefetchAk74u, updateAk74u, drawAk74u, shootAk74u, reloadAk74u, inspectAk74u, ak74uMuzzle, ak74uAimOffset,
  AK74U_HELD_POS, AK74U_HELD_ROT, AK74U_ADS,
 } from './gunAsset';
+import { RIFLE, rifleIsPrize } from './rifleCondition';
 import { Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, groundNormal, GUARD_COUNT, STASH_POSITION, STASH_YAW, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
@@ -1884,8 +1885,11 @@ export class CaveWorld extends OceanWorld {
      const gear=this.gearPickupMesh(p.item);
      group.add(gear);
      if(p.item==='gun'){
-      // Neon tell so the floor carbine contributes to UnrealBloomPass without washing the corridor.
-      group.add(new THREE.PointLight(0x5ce0ff,2.8,5.5));
+      // Loot tell by grade: a prize rifle burns gold, scavenged junk gives a dull grey glint,
+      // a maintained rifle keeps the neon cyan.
+      const cond=p.cond??RIFLE.kitCond;
+      const prize=rifleIsPrize(cond)&&cond<RIFLE.kitCond;
+      group.add(new THREE.PointLight(prize?0xffc040:cond<RIFLE.keepCond?0x8a9aa4:0x5ce0ff,prize?4.2:cond<RIFLE.keepCond?1.3:2.8,prize?7:4.5));
       this.propStreaming.add(`pickup-gun-${p.id}`,{x:p.position.x,z:p.position.z},()=>mountAk74u(gear,'pickup',{envMap:this.knifeEnvMap}),40);
      }
     }
@@ -2240,7 +2244,7 @@ export class CaveWorld extends OceanWorld {
   if(!cue.startsWith('pistol-'))return;
   this.mission.combatCue='';
   const a=this.audible(),ctx=this.audioContext!,master=this.master!;
-  if(cue==='pistol-dry'){if(a)playPistolClick(ctx,master);return;}
+  if(cue==='pistol-dry'||cue==='pistol-jam'||cue==='pistol-clear'){if(a)playPistolClick(ctx,master);return;}
   if(cue==='pistol-reload'){if(a)playPistolClick(ctx,master);return;}
   if(cue==='pistol-hit'||cue==='pistol-head'||cue==='pistol-kill'){
    this.scoreStyle(cue==='pistol-kill'?(this.mission.lastPistolHit?.headshot?'headshotKill':'kill'):cue==='pistol-head'?'headshot':'hit');

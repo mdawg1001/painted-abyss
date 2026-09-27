@@ -1,4 +1,5 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
+import { RIFLE, lootStream, jamChance, spreadSigma, scatter, rollDropCondition, rollDropRounds, rifleIsPrize, rifleName } from './rifleCondition';
 import { ITEM_BODY, stepBody, submergedFraction, type BodyState } from './propPhysics';
 import { steerToward, faceStanding, yawToward, wrapAngle, turnToward, forwardOf, GUARD_STEER_WALK, GUARD_STEER_RUN } from './guardSteering';
 import { SURVIVAL, SURVIVAL_COVER, type GuardRole } from './survivalConfig';
@@ -9,7 +10,7 @@ import {
  STASH_AMMO_PACK, STASH_CAPACITY, STASH_POSITION, STASH_REACH,
  firstEmptyStashSlot, firstFilledStashSlot, isStashItem, readStash,
  stashSlotLabel, writeStash,
- type StashCue, type StashSlot,
+ type StashCue, type StashItem, type StashSlot,
 } from './stash';
 export {
  STASH_AMMO_PACK, STASH_CAPACITY, STASH_POSITION, STASH_REACH, STASH_STORAGE_KEY, STASH_YAW,
@@ -21,6 +22,8 @@ export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife'|'gun'|'b
 export type Pickup={id:number;item:Item;position:Point;
  /** Rounds still in a dropped pistol (a downed guard's). Undefined for the corridor gun. */
  rounds?:number;
+ /** Rifle condition 0..1 (rifleCondition.ts). Undefined = a maintained service rifle. */
+ cond?:number;
  /** Just dropped by a swap: ignored by E until you step away, so a double tap cannot swap it straight back. */
  settling?:boolean;
  /** Falling / floating / resting state (propPhysics). Absent until the item first moves. */
@@ -276,13 +279,21 @@ export const isMainGuard=(g:{role:GuardRole})=>g.role==='officer';
 export function pickupInteractPrompt(m:{
  inventory:(Item|null)[];
  selected:number;
-},item:Item):string{
+ gunCond?:number;
+},item:Item,pickup?:{cond?:number;rounds?:number}):string{
  if(item==='relic'){
   if(m.inventory.includes('sovietKey'))return 'E · Unlock relic';
   return 'E · Locked · needs key';
  }
  if(item==='sovietKey')return 'E · Take Soviet key';
- if(item==='gun'&&m.inventory.includes('gun'))return `E · Take rounds from ${ITEMS.gun.name}`;
+ if(item==='gun'){
+  const cond=pickup?.cond??RIFLE.kitCond,rounds=pickup?.rounds?` · ${pickup.rounds} rds`:'';
+  if(m.inventory.includes('gun')){
+   if(cond>(m.gunCond??RIFLE.kitCond)+.01)return `E · Trade up to ${rifleName(cond)}${rounds}`;
+   return `E · Strip rounds from ${rifleName(cond)}`;
+  }
+  return `E · Take ${rifleName(cond)}${rounds}`;
+ }
  const held=m.inventory[m.selected];
  if(!m.inventory.includes(null)&&held)return `E · Swap ${ITEMS[held].name} for ${ITEMS[item].name}`;
  return `E · Pick up ${ITEMS[item].name}`;
@@ -1228,7 +1239,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  lootGuardIndex=0;
  /** Latest combat cue for audio / camera (cleared by the renderer when consumed). */
  combatCue:''|'stab-hit'|'stab-miss'|'flinch'|'break'|'kill'|'guard-shot'|'guard-miss'|'guard-melee'
-  |'pistol-miss'|'pistol-hit'|'pistol-head'|'pistol-kill'|'pistol-dry'|'pistol-reload'
+  |'pistol-miss'|'pistol-hit'|'pistol-head'|'pistol-kill'|'pistol-dry'|'pistol-reload'|'pistol-jam'|'pistol-clear'
   |'stab-guard'|'stab-guard-kill'|'guard-whiff'|'smoke-throw'='';
  /** Mission time of the latest squad call-out (renderer: radio squelch + notice). */
  squadAlertAt=-1;
@@ -1236,6 +1247,14 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  aimDwell:number[]=[];
  /** Your TT-33: magazine, spare rounds, cooldown and reload. */
  pistol:PistolState=makePistol();
+ /** Condition of the rifle you carry (1 slot max). Drives jams and scatter. */
+ gunCond:number=RIFLE.kitCond;
+ /** A stoppage is in the chamber: the trigger does nothing until R clears it. */
+ jammed=false;
+ /** Loot rolls use their own stream so what drops never shifts combat randomness. */
+ lootRand:()=>number=lootStream(Math.floor(Math.random()*2**31));
+ /** Latest prize rifle to hit the floor (officer's grade): renderer / HUD call it out. */
+ prizeDrop:{id:number;cond:number;at:number}|null=null;
  /** Pacing director for the firefight (reinforcements, lulls, final push). */
  director=new Director();
  /** Smoke grenades you carry, grenades in the air and clouds on the floor. */
@@ -1474,6 +1493,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    if(slot.item==='gun'&&slot.rounds){
     this.pistol.reserve=Math.min(PISTOL.reserveMax,this.pistol.reserve+slot.rounds);
    }
+   if(slot.item==='gun'){this.gunCond=slot.cond??RIFLE.kitCond;this.jammed=false;}
    this.stash[focus]=null;
    this.persistStash();
    this.stashCue='withdraw';
@@ -1484,11 +1504,11 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(!isStashItem(held)){this.pulse('blocked');return;}
   if(slot===null){
    // Empty slot: deposit. Prefer storing ammo when holding gun with reserve and empty hands path already handled.
-   this.stash[focus]={kind:'item',item:held};
+   this.stash[focus]=this.stashSlotFor(held);
    this.inventory[this.selected]=null;
    this.persistStash();
    this.stashCue='deposit';
-   this.say(`Stored ${ITEMS[held].name}.`,'ok');
+   this.say(held==='gun'?`Banked ${rifleName(this.gunCond)}. Safe for good.`:`Stored ${ITEMS[held].name}.`,'ok');
    // Point at the next empty slot so a follow-up E can store ammo instead of yanking this back out.
    const next=firstEmptyStashSlot(this.stash);
    if(next>=0)this.stashFocus=next;
@@ -1502,7 +1522,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    }
    const take=Math.min(slot.amount,PISTOL.reserveMax-this.pistol.reserve);
    this.pistol.reserve+=take;
-   this.stash[focus]={kind:'item',item:held};
+   this.stash[focus]=this.stashSlotFor(held);
    this.inventory[this.selected]=null;
    if(take<slot.amount){
     // Leftover ammo needs a free slot — drop remainder back if possible.
@@ -1529,14 +1549,20 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    return;
   }
   const outRounds=slot.item==='gun'?slot.rounds:undefined;
-  this.stash[focus]={kind:'item',item:held};
+  const outCond=slot.item==='gun'?slot.cond??RIFLE.kitCond:null;
+  this.stash[focus]=this.stashSlotFor(held);
   this.inventory[this.selected]=slot.item;
+  if(outCond!==null){this.gunCond=outCond;this.jammed=false;}
   if(slot.item==='gun'&&outRounds){
    this.pistol.reserve=Math.min(PISTOL.reserveMax,this.pistol.reserve+outRounds);
   }
   this.persistStash();
   this.stashCue='withdraw';
   this.say(`Swapped ${ITEMS[held].name} for ${ITEMS[slot.item].name}.`,'ok');
+ }
+ /** Chest slot for an item from your hands; a rifle keeps its condition. */
+ stashSlotFor(item:StashItem):StashSlot{
+  return item==='gun'?{kind:'item',item,cond:this.gunCond}:{kind:'item',item};
  }
  nearBreathTank(){
   const t=breathTankMounts()[this.breathTankIndex];
@@ -1562,12 +1588,13 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     item,
     position:{x:where.x+Math.cos(a)*.55,y,z:where.z+Math.sin(a)*.55},
    };
-   if(item==='gun'&&pocketRounds>0)drop.rounds=pocketRounds;
+   if(item==='gun'){if(pocketRounds>0)drop.rounds=pocketRounds;drop.cond=this.gunCond;}
    this.pickups.push(drop);
   }
   this.pistol.mag=0;
   this.pistol.reserve=0;
   this.pistol.reload=0;
+  this.jammed=false;
   this.inventory=[null,null,null,null,null];
   this.selected=0;
   this.pending=null;
@@ -1691,6 +1718,15 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.inventory[keySlot]=null;
   }
   // A second pistol is only worth its rounds: strip the magazine and leave the frame.
+  if(pickup.item==='gun'&&this.inventory.includes('gun')&&(pickup.cond??RIFLE.kitCond)>this.gunCond+.01){
+   // A better rifle than the one in your hands: trade up. Yours drops here with its wear.
+   const theirs=pickup.cond??RIFLE.kitCond,rounds=this.pistolRoundsOn(pickup);
+   this.pickups=this.pickups.filter(p=>p.id!==pickup.id);
+   this.pickups.push({id:this.nextId++,item:'gun',cond:this.gunCond,rounds:0,settling:true,position:{...this.position,y:this.dropY()}});
+   this.gunCond=theirs;this.jammed=false;
+   this.pistol.reserve=Math.min(PISTOL.reserveMax,this.pistol.reserve+rounds);
+   this.pending=null;this.say(`Traded up: ${rifleName(theirs)}.`,'ok');return;
+  }
   if(pickup.item==='gun'&&this.inventory.includes('gun')){
    const take=Math.min(this.pistolRoundsOn(pickup),PISTOL.reserveMax-this.pistol.reserve);
    if(take<=0){this.say('You already carry an AK-74U and your spare rounds are full.','blocked');return;}
@@ -1705,6 +1741,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.pickups=this.pickups.filter(p=>p.id!==pickup.id);if(old)this.pickups.push({id:this.nextId++,item:old,settling:true,position:{...this.position,y:this.dropY()}});
   // A downed guard's pistol still has his rounds in it.
   if(pickup.item==='gun'&&pickup.rounds)this.pistol.reserve=Math.min(PISTOL.reserveMax,this.pistol.reserve+pickup.rounds);
+  if(pickup.item==='gun'){this.gunCond=pickup.cond??RIFLE.kitCond;this.jammed=false;if(pickup.cond!==undefined&&pickup.cond<RIFLE.kitCond&&this.noticeUntil<=this.elapsed)this.say(`${rifleName(pickup.cond)}. It will jam and pull wide.`,'ok');}
   const sprung=pickup.item==='relic'&&!this.floodTriggered;
   if(sprung){
    this.floodTriggered=true;
@@ -1775,6 +1812,12 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  /** Start a magazine change on the pistol (R, or automatically when the last round goes). */
  reloadPistol(){
   const p=this.pistol;
+  if(this.jammed){
+   // Tap, rack, bang: clearing a stoppage costs a moment, not a magazine.
+   this.jammed=false;p.cool=Math.max(p.cool,RIFLE.clearSeconds);
+   this.combatCue='pistol-clear';this.pulse('ok');
+   return true;
+  }
   if(p.reload>0){this.pulse('blocked');return false;}
   if(p.mag>=p.maxMag){this.say('Magazine is full.','blocked');return false;}
   if(p.reserve<=0){this.say('No spare rounds. Find an ammo box or a downed guard\'s pistol.','blocked');return false;}
@@ -1788,7 +1831,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   * `origin` is the camera position and `dir` its forward vector (world space). One bullet
   * is one damage event on at most one guard (the nearest the ray meets).
   */
- firePistol(origin:Point,dir:Point):'fired'|'cooldown'|'reloading'|'empty'|'blocked'{
+ firePistol(origin:Point,dir:Point):'fired'|'cooldown'|'reloading'|'empty'|'blocked'|'jammed'{
   if(this.outcome!=='playing'||this.inventory[this.selected]!=='gun')return 'blocked';
   const p=this.pistol;
   const gate=canFire(p);
@@ -1798,8 +1841,18 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    return 'empty';
   }
   if(gate!=='ready')return gate;
+  if(this.jammed){this.combatCue='pistol-jam';p.cool=PISTOL.fireInterval;if(this.noticeUntil<=this.elapsed)this.say('Jammed. R to clear.','blocked');return 'jammed';}
+  // Worn rifles fail to feed: the round stays put, the trigger goes dead until you clear it.
+  const jam=jamChance(this.gunCond);
+  if(jam>0&&this.rand()<jam){
+   this.jammed=true;this.combatCue='pistol-jam';p.cool=PISTOL.fireInterval;
+   this.say('Stoppage! R to clear.','blocked');
+   return 'jammed';
+  }
   spendRound(p);
   this.hearGunshot();
+  // A worn barrel and loose sights throw the round off the crosshair.
+  dir=scatter(dir,spreadSigma(this.gunCond),this.rand);
   // A pistol round is spent within a metre or two of water.
   const range=origin.y<this.breathWaterY?PISTOL.rangeUnderwater:PISTOL.range;
   const targets=this.guards
@@ -1923,7 +1976,13 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    if(g.gun){
     const side={x:Math.cos(g.heading)*.45,z:-Math.sin(g.heading)*.45};
     const id=this.nextId++;
-    this.pickups.push({id,item:'gun',rounds:Math.max(SURVIVAL.dropRounds,g.ammo),position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}});
+    // His rifle is always worse than a maintained one, and its magazine is half spent.
+    const cond=rollDropCondition(g.role,this.lootRand);
+    this.pickups.push({id,item:'gun',cond,rounds:rollDropRounds(PISTOL.magazine,this.lootRand),position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}});
+    if(rifleIsPrize(cond)){
+     this.prizeDrop={id,cond,at:this.elapsed};
+     this.say(`${rifleName(cond)} on the floor. Fight on with it, or bank it in the stash.`,'ok');
+    }
     g.dropId=id;g.gun=false;
    }
    // Main officer drops the only Soviet key that unlocks the ammonite relic.
@@ -2508,6 +2567,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.caches=makeCaches();this.damageFrom=[];this.supplyTaken=null;this.lastImpact=null;this.lastKnifeHit=null;
   this.pistol=makePistol(PISTOL.magazine,0);
   this.pistol.mag=0;
+  this.jammed=false;
   this.aimDwell=[];
  }
  /** Throw one of your smoke grenades along (dirX, dirZ). */
@@ -2567,7 +2627,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     this.supplyTaken={kind:'ammo',at:this.elapsed};
     if(this.noticeUntil<=this.elapsed)this.say(`Stripped his magazine: +${take} rounds.`,'ok');
    }
-   this.pickups=this.pickups.filter(p=>!(p.item==='gun'&&p.rounds===0));
+   // Stripped junk rifles are left as scrap; a prize rifle stays on the floor to be taken or banked.
+   this.pickups=this.pickups.filter(p=>!(p.item==='gun'&&p.rounds===0&&!rifleIsPrize(p.cond??RIFLE.kitCond)));
   }
  }
  /**
