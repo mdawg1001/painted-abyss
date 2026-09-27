@@ -1,0 +1,121 @@
+/**
+ * Gold and rifle upgrades.
+ *
+ * Gold is real metal. 19,300 kg/m³, so every gram you carry is dead weight on land and
+ * ballast in the water: it slows your stride and drags you down against your BCD. The
+ * greedier you are, the harder the escape through the flooding bunker. Nothing here is
+ * an artificial rule; it is mass, displacement and lift.
+ *
+ * Banked gold buys upgrades at the stash workbench, and upgrades are fitted to one
+ * physical rifle. Die carrying that rifle and every upgrade on it lies on your corpse.
+ */
+import { GRAVITY, WATER_DENSITY } from './propPhysics';
+
+export const GOLD_DENSITY = 19300;
+/** Diver, suit, cylinder and kit (kg) — the mass the gold is added to. */
+export const DIVER_KG = 95;
+/** Lift of a jacket BCD fully inflated (kg). Typical recreational wings: 15–25 kg. */
+export const BCD_LIFT_KG = 18;
+
+export const GOLD = {
+ /** Coins in a dead guard's pockets (grams), and the officer's purse. */
+ guardCoins: [150, 350] as [number, number],
+ officerCoins: [800, 1200] as [number, number],
+ /** Standard good-delivery kilobar. */
+ barGrams: 1000,
+ /** Loose kilobars hidden somewhere different every dive. */
+ barsPerDive: 5,
+ /** The relic chamber hoard: bars stacked round the plinth, the last greed of the dive. */
+ hoardBars: 6,
+ /** Coins within this radius are scooped up as you walk over them (bars need E). */
+ scoopRadius: 1.4,
+} as const;
+
+/** Net downward force of `grams` of gold fully submerged (N): weight minus displaced water. */
+export function goldNetWeightN(grams: number) {
+ const kg = grams / 1000;
+ return kg * GRAVITY * (1 - WATER_DENSITY / GOLD_DENSITY);
+}
+
+/** Fraction of full BCD lift needed just to cancel the gold (0 = none, 1 = BCD maxed out). */
+export function goldBcdShare(grams: number) {
+ return goldNetWeightN(grams) / (BCD_LIFT_KG * GRAVITY);
+}
+
+/**
+ * Vertical acceleration the gold adds when swimming (m/s², downward positive), in the same
+ * units as the BCD's full-lift acceleration `bcdAccel`: carrying the BCD's worth of gold
+ * cancels a fully inflated jacket.
+ */
+export function goldSinkAccel(grams: number, bcdAccel: number) {
+ return goldBcdShare(grams) * bcdAccel;
+}
+
+/** Share of kick thrust left when pushing the diver plus gold (heavier body, same fins). */
+export function goldThrustFactor(grams: number) {
+ return DIVER_KG / (DIVER_KG + grams / 1000);
+}
+
+/**
+ * Walking speed multiplier under a carried load. Loaded-march studies put the cost of
+ * load well above its share of body mass for loads held in the hands and pockets, so the
+ * curve bends harder than mass alone: ~0.8 at 10 kg, ~0.67 at 20 kg.
+ */
+export function goldWalkFactor(grams: number) {
+ return 1 / (1 + (grams / 1000) / 40);
+}
+
+/** Extra stamina burn while running with the load. */
+export function goldStaminaFactor(grams: number) {
+ return 1 + (grams / 1000) / 25;
+}
+
+export const fmtGold = (grams: number) => grams >= 1000 ? `${(grams / 1000).toFixed(grams >= 10000 ? 0 : 1)} kg` : `${Math.round(grams)} g`;
+
+// ── Upgrades ──────────────────────────────────────────────────────────────────────────
+
+export type RifleMods = { barrel: number; action: number; mag: number };
+export type ModTrack = keyof RifleMods;
+export const MOD_TRACKS: ModTrack[] = ['barrel', 'action', 'mag'];
+export const noMods = (): RifleMods => ({ barrel: 0, action: 0, mag: 0 });
+
+export const UPGRADE = {
+ maxLevel: 3,
+ /** Grams of banked gold for each level (1, 2, 3) of any track. */
+ cost: [400, 900, 1800] as [number, number, number],
+ names: { barrel: 'Barrel', action: 'Action', mag: 'Magazine' } as Record<ModTrack, string>,
+ blurbs: {
+  barrel: ['Lapped bore: +8% damage, tighter groups', 'Chrome-lined: +16% damage', 'Match barrel: +24% damage, half the scatter'],
+  action: ['Polished feed ramp: half the jams', 'Tuned gas block: faster cycling', 'Hand-fitted action: jams nearly gone, fastest cycling'],
+  mag: ['Extended mag: +4 rounds', 'Coupled mags: +8 rounds', 'Drum: +12 rounds'],
+ } as Record<ModTrack, [string, string, string]>,
+} as const;
+
+export const upgradeCost = (level: number) => level >= UPGRADE.maxLevel ? Infinity : UPGRADE.cost[level];
+export const damageMult = (m: RifleMods) => 1 + .08 * m.barrel;
+export const spreadMult = (m: RifleMods) => 1 - m.barrel / 6;
+export const jamMult = (m: RifleMods) => Math.pow(.5, m.action);
+export const cycleMult = (m: RifleMods) => 1 - .08 * m.action;
+export const magBonus = (m: RifleMods) => 4 * m.mag;
+export const modLevel = (m: RifleMods | undefined) => m ? m.barrel + m.action + m.mag : 0;
+/** Gold sunk into a rifle's upgrades so far. */
+export const modValue = (m: RifleMods | undefined) => m ? MOD_TRACKS.reduce((s, t) => s + UPGRADE.cost.slice(0, m[t]).reduce((a, b) => a + b, 0), 0) : 0;
+export const modTag = (m: RifleMods | undefined) => modLevel(m) > 0 ? ` +${modLevel(m)}` : '';
+
+export function parseMods(raw: unknown): RifleMods | undefined {
+ if (!raw || typeof raw !== 'object') return undefined;
+ const o = raw as Record<string, unknown>;
+ const lv = (v: unknown) => typeof v === 'number' ? Math.max(0, Math.min(UPGRADE.maxLevel, Math.floor(v))) : 0;
+ const m = { barrel: lv(o.barrel), action: lv(o.action), mag: lv(o.mag) };
+ return modLevel(m) > 0 ? m : undefined;
+}
+
+// ── Banked gold (persists with the stash) ─────────────────────────────────────────────
+
+export const GOLD_STORAGE_KEY = 'painted-abyss.gold';
+export function readBankedGold() {
+ try { const v = Number(globalThis.localStorage?.getItem(GOLD_STORAGE_KEY)); return Number.isFinite(v) && v > 0 ? Math.floor(v) : 0; } catch { return 0; }
+}
+export function writeBankedGold(grams: number) {
+ try { globalThis.localStorage?.setItem(GOLD_STORAGE_KEY, String(Math.max(0, Math.floor(grams)))); } catch { /* private mode */ }
+}

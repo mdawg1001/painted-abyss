@@ -19,7 +19,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
-import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playSquadCall, pannedBus, playDoorBang, playSmokePop, playGrunt, playMeleeHit, playFleshHit, playSupply, playValveStroke, playValveSeat, playStashOpen, playStashClose, playStashDeposit, playStashWithdraw } from './diveAudio';
+import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playSquadCall, pannedBus, playDoorBang, playSmokePop, playGrunt, playMeleeHit, playFleshHit, playSupply, playValveStroke, playValveSeat, playStashOpen, playStashClose, playStashDeposit, playStashWithdraw, playGold } from './diveAudio';
 import { Gait, wadingDrag, runWeight, WALK_CAMERA_MOTION, type GaitEvent } from './gait';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
@@ -54,7 +54,8 @@ import {
  AK74U_HELD_POS, AK74U_HELD_ROT, AK74U_ADS,
 } from './gunAsset';
 import { RIFLE, rifleIsPrize } from './rifleCondition';
-import { Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, groundNormal, GUARD_COUNT, STASH_POSITION, STASH_YAW, type BreathFootprint, type BreathTankMount } from './simulation';
+import { goldSinkAccel, goldThrustFactor } from './gold';
+import { SWIM_BUOYANCY_ACCEL, Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, groundNormal, GUARD_COUNT, STASH_POSITION, STASH_YAW, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
  airborne:boolean;
@@ -212,6 +213,7 @@ export class CaveWorld extends OceanWorld {
  torchRestPos=V(HELD_VIEW_POS.x,HELD_VIEW_POS.y,HELD_VIEW_POS.z);torchRestRot=new THREE.Euler(HELD_VIEW_ROT.x,HELD_VIEW_ROT.y,HELD_VIEW_ROT.z);
  composer!:EffectComposer;
  /** Soft neon bloom (half-res UnrealBloomPass) + damage/dash chroma/vignette. */
+ goldSeqHeard=0;
  bloom!:UnrealBloomPass;impactPass!:ImpactPass;impactFx:ImpactFx=createImpactFx();
  /** Rising-edge trackers for impact FX (health drop + Shift sprint/run). */
  fxHealthSeen=100;fxBursting=false;
@@ -1273,6 +1275,11 @@ export class CaveWorld extends OceanWorld {
   }
   const sup=m.supplyTaken;
   if(sup&&sup.at!==this.supplySeen){this.supplySeen=sup.at;if(a)playSupply(ctx!,master!,sup.kind);}
+  if(m.goldEvent&&m.goldEvent.seq!==this.goldSeqHeard){
+   this.goldSeqHeard=m.goldEvent.seq;
+   const ctx2=this.audioContext,master2=this.master;
+   if(this.sound&&ctx2&&master2&&ctx2.state==='running')playGold(ctx2,master2,m.goldEvent.kind,m.goldEvent.grams);
+  }
   const stashCue=m.stashCue;
   if(stashCue){
    m.stashCue='';
@@ -1893,6 +1900,22 @@ export class CaveWorld extends OceanWorld {
       this.propStreaming.add(`pickup-gun-${p.id}`,{x:p.position.x,z:p.position.z},()=>mountAk74u(gear,'pickup',{envMap:this.knifeEnvMap}),40);
      }
     }
+    else if(p.item==='gold'){
+     // Real gold: fully metallic, warm, and a small glint so greed can find it in the dark.
+     const gm=new THREE.MeshStandardMaterial({color:0xd8a531,metalness:1,roughness:.24,emissive:0x4a2c00,emissiveIntensity:.6,envMap:this.knifeEnvMap??null,envMapIntensity:1.4});
+     const grams=p.amount??1000;
+     if(grams>=1000){
+      // Kilobars (116 × 52 × 30 mm, trapezoid section), stacked when there is more than one.
+      const bar=new THREE.CylinderGeometry(.0368,.052,.03,4,1);bar.rotateY(Math.PI/4);bar.scale(1.6,1,.72);
+      const n=Math.min(8,Math.round(grams/1000));
+      for(let i=0;i<n;i++){const b=new THREE.Mesh(bar,gm);const layer=Math.floor(i/3);b.position.set(((i%3)-1)*.06*(n>1?1:0),.015+layer*.031,(layer%2)*.02);b.rotation.y=layer*Math.PI/2;group.add(b);}
+     }else{
+      const coin=new THREE.CylinderGeometry(.0125,.0125,.0022,14);
+      const n=Math.max(3,Math.min(24,Math.round(grams/15)));
+      for(let i=0;i<n;i++){const c=new THREE.Mesh(coin,gm);const a=i*2.399,r=.025*Math.sqrt(i);c.position.set(Math.cos(a)*r,.0011+(i%4)*.0022,Math.sin(a)*r);c.rotation.set((i%3)*.2,0,(i%5)*.15);group.add(c);}
+     }
+     group.add(new THREE.PointLight(0xffc050,grams>=1000?2.2:1.1,grams>=1000?4:2.5));
+    }
     else if(p.item==='sovietKey'){group.add(createSovietKeyPickup());group.add(new THREE.PointLight(0xffc050,2.2,4.5));}
     else group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.3,1),mat));
     group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
@@ -1928,6 +1951,12 @@ export class CaveWorld extends OceanWorld {
     if(this.mission.pending!==null){this.mission.pending=null;this.publish();}else this.pause();
    }
    // Inventory keys bind on window (not the canvas), so select/use/drop work without canvas focus.
+   // Workbench: with the stash open, 7 / 8 / 9 buy Barrel / Action / Magazine for the rifle in hand.
+   if(this.mission.stashOpen&&/^Digit[789]$/.test(e.code)){
+    const track=(['barrel','action','mag'] as const)[Number(e.code.slice(-1))-7];
+    this.mission.buyUpgrade(track);this.publish();return;
+   }
+   if(e.code==='KeyB'){this.mission.ditchGold();this.publish();}
    if(/^Digit[1-5]$/.test(e.code)){
     if(this.mission.select(Number(e.code.slice(-1))-1))this.playSelectClick();
    }
@@ -2502,7 +2531,8 @@ export class CaveWorld extends OceanWorld {
      const wantRun=tech.mode==='walk'&&!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&localZ>0;
      this.noteBurstMovement(wantRun);
      const crouchSlow=m.crouching?SURVIVAL.stealth.speedFactor:1;
-     const events=this.gait.step(localX,localZ,wantRun,dt,drag*crouchSlow);
+     // Gold is dead weight: every kilo you pocket shortens your stride.
+     const events=this.gait.step(localX,localZ,wantRun,dt,drag*crouchSlow*m.loadWalkFactor());
      const v=this.gait.instantaneousSpeed(),d=this.gait.dir;
      // Body frame → world: x = right, z = forward.
      this.velocity.set((this.right.x*d.x+fx*d.z)*v,0,(this.right.z*d.x+fz*d.z)*v);
@@ -2538,7 +2568,11 @@ export class CaveWorld extends OceanWorld {
    m.buoyancy=updateBuoyancy(m.buoyancy,bcd,dt,m.buoyancyTrim);
    const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.01;
    this.noteBurstMovement(sprint);
+   // Gold in the water: same fins pushing a heavier body, and ballast dragging you down
+   // against the BCD (carry the jacket's lift in gold and a full BCD only just holds you).
+   this.move.multiplyScalar(goldThrustFactor(m.gold));
    stepSwimVelocity(this.velocity,this.move,m.buoyancy,sprint,dt);
+   this.velocity.y-=goldSinkAccel(m.gold,SWIM_BUOYANCY_ACCEL)*dt;
    moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);
    // Corridor flood is a local ceiling. The cave column is unchanged.
    if(inBreathCorridor(m.position)&&m.breathWaterY<SURFACE_Y-.35){

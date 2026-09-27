@@ -4,6 +4,7 @@ import type {CaveWorld as CaveWorldType,Snapshot} from './CaveWorld';
 import {smokeAt} from './survival';
 import {SURVIVAL} from './survivalConfig';
 import {rifleName} from './rifleCondition';
+import {fmtGold,goldWalkFactor,goldBcdShare,modTag,modLevel,modValue,upgradeCost,UPGRADE,MOD_TRACKS} from './gold';
 import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,pickupInteractPrompt,isMainGuard,liveGuard,MAP_FRAGMENT_ORDER,STASH_CAPACITY,type Item,type StashSlot} from './simulation';
 import {DiveMap} from './DiveMap';
 import {KNIFE_THUMB_URL} from './knifeAsset';
@@ -23,6 +24,7 @@ function Icon({item}:{item:Item|null}){
   relic:<><path fill="#c4923a" d="M24 8c9 0 15 6 15 13 0 10-8 17-15 17S9 31 9 21 12 8 24 8z"/><path fill="none" stroke="#4a2a08" strokeWidth="2.2" d="M31 28c-9 9-19 1-16-7s13-11 14-1-7 8-6 2"/><circle cx="28" cy="17" r="3.2" fill="#ecc878"/></>,
   gun:<><rect x="8" y="20" width="22" height="6" rx="1" fill="#9aa3aa"/><rect x="28" y="18" width="12" height="4" rx="1" fill="#d5dbe0"/><rect x="14" y="26" width="5" height="12" rx="1" fill="#3a3028"/></>,
   bottle:<><rect x="18" y="12" width="12" height="26" rx="5" fill="#3d8f62"/><rect x="21" y="6" width="6" height="8" rx="1.5" fill="#e4e8ea"/></>,
+  gold:<><path fill="#f2c14e" d="M10 32l5-12h18l5 12z"/><path fill="#ffe08a" d="M15 20h18l-2 4H17z"/></>,
   coat:<><path fill="#c49662" d="M14 16l10 5 10-5 6 7-5 18H13L8 23z"/><path fill="#6e5340" d="M20 20h8v8h-8z"/></>,
   sovietKey:<g>
    <rect x="22" y="20" width="5" height="22" rx="1.5" fill="#3a3d42"/>
@@ -213,12 +215,21 @@ function App(){
    {m.inventory[m.selected]==='gun'&&<>
     <div className={`crosshair${m.lastPistolHit&&m.elapsed-m.lastPistolHit.at<.22?(m.lastPistolHit.killed?' hit kill':m.lastPistolHit.headshot?' hit head':' hit'):''}`} aria-hidden="true"><i/><i/><i/><i/><b/></div>
     <div className={`ammo${m.pistol.mag===0?' empty':''}${m.pistol.reload>0?' reloading':''}`} aria-label={`Pistol ${m.pistol.mag} in magazine, ${m.pistol.reserve} spare`}>
-     <strong>{m.pistol.reload>0?'—':m.pistol.mag}</strong><span>/ {m.pistol.reserve}</span><em className={m.jammed?'jam':''}>{m.jammed?'JAMMED · R':m.pistol.reload>0?'RELOADING':m.pistol.mag===0?(m.pistol.reserve>0?'R · RELOAD':'NO ROUNDS'):rifleName(m.gunCond)}</em>
+     <strong>{m.pistol.reload>0?'—':m.pistol.mag}</strong><span>/ {m.pistol.reserve}</span><em className={m.jammed?'jam':''}>{m.jammed?'JAMMED · R':m.pistol.reload>0?'RELOADING':m.pistol.mag===0?(m.pistol.reserve>0?'R · RELOAD':'NO ROUNDS'):`${rifleName(m.gunCond)}${modTag(m.gunMods)}`}</em>
     </div>
    </>}
    <div className="inventory" aria-label="Inventory">
     <div className="slots">{m.inventory.map((item,i)=>{const selected=i===m.selected;const pulse=selected&&m.feedbackKind?m.feedbackKind:'';return <div className={`slot ${selected?'selected':''} ${item==='relic'?'relic':''} ${item==='flare'?'flare':''} ${item==='knife'?'knife':''} ${item==='gun'?'gun':''} ${item==='bottle'?'bottle':''} ${item==='coat'?'coat':''} ${item==='sovietKey'?'sovietKey':''} ${pulse?`pulse-${pulse}`:''}`} key={selected?`${i}-p${m.feedbackPulse}`:i}><kbd>{i+1}</kbd><Icon item={item}/>{selected&&<em className="slot-mark" aria-hidden="true">●</em>}</div>;})}</div>
    </div>
+   {(m.gold>0||m.bankedGold>0)&&<div className={`gold-hud${m.gold>0?' carrying':''}`} aria-label={`Gold carried ${fmtGold(m.gold)}, banked ${fmtGold(m.bankedGold)}`}>
+    {m.gold>0&&<div className="gold-carry" key={`c${m.goldEvent?.kind==='take'?m.goldEvent.seq:0}`}><strong>{fmtGold(m.gold)}</strong><span>walk −{Math.round((1-goldWalkFactor(m.gold))*100)}% · sinks {Math.round(goldBcdShare(m.gold)*100)}% BCD · B ditch</span></div>}
+    <div className="gold-vault"><span>VAULT</span><strong>{fmtGold(m.bankedGold)}</strong></div>
+   </div>}
+   {m.goldEvent&&m.elapsed-m.goldEvent.at<2.2&&<div key={`g${m.goldEvent.seq}`} className={`gold-pop ${m.goldEvent.kind}`} aria-hidden="true">{
+    m.goldEvent.kind==='take'?`+${fmtGold(m.goldEvent.grams)}`:
+    m.goldEvent.kind==='bank'?`BANKED ${fmtGold(m.goldEvent.grams)}`:
+    m.goldEvent.kind==='upgrade'?`${UPGRADE.names[m.goldEvent.track!].toUpperCase()} ${'I'.repeat(m.goldEvent.level!)}`:
+    m.goldEvent.kind==='ditch'?`DITCHED ${fmtGold(m.goldEvent.grams)}`:`${fmtGold(m.goldEvent.grams)} LEFT ON YOUR BODY`}</div>}
    {m.stashOpen&&<div className="stash-panel" aria-label="Stash chest">
     <div className="stash-title">STASH <span>{m.stash.filter(Boolean).length}/{STASH_CAPACITY}</span></div>
     <div className="slots stash-slots">{m.stash.map((slot,i)=>{
@@ -231,8 +242,21 @@ function App(){
       eng.mission.selectStashFocus(i);
       eng.mission.interact();
       eng.publish();
-     }}><kbd>{i+1}</kbd><StashIcon slot={slot}/>{slot?.kind==='ammo'&&<em className="stash-amt">{slot.amount}</em>}{slot?.kind==='item'&&slot.rounds?<em className="stash-amt">+{slot.rounds}</em>:null}</button>;
+     }}><kbd>{i+1}</kbd><StashIcon slot={slot}/>{slot?.kind==='ammo'&&<em className="stash-amt">{slot.amount}</em>}{slot?.kind==='item'&&slot.rounds?<em className="stash-amt">+{slot.rounds}</em>:null}{slot?.kind==='item'&&modLevel(slot.mods)>0?<em className="stash-mods">+{modLevel(slot.mods)}</em>:null}</button>;
     })}</div>
+    <div className="workbench" aria-label="Rifle workbench">
+     <div className="workbench-title">WORKBENCH <span>{m.inventory.includes('gun')?`${rifleName(m.gunCond)}${modTag(m.gunMods)}`:'hold a rifle to upgrade it'}</span><b>{fmtGold(m.bankedGold)}</b></div>
+     {m.inventory.includes('gun')&&<div className="workbench-tracks">{MOD_TRACKS.map((t,i)=>{
+      const lv=m.gunMods[t],cost=upgradeCost(lv),maxed=lv>=UPGRADE.maxLevel,afford=!maxed&&m.bankedGold>=cost;
+      return <button type="button" key={t} className={`track${afford?' afford':''}${maxed?' maxed':''}`} onClick={e=>{e.preventDefault();e.stopPropagation();const eng=engine.current;if(!eng?.mission)return;eng.mission.buyUpgrade(t);eng.publish();}}>
+       <kbd>{7+i}</kbd><strong>{UPGRADE.names[t]}</strong>
+       <span className="pips">{[0,1,2].map(k=><i key={k} className={k<lv?'on':''}/>)}</span>
+       <em>{maxed?'MAX':`${fmtGold(cost)}`}</em>
+       <small>{maxed?UPGRADE.blurbs[t][2]:UPGRADE.blurbs[t][lv]}</small>
+      </button>;
+     })}</div>}
+     {m.inventory.includes('gun')&&modLevel(m.gunMods)>0&&<div className="workbench-risk">{fmtGold(modValue(m.gunMods))} of upgrades on this rifle. Die with it and they lie on your corpse.</div>}
+    </div>
    </div>}
    <aside className="keybinds" aria-hidden="true">
     <div><kbd>WASD</kbd><span>{onFoot?'Walk':'Swim'}</span></div>
@@ -241,6 +265,7 @@ function App(){
     {onFoot&&<div><kbd>Space</kbd><span>Jump</span></div>}
     {!onFoot&&<div><kbd>Space/Q</kbd><span>Buoyancy</span></div>}
     <div><kbd>1–5</kbd><span>Select</span></div>
+    {m.gold>0&&<div><kbd>B</kbd><span>Ditch gold</span></div>}
     <div><kbd>Click</kbd><span>{m.inventory[m.selected]==='gun'?'Fire':'Stab'}</span></div>
     {m.inventory[m.selected]==='gun'&&<div><kbd>Right click</kbd><span>Aim (hold)</span></div>}
     {m.inventory[m.selected]==='gun'&&<div><kbd>V</kbd><span>Inspect</span></div>}

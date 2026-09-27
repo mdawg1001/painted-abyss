@@ -597,3 +597,41 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 /* Rifle stoppage: the ammo label turns red and pulses until R clears it. */
 .ammo em.jam{color:#ff5a45;animation:jam-pulse .5s ease-in-out infinite alternate}
 @keyframes jam-pulse{from{opacity:1}to{opacity:.45}}
+
+/* ── Gold ─────────────────────────────────────────────────────────────── */
+.gold-hud{position:fixed;right:18px;bottom:128px;z-index:30;display:flex;flex-direction:column;align-items:flex-end;gap:4px;pointer-events:none;font-family:var(--mono,monospace)}
+.gold-carry{display:flex;flex-direction:column;align-items:flex-end;animation:gold-bump .35s ease-out}
+.gold-carry strong{font-size:22px;color:#ffd46a;text-shadow:0 0 10px rgba(255,190,60,.55)}
+.gold-carry span{font-size:10px;letter-spacing:.06em;color:#e8c98a;opacity:.85}
+.gold-vault{font-size:11px;letter-spacing:.12em;color:#c9ab6c}
+.gold-vault strong{margin-left:6px;color:#f2d38a}
+@keyframes gold-bump{0%{transform:scale(1.25)}100%{transform:scale(1)}}
+.gold-pop{position:fixed;left:50%;top:36%;transform:translate(-50%,-50%);z-index:41;pointer-events:none;
+ font:800 30px/1 var(--mono,monospace);letter-spacing:.1em;color:#ffd978;
+ text-shadow:0 0 18px rgba(255,180,40,.8),0 0 2px #fff;animation:gold-pop 2.2s cubic-bezier(.2,.9,.3,1) forwards}
+.gold-pop.take{font-size:22px;top:44%}
+.gold-pop.bank{font-size:40px;animation-duration:2.2s}
+.gold-pop.upgrade{font-size:44px;color:#fff1c2}
+.gold-pop.ditch,.gold-pop.lost{color:#c9a46a;text-shadow:0 0 12px rgba(120,60,0,.8)}
+@keyframes gold-pop{0%{opacity:0;transform:translate(-50%,-30%) scale(.7)}12%{opacity:1;transform:translate(-50%,-50%) scale(1.12)}70%{opacity:1}100%{opacity:0;transform:translate(-50%,-80%) scale(1)}}
+.stash-mods{position:absolute;left:4px;top:3px;font-style:normal;font-size:11px;color:#ffd46a}
+.workbench{margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,210,120,.25)}
+.workbench-title{display:flex;gap:10px;align-items:baseline;font:600 11px/1.2 var(--mono,monospace);letter-spacing:.14em;color:#e8c98a}
+.workbench-title span{letter-spacing:.04em;color:#cfd6da;font-weight:400}
+.workbench-title b{margin-left:auto;color:#ffd46a}
+.workbench-tracks{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px}
+.workbench .track{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:7px 8px 8px 26px;text-align:left;
+ background:rgba(20,16,8,.55);border:1px solid rgba(255,210,120,.18);border-radius:4px;color:#d9d2c2;cursor:pointer;font-family:var(--mono,monospace)}
+.workbench .track kbd{position:absolute;left:7px;top:7px;font-size:10px;opacity:.7}
+.workbench .track strong{font-size:12px;letter-spacing:.08em}
+.workbench .track em{font-style:normal;font-size:12px;color:#8f8672}
+.workbench .track small{font-size:10px;line-height:1.25;opacity:.75}
+.workbench .track.afford{border-color:rgba(255,200,80,.75);box-shadow:0 0 14px rgba(255,180,40,.25) inset;animation:afford 1.4s ease-in-out infinite}
+.workbench .track.afford em{color:#ffd46a}
+.workbench .track.maxed{opacity:.6;cursor:default}
+.workbench .pips{display:flex;gap:3px}
+.workbench .pips i{width:14px;height:4px;background:rgba(255,255,255,.14);border-radius:1px}
+.workbench .pips i.on{background:#ffc94a;box-shadow:0 0 6px rgba(255,190,60,.8)}
+.workbench-risk{margin-top:6px;font-size:10px;letter-spacing:.04em;color:#ff9a7a}
+@keyframes afford{0%,100%{box-shadow:0 0 10px rgba(255,180,40,.18) inset}50%{box-shadow:0 0 18px rgba(255,190,60,.4) inset}}
+@media (prefers-reduced-motion:reduce){.gold-pop,.gold-carry,.workbench .track.afford{animation:none}}
