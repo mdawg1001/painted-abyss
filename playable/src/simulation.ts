@@ -1120,6 +1120,8 @@ export type Guard={
  downFor:number;
  /** Mission time of your last hit on him (hit flash) and his last melee strike. */
  hitAt:number;strikeAt:number;
+ /** Damage the player has dealt him this life (fresh-blood heal is a share of it). */
+ dealtByPlayer?:number;
  /** Pickup id of the pistol he dropped, if any. */
  dropId:number;
  /** Lookout length, strafing flag (velocity not along facing), slot drift flip, unstick count, life counter. */
@@ -1907,11 +1909,14 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   * where you are. The last hit drops him and his pistol.
   */
  guardTakeDamage(g:Guard,amount:number){
-  const {killed}=takeDamage(g,amount);
+  const {killed,dealt}=takeDamage(g,amount);
   g.hitAt=this.elapsed;
+  g.dealtByPlayer=(g.dealtByPlayer??0)+dealt;
   // Shooting one of them brings the rest of the squad in, whether or not he survives it.
   this.squadAlert(g,'shot');
   if(killed){
+   this.leechOnKill(g.position,g.dealtByPlayer??amount);
+   g.dealtByPlayer=0;
    g.speed=0;g.vx=0;g.vz=0;g.turnRate=0;g.flinch=0;g.windup=0;g.downFor=0;
    g.fireToken=false;g.meleeToken=false;
    // His pistol falls beside him with what is left in it; E picks it up.
@@ -1937,6 +1942,21 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(g.state!=='chase'){g.state='chase';g.timer=0;g.lost=0;g.firstShot=true;}
   return false;
  }
+ /**
+  * Fresh blood: a kill close enough to be showered by it heals a share of the damage
+  * you dealt that enemy, instantly — only if you are hurt, never past full.
+  */
+ leechOnKill(at:Point,dealt:number){
+  const L=SURVIVAL.leech;
+  if(this.outcome!=='playing'||this.health>=100||dealt<=0)return 0;
+  if(Math.hypot(at.x-this.position.x,at.z-this.position.z)>L.radius)return 0;
+  const heal=Math.min(100-this.health,dealt*L.fraction);
+  this.health+=heal;
+  this.leech={seq:(this.leech?.seq??0)+1,at:this.elapsed,amount:heal,point:{...at}};
+  return heal;
+ }
+ /** Last fresh-blood heal, for the screen flash (seq changes on every heal). */
+ leech:{seq:number;at:number;amount:number;point:Point}|null=null;
  /** Every hit on you goes through here: health, panic breathing, pacing and the direction marker. */
  hurtPlayer(amount:number,from:Point,reason:string,g:Guard|null){
   if(amount<=0||this.outcome!=='playing')return;
@@ -2001,6 +2021,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   p.flinch=PREDATOR_FLINCH;
   p.bite=Math.max(p.bite,.35);
   if(p.hp<=0){
+   this.leechOnKill(p.position,PREDATOR_HP_MAX);
    p.state='dead';p.timer=0;p.raged=false;p.flinch=0;p.bite=999;
    this.combatCue='kill';
    this.say('Guardian down.','ok');
@@ -2423,7 +2444,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   const life=g.life+1;
   Object.assign(g,makeGuard(g.outfit));
   const cfg=SURVIVAL.roles[role];
-  g.life=life;g.active=true;g.role=role;g.hp=g.maxHp=cfg.hp;g.gun=cfg.armed;g.ammo=SURVIVAL.guardMagazine;
+  g.life=life;g.active=true;g.role=role;g.hp=g.maxHp=cfg.hp;g.dealtByPlayer=0;g.gun=cfg.armed;g.ammo=SURVIVAL.guardMagazine;
   g.position={x:at.x,y:WALK_EYE_Y,z:at.z};g.lastKnown={...g.position};g.heading=heading;
   g.progressPos={x:at.x,z:at.z};g.progressAt=this.elapsed;
   g.slot=0;g.slotDrift=(this.rand()<.5?-1:1)*(.07+.08*this.rand());g.slotFlipAt=3+this.rand()*3;

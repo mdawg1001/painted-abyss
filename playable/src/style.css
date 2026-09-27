@@ -564,3 +564,16 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 }
 .crosshair.head::before{background:#ffd27a;--xh:38px}
 .crosshair.kill::before{background:#ff5a4a;--xh:42px}
+
+/* Fresh blood heal: a hard crimson-white flash from the screen edges that burns out in ~0.45 s. */
+.leech-flash{position:fixed;inset:0;pointer-events:none;z-index:40;
+ background:radial-gradient(ellipse at center,rgba(255,240,230,.0) 30%,rgba(255,60,40,.55) 78%,rgba(120,0,0,.85) 100%);
+ mix-blend-mode:screen;animation:leech-flash .45s cubic-bezier(.2,.9,.3,1) forwards}
+.leech-flash span{position:absolute;left:50%;top:58%;transform:translate(-50%,-50%);
+ font:700 28px/1 var(--mono,monospace);letter-spacing:.08em;color:#ffe9e0;
+ text-shadow:0 0 12px rgba(255,40,20,.9),0 0 2px #fff;animation:leech-num .7s ease-out forwards}
+@keyframes leech-flash{0%{opacity:0}12%{opacity:1}100%{opacity:0}}
+@keyframes leech-num{0%{opacity:0;transform:translate(-50%,-30%) scale(.8)}20%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}100%{opacity:0;transform:translate(-50%,-90%) scale(1)}}
+.meter.suit.leeched i{animation:leech-bar .6s ease-out}
+@keyframes leech-bar{0%{background:#fff;box-shadow:0 0 14px #ff5a3c}100%{}}
+@media (prefers-reduced-motion:reduce){.leech-flash{animation-duration:.2s}.leech-flash span{animation:none;opacity:0}}
