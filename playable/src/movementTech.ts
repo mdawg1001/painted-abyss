@@ -1,19 +1,19 @@
 /**
- * Movement tech on foot: directional dash and momentum slide.
+ * Movement tech on foot: jump and momentum slide.
  *
  * A small kinematic state machine that sits on top of the human gait (`gait.ts`). While the
- * diver walks, the gait owns speed; the moment a dash or slide starts, this module owns the
- * velocity vector outright, then hands a speed and heading back to the gait when it ends.
+ * diver walks, the gait owns speed; the moment he jumps or slides, this module owns the velocity
+ * vector outright, then hands a speed and heading back to the gait when the move ends.
  * Everything here is plain vector math with SI units, no engine physics:
  *
- *  - Dash: velocity is overwritten (not added to) with `speed` along the wished direction in the
- *    camera's horizontal frame, held flat for `duration` with gravity and vertical velocity
- *    suspended, then a strict `cooldown` from the moment it ends. One press = one dash.
- *  - Slide: only from a run (ground speed ≥ `minSpeed`); otherwise the same key is a crouch.
- *    Starts with a forward `boost`, then Coulomb (kinetic) friction μk·g·cosθ against the motion
- *    and gravity's along-slope component g·sinθ, with the velocity kept in the ground plane.
- *    Downhill steeper than atan(μk) the slide gains speed; on the flat it bleeds off at μk·g.
- *  - Capsule height drops to 50 % (bottom anchored, so only the eye moves). Rising back is gated
+ *  - Jump (Space): a vertical take-off at √(2·g·h) for a `height` jump, under real gravity. The
+ *    ground velocity at take-off is kept (no air drag worth modelling at these speeds) with a
+ *    little air control. A jump out of a slide keeps the slide's speed. Landing with the slide
+ *    key held at speed rolls straight into a slide (no second boost).
+ *  - Slide (C at a run): a forward `boost` on the drop, then Coulomb friction μk·g·cosθ against
+ *    the motion and gravity's along-slope part g·sinθ, velocity kept in the ground plane.
+ *    μk is a wet bunker floor: low enough that a slide out-runs a run for about two seconds.
+ *  - Capsule height eases to 50 % (bottom anchored, so only the eye moves). Rising back is gated
  *    by a headroom probe supplied by the renderer: blocked overhead = stay low.
  *
  * Pure: no THREE, no DOM. `CaveWorld` feeds input, the ground normal and the headroom probe.
@@ -23,61 +23,67 @@ import { SURVIVAL } from './survivalConfig';
 
 export type V3 = { x: number; y: number; z: number };
 
+const G = 9.81;
+
 export const MOVE_TECH = {
  /** Standing capsule (m): 1.75 m body, eye 0.15 m under the crown (eye = WALK_EYE_Y). */
  body: { height: 1.75, eyeBelowCrown: .15 },
- dash: {
-  /** Ground speed during the dash (m/s): a hard two-step lunge, ~1.2 m covered. */
-  speed: 8,
-  duration: .15,
-  /** Counted from the end of the dash. */
-  cooldown: .5,
-  /** A press this early before the cooldown ends still fires when it does (s). */
-  buffer: .1,
-  /** Legs pay for it: stamina spent per dash, and the minimum needed to start one. */
-  staminaCost: 10,
+ gravity: G,
+ jump: {
+  /** Rise of the body's centre (m): a good standing jump in boots. */
+  height: .5,
+  /** Take-off pressed this early before landing still jumps on touchdown (s). */
+  buffer: .12,
+  /** Horizontal steering in the air (m/s²); it can turn you, never push past take-off speed. */
+  airControl: 3,
+  /** Legs pay for it. */
+  staminaCost: 6,
  },
  slide: {
   /** Ground speed needed to slide instead of crouch (m/s): well into the run band. */
   minSpeed: 2.6,
-  /** Forward speed added on the drop (m/s). */
-  boost: 1.6,
-  /** Kinetic friction, clothed body on smooth concrete (≈0.3–0.4). */
-  frictionMu: .34,
-  gravity: 9.81,
+  /** Forward speed added on the drop (m/s): run 3.4 → 7.0 m/s. */
+  boost: 3.6,
+  /** Kinetic friction, clothed body on wet concrete. */
+  frictionMu: .18,
   /** Slide ends and becomes a crouch-walk at this speed (the crouch-walk pace). */
   exitSpeed: GAIT_SPEED.walk * SURVIVAL.stealth.speedFactor,
   /** Capsule height while sliding, as a share of standing. */
   heightFraction: .5,
   /** Steering authority while sliding (rad/s the heading can swing toward the wish). */
   steerRate: 1.4,
-  /** Camera roll toward the slide (deg) and how fast it leans in / out (1/s). */
-  tiltDeg: 2.5,
-  tiltRate: 14,
+  /** Camera roll toward the slide (deg; 2.5° + 15 %) and how fast it leans in / out (1/s). */
+  tiltDeg: 2.875,
+  tiltRate: 10,
  },
- /** Capsule height change rates (m/s): dropping is near-instant, standing up is a movement. */
- height: { dropRate: 12, riseRate: SURVIVAL.stealth.eyeDrop / SURVIVAL.stealth.blendSeconds },
+ /**
+  * Capsule height eases toward its target at this rate (1/s): about 0.15 s to 90 % of the way,
+  * a smooth drop with no snap.
+  */
+ heightEase: 15,
 } as const;
 
 export const STAND_HEIGHT = MOVE_TECH.body.height;
 export const CROUCH_HEIGHT = MOVE_TECH.body.height - SURVIVAL.stealth.eyeDrop;
 export const SLIDE_HEIGHT = MOVE_TECH.body.height * MOVE_TECH.slide.heightFraction;
+/** Take-off speed for the jump height: v = √(2·g·h). */
+export const JUMP_SPEED = Math.sqrt(2 * G * MOVE_TECH.jump.height);
 
-export type TechMode = 'walk' | 'crouch' | 'dash' | 'slide';
+export type TechMode = 'walk' | 'crouch' | 'slide' | 'air';
 
 export type TechState = {
  mode: TechMode;
- /** World velocity while this module owns movement (dash / slide). */
+ /** World velocity while this module owns movement (slide / air). */
  vel: V3;
- /** Seconds left in the current dash. */
- dashLeft: number;
- /** Seconds until another dash may start. */
- dashCooldown: number;
- /** Seconds left on a buffered dash press (0 = none). */
- dashQueued: number;
+ /** Height of the feet above the floor (m); 0 on the ground. */
+ air: number;
+ /** Horizontal speed at take-off: air control can steer but not exceed it. */
+ airCap: number;
+ /** Seconds left on a buffered jump press (0 = none). */
+ jumpQueued: number;
  /** A slide press waiting for this frame's update. */
  slideQueued: boolean;
- /** Current capsule height (m), floor-anchored. */
+ /** Current capsule height (m), measured from the feet. */
  height: number;
  /** Camera roll (rad), positive = lean right (apply as camera.rotation.z −= roll). */
  roll: number;
@@ -86,19 +92,19 @@ export type TechState = {
 };
 
 export function makeTech(): TechState {
- return { mode: 'walk', vel: { x: 0, y: 0, z: 0 }, dashLeft: 0, dashCooldown: 0, dashQueued: 0, slideQueued: false, height: STAND_HEIGHT, roll: 0, blocked: false };
+ return { mode: 'walk', vel: { x: 0, y: 0, z: 0 }, air: 0, airCap: 0, jumpQueued: 0, slideQueued: false, height: STAND_HEIGHT, roll: 0, blocked: false };
 }
 
-/** Key-down edge for dash. Held keys never repeat it: the listener ignores auto-repeat. */
-export function requestDash(st: TechState) { st.dashQueued = MOVE_TECH.dash.buffer + 1e-6; }
+/** Key-down edge for jump. Held keys never repeat it: the listener ignores auto-repeat. */
+export function requestJump(st: TechState) { st.jumpQueued = MOVE_TECH.jump.buffer + 1e-6; }
 /** Key-down edge for slide / crouch. */
 export function requestSlide(st: TechState) { st.slideQueued = true; }
 
-/** Eye drop below the standing eye for the current capsule (m). */
-export function eyeDrop(st: TechState) { return STAND_HEIGHT - st.height; }
+/** Eye offset from the standing eye (m): up while airborne, down while low. */
+export function eyeOffset(st: TechState) { return st.air - (STAND_HEIGHT - st.height); }
 
 /** Owns movement this frame (the gait is bypassed). */
-export function techOwnsMovement(st: TechState) { return st.mode === 'dash' || st.mode === 'slide'; }
+export function techOwnsMovement(st: TechState) { return st.mode === 'slide' || st.mode === 'air'; }
 
 const len2 = (x: number, z: number) => Math.hypot(x, z);
 
@@ -109,9 +115,9 @@ const len2 = (x: number, z: number) => Math.hypot(x, z);
  *  - crouchHeld: the slide / crouch key is down.
  *  - groundSpeed / groundVel: what the gait is doing right now (world, m/s).
  *  - normal: unit ground normal under the feet.
- *  - stamina: current stamina (0..100); a dash spends from it.
+ *  - stamina: current stamina (0..100); a jump spends from it.
  *  - drag: wading multiplier 0.2..1 (1 = dry floor).
- *  - headroom(h): true when a capsule of height h fits here.
+ *  - headroom(crown): true when nothing solid sits below `crown` metres above the floor here.
  */
 export type TechInput = {
  wishX: number; wishZ: number;
@@ -121,15 +127,16 @@ export type TechInput = {
  normal: V3;
  stamina: number;
  drag: number;
- headroom: (height: number) => boolean;
+ headroom: (crown: number) => boolean;
 };
 
 export type TechEvents = {
- dashed: boolean;
+ jumped: boolean;
+ landed: boolean;
  slid: boolean;
  /** Stamina to spend this frame. */
  staminaSpent: number;
- /** Speed and world heading handed back to the gait when a dash or slide ends. */
+ /** Speed and world heading handed back to the gait when a slide or jump ends. */
  handoff: { speed: number; x: number; z: number } | null;
 };
 
@@ -137,8 +144,7 @@ export type TechEvents = {
 export function wishDirection(inp: Pick<TechInput, 'wishX' | 'wishZ' | 'fwd' | 'right'>) {
  let x = inp.right.x * inp.wishX + inp.fwd.x * inp.wishZ;
  let z = inp.right.z * inp.wishX + inp.fwd.z * inp.wishZ;
- const l = len2(x, z);
- if (l < 1e-6) { x = inp.fwd.x; z = inp.fwd.z; }
+ if (len2(x, z) < 1e-6) { x = inp.fwd.x; z = inp.fwd.z; }
  const n = len2(x, z) || 1;
  return { x: x / n, z: z / n };
 }
@@ -153,9 +159,8 @@ export function projectOnPlane(v: V3, n: V3): V3 {
  * One slide integration step on a plane with normal n: gravity's tangential part plus kinetic
  * friction μk·g·cosθ opposing the velocity. Returns the new in-plane velocity.
  */
-export function slideStep(v: V3, n: V3, dt: number, mu: number = MOVE_TECH.slide.frictionMu, g: number = MOVE_TECH.slide.gravity): V3 {
+export function slideStep(v: V3, n: V3, dt: number, mu: number = MOVE_TECH.slide.frictionMu, g: number = G): V3 {
  const cos = Math.max(0, n.y);
- // Tangential gravity: (0,−g,0) minus its normal component.
  const gt = projectOnPlane({ x: 0, y: -g, z: 0 }, n);
  let u = projectOnPlane(v, n);
  u = { x: u.x + gt.x * dt, y: u.y + gt.y * dt, z: u.z + gt.z * dt };
@@ -166,70 +171,89 @@ export function slideStep(v: V3, n: V3, dt: number, mu: number = MOVE_TECH.slide
  return { x: u.x * k, y: u.y * k, z: u.z * k };
 }
 
-/** Heading from the in-plane velocity, or the fallback when stopped. */
-function flatDir(v: V3, fb: { x: number; z: number }) {
+/** Heading from the velocity, or the fallback when stopped. */
+function flatDir(v: { x: number; z: number }, fb: { x: number; z: number }) {
  const l = len2(v.x, v.z);
  return l > 1e-5 ? { x: v.x / l, z: v.z / l } : fb;
 }
 
+/** Scale a vector to a length. */
+function withLength(v: V3, l: number): V3 {
+ const n = Math.hypot(v.x, v.y, v.z) || 1;
+ return { x: v.x / n * l, y: v.y / n * l, z: v.z / n * l };
+}
+
+/** Speed and heading for the gait to carry on with. */
+function handoff(v: V3, wish: { x: number; z: number }, cap: number) {
+ const d = flatDir(v, wish);
+ return { speed: Math.min(len2(v.x, v.z), cap), x: d.x, z: d.z };
+}
+
 /**
  * Advance the state machine one frame. Call once per sim frame, before the body moves;
- * then move the body by `st.vel * dt` when `techOwnsMovement(st)`.
+ * then move the body by `st.vel * dt` (horizontal) when `techOwnsMovement(st)`, and put the feet
+ * at `st.air` above the floor.
  */
 export function stepTech(st: TechState, inp: TechInput, dt: number): TechEvents {
- const ev: TechEvents = { dashed: false, slid: false, staminaSpent: 0, handoff: null };
- const D = MOVE_TECH.dash, S = MOVE_TECH.slide;
+ const ev: TechEvents = { jumped: false, landed: false, slid: false, staminaSpent: 0, handoff: null };
+ const J = MOVE_TECH.jump, S = MOVE_TECH.slide;
  const wish = wishDirection(inp);
+ const wishing = len2(inp.wishX, inp.wishZ) > .1;
 
- // ── Dash: timers first, so the cooldown is exact to the frame. ──────────────────
- if (st.mode !== 'dash') st.dashCooldown = Math.max(0, st.dashCooldown - dt);
- const canDash = st.mode !== 'dash' && st.dashCooldown <= 0 && inp.stamina >= D.staminaCost;
- if (st.dashQueued > 0 && canDash) {
-  // Overwrite, never add: the dash vector replaces whatever momentum we had.
-  const speed = D.speed * inp.drag;
-  st.vel = { x: wish.x * speed, y: 0, z: wish.z * speed };
-  st.mode = 'dash';
-  st.dashLeft = D.duration;
-  st.dashQueued = 0;
+ // ── Jump: from the ground (walk, crouch or slide), one per press, buffered briefly ──
+ const grounded = st.mode !== 'air';
+ if (st.jumpQueued > 0 && grounded && inp.stamina >= J.staminaCost && inp.headroom(st.height + .1)) {
+  // Take-off keeps whatever we were doing on the ground: a slide's speed, or the gait's.
+  const ground = st.mode === 'slide' ? { x: st.vel.x, z: st.vel.z } : inp.groundVel;
+  st.vel = { x: ground.x, y: JUMP_SPEED * Math.max(.5, inp.drag), z: ground.z };
+  st.airCap = Math.max(len2(ground.x, ground.z), GAIT_SPEED.walk);
+  st.mode = 'air';
+  st.jumpQueued = 0;
   st.slideQueued = false;
-  ev.dashed = true;
-  ev.staminaSpent = D.staminaCost;
+  ev.jumped = true;
+  ev.staminaSpent = J.staminaCost;
  } else {
-  st.dashQueued = Math.max(0, st.dashQueued - dt);
+  st.jumpQueued = Math.max(0, st.jumpQueued - dt);
  }
 
- if (st.mode === 'dash') {
-  // Gravity and vertical decay suspended: flat, constant velocity for the whole window.
-  st.vel.y = 0;
-  st.dashLeft -= dt;
-  if (st.dashLeft <= 0) {
-   st.dashLeft = 0;
-   st.dashCooldown = D.cooldown;
+ // ── Airborne: ballistic under g, a little steering, ceiling stops the rise ─────────
+ if (st.mode === 'air') {
+  if (wishing) {
+   // Steer toward the wish without adding speed beyond take-off.
+   st.vel.x += wish.x * J.airControl * dt;
+   st.vel.z += wish.z * J.airControl * dt;
+   const h = len2(st.vel.x, st.vel.z);
+   if (h > st.airCap) { st.vel.x *= st.airCap / h; st.vel.z *= st.airCap / h; }
+  }
+  st.vel.y -= G * dt;
+  let next = st.air + st.vel.y * dt;
+  if (st.vel.y > 0 && !inp.headroom(next + st.height)) { next = st.air; st.vel.y = 0; }
+  st.air = next;
+  if (st.air <= 0) {
+   st.air = 0;
+   ev.landed = true;
    const speed = len2(st.vel.x, st.vel.z);
-   // Holding the slide key through a dash lands straight into a slide with the dash's speed.
+   st.vel.y = 0;
    if (inp.crouchHeld && speed >= S.minSpeed) {
-    // Legs can't hold more than a boosted run on the drop: cap the carried-in speed.
-    const cap = Math.min(speed, (GAIT_SPEED.run + S.boost) * inp.drag) / (speed || 1);
-    st.vel = { x: st.vel.x * cap, y: 0, z: st.vel.z * cap };
+    // Land into a slide carrying our speed (no fresh boost: no endless speed from hopping).
+    st.vel = projectOnPlane({ x: st.vel.x, y: 0, z: st.vel.z }, inp.normal);
+    st.vel = withLength(st.vel, speed);
     st.mode = 'slide';
     ev.slid = true;
    } else {
     st.mode = inp.crouchHeld ? 'crouch' : 'walk';
-    const dir = flatDir(st.vel, wish);
-    ev.handoff = { speed: Math.min(speed, GAIT_SPEED.run), x: dir.x, z: dir.z };
+    ev.handoff = handoff(st.vel, wish, GAIT_SPEED.run);
+    // A buffered press jumps again on the next frame.
    }
   }
  }
 
- // ── Slide start: only from a run; from anything slower the key is a crouch. ─────
- if (st.slideQueued && st.mode !== 'dash' && st.mode !== 'slide') {
+ // ── Slide start: only from a run; from anything slower the key is a crouch ─────────
+ if (st.slideQueued && (st.mode === 'walk' || st.mode === 'crouch')) {
   if (inp.groundSpeed >= S.minSpeed) {
-   const dir = flatDir({ x: inp.groundVel.x, y: 0, z: inp.groundVel.z }, wish);
+   const dir = flatDir(inp.groundVel, wish);
    const speed = (inp.groundSpeed + S.boost) * inp.drag;
-   st.vel = projectOnPlane({ x: dir.x * speed, y: 0, z: dir.z * speed }, inp.normal);
-   // Projection shortens it on a slope; restore the full launch speed along the plane.
-   const l = Math.hypot(st.vel.x, st.vel.y, st.vel.z) || 1;
-   st.vel = { x: st.vel.x / l * speed, y: st.vel.y / l * speed, z: st.vel.z / l * speed };
+   st.vel = withLength(projectOnPlane({ x: dir.x, y: 0, z: dir.z }, inp.normal), speed);
    st.mode = 'slide';
    ev.slid = true;
   } else {
@@ -238,62 +262,58 @@ export function stepTech(st: TechState, inp: TechInput, dt: number): TechEvents 
  }
  st.slideQueued = false;
 
- // ── Slide integration ───────────────────────────────────────────────────────────
- if (st.mode === 'slide') {
+ // ── Slide integration ─────────────────────────────────────────────────────────────
+ if (st.mode === 'slide' && !ev.jumped) {
   // Wading adds drag on top of floor friction (drag 1 dry → 0.3 waist-deep).
   const mu = S.frictionMu / Math.max(.2, inp.drag);
   let v = slideStep(st.vel, inp.normal, dt, mu);
-  // A little steering: swing the heading toward the wish, never add speed.
   const sp = Math.hypot(v.x, v.y, v.z);
-  if (sp > 1e-4 && len2(inp.wishX, inp.wishZ) > .1) {
+  if (sp > 1e-4 && wishing) {
+   // A little steering: swing the heading toward the wish, never add speed.
    const cur = flatDir(v, wish);
    const a = Math.atan2(cur.z, cur.x), b = Math.atan2(wish.z, wish.x);
    let d = b - a; d = Math.atan2(Math.sin(d), Math.cos(d));
    const turn = Math.max(-S.steerRate * dt, Math.min(S.steerRate * dt, d));
-   const h = len2(v.x, v.z), c = Math.cos(a + turn), s = Math.sin(a + turn);
-   v = projectOnPlane({ x: c * h, y: v.y, z: s * h }, inp.normal);
-   const l = Math.hypot(v.x, v.y, v.z) || 1;
-   v = { x: v.x / l * sp, y: v.y / l * sp, z: v.z / l * sp };
+   const h = len2(v.x, v.z);
+   v = withLength(projectOnPlane({ x: Math.cos(a + turn) * h, y: v.y, z: Math.sin(a + turn) * h }, inp.normal), sp);
   }
   st.vel = v;
   const speed = Math.hypot(v.x, v.y, v.z);
   if (speed <= S.exitSpeed) {
    // Momentum spent: crouch-walk if the key is held (or the ceiling forces it), else stand.
-   const stand = !inp.crouchHeld && inp.headroom(STAND_HEIGHT);
-   st.mode = stand ? 'walk' : 'crouch';
-   const dir = flatDir(v, wish);
-   ev.handoff = { speed, x: dir.x, z: dir.z };
+   st.mode = !inp.crouchHeld && inp.headroom(STAND_HEIGHT) ? 'walk' : 'crouch';
+   ev.handoff = handoff(v, wish, GAIT_SPEED.run);
   } else if (!inp.crouchHeld && inp.headroom(STAND_HEIGHT)) {
-   // Released with room overhead: pop up and run on with the slide's speed (capped at a run).
+   // Released with room overhead: pop up and run on at the slide's speed (capped at a run).
    st.mode = 'walk';
-   const dir = flatDir(v, wish);
-   ev.handoff = { speed: Math.min(speed, GAIT_SPEED.run), x: dir.x, z: dir.z };
+   ev.handoff = handoff(v, wish, GAIT_SPEED.run);
   }
   // Released under a ceiling: stay in the slide until it clears.
  }
 
- // ── Crouch ⇄ walk, gated by headroom ────────────────────────────────────────────
+ // ── Crouch ⇄ walk, gated by headroom ──────────────────────────────────────────────
  if (st.mode === 'walk' && inp.crouchHeld) st.mode = 'crouch';
  if (st.mode === 'crouch' && !inp.crouchHeld && inp.headroom(STAND_HEIGHT)) st.mode = 'walk';
 
- // ── Capsule height: bottom-anchored, drop fast, rise only into free space ───────
- const target = st.mode === 'slide' ? SLIDE_HEIGHT : st.mode === 'crouch' ? CROUCH_HEIGHT : st.mode === 'dash' ? st.height : STAND_HEIGHT;
- if (target < st.height) {
-  st.height = Math.max(target, st.height - MOVE_TECH.height.dropRate * dt);
-  st.blocked = false;
- } else if (target > st.height) {
-  const next = Math.min(target, st.height + MOVE_TECH.height.riseRate * dt);
-  st.blocked = !inp.headroom(next);
+ // ── Capsule height: feet anchored, eased (no snap), rising only into free space ────
+ const target = st.mode === 'slide' ? SLIDE_HEIGHT : st.mode === 'crouch' ? CROUCH_HEIGHT : STAND_HEIGHT;
+ const k = 1 - Math.exp(-MOVE_TECH.heightEase * dt);
+ let next = st.height + (target - st.height) * k;
+ if (Math.abs(target - next) < 1e-3) next = target;
+ if (next > st.height) {
+  st.blocked = !inp.headroom(st.air + next);
   if (!st.blocked) st.height = next;
- } else st.blocked = false;
+ } else {
+  st.blocked = false;
+  st.height = next;
+ }
 
- // ── Camera roll toward the slide's side (lean left on a straight slide) ─────────
+ // ── Camera roll toward the slide's side (lean left on a straight slide) ───────────
  let rollTarget = 0;
  if (st.mode === 'slide') {
   const d = flatDir(st.vel, wish);
   const side = d.x * inp.right.x + d.z * inp.right.z;
-  const lean = Math.abs(side) < .2 ? -1 : Math.sign(side);
-  rollTarget = lean * S.tiltDeg * Math.PI / 180;
+  rollTarget = (Math.abs(side) < .2 ? -1 : Math.sign(side)) * S.tiltDeg * Math.PI / 180;
  }
  st.roll += (rollTarget - st.roll) * (1 - Math.exp(-S.tiltRate * dt));
 
