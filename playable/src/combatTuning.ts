@@ -1,5 +1,5 @@
 /**
- * Phase 4 — final addictive-combat constants (documented snapshot).
+ * Phase 4+ addictive-combat constants (documented snapshot).
  *
  * Source of truth remains the live exports below; this module re-exports them and
  * pins the polish values so playtests / reviews share one table. Assists stay
@@ -7,8 +7,12 @@
  *
  * | System            | Constant                         | Value        | Intent |
  * |-------------------|----------------------------------|--------------|--------|
- * | Magnetism         | HITBOX_ASSIST.restBonus          | +14%         | Soft sticky rim at rest |
- * | Magnetism         | HITBOX_ASSIST.sprintBonus        | +30%         | Invisible sprint assist (was 35%) |
+ * | Magnetism         | HITBOX_ASSIST.restBonus          | +8%          | Soft sticky rim (secondary) |
+ * | Magnetism         | HITBOX_ASSIST.sprintBonus        | +12%         | Soft sprint rim — not cartoon-fat |
+ * | Magnetism         | HITBOX_ASSIST.restAngleDeg       | 0.4°         | Hairline cone at rest (ADS stays honest) |
+ * | Magnetism         | HITBOX_ASSIST.sprintAngleDeg     | 2.0°         | Readable strafe scrapes at speed |
+ * | Magnetism         | HITBOX_ASSIST.angleHardCapDeg    | 2.5°         | Never half-screen snaps |
+ * | Magnetism         | HITBOX_ASSIST.movingScatterDamp  | 25%          | Tighter wear spread while sprinting |
  * | Magnetism         | HITBOX_ASSIST.sprintSpeed        | 3.4 m/s      | = WALK_SPRINT |
  * | Graze bias        | SKIN_OF_TEETH.stillSpeed         | 0.40 m/s     | Aligned with style/graze still |
  * | Graze bias        | SKIN_OF_TEETH.maxGrazeBias       | 0.08         | Modest land-chance cut (was 0.10) |
@@ -25,7 +29,14 @@
  * | Calm combat       | prefers-reduced-motion           | on           | Soften shake/hitstop; hide SCRAPE/GRAZE callouts |
  */
 
-export { HITBOX_ASSIST, playerVelocityMultiplier } from './playerPistol';
+export {
+  HITBOX_ASSIST,
+  playerVelocityMultiplier,
+  playerAssistAngle,
+  magnetizeAim,
+  movingScatterScale,
+  rotateToward,
+} from './playerPistol';
 export { SKIN_OF_TEETH, PLAYER_CORE } from './simulation';
 export { STYLE_TUNING, STYLE_RANKS } from './styleMeter';
 export { COMBAT_OUTCOME } from './combatOutcomes';
@@ -40,9 +51,17 @@ export {
 } from './combatCalm';
 export { COMBAT_FEEDBACK } from './combatFeedback';
 
-/** Pinned Phase 4 polish values — tests assert live exports match this table. */
+/** Pinned magnetism + polish values — tests assert live exports match this table. */
 export const COMBAT_POLISH = {
-  magnetism: { restBonus: 0.14, sprintBonus: 0.3, sprintSpeed: 3.4 },
+  magnetism: {
+    restBonus: 0.08,
+    sprintBonus: 0.12,
+    sprintSpeed: 3.4,
+    restAngleDeg: 0.4,
+    sprintAngleDeg: 2.0,
+    angleHardCapDeg: 2.5,
+    movingScatterDamp: 0.25,
+  },
   graze: { stillSpeed: 0.4, maxGrazeBias: 0.08, minChance: 0.05 },
   style: { scrape: 70, graze: 80, clean: 60, stillDrain: 72, stillSpeed: 0.4, graceSeconds: 2.8 },
   calloutSeconds: 0.6,

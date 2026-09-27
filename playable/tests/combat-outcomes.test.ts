@@ -7,18 +7,24 @@ import assert from 'node:assert/strict';
 import {
  classifyPlayerHit,classifyEnemyMiss,isMultiKill,styleActionsForTag,COMBAT_OUTCOME,
 } from '../src/combatOutcomes';
-import {hitscan,playerVelocityMultiplier} from '../src/playerPistol';
+import {
+ hitscan,playerVelocityMultiplier,playerAssistAngle,magnetizeAim,
+} from '../src/playerPistol';
+import {WALK_SPRINT} from '../src/simulation';
 import {StyleMeter,STYLE_TUNING} from '../src/styleMeter';
 
 test('classifyPlayerHit: magnetism-only contact is SCRAPE; honest body is CLEAN; head is HEAD',()=>{
- // Scrape fixture matches hit-math (eye near torso crown so shoulder rim is a volume test).
+ // Angular sprint scrape: honest ray misses, magnetized dir + soft rim lands → SCRAPE.
  const FLOOR=.65;
  const scrapeEye={x:0,y:FLOOR+1.0,z:0};
  const scrapeTargets=[{id:0,foot:{x:0,y:FLOOR,z:8}}];
- const scrapeDir={x:0.32,y:0,z:8};
- const assisted=hitscan(scrapeEye,scrapeDir,scrapeTargets,45,()=>true,playerVelocityMultiplier(0));
+ const scrapeDir={x:0.5,y:0,z:8};
  const honest=hitscan(scrapeEye,scrapeDir,scrapeTargets,45,()=>true,1);
- assert.ok(assisted,'rest magnetism lands the scrape');
+ const pulled=magnetizeAim(scrapeEye,scrapeDir,scrapeTargets,playerAssistAngle(WALK_SPRINT),45);
+ const assisted=hitscan(
+  scrapeEye,pulled,scrapeTargets,45,()=>true,playerVelocityMultiplier(WALK_SPRINT),
+ );
+ assert.ok(assisted,'sprint cone magnetism lands the scrape');
  assert.equal(honest,null,'honest volume misses');
  assert.equal(classifyPlayerHit(assisted,honest),'SCRAPE');
 

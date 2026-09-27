@@ -15,6 +15,10 @@ test('Phase 4 polish table matches live combat exports',()=>{
  assert.equal(HITBOX_ASSIST.restBonus,P.magnetism.restBonus);
  assert.equal(HITBOX_ASSIST.sprintBonus,P.magnetism.sprintBonus);
  assert.equal(HITBOX_ASSIST.sprintSpeed,P.magnetism.sprintSpeed);
+ assert.equal(HITBOX_ASSIST.restAngleDeg,P.magnetism.restAngleDeg);
+ assert.equal(HITBOX_ASSIST.sprintAngleDeg,P.magnetism.sprintAngleDeg);
+ assert.equal(HITBOX_ASSIST.angleHardCapDeg,P.magnetism.angleHardCapDeg);
+ assert.equal(HITBOX_ASSIST.movingScatterDamp,P.magnetism.movingScatterDamp);
  assert.equal(SKIN_OF_TEETH.stillSpeed,P.graze.stillSpeed);
  assert.equal(SKIN_OF_TEETH.maxGrazeBias,P.graze.maxGrazeBias);
  assert.equal(SKIN_OF_TEETH.minChance,P.graze.minChance);
@@ -32,9 +36,13 @@ test('Phase 4 polish table matches live combat exports',()=>{
  assert.equal(STREAK.breakShake.intensity,P.streak.breakShake.intensity);
  assert.equal(STREAK.breakShake.duration,P.streak.breakShake.duration);
  assert.equal(STREAK.breakHitstopMs,P.streak.breakHitstopMs);
- // Assists stay modest / invisible — never aimbot-wide.
- assert.ok(HITBOX_ASSIST.sprintBonus<=.30);
- assert.ok(HITBOX_ASSIST.restBonus<=.15);
+ // Assists stay modest — cone is the readable boost; radii stay non-cartoon.
+ assert.ok(HITBOX_ASSIST.sprintBonus<=.15);
+ assert.ok(HITBOX_ASSIST.restBonus<=.10);
+ assert.ok(HITBOX_ASSIST.sprintAngleDeg<=HITBOX_ASSIST.angleHardCapDeg);
+ assert.ok(HITBOX_ASSIST.angleHardCapDeg<=2.5);
+ assert.ok(HITBOX_ASSIST.restAngleDeg<=.5);
+ assert.ok(HITBOX_ASSIST.movingScatterDamp<=.35);
  assert.ok(SKIN_OF_TEETH.maxGrazeBias<=.10);
  assert.ok(STYLE_TUNING.points.clean>=55,'honest CLEAN stays rewarding');
 });
