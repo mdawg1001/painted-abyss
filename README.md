@@ -1,7 +1,17 @@
-# Painted Abyss — First Dive · 0.21.1
+# Painted Abyss — First Dive · 0.21.2
 
 
 
+
+## Speed lens toned down (0.21.2)
+
+The 0.21.1 lens swung from 60° to 110° and breathed with every step. It is now a rush rather than a trip:
+
+- **Range**: 64° (the game's normal view) up to 82° at slide speed, so +18° instead of +50°.
+- **Walking doesn't move it at all**: the lens only starts widening above 1.6 m/s. A run gives about 70°, and only slides and slide-jumps reach the top.
+- **No pulsing**: the lens follows your speed up over about a quarter of a second, so the stride's own speed ripple moves it less than 0.3°. It follows your speed down almost instantly, so stops still snap. Only horizontal speed counts, so bobbing in the water doesn't breathe the view.
+- **Snap kept, wobble gone**: stiffness 150, damping 13.5 (ζ ≈ 0.55). Stopping from a slide takes the view back halfway in about 0.13 s and dips about 2° under normal, then settles within about half a second. The old version dipped 10° and rang.
+- **Edge stretch**: 0.025 at top speed (was 0.08), a hint of tunnel rather than a fisheye.
 
 ## Speed lens: FOV on a spring (0.21.1)
 
