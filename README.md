@@ -1,7 +1,17 @@
-# Painted Abyss — First Dive · 0.20.9
+# Painted Abyss — First Dive · 0.20.10
 
 
 
+
+## Style meter (0.20.10)
+
+`playable/src/styleMeter.ts` scores how you fight and shows a rank from D up to SSS on the left of the HUD, with a fill bar, a chain count and a short feed of recent actions (for example "+448 SLIDE HEADSHOT KILL").
+
+- **Actions and base points**: hit 40, headshot 90, kill 180, headshot kill 280, knife cut 70, knife kill 260, guardian wound 120, guardian kill 600. A **close call** is worth 110: a guard's round or swing misses you while you slide or are airborne, within 20 m. **Parry** (220) is in the API but nothing triggers it yet, because the game has no parry.
+- **Scaling**: mid-slide ×1.6 and airborne ×1.5, which stack. Each event within 2.5 s of the last adds 10% to a chain multiplier, up to ×2. Repeating the same action loses 35% of its value each time, down to a floor of 20%. That recovers at 5% a second, so variety pays and spamming doesn't.
+- **Ranks**: each letter has its own bar (300 points for D, up to 1,200 for SSS). Overflow promotes you, and SSS stays full.
+- **Decay**: after 2.5 s with no combat events the bar drains at 60 points a second at D, plus 35 per rank above D. It empties down through the letters to nothing. Taking damage costs 60% of the current bar and resets the chain. Dying resets the meter.
+- **Rank-up hook**: `style.onRankChange(fn)` fires once for every tier crossed, up or down. CaveWorld uses it to shake the screen on each rank-up, harder for higher letters. Hitstop and pause freeze the meter.
 
 ## Jump replaces dash; faster slide (0.20.8)
 

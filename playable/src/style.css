@@ -577,3 +577,19 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .meter.suit.leeched i{animation:leech-bar .6s ease-out}
 @keyframes leech-bar{0%{background:#fff;box-shadow:0 0 14px #ff5a3c}100%{}}
 @media (prefers-reduced-motion:reduce){.leech-flash{animation-duration:.2s}.leech-flash span{animation:none;opacity:0}}
+/* Style meter (styleMeter.ts): rank letter, bar, chain and action feed, left edge under the map chip. */
+.style-meter{position:absolute;left:28px;top:172px;width:220px;pointer-events:none;
+  font-family:'Barlow Condensed',sans-serif;color:var(--hud);text-shadow:0 1px 8px rgba(0,0,0,.8)}
+.style-rank{display:inline-block;font-size:50px;line-height:1;font-weight:800;letter-spacing:.02em;transform-origin:left center;animation:style-pop .28s cubic-bezier(.2,1.6,.4,1)}
+.style-bar{width:140px;height:4px;margin:4px 0 5px;background:rgba(0,0,0,.45);overflow:hidden}
+.style-bar i{display:block;height:100%;background:currentColor;transition:width .12s linear}
+.style-chain{font-size:12px;font-weight:700;letter-spacing:.14em;opacity:.85}
+.style-feed{margin-top:3px;font-size:12px;font-weight:600;letter-spacing:.08em;line-height:1.35}
+.style-line{white-space:nowrap;opacity:.9;animation:style-feed-in .18s ease-out}
+.style-line b{font-weight:800;margin-right:4px}
+.style-meter.tier-0{color:#9aa3a8}.style-meter.tier-1{color:#b9c4a2}.style-meter.tier-2{color:#d8c77a}
+.style-meter.tier-3{color:#e8a452}.style-meter.tier-4{color:#e8783c}.style-meter.tier-5{color:#e0442f}
+.style-meter.tier-6{color:#ff2a2a;text-shadow:0 0 14px rgba(255,40,40,.55),0 1px 8px rgba(0,0,0,.8)}
+@keyframes style-pop{0%{transform:scale(1.7);opacity:0}100%{transform:scale(1);opacity:1}}
+@keyframes style-feed-in{from{transform:translateX(-12px);opacity:0}to{transform:none;opacity:.9}}
+@media (max-width:640px){.style-meter{left:16px;top:150px;width:150px}.style-rank{font-size:36px}.style-feed{display:none}}
