@@ -236,8 +236,10 @@ export const GUARD_SCAN_ARC=.9;
 export const GUARD_COUNT=SURVIVAL.maxGuards;
 /** In a burst he fires once the muzzle is within this of you (hip-fire, ~20°). */
 export const GUARD_BURST_TOLERANCE=20*Math.PI/180;
-/** What you carry into every life: the diving knife and the TT-33. */
+/** What you carry into the first dive: the diving knife and the TT-33. */
 export const SURVIVAL_KIT:Item[]=['knife','gun'];
+/** Always-on tool — every wake (and first spawn if somehow missing) keeps this. */
+export const RESPAWN_KNIFE:Item='knife';
 /** A guard that is in play and on his feet. */
 export const liveGuard=(g:Guard)=>g.active&&g.hp>0;
 /** Adjacent beats share this fraction of their waypoints (~one room of overlap). */
@@ -1337,10 +1339,22 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.predator.waypoint=best;
   this.spawnGuards();
   this.killedByGuard=false;
+  this.ensureKnife();
   if(!tipsSeen){
    this.notice='Find the main guard. Take his Soviet key, unlock the relic, extract. WASD walk · Shift run · 1–5 select · click stabs.';
    this.noticeUntil=9;this.feedbackKind='select';
   }
+ }
+ /**
+  * Guarantee a diving knife in inventory. Does not restore gun / consumables —
+  * those stay on the corpse or in the hatch stash.
+  */
+ ensureKnife(){
+  if(this.inventory.includes(RESPAWN_KNIFE))return;
+  let slot=this.inventory.indexOf(null);
+  if(slot<0)slot=0;
+  this.inventory[slot]=RESPAWN_KNIFE;
+  this.selected=slot;
  }
  /**
   * Place each guard on his overlapping perimeter beat, away from the player
@@ -1709,7 +1723,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.pending=null;
  }
  /**
-  * Death in the playable returns here: hatch, empty hands, short air, same water, tank on the next mount.
+  * Death in the playable returns here: hatch, diving knife only, short air, same water, tank on the next mount.
   * Whatever was carried stays on the corpse. Outcome stays `lost` inside `update` so a fresh mission is still a full reset.
   * If the Soviet guard killed you, he claims gun / bottle / coat from that corpse and will use them.
   */
@@ -1737,8 +1751,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.reason='';
   this.pending=null;
   this.resetFirefight();
+  this.ensureKnife();
   this.spawnGuards();
-  this.say('You wake at the hatch with empty hands. Everything you carried is on your corpse. The garrison has reset — push through.','blocked');
+  this.say('You wake at the hatch with your diving knife. Everything else you carried is on your corpse. The garrison has reset — push through.','blocked');
  }
  /**
   * After a guard kill, pull gun / bottle / coat lying on the corpse into his kit.
@@ -2692,8 +2707,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  }
  /**
   * Each death restarts the firefight: pacing, smoke, supplies, empty pistol.
-  * Does NOT refill inventory — `dropCarriedAt` already emptied the hands; restoring
-  * knife/gun here made the hatch stash pointless.
+  * Does NOT refill inventory — `dropCarriedAt` emptied the hands; `ensureKnife`
+  * (called from respawn) restores only the diving knife, not the gun or kit.
   */
  resetFirefight(){
   const on=this.director.enabled;

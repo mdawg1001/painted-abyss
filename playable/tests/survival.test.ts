@@ -325,7 +325,7 @@ test('death and restart clean up the fight completely',()=>{
  assert.equal(m.guards.filter(liveGuard).length,SURVIVAL.director.initial);
  assert.ok(m.guards.every(g=>!g.active||(g.state==='patrol'&&g.hp===g.maxHp)));
  assert.ok(m.caches.every(c=>c.stocked));
- assert.deepEqual(m.inventory,[null,null,null,null,null],'wake empty-handed — kit stays on the corpse');
+ assert.deepEqual(m.inventory,['knife',null,null,null,null],'wake with knife — gun/kit stay on the corpse');
  assert.equal(m.pistol.mag,0);
  assert.equal(m.pistol.reserve,0);
  assert.equal(m.smokes,SURVIVAL.smoke.start);

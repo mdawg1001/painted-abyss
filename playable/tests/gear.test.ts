@@ -32,7 +32,7 @@ test('gun, spare bottle, and coat lie in the corridor and not at the hatch',()=>
  assert.equal(m.pickups.filter(p=>p.item==='flare').length,0,'no mystery mid-air flare orb in the cavern');
 });
 
-test('death drops whatever is carried at the corpse; wake with empty hands',()=>{
+test('death drops carried gear at the corpse; wake with diving knife only',()=>{
  const m=new Mission(true);
  const worldGear=m.pickups.filter(p=>p.item==='gun'||p.item==='bottle'||p.item==='coat').map(p=>p.id);
  const corpse={x:-2,y:WALK_EYE_Y,z:16};
@@ -45,8 +45,10 @@ test('death drops whatever is carried at the corpse; wake with empty hands',()=>
  const tank=m.breathTankIndex;
  const before=m.pickups.length;
  m.respawnAtHatch();
- assert.deepEqual(m.inventory,[null,null,null,null,null]);
+ assert.deepEqual(m.inventory,['knife',null,null,null,null],'knife guaranteed; no full kit');
  assert.equal(m.selected,0);
+ assert.ok(m.inventory.includes('knife'));
+ assert.ok(!m.inventory.includes('gun'),'gun stays on the corpse / stash path');
  assert.equal(m.pistol.mag,0);
  assert.equal(m.pistol.reserve,0);
  assert.equal(m.pending,null);
@@ -70,11 +72,14 @@ test('death drops whatever is carried at the corpse; wake with empty hands',()=>
  const hatch=breathHatchSpawn();
  const empty=new Mission(true);
  empty.inventory=[null,null,null,null,null];
+ empty.ensureKnife();
+ assert.deepEqual(empty.inventory,['knife',null,null,null,null],'first spawn / missing knife is restored');
+ empty.inventory=[null,null,null,null,null];
  empty.position={...hatch};
  const n=empty.pickups.length;
  empty.respawnAtHatch();
- assert.equal(empty.pickups.length,n);
- assert.deepEqual(empty.inventory,[null,null,null,null,null]);
+ assert.equal(empty.pickups.length,n,'empty hands drop nothing');
+ assert.deepEqual(empty.inventory,['knife',null,null,null,null],'respawn still grants knife');
 });
 
 test('spare bottle fills the main cylinder and is consumed; gun and coat do not act',()=>{
