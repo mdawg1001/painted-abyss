@@ -1,7 +1,11 @@
-# Painted Abyss — First Dive · 0.21.2
+# Painted Abyss — First Dive · 0.21.3
 
 
 
+
+## Runtime polish meets the speed lens (0.21.3)
+
+Merges the Cursor runtime pass (0.21.1 post/CPU polish) with the speed lens (0.21.2). The runtime pass fused the impact crunch into the clip-grade shader, which left the lens's peripheral stretch writing to a pass that no longer exists. The stretch now lives in the fused clip-grade pass, so you get the cheaper post stack and the lens together.
 
 ## Speed lens toned down (0.21.2)
 
@@ -22,6 +26,11 @@ The 0.21.1 lens swung from 60° to 110° and breathed with every step. It is now
 - **Peripheral stretch**: the post pass pulls samples toward the centre in proportion to r², so the walls stretch out to the frame edges while the centre stays true. It is up to 8% at the corners at top speed and follows the spring.
 - **Aiming** blends the lens toward the sights' fixed 52°, and the stretch fades out, so a scope does not breathe with your speed.
 - **Tuning**: `SPEED_FOV` at the top of the file has MIN_FOV, MAX_FOV, V_MAX, SPRING_STIFFNESS, SPRING_DAMPING, WARP_MAX, FLOOR_FOV and MAX_STEP. The per-frame update allocates nothing.
+
+## Runtime post/CPU polish (0.21.1)
+
+On top of the 0.21.0 playability profile: **UnsignedByte** composer buffers (no HalfFloat), impact crunch/chroma **fused into the clip-grade pass** (one fewer full-screen blit), PointLight registry rescanned every 12 frames, hanging-tube emissives cached (no per-frame glTF traverse), rock anisotropy 8→4, and `?test=1` exposes `__abyss` on production serves for frame probes.
+
 ## Playability · ~5× cheaper frames (0.21.0)
 
 The dive was moving frame-by-frame on heavy machines again (Retina + MSAA + torch/hanging shadow maps + half-res bloom). `playable/src/perf.ts` now caps the canvas at **1× DPR**, turns **MSAA and shadow maps off**, runs bloom at **quarter-res**, cuts suspended motes **1800→360**, and follows only **3** hanging-tube spots (none casting shadows). Rock maps, hanging fixtures, frame grade, combat feedback, and HUD stay. After merge: `node playable/refresh.mjs` and confirm **BUILD v0.21.0**.

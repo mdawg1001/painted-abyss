@@ -2,8 +2,8 @@
  * Ultrakill-leaning post stack helpers for the dive composer.
  *
  * Pipeline (wired in CaveWorld.buildComposer):
- *   RenderPass → UnrealBloomPass → ImpactPass (chroma + vignette + mild crunch)
- *   → clip grade → OutputPass
+ *   RenderPass → UnrealBloomPass → clip grade (+ fused impact crunch/chroma/vignette)
+ *   → OutputPass
  *
  * Bloom is intentionally thresholded so only emissive / additive practicals
  * (muzzle, neon pickups, shafts) glow — not the whole cave. Impact intensity

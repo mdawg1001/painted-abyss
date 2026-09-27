@@ -88,7 +88,7 @@ function App(){
    try{
     instance=new CaveWorld(host.current,s=>setSnap({...s}));
     engine.current=instance;
-    if(import.meta.env.DEV&&new URLSearchParams(location.search).has('test'))(window as any).__abyss=instance;
+    if(new URLSearchParams(location.search).has('test'))(window as any).__abyss=instance;
    }catch(e){
     console.error(e);
     setError('The cave needs WebGL. Enable graphics acceleration in a desktop browser, then reload.');

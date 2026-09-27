@@ -1,8 +1,8 @@
 import { CombatFeedbackManager, COMBAT_FEEDBACK } from './combatFeedback';
 import { PropStreaming } from './propStreaming';
 import { PALETTE } from './artPalette';
-import { DRY_DENSITY, DRY_FIELD, FLUORESCENT, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type FrameGrade } from './frameGrade';
-import { POST_FX_DPR_CAP, createBloomPass, createImpactFx, createImpactPass, resizeBloomPass, type ImpactFx, type ImpactPass } from './postFx';
+import { DRY_DENSITY, DRY_FIELD, FLUORESCENT, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type ClipGradePass, type FrameGrade } from './frameGrade';
+import { POST_FX_DPR_CAP, createBloomPass, createImpactFx, resizeBloomPass, type ImpactFx } from './postFx';
 import { PERF } from './perf';
 import * as THREE from 'three';
 import { applyGuardCombatPose, updateGuardMoveFrame } from './guardCombatPose';
@@ -214,9 +214,9 @@ export class CaveWorld extends OceanWorld {
  /** Rest pose for the camera-parented lantern (local space). */
  torchRestPos=V(HELD_VIEW_POS.x,HELD_VIEW_POS.y,HELD_VIEW_POS.z);torchRestRot=new THREE.Euler(HELD_VIEW_ROT.x,HELD_VIEW_ROT.y,HELD_VIEW_ROT.z);
  composer!:EffectComposer;
- /** Soft neon bloom (half-res UnrealBloomPass) + damage/dash chroma/vignette. */
+ /** Soft neon bloom (quarter-res) + fused damage/dash chroma in the clip pass. */
  goldSeqHeard=0;
- bloom!:UnrealBloomPass;impactPass!:ImpactPass;impactFx:ImpactFx=createImpactFx();
+ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
  /** Rising-edge trackers for impact FX (health drop + Shift sprint/run). */
  fxHealthSeen=100;fxBursting=false;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
@@ -341,7 +341,13 @@ export class CaveWorld extends OceanWorld {
  pointCullSyncs:(()=>void)[]=[];
  pointCullSaturated=false;
  _cullLights:THREE.PointLight[]=[];
+ /** Cached PointLight list — rebuilt every PERF.lightScanFrames (avoids scene.traverse). */
+ _cullLightCache:THREE.PointLight[]=[];
+ _cullLightScan=0;
  _cullWp:THREE.Vector3[]=[];
+ /** Scratch for muzzle aim without per-frame Vector3 allocs. */
+ _muzzleAim=new THREE.Vector3();
+ _muzzleScratch=new THREE.Vector3();
  /** World box around the held torch / knife. Refreshed every frame. */
  heldLightBox=new THREE.Box3();
  /** World box around the guardian. Refreshed every frame. */
@@ -368,7 +374,7 @@ export class CaveWorld extends OceanWorld {
  gradeHemi!:THREE.HemisphereLight;gradeAmbient!:THREE.AmbientLight;gradeSky!:THREE.DirectionalLight;
  waterMat!:THREE.MeshBasicMaterial;volMat!:THREE.MeshBasicMaterial;
  gradeClock=createGradeClock();frameGrade:FrameGrade='dry';
- clipPass!:ReturnType<typeof createClipGradePass>;
+ clipPass!:ClipGradePass;
  gradeSpots:{light:THREE.Light;rest:number}[]=[];
  /** Soft blood cloud group (droplets + plume); hidden until hit/kill. */
  bloodGroup:THREE.Group|null=null;
@@ -877,15 +883,23 @@ export class CaveWorld extends OceanWorld {
   for(const sync of this.pointCullSyncs)sync();
   const lights=this._cullLights;lights.length=0;
   const wp=this._cullWp;
-  this.scene.traverse(o=>{
-   const light=o as THREE.PointLight;
-   if(!light.isPointLight)return;
-   for(let p:THREE.Object3D|null=light;p;p=p.parent)if(!p.visible)return;
+  // Full scene.traverse is expensive — refresh the PointLight registry on a cadence.
+  if((this._cullLightScan++%PERF.lightScanFrames)===0||!this._cullLightCache.length){
+   this._cullLightCache.length=0;
+   this.scene.traverse(o=>{
+    const light=o as THREE.PointLight;
+    if(light.isPointLight)this._cullLightCache.push(light);
+   });
+  }
+  for(const light of this._cullLightCache){
+   let hidden=false;
+   for(let p:THREE.Object3D|null=light;p;p=p.parent)if(!p.visible){hidden=true;break;}
+   if(hidden)continue;
    const i=lights.length;
    lights.push(light);
    const v=wp[i]??(wp[i]=new THREE.Vector3());
    light.getWorldPosition(v);
-  });
+  }
   for(const t of this.pointCullTargets){
    let n=0;
    for(let i=0;i<lights.length;i++){
@@ -1411,14 +1425,16 @@ export class CaveWorld extends OceanWorld {
    }else applyGuardAim(visual,this._aimTarget,g.aim,kick);
    let muzzle:THREE.Vector3|null=null;
    if(g.gun&&this.guardShotsSeen[i]===g.shots&&flashFrom===i){
-    muzzle=visual.gun.getWorldPosition(new THREE.Vector3());
-    muzzle.addScaledVector(this._aimTarget.clone().sub(muzzle).normalize(),.28);
+    muzzle=visual.gun.getWorldPosition(this._muzzleScratch);
+    this._muzzleAim.copy(this._aimTarget).sub(muzzle).normalize();
+    muzzle.addScaledVector(this._muzzleAim,.28);
    }
    this.fx.syncGuard(i,visual,g,this.mission.elapsed,flashFrom===i,muzzle,dt);
    if(muzzle)this.warFx.guardShot(muzzle);
    if(flashFrom===i||(flashFrom<0&&i===0)){
     visual.gun.getWorldPosition(this._muzzle);
-    this._muzzle.addScaledVector(this._aimTarget.clone().sub(this._muzzle).normalize(),.28);
+    this._muzzleAim.copy(this._aimTarget).sub(this._muzzle).normalize();
+    this._muzzle.addScaledVector(this._muzzleAim,.28);
     this.guardFlash.position.copy(this._muzzle);this.guardFlashGlow.position.copy(this._muzzle);
    }
   }
@@ -1854,16 +1870,20 @@ export class CaveWorld extends OceanWorld {
  }
  buildComposer(){
   const w=this.host.clientWidth||1,h=this.host.clientHeight||1;
-  this.composer=new EffectComposer(this.renderer);
+  // UnsignedByte RTs: HalfFloat doubles post bandwidth on Safari for an LDR stack.
+  const rt=PERF.composerFloat?undefined:new THREE.WebGLRenderTarget(
+   Math.max(1,Math.floor(w*POST_FX_DPR_CAP)),
+   Math.max(1,Math.floor(h*POST_FX_DPR_CAP)),
+   {type:THREE.UnsignedByteType,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,format:THREE.RGBAFormat},
+  );
+  this.composer=rt?new EffectComposer(this.renderer,rt):new EffectComposer(this.renderer);
   this.composer.addPass(new RenderPass(this.scene,this.camera));
-  // Soft neon bloom at half-res + capped DPR — avoids the old Retina hitch that dropped this pass.
+  // Soft neon bloom at quarter-res + capped DPR.
   this.bloom=createBloomPass(w,h);
   this.composer.addPass(this.bloom);
-  this.impactPass=createImpactPass();
-  this.impactPass.setSize(w,h);
-  this.composer.addPass(this.impactPass);
-  // Clip sits in front of output. Tone mapping is off, so this clamp is the grade.
+  // Clip grade + damage/dash impact fused — one fewer full-screen blit.
   this.clipPass=createClipGradePass();
+  this.clipPass.setSize(w,h);
   this.composer.addPass(this.clipPass);
   this.composer.addPass(new OutputPass());
   this.setPixelRatio();
@@ -1880,20 +1900,20 @@ export class CaveWorld extends OceanWorld {
   this.setPixelRatio();
   this.renderer.setSize(w,h);this.composer?.setSize(w,h);
   if(this.bloom)resizeBloomPass(this.bloom,w,h);
-  this.impactPass?.setSize(w,h);
+  this.clipPass?.setSize(w,h);
  }
  /** Rising edge of Shift run (on foot) or Shift sprint (swim) — no dedicated dash. */
  noteBurstMovement(bursting:boolean){
   if(bursting&&!this.fxBursting)this.impactFx.pulseDash();
   this.fxBursting=bursting;
  }
- /** Health drop → hit chroma/vignette; decay both channels into the impact pass. */
+ /** Health drop → hit chroma/vignette; decay both channels into the fused clip pass. */
  stepImpactFx(dt:number){
   const hp=this.mission.health;
   if(hp<this.fxHealthSeen-0.5){this.impactFx.pulseHit();this.style.hurt();}
   this.fxHealthSeen=hp;
   this.impactFx.step(dt);
-  this.impactPass?.setIntensity(this.impactFx.intensity);
+  this.clipPass?.setIntensity(this.impactFx.intensity);
  }
  syncPickups(){
   for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);group.traverse(o=>{o.userData.gunAlive=false;if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
@@ -2285,7 +2305,7 @@ export class CaveWorld extends OceanWorld {
   const e=this.aimEase();
   const fov=lens+(AK74U_ADS.fov-lens)*e;
   if(Math.abs(this.camera.fov-fov)>1e-3){this.camera.fov=fov;this.camera.updateProjectionMatrix();}
-  this.impactPass?.setWarp(this.speedFov.warp()*(1-e));
+  this.clipPass?.setWarp(this.speedFov.warp()*(1-e));
  }
  /** Sounds and feedback for the pistol's combat cue. */
  consumePistolCue(){
