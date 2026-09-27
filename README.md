@@ -1,7 +1,18 @@
-# Painted Abyss — First Dive · 0.20.6
+# Painted Abyss — First Dive · 0.20.7
 
 
 
+
+## Dash and slide (0.20.7)
+
+On foot you now have two movement moves on top of the walking gait, both in `playable/src/movementTech.ts`.
+
+- **Dash: Space.** Your velocity is replaced (not added to) by 8 m/s in the direction you are pressing, relative to where you look; with no keys it goes straight ahead. It lasts 0.15 s (about 1.2 m) with gravity and vertical motion suspended, then has a 0.5 s cooldown from when it ends. One press gives one dash: holding the key does nothing, and a press up to 0.1 s early is buffered. Each dash costs 10 stamina.
+- **Slide: C at a run.** Pressing C at 2.6 m/s or faster drops you into a slide with 1.6 m/s added forward. Below that speed, C is the normal crouch. The body capsule halves from the bottom up, so the eye drops 0.875 m, and the view leans 2.5° toward the slide (to the left on a straight one). Kinetic friction (μk 0.34, clothing on concrete) slows you at μk·g ≈ 3.3 m/s², so a slide from a run covers about 3.6 m in 1.3 s. While you hold C it settles into a crouch-walk; release early and you stand and keep running.
+- **Slopes**: slide velocity is kept along the ground plane, with gravity's slope component added. On a slope steeper than about 19° (the friction angle) you speed up downhill; uphill you slow faster. The bunker floor is level today, so this applies automatically once ramps return a slope from `groundNormal()` in `simulation.ts`.
+- **Headroom check**: when you release C, five upward rays test the space above your head against the rendered geometry. If a ceiling or underside is inside standing height, you stay low (still sliding, or crouched) until you are clear.
+- A dash can cancel a slide, and holding C through a dash drops you straight into a slide at no more than a boosted run. Guards hear a dash or slide the way they hear a run; you only get the crouch sight bonus once the slide has become a crouch.
+- Ctrl is deliberately not used: in a browser, holding W while pressing Ctrl can close the tab (Ctrl+W), and a web page cannot block that outside fullscreen.
 
 ## AK-74U viewmodel fixed: official model, iron sights (0.20.6)
 
