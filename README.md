@@ -1,7 +1,11 @@
-# Painted Abyss — First Dive · 0.21.3
+# Painted Abyss — First Dive · 0.22.1
 
 
 
+
+## Undo 5× simulation scale (0.22.1)
+
+Reverts PR #151 (`GAME_TIME_SCALE = 5`). Mission time, movement, AI, and gas run at wall clock again. Hitstop / combat feedback / hitch clamps are unchanged from the pre-0.22.0 path.
 
 ## Runtime polish meets the speed lens (0.21.3)
 
