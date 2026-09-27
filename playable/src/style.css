@@ -577,13 +577,19 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 /* Brief centre callout for SCRAPE / GRAZE / HEAD / MULTI — not every CLEAN. */
 .combat-callout{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);z-index:42;pointer-events:none;
  font:800 26px/1 'Barlow Condensed',sans-serif;letter-spacing:.18em;color:#e8e4d8;
- text-shadow:0 1px 10px rgba(0,0,0,.85);animation:combat-callout .75s ease-out forwards}
+ text-shadow:0 1px 10px rgba(0,0,0,.85);animation:combat-callout .6s ease-out forwards}
 .combat-callout.tag-scrape{color:#c8e8ff}.combat-callout.tag-graze{color:#ffe2a8}
 .combat-callout.tag-head{color:#ffb0a0}.combat-callout.tag-multi{color:#ffd978}
 .combat-callout.tag-streak-break{color:#ff6a4a;letter-spacing:.14em;font-size:22px;
  animation:combat-callout 1.55s ease-out forwards}
 @keyframes combat-callout{0%{opacity:0;transform:translate(-50%,-40%) scale(1.25)}18%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-70%) scale(.95)}}
-@media (prefers-reduced-motion:reduce){.combat-callout{animation-duration:.25s}}
+/* Calm combat (prefers-reduced-motion): no scrape/graze shout, quieter style pop / glow. */
+@media (prefers-reduced-motion:reduce){
+  .combat-callout{animation-duration:.2s}
+  .combat-callout.tag-scrape,.combat-callout.tag-graze{display:none}
+  .style-rank,.style-line{animation:none}
+  .style-meter.tier-6{text-shadow:0 1px 8px rgba(0,0,0,.8)}
+}
 @media (max-width:640px){.style-meter{left:16px;top:150px;width:130px}.style-rank{font-size:32px}.style-feed{display:none}.combat-callout{font-size:20px}}
 
 /* Rifle stoppage: the ammo label turns red and pulses until R clears it. */

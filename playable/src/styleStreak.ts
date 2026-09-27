@@ -18,20 +18,20 @@ export type StreakRewardRank = (typeof STREAK_REWARD_RANKS)[number];
 export const STREAK = {
   /** Style tier index of B (STYLE_RANKS). */
   rewardMinTier: 2,
-  /** Seconds between modest ammo drips while the streak is live. */
-  ammoInterval: 5,
+  /** Seconds between modest ammo drips while the streak is live (Phase 4: slower). */
+  ammoInterval: 6,
   /** Rounds granted per drip by reward rank — mag top-up preferred when low. */
-  ammoRounds: { B: 1, A: 1, S: 2, SS: 2, SSS: 2 } as Record<StreakRewardRank, number>,
+  ammoRounds: { B: 1, A: 1, S: 1, SS: 2, SSS: 2 } as Record<StreakRewardRank, number>,
   /** Prefer topping the magazine when it is below this fill fraction. */
   magPreferBelow: 0.55,
   /** Extra seconds added to the next reinforcement wait while streaking. */
-  directorDelay: { B: 0.55, A: 0.9, S: 1.25, SS: 1.45, SSS: 1.6 } as Record<StreakRewardRank, number>,
+  directorDelay: { B: 0.45, A: 0.7, S: 1.0, SS: 1.15, SSS: 1.3 } as Record<StreakRewardRank, number>,
   /** Hunting-target relief at S+ only (never below 1 live hunter when pressure is on). */
   directorTargetSoft: { B: 0, A: 0, S: 1, SS: 1, SSS: 1 } as Record<StreakRewardRank, number>,
   /** Flat extra rounds on a downed guard's dropped mag while streaking. */
   lootRoundsBonus: { B: 1, A: 1, S: 2, SS: 2, SSS: 2 } as Record<StreakRewardRank, number>,
   /** Extra walk-over pickup radius (m) for ammo / stripped mags while streaking. */
-  pickupRadiusBonus: 0.28,
+  pickupRadiusBonus: 0.22,
   /** Any real HP damage at or above this breaks a live streak (core hit). */
   coreBreakMinDamage: 1,
   /** Centre callout lifetime for STREAK BROKEN (s). */
@@ -39,8 +39,8 @@ export const STREAK = {
   /** One-line death urge — notice only, not a permanent HUD widget. */
   deathUrge: 'STREAK BROKEN — recover the corpse',
   /** Loud-but-fair break juice (CaveWorld samples these). */
-  breakShake: { intensity: 1.45, duration: 0.34 },
-  breakHitstopMs: 85,
+  breakShake: { intensity: 1.15, duration: 0.28 },
+  breakHitstopMs: 70,
 } as const;
 
 export function streakRewardRank(tier: number): StreakRewardRank | null {

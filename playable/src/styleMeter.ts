@@ -39,9 +39,9 @@ export type StyleModifier = 'slide' | 'aerial';
 export type StyleEvent = { action: StyleAction; mods?: StyleModifier[] };
 
 export const STYLE_TUNING = {
- /** Base points per action. */
+ /** Base points per action. Phase 4: CLEAN competitive with scrape; graze slightly ahead of scrape. */
  points: {
-  hit: 40, clean: 55, scrape: 85, graze: 95, headshot: 90, kill: 180, headshotKill: 280,
+  hit: 40, clean: 60, scrape: 70, graze: 80, headshot: 90, kill: 180, headshotKill: 280,
   multi: 140, meleeHit: 70, meleeKill: 260, monsterHit: 120, monsterKill: 600,
   parry: 220, closeCall: 110,
  } as Record<StyleAction, number>,
@@ -59,14 +59,14 @@ export const STYLE_TUNING = {
  chainStep: .1,
  chainMax: 2,
  /** Seconds with no events before the idle bar drains. */
- graceSeconds: 2.5,
+ graceSeconds: 2.8,
  /** Drain rate in points/s at D, growing per rank (so SSS is hard to hold). */
  drainBase: 60,
  drainPerRank: 35,
  /** Horizontal speed (m/s) at or below which standing-still drain applies. */
  stillSpeed: 0.4,
- /** Extra drain (points/s) while standing still with an active rank. */
- stillDrain: 90,
+ /** Extra drain (points/s) while standing still — speed is currency without aim-freeze panic. */
+ stillDrain: 72,
  /** Share of the current rank's bar lost when you take a hit. */
  hurtPenalty: .6,
  /** Feed lines kept, and how long each stays up (s). */
@@ -102,6 +102,9 @@ export class StyleMeter {
  private freshness = new Map<string, number>();
  private feed: StyleFeedLine[] = [];
  private listeners: ((c: StyleRankChange) => void)[] = [];
+ /** Reused by `view()` so the HUD publish path does not allocate feed copies each tick. */
+ private viewScratch: StyleView = { rank: null, tier: -1, fill: 0, total: 0, chain: 0, feed: [] };
+ private feedScratch: StyleFeedLine[] = [];
 
  /** Subscribe to tier changes (up or down). Returns an unsubscribe function. */
  onRankChange(fn: (c: StyleRankChange) => void) {
@@ -126,7 +129,13 @@ export class StyleMeter {
  }
 
  /** Key for freshness: the action plus its modifiers (a slide kill is fresh after a plain kill). */
- private key(ev: StyleEvent) { return [ev.action, ...(ev.mods ?? []).slice().sort()].join('+'); }
+ private key(ev: StyleEvent) {
+  const mods = ev.mods;
+  if (!mods || mods.length === 0) return ev.action;
+  if (mods.length === 1) return `${ev.action}+${mods[0]}`;
+  // Rare multi-mod path — sort a tiny copy only when needed.
+  return [ev.action, ...mods.slice().sort()].join('+');
+ }
 
  /** Score one combat event. Returns the points awarded. */
  record(ev: StyleEvent): number {
@@ -185,9 +194,12 @@ export class StyleMeter {
  update(dt: number, horizontalSpeed = Infinity) {
   const T = STYLE_TUNING;
   this.clock += dt;
-  for (const [k, f] of this.freshness) {
-   const n = Math.min(1, f + T.freshnessRegen * dt);
-   if (n >= 1) this.freshness.delete(k); else this.freshness.set(k, n);
+  // forEach avoids allocating a Map iterator object on the hot sim path.
+  if (this.freshness.size > 0) {
+   this.freshness.forEach((f, k) => {
+    const n = Math.min(1, f + T.freshnessRegen * dt);
+    if (n >= 1) this.freshness.delete(k); else this.freshness.set(k, n);
+   });
   }
   if (this.tier < 0) return;
   const still = !(horizontalSpeed > T.stillSpeed);
@@ -206,11 +218,29 @@ export class StyleMeter {
  /** Fresh life: meter empty, history cleared (listeners kept). */
  reset() {
   this.tier = -1; this.points = 0; this.total = 0; this.chain = 0;
-  this.lastEventAt = -Infinity; this.freshness.clear(); this.feed = [];
+  this.lastEventAt = -Infinity; this.freshness.clear(); this.feed.length = 0;
+  this.feedScratch.length = 0;
  }
 
+ /**
+  * HUD snapshot. Reuses one StyleView + feed array — safe for the publish path (~20 Hz).
+  * Callers must not mutate the returned object or its `feed` entries.
+  */
  view(): StyleView {
-  const live = this.feed.filter(l => this.clock - l.at < STYLE_TUNING.feedSeconds);
-  return { rank: this.rank, tier: this.tier, fill: this.tier < 0 ? 0 : this.points / this.size(), total: this.total, chain: this.chain, feed: live.map(l => ({ ...l })) };
+  const feed = this.feedScratch;
+  feed.length = 0;
+  const maxAge = STYLE_TUNING.feedSeconds;
+  for (let i = 0; i < this.feed.length; i++) {
+   const l = this.feed[i];
+   if (this.clock - l.at < maxAge) feed.push(l);
+  }
+  const v = this.viewScratch;
+  v.rank = this.rank;
+  v.tier = this.tier;
+  v.fill = this.tier < 0 ? 0 : this.points / this.size();
+  v.total = this.total;
+  v.chain = this.chain;
+  v.feed = feed;
+  return v;
  }
 }

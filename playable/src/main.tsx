@@ -6,6 +6,7 @@ import {SURVIVAL} from './survivalConfig';
 import {rifleName} from './rifleCondition';
 import {fmtGold,goldWalkFactor,goldBcdShare,modTag,modLevel,modValue,upgradeCost,UPGRADE,MOD_TRACKS} from './gold';
 import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,pickupInteractPrompt,isMainGuard,liveGuard,MAP_FRAGMENT_ORDER,STASH_CAPACITY,COMBAT_OUTCOME,STREAK,type Item,type StashSlot} from './simulation';
+import {combatCalloutAllowed} from './combatCalm';
 import {DiveMap} from './DiveMap';
 import {KNIFE_THUMB_URL} from './knifeAsset';
 import {APP_VERSION,APP_BUILD_LABEL,APP_BUILD_SHA} from './version';
@@ -218,8 +219,8 @@ function App(){
     }
     const o=m.lastCombatOutcome;if(!o)return null;
     const age=m.elapsed-o.at;if(age<0||age>=COMBAT_OUTCOME.calloutSeconds)return null;
-    // Juicy named beats only — CLEAN stays in the style feed to avoid centre-screen spam.
-    if(o.tag==='CLEAN')return null;
+    // CLEAN never centre-shouts; calm combat also hides SCRAPE / GRAZE spam.
+    if(!combatCalloutAllowed(o.tag))return null;
     return <div key={`co-${o.at}-${o.tag}`} className={`combat-callout tag-${o.tag.toLowerCase()}`} aria-hidden="true">{o.tag}</div>;
    })()}
    {snap?.audioNotice&&<div className="audio-notice" role="status">{snap.audioNotice}</div>}

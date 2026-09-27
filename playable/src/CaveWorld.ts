@@ -45,9 +45,14 @@ import { startStroke, stepStroke, handPoses, smootherstep, VALVE_STAND, WHEEL_CE
 import { createValveHands, poseValveHands, resetValveHands, type ValveHandsRig } from './valveHands';
 import { applyHandEnvMap } from './diverHand';
 import { SpeedFov, SPEED_FOV } from './speedFov';
-import { StyleMeter, type StyleEvent, type StyleView } from './styleMeter';
+import { StyleMeter, type StyleEvent, type StyleModifier, type StyleView } from './styleMeter';
 import { styleActionsForTag, type CombatTag } from './combatOutcomes';
+import { combatCalmActive } from './combatCalm';
 import { STREAK } from './styleStreak';
+/** Shared style-mod arrays — never mutate; reused across score events. */
+const STYLE_MODS_NONE: StyleModifier[] = [];
+const STYLE_MODS_SLIDE: StyleModifier[] = ['slide'];
+const STYLE_MODS_AERIAL: StyleModifier[] = ['aerial'];
 import { makeTech, stepTech, requestJump, requestSlide, techOwnsMovement, STAND_HEIGHT, type TechState } from './movementTech';
 import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion, applyGuardAim,
@@ -1239,8 +1244,9 @@ export class CaveWorld extends OceanWorld {
  }
  /** What you were doing when an event landed: mid-slide / airborne score extra. */
  styleMods():StyleEvent['mods']{
-  if(!this.onFoot)return [];
-  return this.tech.mode==='slide'?['slide']:this.tech.mode==='air'?['aerial']:[];
+  // Shared frozen arrays — scoring is bursty; avoid per-event allocations on the fire path.
+  if(!this.onFoot)return STYLE_MODS_NONE;
+  return this.tech.mode==='slide'?STYLE_MODS_SLIDE:this.tech.mode==='air'?STYLE_MODS_AERIAL:STYLE_MODS_NONE;
  }
  /** Score a combat action on the style meter with the current movement modifiers. */
  scoreStyle(action:StyleEvent['action']){this.style.record({action,mods:this.styleMods()});}
@@ -1250,10 +1256,14 @@ export class CaveWorld extends OceanWorld {
  }
  /** Brief AAA juice for a scored combat beat — camera tick + hitstop, not HUD spam. */
  juiceCombatTag(tag:CombatTag){
+  // Calm combat: skip scrape/graze camera ticks entirely (scores + SFX still fire).
+  const calm=combatCalmActive();
   if(tag==='SCRAPE'){
+   if(calm)return;
    this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.scrapeTick.intensity,COMBAT_FEEDBACK.scrapeTick.duration);
    this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopScrape);
   }else if(tag==='GRAZE'){
+   if(calm)return;
    this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.grazeTick.intensity,COMBAT_FEEDBACK.grazeTick.duration);
   }else if(tag==='MULTI'){
    this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.gunFire.intensity*.7,COMBAT_FEEDBACK.gunFire.duration);
