@@ -43,6 +43,7 @@ import { createWallPipe, upgradeWallPipe, setPipeWheel, PIPE_MOUNT, type WallPip
 import { startStroke, stepStroke, handPoses, smootherstep, VALVE_STAND, WHEEL_CENTRE, BREAKAWAY_TIME, REGRIP_TIME, type ValveStroke } from './valve';
 import { createValveHands, poseValveHands, resetValveHands, type ValveHandsRig } from './valveHands';
 import { applyHandEnvMap } from './diverHand';
+import { StyleMeter, type StyleEvent, type StyleView } from './styleMeter';
 import { makeTech, stepTech, requestJump, requestSlide, techOwnsMovement, STAND_HEIGHT, type TechState } from './movementTech';
 import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion, applyGuardAim,
@@ -57,7 +58,9 @@ export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLoc
  /** Head above the bunker waterline (free air). */
  airborne:boolean;
  /** Both hands are on the leak valve wheel. */
- atWheel:boolean};
+ atWheel:boolean;
+ /** Style meter for the HUD (rank letter, bar fill, action feed). */
+ style:StyleView};
 /** Point lights packed per cave chunk. 24 covers every light whose range reaches a chunk; the rest of the set still exists in the scene for spots/shadows. */
 const POINT_CULL_MAX=24;
 type PointCull={box:THREE.Box3;count:{value:number};pos:THREE.Vector3[];col:THREE.Vector3[];dist:Float32Array;decay:Float32Array};
@@ -295,6 +298,15 @@ export class CaveWorld extends OceanWorld {
  knifeEnvMap:THREE.Texture|null=null;
  /** Timed screen shake + hitstop (critical hits / kills freeze sim, not render). */
  combatFeedback=new CombatFeedbackManager();
+ /**
+  * Style meter (styleMeter.ts). Combat cues feed it below; crossing into a new rank shakes the
+  * screen, harder the higher the letter.
+  */
+ style=(()=>{
+  const meter=new StyleMeter();
+  meter.onRankChange(c=>{if(c.up)this.combatFeedback.triggerScreenShake(.45+.12*c.tier,.16+.025*c.tier);});
+  return meter;
+ })();
  /** Real-time phase clock for shake noise (keeps advancing during hitstop). */
  shakeClock=0;
  /** Last sampled shake offset (camera-local metres) from `combatFeedback.tick`. */
@@ -1120,6 +1132,8 @@ export class CaveWorld extends OceanWorld {
   this.endValve();
   this.mission.respawnAtHatch();
   this.mission.mapOpen=false;
+  // Dying ends the run of style.
+  this.style.reset();this.tech=makeTech();
   this.resetSurvivalFx();
   this.position.copy(this.mission.position);
   this.velocity.set(0,0,0);
@@ -1195,6 +1209,13 @@ export class CaveWorld extends OceanWorld {
   }
   return floor+crown<this._headCeil;
  }
+ /** What you were doing when an event landed: mid-slide / airborne score extra. */
+ styleMods():StyleEvent['mods']{
+  if(!this.onFoot)return [];
+  return this.tech.mode==='slide'?['slide']:this.tech.mode==='air'?['aerial']:[];
+ }
+ /** Score a combat action on the style meter with the current movement modifiers. */
+ scoreStyle(action:StyleEvent['action']){this.style.record({action,mods:this.styleMods()});}
  resetSurvivalFx(){
   this.fx?.reset();
   this.warFx?.clear();
@@ -1329,6 +1350,8 @@ export class CaveWorld extends OceanWorld {
       playGunshot(ctx,bus,Math.hypot(g.position.x-this.position.x,g.position.z-this.position.z));
       if(!g.lastShotHit)playRicochet(ctx,master);
      }
+     // A round that misses while you slide or fly past him within 20 m: close call.
+     if(!g.lastShotHit&&this.styleMods()!.length&&Math.hypot(g.position.x-this.position.x,g.position.z-this.position.z)<20)this.scoreStyle('closeCall');
      this.combatFeedback.triggerScreenShake(
       g.lastShotHit?COMBAT_FEEDBACK.takeDamage.intensity:COMBAT_FEEDBACK.gunFire.intensity*.55,
       g.lastShotHit?COMBAT_FEEDBACK.takeDamage.duration:.1,
@@ -1353,6 +1376,7 @@ export class CaveWorld extends OceanWorld {
     const landed=this.mission.lastStrike?.at===g.strikeAt&&this.mission.lastStrike.landed;
     if(this.audible())playMeleeHit(this.audioContext!,pannedBus(this.audioContext!,this.master!,this.panFor(g.position),1),!!landed);
     if(landed)this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.meleeHit.intensity,COMBAT_FEEDBACK.meleeHit.duration);
+    else if(this.styleMods()!.length)this.scoreStyle('closeCall');
    }
    const strikeAge=this.mission.elapsed-g.strikeAt;
    const clipOwnsBody=!!act&&act.kind==='death'&&actW>.5;
@@ -1847,7 +1871,7 @@ export class CaveWorld extends OceanWorld {
  /** Health drop → hit chroma/vignette; decay both channels into the impact pass. */
  stepImpactFx(dt:number){
   const hp=this.mission.health;
-  if(hp<this.fxHealthSeen-0.5)this.impactFx.pulseHit();
+  if(hp<this.fxHealthSeen-0.5){this.impactFx.pulseHit();this.style.hurt();}
   this.fxHealthSeen=hp;
   this.impactFx.step(dt);
   this.impactPass?.setIntensity(this.impactFx.intensity);
@@ -1885,7 +1909,7 @@ export class CaveWorld extends OceanWorld {
    group.position.set(p.position.x,p.position.y+(group.userData.bottom??0),p.position.z);
   }
  }
- publish(){this.ui({mission:this.mission,playing:this.playing,started:this.started,pointerLocked:this.pointerLocked,error:this.error,audioNotice:this.audioNotice,yaw:this.yaw,onFoot:this.onFoot,airborne:this.airborne,atWheel:!!this.valveStroke});}
+ publish(){this.ui({mission:this.mission,playing:this.playing,started:this.started,pointerLocked:this.pointerLocked,error:this.error,audioNotice:this.audioNotice,yaw:this.yaw,onFoot:this.onFoot,airborne:this.airborne,atWheel:!!this.valveStroke,style:this.style.view()});}
  bind(){
   const on=(target:EventTarget,type:string,fn:EventListener,options?:AddEventListenerOptions)=>{target.addEventListener(type,fn,options);this.listeners.push(()=>target.removeEventListener(type,fn,options));};
   on(window,'keydown',((e:KeyboardEvent)=>{
@@ -2219,6 +2243,7 @@ export class CaveWorld extends OceanWorld {
   if(cue==='pistol-dry'){if(a)playPistolClick(ctx,master);return;}
   if(cue==='pistol-reload'){if(a)playPistolClick(ctx,master);return;}
   if(cue==='pistol-hit'||cue==='pistol-head'||cue==='pistol-kill'){
+   this.scoreStyle(cue==='pistol-kill'?(this.mission.lastPistolHit?.headshot?'headshotKill':'kill'):cue==='pistol-head'?'headshot':'hit');
    if(a)playHitMarker(ctx,master,cue==='pistol-kill'?'kill':cue==='pistol-head'?'head':'hit');
    if(cue==='pistol-head')this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopHead);
    if(cue==='pistol-kill'){
@@ -2277,6 +2302,7 @@ export class CaveWorld extends OceanWorld {
    return;
   }
   if(cue==='stab-guard'||cue==='stab-guard-kill'){
+   this.scoreStyle(cue==='stab-guard-kill'?'meleeKill':'meleeHit');
    if(audible)playStabSound(ctx!,master!,true);
    this.combatFeedback.triggerScreenShake(
     cue==='stab-guard-kill'?COMBAT_FEEDBACK.meleeHit.intensity:COMBAT_FEEDBACK.gunFireHeavy.intensity,
@@ -2286,6 +2312,7 @@ export class CaveWorld extends OceanWorld {
    return;
   }
   if(cue==='stab-hit'||cue==='break'||cue==='kill'){
+   this.scoreStyle(cue==='kill'?'monsterKill':'monsterHit');
    if(audible)playStabSound(ctx!,master!,true);
    this.combatFeedback.triggerScreenShake(
     cue==='kill'?COMBAT_FEEDBACK.predatorHit.intensity:COMBAT_FEEDBACK.gunFireHeavy.intensity,
@@ -2344,7 +2371,7 @@ export class CaveWorld extends OceanWorld {
   this.backgroundMusic?.reset();this.mission=new Mission(readInventoryTipsSeen());
   resetGradeClock(this.gradeClock);this.frameGrade='dry';
   this.resetSurvivalFx();
-  this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();
+  this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();this.style.reset();
   this.onFoot=true;this.wasOnFoot=true;this.gait.reset();this.tech=makeTech();
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
   this.combatFeedback.reset();this.shakeClock=0;this.knifeFlashUntil=0;this.knifeEquipAt=null;this.stabQueue=0;
@@ -2617,6 +2644,8 @@ export class CaveWorld extends OceanWorld {
    else if(m.outcome!=='playing')this.pause();
   }
   this.stepImpactFx(this.playing?dt:0);
+  // Style drains on sim time: hitstop and pause freeze it.
+  if(this.playing)this.style.update(dt);
   // Three fields, assigned. Depth and the exit do not tint the fog.
   const fog=this.scene.fog as THREE.FogExp2;
   const corridorAir=breathingFreeAir(this.position,this.mission.breathWaterY);

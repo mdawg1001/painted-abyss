@@ -198,6 +198,12 @@ function App(){
     <div className="vital"><div className="vital-row"><span>{onFoot?'LEGS':'FINS'}</span><strong>{Math.round(m.stamina)}</strong></div><div className="meter fins"><i style={{width:`${m.stamina}%`}}/></div></div>
    </section>
    {threat&&<div className={`threat ${predator}`} role="status">{threat}</div>}
+   {snap?.style?.rank&&<section className={`style-meter tier-${snap.style.tier}`} aria-label={`Style rank ${snap.style.rank}`}>
+    <div className="style-rank" key={snap.style.rank}>{snap.style.rank}</div>
+    <div className="style-bar"><i style={{width:`${Math.round(snap.style.fill*100)}%`}}/></div>
+    {snap.style.chain>1&&<div className="style-chain">×{snap.style.chain} CHAIN</div>}
+    <div className="style-feed">{snap.style.feed.map(l=><div className="style-line" key={`${l.at}-${l.label}`}><b>+{l.points}</b> {l.label}</div>)}</div>
+   </section>}
    {snap?.audioNotice&&<div className="audio-notice" role="status">{snap.audioNotice}</div>}
    {m.health<40&&<div className="injury"/>}
    {/* Fresh blood: keyed on the heal so every close kill replays the flash. */}
