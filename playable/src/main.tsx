@@ -194,12 +194,14 @@ function App(){
     <div className="vital"><div className="vital-row"><span>{onBailout?'PONY':'AIR'}{ponyReady?` · +${Math.ceil(m.bailout)} L`:''}{airborne?' · OPEN':''}</span><strong className={airLitres<airMax*.2||onBailout?'warning':''}>{airLitres} L</strong></div><div className={`meter air ${onBailout?'bailout':''}`}><i style={{width:`${Math.min(100,airPool/airMax*100)}%`}}/></div></div>
     {!onFoot&&<div className="vital"><div className="vital-row"><span>TRIM</span><strong className={Math.abs(buoyancy)>.55?'warning':''}>{trimLabel}{biasLabel}</strong></div><div className="meter trim" aria-valuemin={-1} aria-valuemax={1} aria-valuenow={+buoyancy.toFixed(2)}><em className="trim-bias" style={{left:`${biasMark}%`}} aria-hidden="true"/><i style={{left:`${trimLeft}%`,width:`${trimWidth}%`}}/></div></div>}
     <div className="vital"><div className="vital-row"><span>FLOOD · {!m.floodTriggered?'DRY':m.floodDraining?'DRAINING':m.valveSealed?'SEALED':m.leakFlow<.999?'THROTTLED':'LEAK'}</span><strong className={flood>=50?'warning':''}>{flood}%</strong></div><div className="meter flood"><i style={{width:`${flood}%`}}/></div></div>
-    <div className="vital"><div className="vital-row"><span>SUIT</span><strong className={m.health<40?'warning':''}>{Math.ceil(m.health)}</strong></div><div className="meter suit"><i style={{width:`${m.health}%`}}/></div></div>
+    <div className="vital"><div className="vital-row"><span>SUIT</span><strong className={m.health<40?'warning':''}>{Math.ceil(m.health)}</strong></div><div key={m.leech?.seq??0} className={`meter suit${m.leech?' leeched':''}`}><i style={{width:`${m.health}%`}}/></div></div>
     <div className="vital"><div className="vital-row"><span>{onFoot?'LEGS':'FINS'}</span><strong>{Math.round(m.stamina)}</strong></div><div className="meter fins"><i style={{width:`${m.stamina}%`}}/></div></div>
    </section>
    {threat&&<div className={`threat ${predator}`} role="status">{threat}</div>}
    {snap?.audioNotice&&<div className="audio-notice" role="status">{snap.audioNotice}</div>}
    {m.health<40&&<div className="injury"/>}
+   {/* Fresh blood: keyed on the heal so every close kill replays the flash. */}
+   {m.leech&&<div key={m.leech.seq} className="leech-flash" aria-hidden="true"><span>+{Math.round(m.leech.amount)}</span></div>}
    <div className={`interaction${snap?.atWheel?' at-wheel':''}`} role="status">{prompt&&<div className="prompt">{prompt}</div>}{m.elapsed<m.noticeUntil&&<p key={m.feedbackPulse} className={`notice ${m.feedbackKind}`}>{m.notice}</p>}</div>
    {m.inventory[m.selected]==='gun'&&<>
     <div className={`crosshair${m.lastPistolHit&&m.elapsed-m.lastPistolHit.at<.22?(m.lastPistolHit.killed?' hit kill':m.lastPistolHit.headshot?' hit head':' hit'):''}`} aria-hidden="true"><i/><i/><i/><i/><b/></div>

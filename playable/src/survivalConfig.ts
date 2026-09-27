@@ -22,6 +22,12 @@ export const SURVIVAL={
   startReserve:40,
   reserveMax:64,
  },
+ /**
+  * Fresh blood: finish an enemy within `radius` metres while hurt and you instantly
+  * heal `fraction` of the damage you dealt him this life. Pushes you into the fight
+  * when low instead of behind cover. Knife kills are always inside the radius.
+  */
+ leech:{radius:5,fraction:.35,flashSeconds:.45},
  /** Knife on guards: a panic tool at arm's length. Stabbing an unaware back is lethal. */
  knife:{guardDamage:55,backstabMultiplier:3,backstabArc:100*Math.PI/180},
 
