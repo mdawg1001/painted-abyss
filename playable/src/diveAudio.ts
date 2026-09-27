@@ -591,3 +591,35 @@ export function playStashWithdraw(ctx: AudioContext, out: AudioNode) {
     o.stop(t + dt + .08);
   }
 }
+
+/**
+ * Gold. Metal-on-metal: a few bright inharmonic partials (struck gold rings low for its
+ * size because it is soft and dense) with a fast decay. `kind` shapes the moment:
+ * take = one clink per bar, bank = a cascading pour that rises, upgrade = a machined
+ * clack then a two-note lift, lost/ditch = a dull falling clunk.
+ */
+export function playGold(ctx: AudioContext, out: AudioNode, kind: 'take' | 'bank' | 'upgrade' | 'ditch' | 'lost', grams = 1000) {
+  const t0 = ctx.currentTime + .005;
+  const clink = (at: number, base: number, gain: number) => {
+    for (const [ratio, amp, dec] of [[1, 1, .18], [2.76, .5, .09], [5.4, .25, .05]] as const) {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = base * ratio;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(gain * amp, at + .003);
+      g.gain.exponentialRampToValueAtTime(1e-4, at + dec);
+      o.connect(g).connect(out); o.start(at); o.stop(at + dec + .02);
+      o.onended = () => { o.disconnect(); g.disconnect(); };
+    }
+  };
+  if (kind === 'take') {
+    const n = Math.min(6, Math.max(1, Math.round(grams / 400)));
+    for (let i = 0; i < n; i++) clink(t0 + i * .045, 1250 + Math.random() * 180, .14);
+  } else if (kind === 'bank') {
+    const n = Math.min(24, Math.max(4, Math.round(grams / 250)));
+    for (let i = 0; i < n; i++) clink(t0 + i * .038, 900 + i * 45 + Math.random() * 120, .12);
+    clink(t0 + n * .038 + .05, 2100, .22);
+  } else if (kind === 'upgrade') {
+    clink(t0, 520, .3); clink(t0 + .09, 1040, .22); clink(t0 + .2, 1560, .26);
+  } else {
+    clink(t0, 330, .25); clink(t0 + .06, 260, .2);
+  }
+}

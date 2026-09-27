@@ -1,4 +1,5 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
+import { GOLD, UPGRADE, fmtGold, goldStaminaFactor, goldWalkFactor, noMods, modLevel, modTag, modValue, magBonus, damageMult, spreadMult, jamMult, cycleMult, upgradeCost, readBankedGold, writeBankedGold, type RifleMods, type ModTrack } from './gold';
 import { RIFLE, lootStream, jamChance, spreadSigma, scatter, rollDropCondition, rollDropRounds, rifleIsPrize, rifleName } from './rifleCondition';
 import { ITEM_BODY, stepBody, submergedFraction, type BodyState } from './propPhysics';
 import { steerToward, faceStanding, yawToward, wrapAngle, turnToward, forwardOf, GUARD_STEER_WALK, GUARD_STEER_RUN } from './guardSteering';
@@ -18,12 +19,16 @@ export {
  type StashCue, type StashItem, type StashSlot,
 } from './stash';
 export type Point={x:number;y:number;z:number};
-export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife'|'gun'|'bottle'|'coat'|'sovietKey';
+export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife'|'gun'|'bottle'|'coat'|'sovietKey'|'gold';
 export type Pickup={id:number;item:Item;position:Point;
  /** Rounds still in a dropped pistol (a downed guard's). Undefined for the corridor gun. */
  rounds?:number;
  /** Rifle condition 0..1 (rifleCondition.ts). Undefined = a maintained service rifle. */
  cond?:number;
+ /** Upgrades fitted to this rifle (gold.ts). They stay with the rifle wherever it goes. */
+ mods?:RifleMods;
+ /** Grams, for a gold pickup. */
+ amount?:number;
  /** Just dropped by a swap: ignored by E until you step away, so a double tap cannot swap it straight back. */
  settling?:boolean;
  /** Falling / floating / resting state (propPhysics). Absent until the item first moves. */
@@ -280,7 +285,8 @@ export function pickupInteractPrompt(m:{
  inventory:(Item|null)[];
  selected:number;
  gunCond?:number;
-},item:Item,pickup?:{cond?:number;rounds?:number}):string{
+},item:Item,pickup?:{cond?:number;rounds?:number;mods?:RifleMods;amount?:number}):string{
+ if(item==='gold')return `E · Take ${fmtGold(pickup?.amount??GOLD.barGrams)} of gold`;
  if(item==='relic'){
   if(m.inventory.includes('sovietKey'))return 'E · Unlock relic';
   return 'E · Locked · needs key';
@@ -288,11 +294,12 @@ export function pickupInteractPrompt(m:{
  if(item==='sovietKey')return 'E · Take Soviet key';
  if(item==='gun'){
   const cond=pickup?.cond??RIFLE.kitCond,rounds=pickup?.rounds?` · ${pickup.rounds} rds`:'';
+  const tag=modTag(pickup?.mods);
   if(m.inventory.includes('gun')){
-   if(cond>(m.gunCond??RIFLE.kitCond)+.01)return `E · Trade up to ${rifleName(cond)}${rounds}`;
+   if(cond>(m.gunCond??RIFLE.kitCond)+.01||modLevel(pickup?.mods)>0)return `E · Trade up to ${rifleName(cond)}${tag}${rounds}`;
    return `E · Strip rounds from ${rifleName(cond)}`;
   }
-  return `E · Take ${rifleName(cond)}${rounds}`;
+  return `E · Take ${rifleName(cond)}${tag}${rounds}`;
  }
  const held=m.inventory[m.selected];
  if(!m.inventory.includes(null)&&held)return `E · Swap ${ITEMS[held].name} for ${ITEMS[item].name}`;
@@ -456,6 +463,7 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  air:{name:'Pony bottle',short:'Pony',description:`R · Arm a separate bailout cylinder (~${AIR_BAILOUT_LITRES} L). Drains after the main tank.`,hint:'R arm bailout · consumed'},
  bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
+ gold:{name:'Gold',short:'Gold',description:'Real gold: 19 times denser than water. It slows you on foot and drags you down in the flood. Bank it at the stash to buy rifle upgrades.',hint:'E take · B ditch · bank at stash'},
  gun:{name:'AK-74U',short:'AK-74U',description:'Compact 5.45 mm carbine with FPS arms viewmodel. Click fires one round at the centre of the screen; R changes the magazine. Three body hits or one to the head drop a guard, and every shot brings nearby guards running. Take spare rounds off the guards you drop. If a corridor guard kills you, he takes it.',hint:'Click fire · R reload'},
  bottle:{name:'Spare air bottle',short:'Bottle',description:`R · Add ${SPARE_BOTTLE_LITRES} L to the main cylinder (consumed). A corridor guard will drink it as his air if he takes it from your corpse.`,hint:'R use · consumed'},
  coat:{name:'Coat',short:'Coat',description:'Carry it. It does not soften guardian bites. If a corridor guard takes it from your corpse, his strikes hurt less.',hint:'Carry · death drops it'},
@@ -1133,6 +1141,10 @@ export type Guard={
  hitAt:number;strikeAt:number;
  /** Damage the player has dealt him this life (fresh-blood heal is a share of it). */
  dealtByPlayer?:number;
+ /** A rifle he took off your corpse (drops back, upgrades intact, when he dies). */
+ loot?:{cond:number;mods?:RifleMods};
+ /** Gold he took off your corpse (grams). */
+ gold?:number;
  /** Pickup id of the pistol he dropped, if any. */
  dropId:number;
  /** Lookout length, strafing flag (velocity not along facing), slot drift flip, unstick count, life counter. */
@@ -1249,6 +1261,14 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  pistol:PistolState=makePistol();
  /** Condition of the rifle you carry (1 slot max). Drives jams and scatter. */
  gunCond:number=RIFLE.kitCond;
+ /** Upgrades on the rifle you carry. They are the rifle's, not yours: lose it, lose them. */
+ gunMods:RifleMods=noMods();
+ /** Gold you are carrying (grams): heavy, and lost where you die. */
+ gold=0;
+ /** Gold banked in the stash (grams): safe for good, spent at the workbench. */
+ bankedGold=readBankedGold();
+ /** Last gold moment, for HUD count-ups and flashes (seq changes every event). */
+ goldEvent:{seq:number;kind:'take'|'bank'|'upgrade'|'ditch'|'lost';grams:number;at:number;track?:ModTrack;level?:number}|null=null;
  /** A stoppage is in the chamber: the trigger does nothing until R clears it. */
  jammed=false;
  /** Loot rolls use their own stream so what drops never shifts combat randomness. */
@@ -1282,6 +1302,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  rand:()=>number=Math.random;
  constructor(tipsSeen=false){
   this.tipsSeen=tipsSeen;
+  this.scatterGold();
   const player=breathHatchSpawn();
   this.position={...player};
   const spawn=randomPredatorSpawn(Math.random,player);
@@ -1493,7 +1514,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    if(slot.item==='gun'&&slot.rounds){
     this.pistol.reserve=Math.min(PISTOL.reserveMax,this.pistol.reserve+slot.rounds);
    }
-   if(slot.item==='gun'){this.gunCond=slot.cond??RIFLE.kitCond;this.jammed=false;}
+   if(slot.item==='gun')this.equipRifle(slot.cond??RIFLE.kitCond,slot.mods);
    this.stash[focus]=null;
    this.persistStash();
    this.stashCue='withdraw';
@@ -1508,7 +1529,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.inventory[this.selected]=null;
    this.persistStash();
    this.stashCue='deposit';
-   this.say(held==='gun'?`Banked ${rifleName(this.gunCond)}. Safe for good.`:`Stored ${ITEMS[held].name}.`,'ok');
+   this.say(held==='gun'?`Banked ${rifleName(this.gunCond)}${modTag(this.gunMods)}. Safe for good.`:`Stored ${ITEMS[held].name}.`,'ok');
    // Point at the next empty slot so a follow-up E can store ammo instead of yanking this back out.
    const next=firstEmptyStashSlot(this.stash);
    if(next>=0)this.stashFocus=next;
@@ -1549,10 +1570,10 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    return;
   }
   const outRounds=slot.item==='gun'?slot.rounds:undefined;
-  const outCond=slot.item==='gun'?slot.cond??RIFLE.kitCond:null;
+  const outCond=slot.item==='gun'?slot.cond??RIFLE.kitCond:null,outMods=slot.item==='gun'?slot.mods:undefined;
   this.stash[focus]=this.stashSlotFor(held);
   this.inventory[this.selected]=slot.item;
-  if(outCond!==null){this.gunCond=outCond;this.jammed=false;}
+  if(outCond!==null)this.equipRifle(outCond,outMods);
   if(slot.item==='gun'&&outRounds){
    this.pistol.reserve=Math.min(PISTOL.reserveMax,this.pistol.reserve+outRounds);
   }
@@ -1560,9 +1581,70 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.stashCue='withdraw';
   this.say(`Swapped ${ITEMS[held].name} for ${ITEMS[slot.item].name}.`,'ok');
  }
+ /** Put a rifle in your hands: its wear, its upgrades, its magazine size. */
+ equipRifle(cond:number,mods?:RifleMods){
+  this.gunCond=cond;this.jammed=false;
+  this.gunMods=mods?{...mods}:noMods();
+  const max=PISTOL.magazine+magBonus(this.gunMods);
+  this.pistol.maxMag=max;
+  if(this.pistol.mag>max){this.pistol.reserve+=this.pistol.mag-max;this.pistol.mag=max;}
+ }
+ /** Pocket a gold pickup. */
+ takeGold(p:Pickup){
+  const g=p.amount??GOLD.barGrams;
+  this.gold+=g;
+  this.pickups=this.pickups.filter(q=>q.id!==p.id);
+  this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'take',grams:g,at:this.elapsed};
+  if(g>=GOLD.barGrams||this.noticeUntil<=this.elapsed)this.say(`+${fmtGold(g)} gold · carrying ${fmtGold(this.gold)}`,'ok');
+ }
+ /** B: throw every gram you carry at your feet. It sinks. */
+ ditchGold(){
+  if(this.outcome!=='playing'||this.gold<=0){this.pulse('blocked');return false;}
+  const g=this.gold;this.gold=0;
+  this.pickups.push({id:this.nextId++,item:'gold',amount:g,settling:true,position:{...this.position,y:this.dropY()}});
+  this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'ditch',grams:g,at:this.elapsed};
+  this.say(`Ditched ${fmtGold(g)} of gold.`,'blocked');
+  return true;
+ }
+ /** Walk speed share left under the gold you carry. */
+ loadWalkFactor(){return goldWalkFactor(this.gold);}
+ /** Workbench: spend banked gold on the rifle in your hands. Needs the stash open. */
+ buyUpgrade(track:ModTrack){
+  if(this.outcome!=='playing'||!this.stashOpen){this.pulse('blocked');return false;}
+  if(!this.inventory.includes('gun')){this.say('Hold a rifle to fit an upgrade.','blocked');return false;}
+  const level=this.gunMods[track],cost=upgradeCost(level);
+  if(level>=UPGRADE.maxLevel){this.say(`${UPGRADE.names[track]} is maxed on this rifle.`,'blocked');return false;}
+  if(this.bankedGold<cost){this.say(`${UPGRADE.names[track]} ${level+1} needs ${fmtGold(cost)}. Vault: ${fmtGold(this.bankedGold)}.`,'blocked');return false;}
+  this.bankedGold-=cost;writeBankedGold(this.bankedGold);
+  const mods={...this.gunMods,[track]:level+1};
+  this.equipRifle(this.gunCond,mods);
+  this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'upgrade',grams:cost,at:this.elapsed,track,level:level+1};
+  this.stashCue='deposit';
+  this.say(`${UPGRADE.blurbs[track][level]}. This rifle is now ${rifleName(this.gunCond)}${modTag(mods)}. Lose it, lose this.`,'ok');
+  return true;
+ }
+ /** Gold for this dive: kilobars hidden in fresh spots, and the hoard round the relic. */
+ scatterGold(){
+  const r=this.lootRand;
+  const hatch=breathHatchSpawn();
+  const spots=[...cells].map(k=>{const [c,rw]=k.split(',').map(Number);return world(c,rw);})
+   .filter(p=>fits({...p,y:3},1.2)&&Math.hypot(p.x-hatch.x,p.z-hatch.z)>20&&Math.hypot(p.x-RELIC.x,p.z-RELIC.z)>8);
+  for(let i=0;i<GOLD.barsPerDive&&spots.length;i++){
+   const k=Math.floor(r()*spots.length),p=spots.splice(k,1)[0];
+   const jx=(r()-.5)*2.4,jz=(r()-.5)*2.4;
+   this.pickups.push({id:this.nextId++,item:'gold',amount:GOLD.barGrams,position:{x:p.x+jx,y:FLOOR_Y,z:p.z+jz}});
+  }
+  for(let i=0;i<GOLD.hoardBars;i++){
+   const a=(i/GOLD.hoardBars)*Math.PI*2+r()*.3,rad=RELIC_PLINTH.radius+.55+r()*.35;
+   this.pickups.push({id:this.nextId++,item:'gold',amount:GOLD.barGrams,position:{x:RELIC.x+Math.cos(a)*rad,y:FLOOR_Y,z:RELIC.z+Math.sin(a)*rad}});
+  }
+ }
  /** Chest slot for an item from your hands; a rifle keeps its condition. */
  stashSlotFor(item:StashItem):StashSlot{
-  return item==='gun'?{kind:'item',item,cond:this.gunCond}:{kind:'item',item};
+  if(item!=='gun')return {kind:'item',item};
+  const slot:StashSlot={kind:'item',item,cond:this.gunCond};
+  if(modLevel(this.gunMods)>0)slot.mods={...this.gunMods};
+  return slot;
  }
  nearBreathTank(){
   const t=breathTankMounts()[this.breathTankIndex];
@@ -1588,13 +1670,19 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     item,
     position:{x:where.x+Math.cos(a)*.55,y,z:where.z+Math.sin(a)*.55},
    };
-   if(item==='gun'){if(pocketRounds>0)drop.rounds=pocketRounds;drop.cond=this.gunCond;}
+   if(item==='gun'){if(pocketRounds>0)drop.rounds=pocketRounds;drop.cond=this.gunCond;if(modLevel(this.gunMods)>0)drop.mods={...this.gunMods};}
    this.pickups.push(drop);
   }
   this.pistol.mag=0;
   this.pistol.reserve=0;
   this.pistol.reload=0;
   this.jammed=false;
+  // Every gram you carried lies on the corpse, sinking.
+  if(this.gold>0){
+   this.pickups.push({id:this.nextId++,item:'gold',amount:this.gold,position:{x:where.x,y,z:where.z}});
+   this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'lost',grams:this.gold,at:this.elapsed};
+   this.gold=0;
+  }
   this.inventory=[null,null,null,null,null];
   this.selected=0;
   this.pending=null;
@@ -1639,8 +1727,10 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   const g=this.guards[this.lootGuardIndex]??this.guard;
   const keep:Pickup[]=[];
   for(const p of this.pickups){
-   const near=distance(p.position,corpse)<=GUARD_LOOT_RANGE;
-   if(near&&p.item==='gun'){g.gun=true;continue;}
+   // Horizontal reach: the corpse point is at eye height, the loot lies on the floor.
+   const near=Math.hypot(p.position.x-corpse.x,p.position.z-corpse.z)<=GUARD_LOOT_RANGE;
+   if(near&&p.item==='gun'){g.gun=true;g.loot={cond:p.cond??RIFLE.kitCond,mods:p.mods};continue;}
+   if(near&&p.item==='gold'){g.gold=(g.gold??0)+(p.amount??0);continue;}
    if(near&&p.item==='bottle'){
     g.bottle=true;
     g.air=Math.max(g.air,GUARD_BOTTLE_AIR);
@@ -1676,6 +1766,13 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    if(!this.stashOpen){
     this.stashOpen=true;
     this.stashCue='open';
+    if(this.gold>0){
+     // Payday: everything in your pockets goes into the vault the moment the lid opens.
+     const g=this.gold;this.bankedGold+=g;this.gold=0;writeBankedGold(this.bankedGold);
+     this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'bank',grams:g,at:this.elapsed};
+     this.say(`Banked ${fmtGold(g)} of gold. Vault: ${fmtGold(this.bankedGold)}.`,'ok');
+     return;
+    }
     if(firstFilledStashSlot(this.stash)<0)this.stashFocus=0;
     else if(!this.stash[this.stashFocus])this.stashFocus=Math.max(0,firstFilledStashSlot(this.stash));
     this.say('Stash open. E stores or takes · click a slot · Esc closes.','ok');
@@ -1718,14 +1815,16 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.inventory[keySlot]=null;
   }
   // A second pistol is only worth its rounds: strip the magazine and leave the frame.
-  if(pickup.item==='gun'&&this.inventory.includes('gun')&&(pickup.cond??RIFLE.kitCond)>this.gunCond+.01){
+  if(pickup.item==='gun'&&this.inventory.includes('gun')&&((pickup.cond??RIFLE.kitCond)>this.gunCond+.01||modValue(pickup.mods)>modValue(this.gunMods))){
    // A better rifle than the one in your hands: trade up. Yours drops here with its wear.
    const theirs=pickup.cond??RIFLE.kitCond,rounds=this.pistolRoundsOn(pickup);
    this.pickups=this.pickups.filter(p=>p.id!==pickup.id);
-   this.pickups.push({id:this.nextId++,item:'gun',cond:this.gunCond,rounds:0,settling:true,position:{...this.position,y:this.dropY()}});
-   this.gunCond=theirs;this.jammed=false;
+   const old:Pickup={id:this.nextId++,item:'gun',cond:this.gunCond,rounds:0,settling:true,position:{...this.position,y:this.dropY()}};
+   if(modLevel(this.gunMods)>0)old.mods={...this.gunMods};
+   this.pickups.push(old);
+   this.equipRifle(theirs,pickup.mods);
    this.pistol.reserve=Math.min(PISTOL.reserveMax,this.pistol.reserve+rounds);
-   this.pending=null;this.say(`Traded up: ${rifleName(theirs)}.`,'ok');return;
+   this.pending=null;this.say(`Traded up: ${rifleName(theirs)}${modTag(pickup.mods)}.`,'ok');return;
   }
   if(pickup.item==='gun'&&this.inventory.includes('gun')){
    const take=Math.min(this.pistolRoundsOn(pickup),PISTOL.reserveMax-this.pistol.reserve);
@@ -1733,6 +1832,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.pistol.reserve+=take;this.pickups=this.pickups.filter(p=>p.id!==pickup.id);
    this.pending=null;this.say(`Stripped its magazine: +${take} rounds.`,'ok');return;
   }
+  // Gold goes in your pockets, not a slot: every gram is weight.
+  if(pickup.item==='gold'){this.takeGold(pickup);this.pending=null;return;}
   // One press, one pickup: a free slot if there is one, otherwise it swaps into the slot
   // in your hand and the old item drops where you stand (select 1–5 first to choose).
   let slot=this.inventory.indexOf(null);
@@ -1741,7 +1842,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.pickups=this.pickups.filter(p=>p.id!==pickup.id);if(old)this.pickups.push({id:this.nextId++,item:old,settling:true,position:{...this.position,y:this.dropY()}});
   // A downed guard's pistol still has his rounds in it.
   if(pickup.item==='gun'&&pickup.rounds)this.pistol.reserve=Math.min(PISTOL.reserveMax,this.pistol.reserve+pickup.rounds);
-  if(pickup.item==='gun'){this.gunCond=pickup.cond??RIFLE.kitCond;this.jammed=false;if(pickup.cond!==undefined&&pickup.cond<RIFLE.kitCond&&this.noticeUntil<=this.elapsed)this.say(`${rifleName(pickup.cond)}. It will jam and pull wide.`,'ok');}
+  if(pickup.item==='gun'){this.equipRifle(pickup.cond??RIFLE.kitCond,pickup.mods);if(pickup.cond!==undefined&&pickup.cond<RIFLE.kitCond&&this.noticeUntil<=this.elapsed)this.say(`${rifleName(pickup.cond)}. It will jam and pull wide.`,'ok');}
   const sprung=pickup.item==='relic'&&!this.floodTriggered;
   if(sprung){
    this.floodTriggered=true;
@@ -1843,7 +1944,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(gate!=='ready')return gate;
   if(this.jammed){this.combatCue='pistol-jam';p.cool=PISTOL.fireInterval;if(this.noticeUntil<=this.elapsed)this.say('Jammed. R to clear.','blocked');return 'jammed';}
   // Worn rifles fail to feed: the round stays put, the trigger goes dead until you clear it.
-  const jam=jamChance(this.gunCond);
+  const jam=jamChance(this.gunCond)*jamMult(this.gunMods);
   if(jam>0&&this.rand()<jam){
    this.jammed=true;this.combatCue='pistol-jam';p.cool=PISTOL.fireInterval;
    this.say('Stoppage! R to clear.','blocked');
@@ -1852,7 +1953,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   spendRound(p);
   this.hearGunshot();
   // A worn barrel and loose sights throw the round off the crosshair.
-  dir=scatter(dir,spreadSigma(this.gunCond),this.rand);
+  dir=scatter(dir,spreadSigma(this.gunCond)*spreadMult(this.gunMods),this.rand);
+  p.cool*=cycleMult(this.gunMods);
   // A pistol round is spent within a metre or two of water.
   const range=origin.y<this.breathWaterY?PISTOL.rangeUnderwater:PISTOL.range;
   const targets=this.guards
@@ -1868,7 +1970,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    return 'fired';
   }
   const g=this.guards[hit.id];
-  const dmg=pistolDamage(hit.distance,hit.headshot,SURVIVAL.roles[g.role].headMult);
+  const dmg=pistolDamage(hit.distance,hit.headshot,SURVIVAL.roles[g.role].headMult)*damageMult(this.gunMods);
   const killed=this.guardTakeDamage(g,dmg);
   this.lastPistolHit={guard:hit.id,point:hit.point,headshot:hit.headshot,killed,shot:p.shots,at:this.elapsed,damage:dmg};
   this.combatCue=killed?'pistol-kill':hit.headshot?'pistol-head':'pistol-hit';
@@ -1977,13 +2079,25 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     const side={x:Math.cos(g.heading)*.45,z:-Math.sin(g.heading)*.45};
     const id=this.nextId++;
     // His rifle is always worse than a maintained one, and its magazine is half spent.
-    const cond=rollDropCondition(g.role,this.lootRand);
-    this.pickups.push({id,item:'gun',cond,rounds:rollDropRounds(PISTOL.magazine,this.lootRand),position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}});
-    if(rifleIsPrize(cond)){
+    // A rifle he took off your corpse comes back exactly as you lost it, upgrades and all.
+    const stolen=g.loot;g.loot=undefined;
+    const cond=stolen?stolen.cond:rollDropCondition(g.role,this.lootRand);
+    const drop:Pickup={id,item:'gun',cond,rounds:rollDropRounds(PISTOL.magazine,this.lootRand),position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}};
+    if(stolen?.mods)drop.mods=stolen.mods;
+    this.pickups.push(drop);
+    if(stolen){this.prizeDrop={id,cond,at:this.elapsed};this.say(`He had your ${rifleName(cond)}${modTag(stolen.mods)}. Take it back.`,'ok');}
+    else if(rifleIsPrize(cond)){
      this.prizeDrop={id,cond,at:this.elapsed};
      this.say(`${rifleName(cond)} on the floor. Fight on with it, or bank it in the stash.`,'ok');
     }
     g.dropId=id;g.gun=false;
+   }
+   // Coins in his pockets, plus anything he took off your body.
+   {
+    const [lo,hi]=isMainGuard(g)?GOLD.officerCoins:GOLD.guardCoins;
+    const grams=Math.round(lo+(hi-lo)*this.lootRand())+(g.gold??0);g.gold=0;
+    const side={x:Math.sin(g.heading)*.35,z:Math.cos(g.heading)*.35};
+    this.pickups.push({id:this.nextId++,item:'gold',amount:grams,position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}});
    }
    // Main officer drops the only Soviet key that unlocks the ammonite relic.
    if(isMainGuard(g)){
@@ -2118,7 +2232,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(this.air>=need){this.air-=need;need=0;}
   else{need-=this.air;this.air=0;this.bailout=Math.max(0,this.bailout-need);need=0;}
   // Legs last far longer than a finning sprint: ~12 s of hard running vs ~5.5 s of sprint kicking.
-  this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?(onFoot?-8:-18):17)*dt));
+  this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?(onFoot?-8:-18)*goldStaminaFactor(this.gold):17)*dt));
   if(this.air<=0&&this.bailout<=0){this.outcome='lost';this.reason='Your air ran out. Arm the pony earlier or climb and calm your kick.';return;}
   if(this.pending!==null&&!this.pickups.some(p=>p.id===this.pending&&distance(p.position,this.position)<3.2))this.pending=null;
   // Walk away from the hatch stash → lid closes (contents stay persisted).
@@ -2629,6 +2743,13 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    }
    // Stripped junk rifles are left as scrap; a prize rifle stays on the floor to be taken or banked.
    this.pickups=this.pickups.filter(p=>!(p.item==='gun'&&p.rounds===0&&!rifleIsPrize(p.cond??RIFLE.kitCond)));
+  }
+  // Loose coins are scooped up as you pass; bars are a deliberate E.
+  for(const p of [...this.pickups]){
+   if(p.item!=='gold'||(p.amount??0)>=GOLD.barGrams)continue;
+   if(Math.hypot(p.position.x-this.position.x,p.position.z-this.position.z)>GOLD.scoopRadius)continue;
+   if(Math.abs(p.position.y-(this.position.y-WALK_EYE_Y+FLOOR_Y))>1.6)continue;
+   this.takeGold(p);
   }
  }
  /**

@@ -7,6 +7,7 @@
  */
 import { SURVIVAL } from './survivalConfig';
 import { RIFLE, rifleName } from './rifleCondition';
+import { modTag, parseMods, type RifleMods } from './gold';
 
 /** Visible capacity — not an infinite backpack. */
 export const STASH_CAPACITY = 5;
@@ -40,11 +41,11 @@ export type StashItem =
  | 'coat'
  | 'sovietKey';
 
-export type Item = StashItem | 'relic';
+export type Item = StashItem | 'relic' | 'gold';
 
 /** One chest slot: gear, or a spare-ammo pack (not inventoriable elsewhere). */
 export type StashSlot =
- | { kind: 'item'; item: StashItem; rounds?: number; cond?: number }
+ | { kind: 'item'; item: StashItem; rounds?: number; cond?: number; mods?: RifleMods }
  | { kind: 'ammo'; amount: number }
  | null;
 
@@ -55,13 +56,13 @@ export function emptyStash(): StashSlot[] {
 }
 
 export function isStashItem(item: Item): item is StashItem {
- return item !== 'relic';
+ return item !== 'relic' && item !== 'gold';
 }
 
 export function stashSlotLabel(slot: StashSlot): string {
  if (!slot) return 'empty';
  if (slot.kind === 'ammo') return `${slot.amount} rounds`;
- if (slot.item === 'gun') return `${rifleName(slot.cond ?? RIFLE.kitCond)}${slot.rounds ? ` (+${slot.rounds})` : ''}`;
+ if (slot.item === 'gun') return `${rifleName(slot.cond ?? RIFLE.kitCond)}${modTag(slot.mods)}${slot.rounds ? ` (+${slot.rounds})` : ''}`;
  const names: Record<StashItem, string> = {
   knife: 'Diving knife',
   stone: 'Limestone',
@@ -90,6 +91,8 @@ function parseSlot(raw: unknown): StashSlot {
   const slot: StashSlot = { kind: 'item', item };
   if (rounds !== undefined) slot.rounds = rounds;
   if (cond !== undefined && item === 'gun') slot.cond = cond;
+  const mods = item === 'gun' ? parseMods(o.mods) : undefined;
+  if (mods) slot.mods = mods;
   return slot;
  }
  // Legacy flat shape { item, rounds? }
@@ -100,6 +103,8 @@ function parseSlot(raw: unknown): StashSlot {
   const slot: StashSlot = { kind: 'item', item };
   if (rounds !== undefined) slot.rounds = rounds;
   if (cond !== undefined && item === 'gun') slot.cond = cond;
+  const mods = item === 'gun' ? parseMods(o.mods) : undefined;
+  if (mods) slot.mods = mods;
   return slot;
  }
  return null;
@@ -129,6 +134,7 @@ export function writeStash(slots: StashSlot[]) {
    const out: Record<string, unknown> = { kind: 'item', item: s.item };
    if (s.rounds !== undefined) out.rounds = s.rounds;
    if (s.cond !== undefined) out.cond = s.cond;
+   if (s.mods) out.mods = s.mods;
    return out;
   });
   while (payload.length < STASH_CAPACITY) payload.push(null);
