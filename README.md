@@ -1,8 +1,17 @@
-# Painted Abyss — First Dive · 0.21.0
+# Painted Abyss — First Dive · 0.21.1
 
 
 
 
+## Speed lens: FOV on a spring (0.21.1)
+
+`playable/src/speedFov.ts` makes the field of view follow your speed. It reads the player's velocity and never touches movement.
+
+- **Target**: V_norm = clamp(|v| / 7 m/s, 0, 1), and target FOV = 60° + V_norm × (110° − 60°). Walking gives about 71°, running about 84°, and a slide launch 110°. These are three.js vertical FOVs, as before (the old fixed lens was 64°).
+- **Spring, not a lerp**: acceleration = −stiffness × (fov − target) − damping × fovVel, integrated with semi-implicit Euler in sub-steps of at most 1/240 s. The feel is the same at any frame rate, and a hitch frame can't blow it up. With the defaults (stiffness 180, damping 12, ζ ≈ 0.45), a dead stop from top speed swings from 110° down to about 50° after 0.26 s, then settles on 60° within about 0.6 s.
+- **Peripheral stretch**: the post pass pulls samples toward the centre in proportion to r², so the walls stretch out to the frame edges while the centre stays true. It is up to 8% at the corners at top speed and follows the spring.
+- **Aiming** blends the lens toward the sights' fixed 52°, and the stretch fades out, so a scope does not breathe with your speed.
+- **Tuning**: `SPEED_FOV` at the top of the file has MIN_FOV, MAX_FOV, V_MAX, SPRING_STIFFNESS, SPRING_DAMPING, WARP_MAX, FLOOR_FOV and MAX_STEP. The per-frame update allocates nothing.
 ## Playability · ~5× cheaper frames (0.21.0)
 
 The dive was moving frame-by-frame on heavy machines again (Retina + MSAA + torch/hanging shadow maps + half-res bloom). `playable/src/perf.ts` now caps the canvas at **1× DPR**, turns **MSAA and shadow maps off**, runs bloom at **quarter-res**, cuts suspended motes **1800→360**, and follows only **3** hanging-tube spots (none casting shadows). Rock maps, hanging fixtures, frame grade, combat feedback, and HUD stay. After merge: `node playable/refresh.mjs` and confirm **BUILD v0.21.0**.
