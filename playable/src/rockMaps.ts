@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
+import { PERF } from './perf';
 import rockDiff from './assets/rocks/rock_face_03/diff.ktx2?url';
 import rockNor from './assets/rocks/rock_face_03/nor.ktx2?url';
 import rockArm from './assets/rocks/rock_face_03/arm.ktx2?url';
@@ -72,7 +73,7 @@ function adopt(dst: THREE.CompressedTexture, src: THREE.CompressedTexture, color
   dst.type = src.type;
   dst.colorSpace = colorMap ? THREE.SRGBColorSpace : THREE.NoColorSpace;
   dst.wrapS = dst.wrapT = THREE.RepeatWrapping;
-  dst.anisotropy = 8;
+  dst.anisotropy = PERF.anisotropy;
   dst.magFilter = THREE.LinearFilter;
   dst.minFilter = src.mipmaps.length > 1 ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter;
   dst.generateMipmaps = false;

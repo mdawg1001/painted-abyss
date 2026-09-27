@@ -1,7 +1,11 @@
-# Painted Abyss — First Dive · 0.21.0
+# Painted Abyss — First Dive · 0.21.1
 
 
 
+
+## Runtime post/CPU polish (0.21.1)
+
+On top of the 0.21.0 playability profile: **UnsignedByte** composer buffers (no HalfFloat), impact crunch/chroma **fused into the clip-grade pass** (one fewer full-screen blit), PointLight registry rescanned every 12 frames, hanging-tube emissives cached (no per-frame glTF traverse), rock anisotropy 8→4, and `?test=1` exposes `__abyss` on production serves for frame probes.
 
 ## Playability · ~5× cheaper frames (0.21.0)
 
