@@ -12,16 +12,17 @@
 import * as THREE from 'three';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { PERF } from './perf';
 
 /** Cap device pixel ratio when the bloom stack is live (Retina + UnrealBloomPass hitch). */
-export const POST_FX_DPR_CAP = 1.25;
+export const POST_FX_DPR_CAP = PERF.dprCap;
 
 /** Soft bloom: high threshold, modest strength — neon / muzzle / pickups only. */
 export const BLOOM_STRENGTH = 0.28;
 export const BLOOM_RADIUS = 0.42;
 export const BLOOM_THRESHOLD = 0.88;
 /** Bloom render targets run at this fraction of the canvas (perf). */
-export const BLOOM_RES_SCALE = 0.5;
+export const BLOOM_RES_SCALE = PERF.bloomResScale;
 
 /** Chromatic / vignette peaks and decay (seconds to ease back to idle). */
 export const IMPACT_HIT_PEAK = 1;

@@ -3,6 +3,10 @@
 
 
 
+## Playability · ~5× cheaper frames (0.21.0)
+
+The dive was moving frame-by-frame on heavy machines again (Retina + MSAA + torch/hanging shadow maps + half-res bloom). `playable/src/perf.ts` now caps the canvas at **1× DPR**, turns **MSAA and shadow maps off**, runs bloom at **quarter-res**, cuts suspended motes **1800→360**, and follows only **3** hanging-tube spots (none casting shadows). Rock maps, hanging fixtures, frame grade, combat feedback, and HUD stay. After merge: `node playable/refresh.mjs` and confirm **BUILD v0.21.0**.
+
 ## Style meter (0.20.10)
 
 `playable/src/styleMeter.ts` scores how you fight and shows a rank from D up to SSS on the left of the HUD, with a fill bar, a chain count and a short feed of recent actions (for example "+448 SLIDE HEADSHOT KILL").

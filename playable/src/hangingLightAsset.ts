@@ -14,6 +14,7 @@
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { PERF } from './perf';
 import { cells, world } from './simulation';
 
 export const HANGING_LIGHT_SOURCE = 'https://polyhaven.com/a/caged_hanging_light';
@@ -42,8 +43,8 @@ export const HANGING_LIGHT = {
  penumbra: 0.22,
  decay: 1.35,
  /** Spotlights that follow the nearest lamps; the first `shadowed` of them cast shadows. */
- pool: 5,
- shadowed: 1,
+ pool: PERF.hangingLightPool,
+ shadowed: PERF.hangingShadowed,
  shadowMap: 512,
  /** Pendulum (chains): gravity, damping per second, idle draught, kick per gunshot within `kickRadius`. */
  gravity: 9.81,

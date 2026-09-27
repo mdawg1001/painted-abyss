@@ -16,16 +16,15 @@ import {
  resizeBloomPass,
 } from '../src/postFx';
 
-test('post FX caps Retina DPR below uncapped devicePixelRatio', () => {
- assert.ok(POST_FX_DPR_CAP <= 1.25, 'bloom stack must not run at full Retina');
- assert.ok(POST_FX_DPR_CAP >= 1, 'still at least 1×');
+test('post FX caps Retina DPR at 1× for the playability profile', () => {
+ assert.equal(POST_FX_DPR_CAP, 1, 'bloom stack must not run above 1×');
 });
 
 test('UnrealBloomPass tunables stay soft and thresholded for neon only', () => {
  assert.ok(BLOOM_STRENGTH > 0 && BLOOM_STRENGTH < 0.6, 'modest strength');
  assert.ok(BLOOM_RADIUS > 0 && BLOOM_RADIUS < 1);
  assert.ok(BLOOM_THRESHOLD >= 0.8, 'high threshold keeps rock albedo out of bloom');
- assert.equal(BLOOM_RES_SCALE, 0.5);
+ assert.equal(BLOOM_RES_SCALE, 0.25);
 });
 
 test('impact FX pulses on hit and dash, then decays', () => {
@@ -69,14 +68,14 @@ test('impact pass exposes intensity + size uniforms', () => {
  assert.ok(IMPACT_DECAY > 1);
 });
 
-test('bloom pass builds at half resolution', () => {
+test('bloom pass builds at quarter resolution', () => {
  const bloom = createBloomPass(800, 600);
- assert.equal(bloom.resolution.x, 400);
- assert.equal(bloom.resolution.y, 300);
+ assert.equal(bloom.resolution.x, 200);
+ assert.equal(bloom.resolution.y, 150);
  assert.equal(bloom.strength, BLOOM_STRENGTH);
  assert.equal(bloom.threshold, BLOOM_THRESHOLD);
  resizeBloomPass(bloom, 1600, 900);
- assert.equal(bloom.resolution.x, 800);
- assert.equal(bloom.resolution.y, 450);
+ assert.equal(bloom.resolution.x, 400);
+ assert.equal(bloom.resolution.y, 225);
  bloom.dispose();
 });
