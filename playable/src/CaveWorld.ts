@@ -46,6 +46,7 @@ import { createValveHands, poseValveHands, resetValveHands, type ValveHandsRig }
 import { applyHandEnvMap } from './diverHand';
 import { SpeedFov, SPEED_FOV } from './speedFov';
 import { StyleMeter, type StyleEvent, type StyleView } from './styleMeter';
+import { styleActionsForTag, type CombatTag } from './combatOutcomes';
 import { makeTech, stepTech, requestJump, requestSlide, techOwnsMovement, STAND_HEIGHT, type TechState } from './movementTech';
 import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion, applyGuardAim,
@@ -1242,6 +1243,24 @@ export class CaveWorld extends OceanWorld {
  }
  /** Score a combat action on the style meter with the current movement modifiers. */
  scoreStyle(action:StyleEvent['action']){this.style.record({action,mods:this.styleMods()});}
+ /** Score Phase 2 tags (SCRAPE / GRAZE / CLEAN / HEAD / MULTI) onto the style meter. */
+ scoreCombatTag(tag:CombatTag,killed=false){
+  for(const action of styleActionsForTag(tag,killed))this.scoreStyle(action);
+ }
+ /** Brief AAA juice for a scored combat beat — camera tick + hitstop, not HUD spam. */
+ juiceCombatTag(tag:CombatTag){
+  if(tag==='SCRAPE'){
+   this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.scrapeTick.intensity,COMBAT_FEEDBACK.scrapeTick.duration);
+   this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopScrape);
+  }else if(tag==='GRAZE'){
+   this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.grazeTick.intensity,COMBAT_FEEDBACK.grazeTick.duration);
+  }else if(tag==='MULTI'){
+   this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.gunFire.intensity*.7,COMBAT_FEEDBACK.gunFire.duration);
+   this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopHead);
+  }else if(tag==='HEAD'){
+   this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopHead);
+  }
+ }
  resetSurvivalFx(){
   this.fx?.reset();
   this.warFx?.clear();
@@ -1381,8 +1400,17 @@ export class CaveWorld extends OceanWorld {
       playGunshot(ctx,bus,Math.hypot(g.position.x-this.position.x,g.position.z-this.position.z));
       if(!g.lastShotHit)playRicochet(ctx,master);
      }
-     // A round that misses while you slide or fly past him within 20 m: close call.
-     if(!g.lastShotHit&&this.styleMods()!.length&&Math.hypot(g.position.x-this.position.x,g.position.z-this.position.z)<20)this.scoreStyle('closeCall');
+     // Skin-of-teeth miss while moving → GRAZE (scored once from lastCombatOutcome).
+     // Slide / aerial whiffs still keep the legacy close-call beat when not already a graze.
+     if(!g.lastShotHit&&Math.hypot(g.position.x-this.position.x,g.position.z-this.position.z)<20){
+      const outcome=this.mission.lastCombatOutcome;
+      const graze=outcome&&outcome.tag==='GRAZE'&&Math.abs(outcome.at-this.mission.elapsed)<.05;
+      if(graze){
+       this.scoreCombatTag('GRAZE');
+       this.juiceCombatTag('GRAZE');
+       if(this.sound&&ctx&&master&&ctx.state==='running')playHitMarker(ctx,master,'graze');
+      }else if(this.styleMods()!.length)this.scoreStyle('closeCall');
+     }
      this.combatFeedback.triggerScreenShake(
       g.lastShotHit?COMBAT_FEEDBACK.takeDamage.intensity:COMBAT_FEEDBACK.gunFire.intensity*.55,
       g.lastShotHit?COMBAT_FEEDBACK.takeDamage.duration:.1,
@@ -2316,9 +2344,15 @@ export class CaveWorld extends OceanWorld {
   if(cue==='pistol-dry'||cue==='pistol-jam'||cue==='pistol-clear'){if(a)playPistolClick(ctx,master);return;}
   if(cue==='pistol-reload'){if(a)playPistolClick(ctx,master);return;}
   if(cue==='pistol-hit'||cue==='pistol-head'||cue==='pistol-kill'){
-   this.scoreStyle(cue==='pistol-kill'?(this.mission.lastPistolHit?.headshot?'headshotKill':'kill'):cue==='pistol-head'?'headshot':'hit');
-   if(a)playHitMarker(ctx,master,cue==='pistol-kill'?'kill':cue==='pistol-head'?'head':'hit');
-   if(cue==='pistol-head')this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopHead);
+   const hit=this.mission.lastPistolHit;
+   const tag=hit?.tag??(cue==='pistol-head'||hit?.headshot?'HEAD':'CLEAN');
+   const killed=cue==='pistol-kill'||!!hit?.killed;
+   // Primary tag (+ kill / headshotKill as needed). MULTI is an extra beat when chained.
+   this.scoreCombatTag(tag,killed);
+   if(hit?.multi)this.scoreCombatTag('MULTI');
+   this.juiceCombatTag(hit?.multi?'MULTI':tag);
+   const marker=hit?.multi?'multi':tag==='SCRAPE'?'scrape':tag==='HEAD'||cue==='pistol-head'?'head':cue==='pistol-kill'?'kill':'hit';
+   if(a)playHitMarker(ctx,master,marker);
    if(cue==='pistol-kill'){
     this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopKill);
     this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.gunFireHeavy.intensity*1.15,COMBAT_FEEDBACK.gunFireHeavy.duration);
@@ -2377,6 +2411,11 @@ export class CaveWorld extends OceanWorld {
   }
   if(cue==='stab-guard'||cue==='stab-guard-kill'){
    this.scoreStyle(cue==='stab-guard-kill'?'meleeKill':'meleeHit');
+   const outcome=this.mission.lastCombatOutcome;
+   if(cue==='stab-guard-kill'&&outcome?.tag==='MULTI'&&Math.abs(outcome.at-this.mission.elapsed)<.05){
+    this.scoreCombatTag('MULTI');this.juiceCombatTag('MULTI');
+    if(audible)playHitMarker(ctx!,master!,'multi');
+   }
    if(audible)playStabSound(ctx!,master!,true);
    this.combatFeedback.triggerScreenShake(
     cue==='stab-guard-kill'?COMBAT_FEEDBACK.meleeHit.intensity:COMBAT_FEEDBACK.gunFireHeavy.intensity,
@@ -2728,7 +2767,8 @@ export class CaveWorld extends OceanWorld {
   }
   this.stepImpactFx(this.playing?dt:0);
   // Style drains on sim time: hitstop and pause freeze it.
-  if(this.playing)this.style.update(dt);
+  // Style pip: idle grace drain + standing-still drain (speed is currency).
+  if(this.playing)this.style.update(dt,Math.hypot(this.velocity.x,this.velocity.z));
   // Three fields, assigned. Depth and the exit do not tint the fog.
   const fog=this.scene.fog as THREE.FogExp2;
   const corridorAir=breathingFreeAir(this.position,this.mission.breathWaterY);

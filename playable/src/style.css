@@ -559,14 +559,14 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .meter.suit.leeched i{animation:leech-bar .6s ease-out}
 @keyframes leech-bar{0%{background:#fff;box-shadow:0 0 14px #ff5a3c}100%{}}
 @media (prefers-reduced-motion:reduce){.leech-flash{animation-duration:.2s}.leech-flash span{animation:none;opacity:0}}
-/* Style meter (styleMeter.ts): rank letter, bar, chain and action feed, left edge under the map chip. */
-.style-meter{position:absolute;left:28px;top:172px;width:220px;pointer-events:none;
+/* Style meter (styleMeter.ts): compact rank pip + feed, left edge under the map chip. */
+.style-meter{position:absolute;left:28px;top:172px;width:180px;pointer-events:none;
   font-family:'Barlow Condensed',sans-serif;color:var(--hud);text-shadow:0 1px 8px rgba(0,0,0,.8)}
-.style-rank{display:inline-block;font-size:50px;line-height:1;font-weight:800;letter-spacing:.02em;transform-origin:left center;animation:style-pop .28s cubic-bezier(.2,1.6,.4,1)}
-.style-bar{width:140px;height:4px;margin:4px 0 5px;background:rgba(0,0,0,.45);overflow:hidden}
+.style-rank{display:inline-block;font-size:42px;line-height:1;font-weight:800;letter-spacing:.02em;transform-origin:left center;animation:style-pop .28s cubic-bezier(.2,1.6,.4,1)}
+.style-bar{width:110px;height:3px;margin:3px 0 4px;background:rgba(0,0,0,.45);overflow:hidden}
 .style-bar i{display:block;height:100%;background:currentColor;transition:width .12s linear}
-.style-chain{font-size:12px;font-weight:700;letter-spacing:.14em;opacity:.85}
-.style-feed{margin-top:3px;font-size:12px;font-weight:600;letter-spacing:.08em;line-height:1.35}
+.style-chain{font-size:11px;font-weight:700;letter-spacing:.14em;opacity:.85}
+.style-feed{margin-top:2px;font-size:11px;font-weight:600;letter-spacing:.08em;line-height:1.3;max-height:4.2em;overflow:hidden}
 .style-line{white-space:nowrap;opacity:.9;animation:style-feed-in .18s ease-out}
 .style-line b{font-weight:800;margin-right:4px}
 .style-meter.tier-0{color:#9aa3a8}.style-meter.tier-1{color:#b9c4a2}.style-meter.tier-2{color:#d8c77a}
@@ -574,7 +574,15 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .style-meter.tier-6{color:#ff2a2a;text-shadow:0 0 14px rgba(255,40,40,.55),0 1px 8px rgba(0,0,0,.8)}
 @keyframes style-pop{0%{transform:scale(1.7);opacity:0}100%{transform:scale(1);opacity:1}}
 @keyframes style-feed-in{from{transform:translateX(-12px);opacity:0}to{transform:none;opacity:.9}}
-@media (max-width:640px){.style-meter{left:16px;top:150px;width:150px}.style-rank{font-size:36px}.style-feed{display:none}}
+/* Brief centre callout for SCRAPE / GRAZE / HEAD / MULTI — not every CLEAN. */
+.combat-callout{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);z-index:42;pointer-events:none;
+ font:800 26px/1 'Barlow Condensed',sans-serif;letter-spacing:.18em;color:#e8e4d8;
+ text-shadow:0 1px 10px rgba(0,0,0,.85);animation:combat-callout .75s ease-out forwards}
+.combat-callout.tag-scrape{color:#c8e8ff}.combat-callout.tag-graze{color:#ffe2a8}
+.combat-callout.tag-head{color:#ffb0a0}.combat-callout.tag-multi{color:#ffd978}
+@keyframes combat-callout{0%{opacity:0;transform:translate(-50%,-40%) scale(1.25)}18%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-70%) scale(.95)}}
+@media (prefers-reduced-motion:reduce){.combat-callout{animation-duration:.25s}}
+@media (max-width:640px){.style-meter{left:16px;top:150px;width:130px}.style-rank{font-size:32px}.style-feed{display:none}.combat-callout{font-size:20px}}
 
 /* Rifle stoppage: the ammo label turns red and pulses until R clears it. */
 .ammo em.jam{color:#ff5a45;animation:jam-pulse .5s ease-in-out infinite alternate}
