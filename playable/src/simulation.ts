@@ -519,6 +519,12 @@ export function moveBody(p:Point,dx:number,dy:number,dz:number,r=.48){
  const steps=Math.max(1,Math.ceil(Math.hypot(dx,dy,dz)/.25));
  for(let n=0;n<steps;n++)for(const [axis,delta] of [['x',dx],['y',dy],['z',dz]] as const){const next={...p,[axis]:p[axis]+delta/steps};if(fits(next,r))p[axis]=next[axis];}
 }
+/**
+ * Unit ground normal under a point on foot. The bunker floor is one level slab at FLOOR_Y, so
+ * this is straight up everywhere today; ramps would return their plane's normal here and the
+ * slide (movementTech) would pick up the slope with no other change.
+ */
+export function groundNormal(_p:{x:number;z:number}){return {x:0,y:1,z:0};}
 /** Multiplier on every guard pick-up distance: `SURVIVAL.stealth.sightFactor` while crouched, 1 standing. */
 export function stealthSightFactor(crouching:boolean){return crouching?SURVIVAL.stealth.sightFactor:1;}
 export function visible(a:Point,b:Point){const n=Math.ceil(distance(a,b)/.4);for(let i=0;i<=n;i++){const t=n?i/n:0;if(!isOpen(a.x+(b.x-a.x)*t,a.z+(b.z-a.z)*t))return false;}return true;}
@@ -1200,6 +1206,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  /** First-play inventory guidance only; repeating select/use text is intentionally silent. */
  /** Holding crouch (C) on foot: guards find you 35% harder to see (see SURVIVAL.stealth). */
  crouching=false;
+ /** Mid-slide on foot (HUD only; the slide is loud, so it never counts as crouched). */
+ sliding=false;
  tipsSeen=false;notice='';noticeUntil=0;feedbackKind:FeedbackKind='';feedbackPulse=0;
  predator={
   position:world(16,19),state:'patrol' as PredatorState,timer:0,lost:0,lastKnown:world(16,19),waypoint:0,bite:0,heading:0,

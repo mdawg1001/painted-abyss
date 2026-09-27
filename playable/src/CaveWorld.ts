@@ -43,6 +43,7 @@ import { createWallPipe, upgradeWallPipe, setPipeWheel, PIPE_MOUNT, type WallPip
 import { startStroke, stepStroke, handPoses, smootherstep, VALVE_STAND, WHEEL_CENTRE, BREAKAWAY_TIME, REGRIP_TIME, type ValveStroke } from './valve';
 import { createValveHands, poseValveHands, resetValveHands, type ValveHandsRig } from './valveHands';
 import { applyHandEnvMap } from './diverHand';
+import { makeTech, stepTech, requestDash, requestSlide, techOwnsMovement, eyeDrop, STAND_HEIGHT, type TechState } from './movementTech';
 import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion, applyGuardAim,
  type SovietGuardVisual,
@@ -51,7 +52,7 @@ import {
  mountAk74u, prefetchAk74u, updateAk74u, drawAk74u, shootAk74u, reloadAk74u, inspectAk74u, ak74uMuzzle, ak74uAimOffset,
  AK74U_HELD_POS, AK74U_HELD_ROT, AK74U_ADS,
 } from './gunAsset';
-import { Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_COUNT, STASH_POSITION, STASH_YAW, type BreathFootprint, type BreathTankMount } from './simulation';
+import { Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, groundNormal, GUARD_COUNT, STASH_POSITION, STASH_YAW, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
  airborne:boolean;
@@ -264,6 +265,10 @@ export class CaveWorld extends OceanWorld {
  hanging:HangingLights|null=null;
  /** 0 standing → 1 fully crouched (camera only). */
  crouchBlend=0;
+ /** Dash / slide state machine on foot (movementTech.ts). */
+ tech:TechState=makeTech();
+ /** Headroom probe: upward rays against rendered geometry, cached ~0.1 s per target height. */
+ _headRay=new THREE.Raycaster();_headAt=-1;_headH=0;_headOk=true;
  hangingSeen:{pistol:number;guards:number[];impact:number}={pistol:0,guards:[],impact:-1};
  /** Sketchfab PotatoWit soviet posters hung on one cave wall. */
  wallPosters:WallPosters|null=null;
@@ -1153,6 +1158,41 @@ export class CaveWorld extends OceanWorld {
   }
   return null;
  }
+ /**
+  * Headroom probe for the capsule (uncrouch safety): true when a capsule of `height` (m, from
+  * the floor) fits where the diver stands. Five upward rays (centre + four at 0.22 m, inside
+  * the body radius) from just under the current head to the target crown, against rendered
+  * geometry; only faces pointing down (ceilings, undersides) count. The viewmodel, sprites,
+  * glass and water are ignored. Cached for 0.1 s per target so a held key costs ≤10 probes/s.
+  */
+ headroomClear(height:number){
+  const floor=FLOOR_Y,top=floor+height;
+  if(top>SURFACE_Y-.02)return false;
+  if(this.time-this._headAt<.1&&Math.abs(height-this._headH)<.05)return this._headOk;
+  const from=floor+this.tech.height-.05,far=top-from+.02;
+  let ok=true;
+  if(far>0){
+   const ray=this._headRay;ray.far=far;ray.near=0;ray.camera=this.camera;
+   const scene=this.scene.children.filter(c=>c!==this.camera&&c.visible);
+   const p=this.mission.position,up=new THREE.Vector3(0,1,0),o=new THREE.Vector3();
+   const n=new THREE.Vector3();
+   probe:for(const [dx,dz] of [[0,0],[.22,0],[-.22,0],[0,.22],[0,-.22]]){
+    ray.set(o.set(p.x+dx,from,p.z+dz),up);
+    for(const h of ray.intersectObjects(scene,true)){
+     const obj=h.object as THREE.Mesh;
+     if(!obj.isMesh||!h.face||obj.name==='bulletHole')continue;
+     let shown=true;for(let a:THREE.Object3D|null=obj;a;a=a.parent)if(!a.visible){shown=false;break;}
+     if(!shown)continue;
+     const mats=Array.isArray(obj.material)?obj.material:[obj.material];
+     if(mats.some(m=>m.transparent))continue;
+     n.copy(h.face.normal).transformDirection(obj.matrixWorld);
+     if(n.y<-.2){ok=false;break probe;}
+    }
+   }
+  }
+  this._headAt=this.time;this._headH=height;this._headOk=ok;
+  return ok;
+ }
  resetSurvivalFx(){
   this.fx?.reset();
   this.warFx?.clear();
@@ -1871,6 +1911,10 @@ export class CaveWorld extends OceanWorld {
    if(this.mission.mapOpen){this.publish();return;}
    if(e.code==='KeyE'){if(this.mission.nearValve())this.beginValve();else this.mission.interact();}
    if(e.code==='KeyF')this.mission.torch=!this.mission.torch;
+   // Movement tech (on foot only; in water Space / C keep their swim meanings). Edges only:
+   // auto-repeat returned above, so holding a key never queues a second dash.
+   if(this.onFoot&&e.code==='Space')requestDash(this.tech);
+   if(this.onFoot&&e.code==='KeyC')requestSlide(this.tech);
    if(e.code==='KeyV'&&this.holdingGun()&&this.aimBlend===0)inspectAk74u(this.gunVisual);
    if(e.code==='KeyT'){this.camera.getWorldDirection(this._aimDir);this.mission.throwSmoke(this._aimDir.x,this._aimDir.z);}
    if(e.code==='KeyR')this.mission.use();if(e.code==='KeyG')this.mission.drop();if(e.code==='KeyM')this.setSound(!this.sound);
@@ -2299,7 +2343,7 @@ export class CaveWorld extends OceanWorld {
   resetGradeClock(this.gradeClock);this.frameGrade='dry';
   this.resetSurvivalFx();
   this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();
-  this.onFoot=true;this.wasOnFoot=true;this.gait.reset();
+  this.onFoot=true;this.wasOnFoot=true;this.gait.reset();this.tech=makeTech();
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
   this.combatFeedback.reset();this.shakeClock=0;this.knifeFlashUntil=0;this.knifeEquipAt=null;this.stabQueue=0;
   this.impactFx.reset();this.fxHealthSeen=this.mission.health;this.fxBursting=false;
@@ -2375,26 +2419,72 @@ export class CaveWorld extends OceanWorld {
     const fx=this.forward.x/flat,fz=this.forward.z/flat;
     this.right.set(-fz,0,fx);
     const localZ=pressed('KeyW')-pressed('KeyS'),localX=pressed('KeyD')-pressed('KeyA');
-    // Hold C: crouch-walk. Half speed, no running, and the guards' eyes lose 35% of their reach.
-    m.crouching=!!pressed('KeyC');
-    const wantRun=!m.crouching&&!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&localZ>0;
-    this.noteBurstMovement(wantRun);
+    // ── Movement tech hook (dt loop): dash / slide / crouch state, then who moves the body. ──
+    // Hold C: crouch-walk (half speed, no running, guards' eyes lose 35% of their reach).
+    // Press C at a run: slide. Space: dash. See movementTech.ts for the vector math.
+    const tech=this.tech;
+    const crouchHeld=!!pressed('KeyC');
     const wadeDepth=Math.max(0,m.breathWaterY-FLOOR_Y);
-    const crouchSlow=m.crouching?SURVIVAL.stealth.speedFactor:1;
-    const events=this.gait.step(localX,localZ,wantRun,dt,wadingDrag(wadeDepth)*crouchSlow);
-    const v=this.gait.instantaneousSpeed(),d=this.gait.dir;
-    // Body frame → world: x = right, z = forward.
-    this.velocity.set((this.right.x*d.x+fx*d.z)*v,0,(this.right.z*d.x+fz*d.z)*v);
-    const before=m.position.x,beforeZ=m.position.z;
-    moveBody(m.position,this.velocity.x*dt,0,this.velocity.z*dt);
-    // Pushing into a wall: feet stop stepping instead of treading in place at full cadence.
-    const moved=Math.hypot(m.position.x-before,m.position.z-beforeZ),meant=v*dt;
-    if(meant>1e-4&&moved<meant*.35)this.gait.speed=Math.max(0,this.gait.speed-6*dt);
-    m.position.y=WALK_EYE_Y;
-    for(const e of events)this.onGaitEvent(e,wadeDepth);
-    m.update(dt,runWeight(this.gait.speed)>.5);this.position.copy(m.position);
+    const drag=wadingDrag(wadeDepth);
+    const gv=this.gait.instantaneousSpeed(),gd=this.gait.dir;
+    const tev=stepTech(tech,{
+     wishX:localX,wishZ:localZ,
+     fwd:{x:fx,z:fz},right:{x:this.right.x,z:this.right.z},
+     crouchHeld,
+     groundSpeed:this.gait.speed,
+     groundVel:{x:(this.right.x*gd.x+fx*gd.z)*gv,z:(this.right.z*gd.x+fz*gd.z)*gv},
+     normal:groundNormal(m.position),
+     stamina:m.stamina,drag,
+     headroom:h=>this.headroomClear(h),
+    },dt);
+    if(tev.staminaSpent)m.stamina=Math.max(0,m.stamina-tev.staminaSpent);
+    if(tev.handoff){
+     // Dash / slide over: the gait carries on at that speed and heading (world → body frame).
+     const hx=tev.handoff.x,hz=tev.handoff.z;
+     this.gait.dir={x:hx*this.right.x+hz*this.right.z,z:hx*fx+hz*fz};
+     this.gait.speed=tev.handoff.speed;
+    }
+    m.crouching=tech.mode==='crouch';
+    m.sliding=tech.mode==='slide';
+    let loud:boolean;
+    if(techOwnsMovement(tech)){
+     // The tech owns the velocity vector outright; the gait idles (no footfalls mid-slide).
+     this.gait.step(0,0,false,dt);
+     const bx=m.position.x,bz=m.position.z;
+     moveBody(m.position,tech.vel.x*dt,0,tech.vel.z*dt);
+     // A wall takes the component driven into it: what we actually moved is our velocity now.
+     if(dt>0){
+      const ax=(m.position.x-bx)/dt,az=(m.position.z-bz)/dt;
+      if(Math.abs(ax)<Math.abs(tech.vel.x)-1e-3)tech.vel.x=ax;
+      if(Math.abs(az)<Math.abs(tech.vel.z)-1e-3)tech.vel.z=az;
+     }
+     this.velocity.set(tech.vel.x,0,tech.vel.z);
+     m.position.y=WALK_EYE_Y;
+     this.noteBurstMovement(true);
+     loud=true;
+    }else{
+     const wantRun=tech.mode==='walk'&&!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&localZ>0;
+     this.noteBurstMovement(wantRun);
+     const crouchSlow=m.crouching?SURVIVAL.stealth.speedFactor:1;
+     const events=this.gait.step(localX,localZ,wantRun,dt,drag*crouchSlow);
+     const v=this.gait.instantaneousSpeed(),d=this.gait.dir;
+     // Body frame → world: x = right, z = forward.
+     this.velocity.set((this.right.x*d.x+fx*d.z)*v,0,(this.right.z*d.x+fz*d.z)*v);
+     const before=m.position.x,beforeZ=m.position.z;
+     moveBody(m.position,this.velocity.x*dt,0,this.velocity.z*dt);
+     // Pushing into a wall: feet stop stepping instead of treading in place at full cadence.
+     const moved=Math.hypot(m.position.x-before,m.position.z-beforeZ),meant=v*dt;
+     if(meant>1e-4&&moved<meant*.35)this.gait.speed=Math.max(0,this.gait.speed-6*dt);
+     m.position.y=WALK_EYE_Y;
+     for(const e of events)this.onGaitEvent(e,wadeDepth);
+     loud=runWeight(this.gait.speed)>.5;
+    }
+    // Dash and slide are as loud as a run to the guards.
+    m.update(dt,loud);this.position.copy(m.position);
    }else{
-   m.crouching=false;
+   m.crouching=false;m.sliding=false;
+   // In the water the capsule is a swimmer: drop any dash / slide / crouch state.
+   if(this.tech.mode!=='walk'||this.tech.height!==STAND_HEIGHT)this.tech=makeTech();
    // Kick = look / strafe only. Space/Q drive BCD buoyancy, not equal XYZ thrust.
    this.move.copy(this.forward).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));
    const bcd=pressed('Space')-pressed('KeyQ','ControlLeft','ControlRight');
@@ -2446,11 +2536,11 @@ export class CaveWorld extends OceanWorld {
     const fx=this.forward.x/flat,fz=this.forward.z/flat;
     eyeX=this.position.x+(-fz)*(h.x+sway)+fx*h.z;
     // Crouch lowers the eye smoothly (presentation; the sim keeps one body height).
-    const st=SURVIVAL.stealth;
-    this.crouchBlend=THREE.MathUtils.clamp(this.crouchBlend+(this.mission.crouching?1:-1)*dt/st.blendSeconds,0,1);
-    eyeY=this.position.y+h.y+breathe-st.eyeDrop*THREE.MathUtils.smoothstep(this.crouchBlend,0,1);
+    // Capsule is floor-anchored: the eye drops by exactly what the capsule lost (slide = 50 %).
+    eyeY=this.position.y+h.y+breathe-eyeDrop(this.tech);
     eyeZ=this.position.z+fx*(h.x+sway)+fz*h.z;
-    this.camera.rotation.set(this.pitch+h.pitch,this.yaw+h.yaw,h.roll);
+    // Slide leans the view a few degrees toward the slide (tech.roll > 0 = lean right).
+    this.camera.rotation.set(this.pitch+h.pitch,this.yaw+h.yaw,h.roll-this.tech.roll);
     this.handSwing=pose;
     bobBlend=still;
    }else{
