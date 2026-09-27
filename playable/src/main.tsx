@@ -5,7 +5,7 @@ import {smokeAt} from './survival';
 import {SURVIVAL} from './survivalConfig';
 import {rifleName} from './rifleCondition';
 import {fmtGold,goldWalkFactor,goldBcdShare,modTag,modLevel,modValue,upgradeCost,UPGRADE,MOD_TRACKS} from './gold';
-import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,pickupInteractPrompt,isMainGuard,liveGuard,MAP_FRAGMENT_ORDER,STASH_CAPACITY,COMBAT_OUTCOME,type Item,type StashSlot} from './simulation';
+import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,pickupInteractPrompt,isMainGuard,liveGuard,MAP_FRAGMENT_ORDER,STASH_CAPACITY,COMBAT_OUTCOME,STREAK,type Item,type StashSlot} from './simulation';
 import {DiveMap} from './DiveMap';
 import {KNIFE_THUMB_URL} from './knifeAsset';
 import {APP_VERSION,APP_BUILD_LABEL,APP_BUILD_SHA} from './version';
@@ -208,6 +208,14 @@ function App(){
     <div className="style-feed">{snap.style.feed.map(l=><div className="style-line" key={`${l.at}-${l.label}`}><b>+{l.points}</b> {l.label}</div>)}</div>
    </section>}
    {(()=>{
+    // Streak break wins the centre callout over scrape/graze when both fire.
+    const br=m.streak.brokenAt;
+    if(br>=0){
+     const age=m.elapsed-br;
+     if(age>=0&&age<STREAK.breakCalloutSeconds){
+      return <div key={`sb-${br}`} className="combat-callout tag-streak-break" aria-hidden="true">STREAK BROKEN</div>;
+     }
+    }
     const o=m.lastCombatOutcome;if(!o)return null;
     const age=m.elapsed-o.at;if(age<0||age>=COMBAT_OUTCOME.calloutSeconds)return null;
     // Juicy named beats only — CLEAN stays in the style feed to avoid centre-screen spam.

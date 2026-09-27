@@ -363,6 +363,32 @@ export function playHitMarker(ctx: AudioContext, master: GainNode, kind: 'hit' |
   }
 }
 
+/**
+ * Streak break sting — lower and longer than a hit marker so a core hit that ends
+ * B+ payoffs reads as loud-but-fair without stealing the damage hit sound.
+ */
+export function playStreakBreak(ctx: AudioContext, master: GainNode) {
+  const start = ctx.currentTime + .02;
+  const ticks = [
+    { f: 420, t: 0, len: .12 },
+    { f: 280, t: .07, len: .14 },
+    { f: 180, t: .14, len: .16 },
+  ];
+  for (const { f, t, len } of ticks) {
+    const osc = ctx.createOscillator(); osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(f, start + t);
+    osc.frequency.exponentialRampToValueAtTime(f * .55, start + t + len);
+    const bp = ctx.createBiquadFilter(); bp.type = 'lowpass'; bp.frequency.value = 900;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, start + t);
+    env.gain.linearRampToValueAtTime(.14, start + t + .008);
+    env.gain.exponentialRampToValueAtTime(.001, start + t + len);
+    osc.connect(bp).connect(env).connect(master);
+    osc.start(start + t); osc.stop(start + t + len + .02);
+    osc.onended = () => { osc.disconnect(); bp.disconnect(); env.disconnect(); };
+  }
+}
+
 /** Dry trigger / magazine click: a tiny metallic tick. `seat` is the heavier mag-home snap. */
 export function playPistolClick(ctx: AudioContext, master: GainNode, seat = false) {
   const start = ctx.currentTime + .002;

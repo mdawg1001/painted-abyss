@@ -20,7 +20,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
-import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playSquadCall, pannedBus, playDoorBang, playSmokePop, playGrunt, playMeleeHit, playFleshHit, playSupply, playValveStroke, playValveSeat, playStashOpen, playStashClose, playStashDeposit, playStashWithdraw, playGold } from './diveAudio';
+import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playSquadCall, pannedBus, playDoorBang, playSmokePop, playGrunt, playMeleeHit, playFleshHit, playSupply, playValveStroke, playValveSeat, playStashOpen, playStashClose, playStashDeposit, playStashWithdraw, playGold, playStreakBreak } from './diveAudio';
 import { Gait, wadingDrag, runWeight, WALK_CAMERA_MOTION, type GaitEvent } from './gait';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
@@ -47,6 +47,7 @@ import { applyHandEnvMap } from './diverHand';
 import { SpeedFov, SPEED_FOV } from './speedFov';
 import { StyleMeter, type StyleEvent, type StyleView } from './styleMeter';
 import { styleActionsForTag, type CombatTag } from './combatOutcomes';
+import { STREAK } from './styleStreak';
 import { makeTech, stepTech, requestJump, requestSlide, techOwnsMovement, STAND_HEIGHT, type TechState } from './movementTech';
 import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion, applyGuardAim,
@@ -1935,14 +1936,31 @@ export class CaveWorld extends OceanWorld {
   if(bursting&&!this.fxBursting)this.impactFx.pulseDash();
   this.fxBursting=bursting;
  }
- /** Health drop → hit chroma/vignette; decay both channels into the fused clip pass. */
+ /** Health drop → hit chroma/vignette; streak-break juice when Phase 3 payoffs were live. */
  stepImpactFx(dt:number){
   const hp=this.mission.health;
-  if(hp<this.fxHealthSeen-0.5){this.impactFx.pulseHit();this.style.hurt();}
+  if(hp<this.fxHealthSeen-0.5){
+   this.impactFx.pulseHit();
+   const broke=this.mission.streak.brokenAt>=0
+    && Math.abs(this.mission.streak.brokenAt-this.mission.elapsed)<1e-3;
+   // Core hit while B+: hard demote out of payoff ranks; otherwise the usual hurt slice.
+   if(broke)this.style.breakStreak();
+   else this.style.hurt();
+   if(broke)this.juiceStreakBreak();
+  }
   this.fxHealthSeen=hp;
   this.impactFx.step(dt);
   this.clipPass?.setIntensity(this.impactFx.intensity);
  }
+ /** Loud but fair streak-break beat — shake + short hitstop + low sting. */
+ juiceStreakBreak(){
+  this.combatFeedback.triggerScreenShake(STREAK.breakShake.intensity,STREAK.breakShake.duration);
+  this.combatFeedback.triggerHitstop(STREAK.breakHitstopMs);
+  const a=this.audible(),ctx=this.audioContext,master=this.master;
+  if(a&&ctx&&master&&ctx.state==='running')playStreakBreak(ctx,master);
+ }
+ /** Keep Mission streak gates aligned with the live style pip. */
+ syncStreakTier(){this.mission.syncStyleTier(this.style.tier);}
  syncPickups(){
   for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);group.traverse(o=>{o.userData.gunAlive=false;if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
   for(const p of this.mission.pickups){let group=this.pickupMeshes.get(p.id);if(!group){group=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:p.item==='relic'?0xe2b65e:0x82c8b7,emissive:p.item==='relic'?0xff9a28:0x1a6a5c,emissiveIntensity:p.item==='relic'?1.35:.95,metalness:.4,roughness:.45});
@@ -2175,6 +2193,7 @@ export class CaveWorld extends OceanWorld {
   m.position.y=THREE.MathUtils.lerp(f.y,eyeY,k);
   if(!this.onFoot){m.buoyancy=0;m.buoyancyTrim=0;}
   // Hard work on a stiff wheel is exertion: breathing (gas) and legs pay for it.
+  this.syncStreakTier();
   m.update(dt,stepped.effort);
   this.position.set(m.position.x,m.position.y,m.position.z);
   // Head: square on the wheel, eyes a little above the hub.
@@ -2519,6 +2538,7 @@ export class CaveWorld extends OceanWorld {
   // Hitstop freezes sim updates (mission, movement, AI) while rendering continues.
   const dt=feedback.simDt;
   if(this.playing){this.time+=dt;const m=this.mission;this.drainStabQueue();
+   this.syncStreakTier();
    const pressed=(...keys:string[])=>keys.some(k=>this.keys.has(k))?1:0;
    if(m.mapOpen){
     // Chart reading: hold still, but the dive clock / gas / predator keep running.
@@ -2768,7 +2788,10 @@ export class CaveWorld extends OceanWorld {
   this.stepImpactFx(this.playing?dt:0);
   // Style drains on sim time: hitstop and pause freeze it.
   // Style pip: idle grace drain + standing-still drain (speed is currency).
-  if(this.playing)this.style.update(dt,Math.hypot(this.velocity.x,this.velocity.z));
+  if(this.playing){
+   this.style.update(dt,Math.hypot(this.velocity.x,this.velocity.z));
+   this.syncStreakTier();
+  }
   // Three fields, assigned. Depth and the exit do not tint the fog.
   const fog=this.scene.fog as THREE.FogExp2;
   const corridorAir=breathingFreeAir(this.position,this.mission.breathWaterY);

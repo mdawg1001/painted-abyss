@@ -13,6 +13,10 @@ import {
  classifyPlayerHit, classifyEnemyMiss, isMultiKill, COMBAT_OUTCOME,
  type CombatTag,
 } from './combatOutcomes';
+import {
+ StyleStreak, applyAmmoDrip, streakDirectorDelay, streakDirectorTargetSoft,
+ streakLootRoundsBonus, streakPickupRadiusBonus,
+} from './styleStreak';
 export {
  HITBOX_ASSIST, playerVelocityMultiplier, HitboxScale, dynamicTargetRadius,
 } from './playerPistol';
@@ -20,6 +24,11 @@ export {
  classifyPlayerHit, classifyEnemyMiss, isMultiKill, COMBAT_OUTCOME, styleActionsForTag,
  type CombatTag,
 } from './combatOutcomes';
+export {
+ STREAK, StyleStreak, applyAmmoDrip, streakRewardsActive, streakDirectorDelay,
+ streakDirectorTargetSoft, streakLootRoundsBonus, streakPickupRadiusBonus,
+ streakAmmoDrip, streakRewardRank, isCoreStreakBreak,
+} from './styleStreak';
 import { VALVE_CLOSE_RAD, VALVE_REACH, VALVE_STAND, WHEEL_CENTRE, leakFlowFraction } from './valve';
 import {
  STASH_AMMO_PACK, STASH_CAPACITY, STASH_POSITION, STASH_REACH,
@@ -1356,6 +1365,13 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   * Renderer clears nothing — age off `at` / `COMBAT_OUTCOME.calloutSeconds`.
   */
  lastCombatOutcome:{tag:CombatTag;at:number;shot?:number}|null=null;
+ /**
+  * Phase 3 streak economy: ammo drip / director soften / loot bias while style ≥ B.
+  * CaveWorld syncs the live style tier each frame via `syncStyleTier`.
+  */
+ streak=new StyleStreak();
+ /** Latest ammo-drip grant (HUD / tests); age off `at`. */
+ lastStreakAmmo:{rounds:number;at:number}|null=null;
  /** Mission time of the previous gun/knife kill (MULTI window). */
  lastKillAt=-1;
  decoy:{position:Point;until:number}|null=null;
@@ -1777,6 +1793,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   */
  respawnAtHatch(){
   const corpse={...this.position};
+  // Death clears the streak; mid-streak death queues a one-line corpse urge.
+  this.streak.noteDeath(this.elapsed);
+  const urge=this.streak.consumeDeathUrge();
   this.dropCarriedAt(corpse);
   if(this.killedByGuard){
    this.claimGuardLoot(corpse);
@@ -1801,7 +1820,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.resetFirefight();
   this.ensureKnife();
   this.spawnGuards();
-  this.say('You wake at the hatch with your diving knife. Everything else you carried is on your corpse. The garrison has reset — push through.','blocked');
+  // Knife-on-respawn + hatch stash unchanged; urge is one line, not a new HUD widget.
+  this.say(urge??'You wake at the hatch with your diving knife. Everything else you carried is on your corpse. The garrison has reset — push through.','blocked');
  }
  /**
   * After a guard kill, pull gun / bottle / coat lying on the corpse into his kit.
@@ -2176,7 +2196,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     // A rifle he took off your corpse comes back exactly as you lost it, upgrades and all.
     const stolen=g.loot;g.loot=undefined;
     const cond=stolen?stolen.cond:rollDropCondition(g.role,this.lootRand);
-    const drop:Pickup={id,item:'gun',cond,rounds:rollDropRounds(PISTOL.magazine,this.lootRand),position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}};
+    // Streak loot bias: a few extra rounds on the floor mag — never a full free resupply.
+    const rounds=rollDropRounds(PISTOL.magazine,this.lootRand)+streakLootRoundsBonus(this.streak.tier);
+    const drop:Pickup={id,item:'gun',cond,rounds,position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}};
     if(stolen?.mods)drop.mods=stolen.mods;
     this.pickups.push(drop);
     if(stolen){this.prizeDrop={id,cond,at:this.elapsed};this.say(`He had your ${rifleName(cond)}${modTag(stolen.mods)}. Take it back.`,'ok');}
@@ -2224,9 +2246,13 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  }
  /** Last fresh-blood heal, for the screen flash (seq changes on every heal). */
  leech:{seq:number;at:number;amount:number;point:Point}|null=null;
+ /** Sync the CaveWorld style meter tier so streak gates match the pip. */
+ syncStyleTier(tier:number){this.streak.syncTier(tier);}
  /** Every hit on you goes through here: health, panic breathing, pacing and the direction marker. */
  hurtPlayer(amount:number,from:Point,reason:string,g:Guard|null){
   if(amount<=0||this.outcome!=='playing')return;
+  // One solid core hit while B+ breaks the streak (loud juice in CaveWorld).
+  this.streak.noteCoreHit(amount,this.elapsed);
   this.health=Math.max(0,this.health-amount);
   this.gasPanicUntil=this.elapsed+AIR_PANIC_SECONDS;
   this.director.hurt.push({at:this.elapsed,amount});
@@ -2346,6 +2372,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   tickPistol(this.pistol,dt);
   this.stepSmoke();
   this.collectSupplies();
+  this.tickStreakAmmo();
   this.assignTokens();
   this.shareSquadIntel();
   // Items dropped by a swap become collectable again once you step away from them.
@@ -2787,10 +2814,22 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.grenades=[];this.clouds=[];this.smokes=SURVIVAL.smoke.start;
   this.caches=makeCaches();this.damageFrom=[];this.supplyTaken=null;this.lastImpact=null;this.lastKnifeHit=null;
   this.lastPistolHit=null;this.lastCombatOutcome=null;this.lastKillAt=-1;this.kills=0;
+  this.lastStreakAmmo=null;
+  // Streak state is cleared on death via noteDeath; keep urge flags already consumed.
   this.pistol=makePistol(PISTOL.magazine,0);
   this.pistol.mag=0;
   this.jammed=false;
   this.aimDwell=[];
+ }
+ /** Modest ammo drip while style rank is B+ (mag top-up bias when the mag is low). */
+ private tickStreakAmmo(){
+  const n=this.streak.tickAmmo(this.elapsed);
+  if(n<=0)return;
+  const next=applyAmmoDrip(this.pistol,n,PISTOL.reserveMax);
+  if(next.applied<=0)return;
+  this.pistol.mag=next.mag;
+  this.pistol.reserve=next.reserve;
+  this.lastStreakAmmo={rounds:next.applied,at:this.elapsed};
  }
  /** Throw one of your smoke grenades along (dirX, dirZ). */
  throwSmoke(dirX:number,dirZ:number){
@@ -2822,8 +2861,10 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  /** Walk over a stocked cache to take it (only if you need it). */
  private collectSupplies(){
   const S=SURVIVAL.supplies;
+  // Brief loot pickup bias while streaking — a little more reach, not magnet loot.
+  const reach=S.pickupRadius+streakPickupRadiusBonus(this.streak.tier);
   for(const c of this.caches){
-   if(!c.stocked||Math.hypot(c.x-this.position.x,c.z-this.position.z)>S.pickupRadius)continue;
+   if(!c.stocked||Math.hypot(c.x-this.position.x,c.z-this.position.z)>reach)continue;
    if(c.kind==='ammo'){
     if(this.pistol.reserve>=PISTOL.reserveMax)continue;
     this.pistol.reserve=Math.min(PISTOL.reserveMax,this.pistol.reserve+S.ammo);
@@ -2843,7 +2884,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   // A downed guard's pistol: with yours in hand you strip its rounds just by walking over it.
   if(this.inventory.includes('gun')&&this.pistol.reserve<PISTOL.reserveMax){
    for(const p of this.pickups){
-    if(p.item!=='gun'||!p.rounds||Math.hypot(p.position.x-this.position.x,p.position.z-this.position.z)>S.pickupRadius)continue;
+    if(p.item!=='gun'||!p.rounds||Math.hypot(p.position.x-this.position.x,p.position.z-this.position.z)>reach)continue;
     const take=Math.min(p.rounds,PISTOL.reserveMax-this.pistol.reserve);
     this.pistol.reserve+=take;p.rounds-=take;
     this.supplyTaken={kind:'ammo',at:this.elapsed};
@@ -2894,10 +2935,12 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    D.arrivals++;
   }
   D.pending=D.pending.filter(p=>p.at>now);
-  // Keep the hunting pressure at the director's target.
+  // Keep the hunting pressure at the director's target (S+ streak softens by at most 1).
+  const soft=streakDirectorTargetSoft(this.streak.tier);
+  const want=Math.max(1,D.target()-soft);
   const hunting=live.filter(g=>g.state!=='patrol').length+D.pending.length;
   const slots=this.guards.filter(g=>!g.active||(g.hp<=0&&g.downFor>SURVIVAL.director.corpseSeconds)).length-D.pending.length;
-  if(D.phase!=='intro'&&D.phase!=='lull'&&hunting<D.target()&&now>=D.nextArrival&&slots>0){
+  if(D.phase!=='intro'&&D.phase!=='lull'&&hunting<want&&now>=D.nextArrival&&slots>0){
    const busy=(i:number)=>D.pending.some(p=>p.door===i);
    const door=D.pickDoor(this.position,this.facing,this.rand,busy);
    if(door>=0){
@@ -2910,6 +2953,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     const [a,b]=D.interval();
     let wait=a+(b-a)*this.rand();
     if(D.recentDamage(now)>=SURVIVAL.director.mercyDamage)wait+=SURVIVAL.director.mercyDelay;
+    // Streak soften: next spawn waits a little longer while rank is high.
+    wait+=streakDirectorDelay(this.streak.tier);
     D.nextArrival=now+wait;
    }else D.nextArrival=now+1;
   }
@@ -2961,9 +3006,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    if(len>.05){p.heading=Math.atan2(-dz,dx);moveBody(p.position,dx/len*Math.min(len,speed*dt),0,dz/len*Math.min(len,speed*dt),1.3);}
    p.position.y+=(Math.max(1.2,Math.min(6.2,this.position.y))-p.position.y)*Math.min(1,dt*1.2);
    if(!safe&&canSee&&distance(p.position,this.position)<BITE_RANGE&&p.bite<=0){
-    this.health=Math.max(0,this.health-18);p.bite=2.2;this.gasPanicUntil=this.elapsed+AIR_PANIC_SECONDS;
+    p.bite=2.2;
+    this.hurtPlayer(18,p.position,'The wounded guardian still finished you. Break sight or finish it with the knife.',null);
     this.say('Wounded jaws still catch you — get clear.');
-    if(this.health<=0){this.outcome='lost';this.reason='The wounded guardian still finished you. Break sight or finish it with the knife.';}
    }
    return;
   }
@@ -2992,9 +3037,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(len>.05){p.heading=Math.atan2(-dz,dx);moveBody(p.position,dx/len*Math.min(len,speed*dt),0,dz/len*Math.min(len,speed*dt),1.3);}
   p.position.y+=((p.state==='chase'?Math.max(1.2,Math.min(6.2,this.position.y)):3)-p.position.y)*Math.min(1,dt*2);
   if(p.state==='chase'&&!safe&&canSee&&distance(p.position,this.position)<BITE_RANGE&&p.bite<=0){
-   this.health=Math.max(0,this.health-25);p.bite=1.7;this.gasPanicUntil=this.elapsed+AIR_PANIC_SECONDS;
+   p.bite=1.7;
+   this.hurtPlayer(25,p.position,'The guardian caught you. Break sight around the central pillar; the narrow exit passage is safe.',null);
    this.say('Suit breached! Sprint to cover or deploy a flare.');
-   if(this.health<=0){this.outcome='lost';this.reason='The guardian caught you. Break sight around the central pillar; the narrow exit passage is safe.';}
   }
  }
 }

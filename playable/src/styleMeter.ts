@@ -165,6 +165,20 @@ export class StyleMeter {
  }
 
  /**
+  * Phase 3 streak break: one solid core hit knocks you out of payoff ranks (B+ → C at
+  * half fill). Fair and readable — rewards stop until you climb back to B.
+  */
+ breakStreak() {
+  if (this.tier < 0) return;
+  this.chain = 0;
+  // Already below B: same as a normal hurt so scrapes still cost.
+  if (this.tier < 2) { this.hurt(); return; }
+  const next = 1; // C
+  this.points = this.size(next) * .5;
+  this.setTier(next);
+ }
+
+ /**
   * Per-frame: freshness recovers; after the grace period the bar drains down through the tiers.
   * `horizontalSpeed` (optional): standing still drains even inside the grace window — speed is currency.
   */
