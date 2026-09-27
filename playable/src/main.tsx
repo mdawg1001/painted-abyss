@@ -258,24 +258,6 @@ function App(){
      {m.inventory.includes('gun')&&modLevel(m.gunMods)>0&&<div className="workbench-risk">{fmtGold(modValue(m.gunMods))} of upgrades on this rifle. Die with it and they lie on your corpse.</div>}
     </div>
    </div>}
-   <aside className="keybinds" aria-hidden="true">
-    <div><kbd>WASD</kbd><span>{onFoot?'Walk':'Swim'}</span></div>
-    <div><kbd>Shift</kbd><span>{onFoot?'Run':'Sprint'}</span></div>
-    {onFoot&&<div><kbd>C</kbd><span>Crouch (hold) · slide at a run</span></div>}
-    {onFoot&&<div><kbd>Space</kbd><span>Jump</span></div>}
-    {!onFoot&&<div><kbd>Space/Q</kbd><span>Buoyancy</span></div>}
-    <div><kbd>1–5</kbd><span>Select</span></div>
-    {m.gold>0&&<div><kbd>B</kbd><span>Ditch gold</span></div>}
-    <div><kbd>Click</kbd><span>{m.inventory[m.selected]==='gun'?'Fire':'Stab'}</span></div>
-    {m.inventory[m.selected]==='gun'&&<div><kbd>Right click</kbd><span>Aim (hold)</span></div>}
-    {m.inventory[m.selected]==='gun'&&<div><kbd>V</kbd><span>Inspect</span></div>}
-    <div><kbd>T</kbd><span>Smoke</span></div>
-    <div><kbd>F</kbd><span>Torch</span></div>
-    <div><kbd>E</kbd><span>Interact</span></div>
-    <div><kbd>Tab</kbd><span>Map</span></div>
-    <div><kbd>R</kbd><span>{m.inventory[m.selected]==='gun'?'Reload':'Use'}</span></div>
-    <div><kbd>G</kbd><span>Drop</span></div>
-   </aside>
    <DiveMap
     open={!!m.mapOpen}
     fragments={m.mapFragments}

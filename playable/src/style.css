@@ -345,20 +345,6 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .threat.damaged{color:#c9a06a}
 .threat.dead{color:#9eb0b4}
 
-.keybinds{
-  position:absolute;right:28px;bottom:28px;pointer-events:none;
-  font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:500;
-  letter-spacing:.06em;color:var(--hud);
-  text-shadow:0 1px 8px rgba(0,0,0,.75);
-  display:flex;flex-direction:column;gap:6px;
-}
-.keybinds div{display:flex;gap:12px;align-items:baseline}
-.keybinds kbd{
-  font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:600;
-  color:var(--hud);min-width:12px;letter-spacing:0;
-}
-.keybinds span{opacity:.92}
-
 .threat{
   position:absolute;top:58px;left:50%;transform:translateX(-50%);
   font-family:'Barlow Condensed',sans-serif;font-size:12px;letter-spacing:.14em;
@@ -405,7 +391,6 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   .depth{right:16px;top:42px;font-size:13px}
   .build-version{right:16px;top:12px;font-size:11px;padding:3px 8px}
   .vitals{left:16px;bottom:18px;width:140px}
-  .keybinds{right:16px;bottom:18px;font-size:12px}
   .inventory{bottom:18px}
   .slot{width:48px;height:48px}
   .slot svg{width:28px;height:28px}
@@ -420,7 +405,7 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   .control-grid{padding-top:12px;gap:9px}
   .intro{font-size:13px}
   .inventory{bottom:14px}
-  .vitals,.keybinds{bottom:14px}
+  .vitals{bottom:14px}
   .interaction{top:53%}
   .look-note,.tip{margin-top:14px}
 }
@@ -441,13 +426,13 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .crosshair.hit::before,.crosshair.hit::after{opacity:1}
 .crosshair.head::before,.crosshair.head::after{background:#ffd27a;width:22px;left:-11px}
 .crosshair.kill::before,.crosshair.kill::after{background:#ff5a4a;width:24px;left:-12px}
-.ammo{position:fixed;right:28px;bottom:262px;display:flex;align-items:baseline;gap:6px;color:#efe9da;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,.8);pointer-events:none;z-index:5}
+.ammo{position:fixed;right:28px;bottom:28px;display:flex;align-items:baseline;gap:6px;color:#efe9da;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,.8);pointer-events:none;z-index:5}
 .ammo strong{font-size:30px;font-weight:600;min-width:22px;text-align:right}
 .ammo span{font-size:15px;opacity:.75}
 .ammo em{font-style:normal;font-size:10px;letter-spacing:.14em;opacity:.7;margin-left:6px}
 .ammo.empty strong{color:#ff6a55}
 .ammo.reloading em{color:#ffd27a;opacity:1}
-@media (max-width:720px){.ammo{right:16px;bottom:190px}.ammo strong{font-size:24px}}
+@media (max-width:720px){.ammo{right:16px;bottom:18px}.ammo strong{font-size:24px}}
 
 /* Survival firefight HUD: phase banner, threat and hit direction ring, smoke veil, objective. */
 .phase-banner{position:fixed;left:50%;top:64px;transform:translateX(-50%);padding:5px 14px;font-size:11px;letter-spacing:.2em;font-weight:600;color:#f1e6d2;background:rgba(40,8,4,.55);border:1px solid rgba(255,90,60,.45);pointer-events:none;z-index:5;white-space:nowrap}
@@ -461,12 +446,12 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .threat-chevron.smoke{color:#c8d8c0}
 @keyframes threatBlink{50%{opacity:.35}}
 .smoke-veil{position:fixed;inset:0;pointer-events:none;z-index:4;background:radial-gradient(ellipse at center,rgba(150,156,146,.55),rgba(118,124,116,.95));transition:opacity .25s}
-.smoke-count{position:fixed;right:28px;bottom:300px;font-size:10px;letter-spacing:.14em;color:#d8e2d0;opacity:.85;pointer-events:none;z-index:5;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+.smoke-count{position:fixed;right:28px;bottom:100px;font-size:10px;letter-spacing:.14em;color:#d8e2d0;opacity:.85;pointer-events:none;z-index:5;text-shadow:0 1px 3px rgba(0,0,0,.8)}
 .smoke-count kbd{margin-left:6px}
 .compass-objective{position:absolute;left:50%;top:-4px;margin-left:-40px;width:80px;text-align:center;color:#6fe0c8;font-size:10px;letter-spacing:.08em;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.9)}
 .compass-objective b{display:block;font-size:12px;line-height:12px}
 .compass-objective.edge{opacity:.7}
-@media (max-width:720px){.smoke-count{right:16px;bottom:218px}.phase-banner{top:56px;font-size:9px}}
+@media (max-width:720px){.smoke-count{right:16px;bottom:88px}.phase-banner{top:56px;font-size:9px}}
 
 /* —— Stylized HUD pass (0.17): chunky condensed type on solid rounded panels, bold colour keys —— */
 :root{--panel:rgba(18,28,40,.72);--panel-edge:rgba(255,255,255,.08);--accent:#ffd23f;--good:#3ddc5a;--bad:#ff4b3a}
@@ -510,11 +495,8 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 @keyframes slot-select{0%{transform:translateY(0)}60%{transform:translateY(-6px)}100%{transform:translateY(-4px)}}
 @keyframes slot-blocked{0%,100%{transform:translateY(-4px)}35%{transform:translateY(-4px) translateX(-3px)}70%{transform:translateY(-4px) translateX(3px)}}
 
-.keybinds{font-weight:600;text-shadow:0 2px 0 rgba(0,0,0,.5)}
-.keybinds kbd{font-weight:800;color:var(--accent)}
-
 .ammo{
-  right:28px;bottom:258px;padding:6px 16px 8px;gap:4px;
+  right:28px;bottom:28px;padding:6px 16px 8px;gap:4px;
   background:var(--panel);border:1px solid var(--panel-edge);border-radius:6px;
   font-family:'Barlow Condensed',sans-serif;text-shadow:0 2px 0 rgba(0,0,0,.4);
 }
@@ -523,7 +505,7 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .ammo em{font-size:12px;font-weight:700;opacity:.8}
 .ammo.empty strong{color:var(--bad)}
 .ammo.reloading em{color:var(--accent)}
-.smoke-count{bottom:336px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:800;color:#fff;opacity:1;text-shadow:0 2px 0 rgba(0,0,0,.5)}
+.smoke-count{bottom:110px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:800;color:#fff;opacity:1;text-shadow:0 2px 0 rgba(0,0,0,.5)}
 .smoke-count kbd{color:var(--accent);font-size:13px}
 
 .prompt{font-family:'Barlow Condensed',sans-serif;font-size:19px;font-weight:700;color:#fff;background:var(--panel);border:0;border-radius:6px;letter-spacing:.03em}
@@ -538,7 +520,7 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 @keyframes bannerPulse{50%{background:rgba(255,120,30,.95)}}
 .crosshair i{background:#fff;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
 @media(max-width:900px){.vitals{width:160px;padding:9px 11px}.slot{width:52px;height:52px}.objectives{font-size:14px}}
-@media (max-width:720px){.ammo{right:16px;bottom:190px}.ammo strong{font-size:34px}.smoke-count{bottom:252px}}
+@media (max-width:720px){.ammo{right:16px;bottom:18px}.ammo strong{font-size:34px}.smoke-count{bottom:96px}}
 
 /* Crouch (hold C): the label turns to a stealth read-out and the frame edges close in. */
 .depth.crouched{color:#9fe3c8}
