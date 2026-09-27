@@ -1790,7 +1790,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  }
  /**
   * Death in the playable returns here: hatch, diving knife only, short air, same water, tank on the next mount.
-  * Whatever was carried stays on the corpse. Outcome stays `lost` inside `update` so a fresh mission is still a full reset.
+  * Whatever was carried stays on the corpse. Living guards and fallen bodies stay where they are —
+  * no garrison wipe. Director pacing restarts so reinforcements can still arrive into empty slots.
   * If the Soviet guard killed you, he claims gun / bottle / coat from that corpse and will use them.
   */
  respawnAtHatch(){
@@ -1821,9 +1822,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.pending=null;
   this.resetFirefight();
   this.ensureKnife();
-  this.spawnGuards();
   // Knife-on-respawn + hatch stash unchanged; urge is one line, not a new HUD widget.
-  this.say(urge??'You wake at the hatch with your diving knife. Everything else you carried is on your corpse. The garrison has reset — push through.','blocked');
+  this.say(urge??'You wake at the hatch with your diving knife. Everything else you carried is on your corpse — recover it. The dead stay where they fell.','blocked');
  }
  /**
   * After a guard kill, pull gun / bottle / coat lying on the corpse into his kit.
@@ -2769,7 +2769,10 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   g.active=false;g.hp=0;g.fireToken=false;g.meleeToken=false;g.windup=0;g.post=-1;
   g.position={x:500,y:WALK_EYE_Y,z:500};g.speed=0;g.vx=0;g.vz=0;
  }
- /** A slot for a new arrival: an empty one, else the longest-dead body you cannot see. */
+ /**
+   * A slot for a new arrival: prefer an empty/`!active` slot so corpses stay on the floor.
+   * Only recycle the longest-dead off-screen body when the pool is full.
+   */
  private freeGuardSlot(){
   const empty=this.guards.find(g=>!g.active);
   if(empty)return empty;
@@ -2778,10 +2781,11 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   return bodies[0]??null;
  }
  /**
-  * Mission start / each life: the opening garrison. Two sentries hold the first chamber
+  * Mission start only: the opening garrison. Two sentries hold the first chamber
   * (the first contact comes quickly), the cavern has three, and the main officer
   * (Soviet key) patrols the west cavern — away from the hatch stash and the relic alcove.
-  * The rest of the pool waits behind the doors.
+  * The rest of the pool waits behind the doors. Player respawn does not call this —
+  * corpses and survivors stay in place; the director fills empty slots later.
   */
  spawnGuards(){
   for(const g of this.guards)this.deactivateGuard(g);
@@ -2810,7 +2814,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   }
  }
  /**
-  * Each death restarts the firefight: pacing, smoke, supplies, empty pistol.
+  * Each death restarts firefight pacing: smoke, supplies, empty pistol, director clock.
+  * Does NOT wipe or respawn the garrison — living guards and corpses stay put.
   * Does NOT refill inventory — `dropCarriedAt` emptied the hands; `ensureKnife`
   * (called from respawn) restores only the diving knife, not the gun or kit.
   */
@@ -2969,8 +2974,10 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    const thrower=live.find(g=>(g.role==='assault'||g.role==='heavy'||g.role==='officer')&&g.state==='chase'&&g.sees&&distance(g.position,this.position)>=8&&distance(g.position,this.position)<=18);
    if(thrower){this.guardThrowSmoke(thrower);D.guardSmokeReady=now+SURVIVAL.smoke.guardCooldown;}
   }
-  // Recycle long-dead bodies out of your sight (their dropped pistols stay on the floor).
-  for(const g of this.guards)if(g.active&&g.hp<=0&&g.downFor>SURVIVAL.director.corpseSeconds*2&&!visible(this.position,g.position))this.deactivateGuard(g);
+  // Very long-dead off-screen bodies free their slot (dropped loot stays). Kept
+  // well above a typical hatch-wake so corpses persist across player deaths;
+  // freeGuardSlot still prefers empty slots and can recycle sooner when full.
+  for(const g of this.guards)if(g.active&&g.hp<=0&&g.downFor>SURVIVAL.director.corpseSeconds*5&&!visible(this.position,g.position))this.deactivateGuard(g);
   D.cues=D.cues.filter(c=>now-c.at<4);
  }
  /** Enough water over the floor for the guardian to swim. */
