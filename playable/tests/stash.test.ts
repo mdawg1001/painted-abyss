@@ -47,7 +47,7 @@ test('deposit gun and ammo, die empty-handed — stash still holds them after wa
  assert.ok(m.stash.some(s=>s?.kind==='ammo'&&s.amount===STASH_AMMO_PACK));
  const before=structuredClone(m.stash);
  m.respawnAtHatch();
- assert.deepEqual(m.inventory,[null,null,null,null,null],'wake with empty hands');
+ assert.deepEqual(m.inventory,['knife',null,null,null,null],'wake with knife only; gun stays in stash');
  assert.equal(m.pistol.mag,0);
  assert.equal(m.pistol.reserve,0);
  assert.deepEqual(m.stash,before);
@@ -57,7 +57,7 @@ test('deposit gun and ammo, die empty-handed — stash still holds them after wa
  assert.ok(persisted.some(s=>s?.kind==='ammo'&&s.amount===STASH_AMMO_PACK));
 });
 
-test('die with gun and ammo on body — wake empty; chest unchanged',()=>{
+test('die with gun and ammo on body — wake with knife; chest unchanged',()=>{
  mockStorage();
  writeStash(emptyStash());
  const m=new Mission(true);
@@ -73,7 +73,7 @@ test('die with gun and ammo on body — wake empty; chest unchanged',()=>{
  m.pistol.mag=8;m.pistol.reserve=16;
  const beforePickups=m.pickups.length;
  m.respawnAtHatch();
- assert.deepEqual(m.inventory,[null,null,null,null,null]);
+ assert.deepEqual(m.inventory,['knife',null,null,null,null],'knife only — gun left on corpse');
  assert.equal(m.pistol.mag,0);
  assert.equal(m.pistol.reserve,0);
  assert.deepEqual(m.stash,chestBefore,'hatch chest not wiped');
@@ -81,7 +81,8 @@ test('die with gun and ammo on body — wake empty; chest unchanged',()=>{
  const corpseGun=m.pickups.slice(beforePickups).find(p=>p.item==='gun');
  assert.ok(corpseGun,'gun dropped on corpse');
  assert.equal(corpseGun?.rounds,24);
- assert.ok(m.inventory.every(s=>s===null));
+ assert.ok(!m.inventory.includes('gun'));
+ assert.ok(m.inventory.includes('knife'));
 });
 
 test('withdraw then new Mission (dive again / reload) still matches localStorage',()=>{

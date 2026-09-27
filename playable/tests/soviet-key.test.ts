@@ -69,13 +69,14 @@ test('killing the main officer drops the Soviet key; pickup unlocks and consumes
  assert.match(m.notice,/Relic unlocked|flood|Booby/i);
 });
 
-test('dying with the key wakes empty; key stays on the corpse',()=>{
+test('dying with the key wakes with knife; key stays on the corpse',()=>{
  const m=new Mission(true);isolateGuards(m);
  const corpse={x:-4,y:WALK_EYE_Y,z:-40};
  m.position={...corpse};
  m.inventory=['sovietKey',null,null,null,null];m.selected=0;
  m.respawnAtHatch();
- assert.deepEqual(m.inventory,[null,null,null,null,null]);
+ assert.deepEqual(m.inventory,['knife',null,null,null,null],'knife restored; key not kept');
+ assert.ok(!m.inventory.includes('sovietKey'));
  const dropped=m.pickups.filter(p=>p.item==='sovietKey');
  assert.equal(dropped.length,1);
  // Corpse loot sits in a ~0.55 m ring around the body.
