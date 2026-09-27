@@ -593,3 +593,7 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 @keyframes style-pop{0%{transform:scale(1.7);opacity:0}100%{transform:scale(1);opacity:1}}
 @keyframes style-feed-in{from{transform:translateX(-12px);opacity:0}to{transform:none;opacity:.9}}
 @media (max-width:640px){.style-meter{left:16px;top:150px;width:150px}.style-rank{font-size:36px}.style-feed{display:none}}
+
+/* Rifle stoppage: the ammo label turns red and pulses until R clears it. */
+.ammo em.jam{color:#ff5a45;animation:jam-pulse .5s ease-in-out infinite alternate}
+@keyframes jam-pulse{from{opacity:1}to{opacity:.45}}
