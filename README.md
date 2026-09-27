@@ -1,7 +1,16 @@
-# Painted Abyss — First Dive · 0.20.7
+# Painted Abyss — First Dive · 0.20.8
 
 
 
+
+## Jump replaces dash; faster slide (0.20.8)
+
+- **Dash removed.** Space no longer does the 8 m/s lunge.
+- **Space jumps** (on foot). You leave the ground at √(2·g·h) for a 0.5 m rise under real gravity, so about 0.64 s in the air. You keep your ground speed, with a little air control that can turn you but never speed you up. One jump per press, none in mid-air, and a press up to 0.12 s before landing jumps again on touchdown. A jump costs 6 stamina, and something overhead stops the rise. Landing is a footfall the guards can hear.
+- **The slide is a way to travel.** C at a run now launches at 7.0 m/s (about twice a run) on wet-concrete friction (μk 0.18). It stays faster than running for about 2 s and gains more than 3.5 m on a runner. Release C and you stand and keep running.
+- **Slide-jump**: a jump out of a slide keeps the slide's speed. Land with C held and you slide on at the speed you landed with. There's no fresh boost, so hopping can't build speed.
+- **Tilt +15%**: the slide lean is now 2.875° (was 2.5°).
+- **Smoother camera**: the drop into a slide eases in over about 0.15 s instead of snapping. The slide and jump no longer fire the screen pulse.
 
 ## Dash and slide (0.20.7)
 
