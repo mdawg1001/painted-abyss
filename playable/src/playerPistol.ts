@@ -22,6 +22,39 @@ import { SURVIVAL } from './survivalConfig';
 
 export type Vec3={x:number;y:number;z:number};
 
+/**
+ * Player→enemy magnetism (hitscan only). Modest silent assist: sticky near-misses when
+ * you are moving, never aimbot. LOS / walls stay honest — only head/body radii grow.
+ *
+ * Scale = 1 + restBonus … 1 + sprintBonus, lerped by horizontal speed / sprintSpeed.
+ */
+export const HITBOX_ASSIST={
+ /** Horizontal speed (m/s) that reaches the sprint ceiling (matches WALK_SPRINT). */
+ sprintSpeed:3.4,
+ /** Extra hit-volume at rest (+15%). Standing still still gets a soft sticky rim. */
+ restBonus:.15,
+ /** Extra hit-volume at full sprint (+35%). Moving is currency. */
+ sprintBonus:.35,
+} as const;
+
+/**
+ * Map horizontal ground speed → enemy hitbox scale for player weapon hitscan.
+ * Rest → 1.15; sprint (≥ sprintSpeed) → 1.35. Deterministic, allocation-free.
+ */
+export function playerVelocityMultiplier(horizontalSpeed:number):number{
+ if(!(horizontalSpeed>0))return 1+HITBOX_ASSIST.restBonus;
+ if(horizontalSpeed>=HITBOX_ASSIST.sprintSpeed)return 1+HITBOX_ASSIST.sprintBonus;
+ const t=horizontalSpeed/HITBOX_ASSIST.sprintSpeed;
+ return 1+HITBOX_ASSIST.restBonus+(HITBOX_ASSIST.sprintBonus-HITBOX_ASSIST.restBonus)*t;
+}
+/** Alias used by design docs / call sites that prefer the scale noun. */
+export const HitboxScale=playerVelocityMultiplier;
+
+/** Scale a base head/body radius for player hitscan only. Does not affect wall/LOS tests. */
+export function dynamicTargetRadius(baseRadius:number,scale:number):number{
+ return baseRadius*scale;
+}
+
 /** Tunables. `magazine` is the adjustable maximum ammo per magazine. */
 export const PISTOL={
  /** Rounds per magazine (TT-33: 8). */
@@ -169,15 +202,25 @@ export type HitscanHit={id:number;distance:number;point:Vec3;headshot:boolean};
  * One bullet. `dir` is the camera forward (normalised here). Returns the nearest target
  * whose head or body the ray meets within `range` and with no wall in between
  * (`clear(a,b)` answers line of sight), or null.
+ *
+ * `hitboxScale` expands head/body radii for player→enemy magnetism only (default 1 =
+ * honest volumes). Wall / LOS checks still use the true impact point on the expanded
+ * volume — a hit that would clip rock is rejected the same as an unassisted shot.
  */
-export function hitscan(origin:Vec3,dir:Vec3,targets:HitscanTarget[],range:number,clear:(a:Vec3,b:Vec3)=>boolean):HitscanHit|null{
+export function hitscan(
+ origin:Vec3,dir:Vec3,targets:HitscanTarget[],range:number,
+ clear:(a:Vec3,b:Vec3)=>boolean,hitboxScale=1,
+):HitscanHit|null{
  const len=Math.hypot(dir.x,dir.y,dir.z)||1;
  const d={x:dir.x/len,y:dir.y/len,z:dir.z/len};
+ const scale=hitboxScale>0?hitboxScale:1;
  let best:HitscanHit|null=null;
  for(const t of targets){
   const v=soldierHitVolumes(t.foot);
-  const th=raySphere(origin,d,v.head.center,v.head.radius);
-  const tb=rayVerticalCapsule(origin,d,v.body.base,v.body.height,v.body.radius);
+  const headR=dynamicTargetRadius(v.head.radius,scale);
+  const bodyR=dynamicTargetRadius(v.body.radius,scale);
+  const th=raySphere(origin,d,v.head.center,headR);
+  const tb=rayVerticalCapsule(origin,d,v.body.base,v.body.height,bodyR);
   let dist:number|null=null,head=false;
   if(th!==null&&(tb===null||th<=tb+.05)){dist=th;head=true;}
   else if(tb!==null)dist=tb;

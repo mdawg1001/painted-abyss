@@ -5,7 +5,13 @@ import { ITEM_BODY, stepBody, submergedFraction, type BodyState } from './propPh
 import { steerToward, faceStanding, yawToward, wrapAngle, turnToward, forwardOf, GUARD_STEER_WALK, GUARD_STEER_RUN } from './guardSteering';
 import { SURVIVAL, SURVIVAL_COVER, type GuardRole } from './survivalConfig';
 import { Director, patrolPosts, nearestFree, pistolDamage, rayWallPoint, smokeBlocks, smokeAlive, smokeLanding, survivalDoors, makeCaches, type SmokeCloud, type SmokeGrenade, type SupplyCache, type SupplyKind } from './survival';
-import { PISTOL, makePistol, tickPistol, startReload, canFire, spendRound, takeDamage, hitscan, type PistolState } from './playerPistol';
+import {
+ PISTOL, makePistol, tickPistol, startReload, canFire, spendRound, takeDamage, hitscan,
+ playerVelocityMultiplier, type PistolState,
+} from './playerPistol';
+export {
+ HITBOX_ASSIST, playerVelocityMultiplier, HitboxScale, dynamicTargetRadius,
+} from './playerPistol';
 import { VALVE_CLOSE_RAD, VALVE_REACH, VALVE_STAND, WHEEL_CENTRE, leakFlowFraction } from './valve';
 import {
  STASH_AMMO_PACK, STASH_CAPACITY, STASH_POSITION, STASH_REACH,
@@ -140,6 +146,7 @@ export const GUARD_AIM_TOLERANCE=10*Math.PI/180;
 /**
  * Chance a shot hits: steady close shots almost always land, long ones in the dark
  * often miss, a running target is much harder, and the first snap shot is rushed.
+ * Prefer `skinOfTeethHitChance` at live fire sites — it layers the graze bias on top.
  */
 export function guardHitChance(distance:number,targetSpeed:number,firstShot:boolean,shooterSpeed=0){
  const base=Math.max(.3,Math.min(.95,.98-.03*Math.max(0,distance-2)));
@@ -150,6 +157,46 @@ export function guardHitChance(distance:number,targetSpeed:number,firstShot:bool
 }
 /** Hit-chance lost per m/s of his own footwork while firing. */
 export const GUARD_MOVING_FIRE_PENALTY=.09;
+/**
+ * Enemy→player skin-of-teeth (probabilistic guns today). Standing still stays dangerous;
+ * moving further bleeds land chance toward grazes / near-misses. Modest curve — not god mode.
+ *
+ * Future projectile tracers can use `PLAYER_CORE` / `projectileCoreRadius` for a geometric
+ * core-vs-shell read; live fire still goes through this chance function.
+ */
+export const SKIN_OF_TEETH={
+ /** Speeds at or below this (m/s) count as standing — no extra graze bias. */
+ stillSpeed:.35,
+ /** Horizontal speed (m/s) at which the full graze bias applies (brisk walk). */
+ fullBiasSpeed:WALK_SPEED,
+ /** Extra land-chance cut at full bias, on top of `guardHitChance`'s moving penalty. */
+ maxGrazeBias:.10,
+ /** Floor so a moving player is never unhittable. */
+ minChance:.05,
+} as const;
+/**
+ * Player hurt-volume core for future projectile tracers. Probabilistic guns ignore this
+ * today; keep the constants named so Phase 2+ can wire geometric graze without rediscovery.
+ */
+export const PLAYER_CORE={
+ /** Tight torso core radius (m) — a "solid" hit if tracers exist. */
+ radius:.22,
+ /** Outer graze shell beyond the core (m). */
+ grazeShell:.18,
+} as const;
+/** Core radius helper for future tracers (hitscan guns do not use this yet). */
+export function projectileCoreRadius(){return PLAYER_CORE.radius;}
+/**
+ * Land chance for guard gunfire after skin-of-teeth graze bias.
+ * Standing still → same as `guardHitChance`. Moving → further reduction up to maxGrazeBias.
+ */
+export function skinOfTeethHitChance(distance:number,targetSpeed:number,firstShot:boolean,shooterSpeed=0){
+ const base=guardHitChance(distance,targetSpeed,firstShot,shooterSpeed);
+ if(targetSpeed<=SKIN_OF_TEETH.stillSpeed)return base;
+ const span=SKIN_OF_TEETH.fullBiasSpeed-SKIN_OF_TEETH.stillSpeed;
+ const t=span>0?Math.min(1,(targetSpeed-SKIN_OF_TEETH.stillSpeed)/span):1;
+ return Math.max(SKIN_OF_TEETH.minChance,base-SKIN_OF_TEETH.maxGrazeBias*t);
+}
 /** Guard health: three pistol body hits, or one to the head. */
 export const GUARD_MAX_HP=100;
 /** Guards on patrol within this range hear your shot and come looking (m). */
@@ -1300,6 +1347,13 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  patrol=[world(16,22),world(6,22),world(6,13),world(16,13)];
  /** Player position last tick, for the guard's read on how fast you are moving. */
  lastPlayerPos:Point|null=null;
+ /**
+  * Cached player horizontal velocity (m/s, world). CaveWorld writes each frame from the
+  * real velocity vector; `update` refreshes from position delta as a headless fallback.
+  * `firePistol` reads these so the magnetism path stays allocation-light.
+  */
+ playerVx=0;
+ playerVz=0;
  /** Random source for spawns (swappable in tests). */
  rand:()=>number=Math.random;
  constructor(tipsSeen=false){
@@ -1976,7 +2030,11 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    .map((g,id)=>({g,id}))
    .filter(({g})=>liveGuard(g))
    .map(({g,id})=>({id,foot:{x:g.position.x,y:FLOOR_Y,z:g.position.z}}));
-  const hit=hitscan(origin,dir,targets,range,(a,b)=>visible(a,b));
+  // Player→enemy magnetism: expand hitscan radii from +15% at rest to +35% at sprint.
+  // Walls / LOS stay honest (hitscan still rejects blocked impact points).
+  const horiz=Math.sqrt(this.playerVx*this.playerVx+this.playerVz*this.playerVz);
+  const hitboxScale=playerVelocityMultiplier(horiz);
+  const hit=hitscan(origin,dir,targets,range,(a,b)=>visible(a,b),hitboxScale);
   if(p.mag===0&&p.reserve>0)startReload(p);
   if(!hit){
    this.combatCue='pistol-miss';
@@ -2253,7 +2311,13 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   // Walk away from the hatch stash → lid closes (contents stay persisted).
   if(this.stashOpen&&!this.nearStash())this.closeStash();
   // Corridor guards run even while the cave guardian is dead / flinching.
-  const playerSpeed=this.lastPlayerPos&&dt>0?Math.hypot(this.position.x-this.lastPlayerPos.x,this.position.z-this.lastPlayerPos.z)/dt:0;
+  // Refresh cached horizontal velocity from the sim delta when the renderer has not
+  // already written a fresher vector (tests / headless ticks).
+  if(this.lastPlayerPos&&dt>0){
+   this.playerVx=(this.position.x-this.lastPlayerPos.x)/dt;
+   this.playerVz=(this.position.z-this.lastPlayerPos.z)/dt;
+  }
+  const playerSpeed=Math.hypot(this.playerVx,this.playerVz);
   tickPistol(this.pistol,dt);
   this.stepSmoke();
   this.collectSupplies();
@@ -2360,7 +2424,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    const aimErr=Math.abs(wrapAngle(toward-g.heading));
    if(aimErr<=GUARD_BURST_TOLERANCE&&g.aim>=.99){
     const climb=Math.max(.35,1-SURVIVAL.burstClimb*g.burstIndex);
-    const hit=this.rand()<guardHitChance(d,playerSpeed,g.firstShot,g.speed)*cfg.accuracy*climb;
+    const hit=this.rand()<skinOfTeethHitChance(d,playerSpeed,g.firstShot,g.speed)*cfg.accuracy*climb;
     g.firstShot=false;
     g.shots+=1;g.lastShotHit=hit;g.ammo-=1;g.burstIndex+=1;g.burstLeft-=1;
     if(g.burstLeft>0)g.shootCool=cfg.burstGap;
