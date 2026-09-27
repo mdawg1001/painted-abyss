@@ -3,13 +3,9 @@
 
 
 
-## Simulation runs 5× wall clock (0.22.0)
+## Undo 5× simulation scale (0.22.1)
 
-`GAME_TIME_SCALE = 5` in `playable/src/simulation.ts`: each frame's wall-clock dt is capped at 50 ms, then multiplied by 5 so walk, swim, AI, timers, gas, style, and the speed lens all advance five times faster. Meshes, materials, and shaders are untouched.
-
-- **Hitstop stays real-time** — combat feedback freezes sim in wall milliseconds; only the dt that leaves the freeze is scaled.
-- **Hitch clamps scale with it** — `Mission.update`, hanging-lamp swing, and swim-camera follow use `MAX_SIM_DT` / `GAME_TIME_SCALE` so a spike cannot silently undo the boost.
-- After merge: `node playable/refresh.mjs` and confirm **BUILD v0.22.0**.
+Reverts PR #151 (`GAME_TIME_SCALE = 5`). Mission time, movement, AI, and gas run at wall clock again. Hitstop / combat feedback / hitch clamps are unchanged from the pre-0.22.0 path.
 
 ## Runtime polish meets the speed lens (0.21.3)
 

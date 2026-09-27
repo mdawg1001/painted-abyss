@@ -19,27 +19,6 @@ export {
  type StashCue, type StashItem, type StashSlot,
 } from './stash';
 export type Point={x:number;y:number;z:number};
-/**
- * Global simulation rate vs wall clock.
- *
- * Each animation frame: wall dt is capped at `MAX_FRAME_DT`, then multiplied by
- * `GAME_TIME_SCALE` so move / AI / timers / gas run faster without touching meshes,
- * materials, or shaders. Hitch clamps elsewhere (Mission.update, hanging lamps,
- * swim-camera follow) must use `MAX_SIM_DT` / `GAME_TIME_SCALE` so they do not
- * silently undo the boost.
- *
- * Combat feedback hitstop stays on wall clock (freeze is felt in real ms); only
- * the sim dt that leaves the feedback tick is scaled.
- */
-export const GAME_TIME_SCALE=5;
-/** Max wall-clock seconds accepted from one animation frame before scaling. */
-export const MAX_FRAME_DT=.05;
-/** Max sim seconds one frame may advance (= MAX_FRAME_DT × GAME_TIME_SCALE). */
-export const MAX_SIM_DT=MAX_FRAME_DT*GAME_TIME_SCALE;
-/** Wall-clock frame dt → scaled sim dt (clamped, never negative). */
-export function wallToSimDt(wallDt:number):number{
- return Math.min(Math.max(0,wallDt),MAX_FRAME_DT)*GAME_TIME_SCALE;
-}
 export type Item='stone'|'wood'|'flare'|'air'|'bandage'|'relic'|'knife'|'gun'|'bottle'|'coat'|'sovietKey'|'gold';
 export type Pickup={id:number;item:Item;position:Point;
  /** Rounds still in a dropped pistol (a downed guard's). Undefined for the corridor gun. */
@@ -2251,7 +2230,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   return 'hit';
  }
  update(dt:number,sprinting=false){
-  if(this.outcome!=='playing')return;dt=Math.min(dt,MAX_SIM_DT);this.elapsed+=dt;
+  if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;
   // Knife recovery is the diver's arm, not the guardian: it runs whatever state the guardian is in.
   this.predator.stabCool=Math.max(0,this.predator.stabCool-dt);
   if(this.floodTriggered)this.breathWaterY=stepFloodLevel(this.breathWaterY,dt,this.leakFlow);
