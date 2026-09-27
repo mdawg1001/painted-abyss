@@ -2631,6 +2631,10 @@ export class CaveWorld extends OceanWorld {
     m.update(dt,false);this.position.copy(m.position);
     this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
    }
+   // Hitscan magnetism (`firePistol`) reads these — prefer the live gait/swim vector over
+   // the sim's position-delta fallback so a same-frame trigger pull stays sticky.
+   m.playerVx=this.velocity.x;
+   m.playerVz=this.velocity.z;
    // Presentation-only hover bob when nearly still — never moves mission.position.
    // Walk bob is a light stride; swim keeps the stronger murk drift.
    if(!this.holdCamera&&!this.valveStroke){
