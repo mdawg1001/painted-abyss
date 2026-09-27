@@ -1,7 +1,11 @@
-# Painted Abyss — First Dive · 0.20.11
+# Painted Abyss — First Dive · 0.21.0
 
 
 
+
+## Playability · ~5× cheaper frames (0.21.0)
+
+The dive was moving frame-by-frame on heavy machines again (Retina + MSAA + torch/hanging shadow maps + half-res bloom). `playable/src/perf.ts` now caps the canvas at **1× DPR**, turns **MSAA and shadow maps off**, runs bloom at **quarter-res**, cuts suspended motes **1800→360**, and follows only **3** hanging-tube spots (none casting shadows). Rock maps, hanging fixtures, frame grade, combat feedback, and HUD stay. After merge: `node playable/refresh.mjs` and confirm **BUILD v0.21.0**.
 
 ## Style meter (0.20.10)
 

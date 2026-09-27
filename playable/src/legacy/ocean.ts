@@ -4,6 +4,7 @@ import { type PbrMaps, triplanarGlsl } from '../rockMaps';
 
 type Hooks = { onReady:()=>void; onPause:()=>void; onStatus:(d:number,z:string)=>void; onToggleUI:()=>void; onGlide:(v:boolean)=>void; onError:(s:string)=>void };
 type Creature = { group:THREE.Group; fins:THREE.Group[]; tail:THREE.Group; center:THREE.Vector3; radius:number; speed:number; phase:number; kind:string; scale:number };
+export type OceanWorldOptions={deferStart?:boolean;antialias?:boolean;dprCap?:number;particleCount?:number};
 const TAU=Math.PI*2;
 let seed=91623;
 const rnd=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296;};
@@ -30,12 +31,16 @@ export class OceanWorld {
   particles!:THREE.Points; kelpMaterials:THREE.MeshStandardMaterial[]=[]; colliders:{pos:THREE.Vector3;radius:number;height:number}[]=[];
   dummy=new THREE.Object3D(); statusAt=0; time=0; pausedTime=0; audioContext:AudioContext|null=null; master:GainNode|null=null;
   observer!:ResizeObserver; reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  constructor(host:HTMLDivElement,hooks:Hooks,options:{deferStart?:boolean}={}){
+  /** Suspended mote count (playability profile may lower this). */
+  particleCount=1800;
+  constructor(host:HTMLDivElement,hooks:Hooks,options:OceanWorldOptions={}){
     this.host=host;this.hooks=hooks;
+    if(options.particleCount!=null)this.particleCount=options.particleCount;
     this.camera=new THREE.PerspectiveCamera(67,host.clientWidth/host.clientHeight,.12,600);
     this.camera.position.copy(this.position);this.camera.rotation.order='YXZ';this.camera.rotation.set(this.pitch,this.yaw,0);
-    this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.25));this.renderer.setSize(host.clientWidth,host.clientHeight);
+    this.renderer=new THREE.WebGLRenderer({antialias:options.antialias??true,alpha:false,powerPreference:'high-performance'});
+    const dprCap=options.dprCap??1.25;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,dprCap));this.renderer.setSize(host.clientWidth,host.clientHeight);
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.18;
     this.renderer.setClearColor(0x0a5365);host.appendChild(this.renderer.domElement);
     this.scene.background=new THREE.Color(0x0b5363);this.scene.fog=new THREE.FogExp2(0x0b5363,.014);
@@ -367,7 +372,7 @@ export class OceanWorld {
   }
 
   suspendedParticles(){
-    const count=1800,pos=new Float32Array(count*3);for(let i=0;i<count;i++){pos[i*3]=rand(-110,110);pos[i*3+1]=rand(-16,26);pos[i*3+2]=rand(-110,110);}
+    const count=this.particleCount,pos=new Float32Array(count*3);for(let i=0;i<count;i++){pos[i*3]=rand(-110,110);pos[i*3+1]=rand(-16,26);pos[i*3+2]=rand(-110,110);}
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));
     const mat=new THREE.ShaderMaterial({uniforms:{uTime:this.uniforms.uTime,uPixelRatio:{value:this.renderer.getPixelRatio()}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
       vertexShader:`uniform float uTime;uniform float uPixelRatio;varying float a;void main(){vec3 p=position;p.x+=sin(uTime*.14+position.z)*.22;p.y+=sin(uTime*.18+position.x)*.25;vec4 mv=modelViewMatrix*vec4(p,1.);gl_PointSize=clamp(38./-mv.z,1.,3.5)*uPixelRatio;gl_Position=projectionMatrix*mv;a=clamp(1.-length(mv.xyz)/95.,0.,1.)*.33;}`,

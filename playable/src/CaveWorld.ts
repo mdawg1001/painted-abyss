@@ -3,6 +3,7 @@ import { PropStreaming } from './propStreaming';
 import { PALETTE } from './artPalette';
 import { DRY_DENSITY, DRY_FIELD, FLUORESCENT, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type FrameGrade } from './frameGrade';
 import { POST_FX_DPR_CAP, createBloomPass, createImpactFx, createImpactPass, resizeBloomPass, type ImpactFx, type ImpactPass } from './postFx';
+import { PERF } from './perf';
 import * as THREE from 'three';
 import { applyGuardCombatPose, updateGuardMoveFrame } from './guardCombatPose';
 import { PISTOL } from './playerPistol';
@@ -370,7 +371,12 @@ export class CaveWorld extends OceanWorld {
  bloodLife=0;bloodPeakLife=14;
  rockMaps:CaveRockMaps;
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
-  super(host,{onReady:()=>{},onPause:()=>{},onStatus:()=>{},onToggleUI:()=>{},onGlide:()=>{},onError:()=>{}},{deferStart:true});
+  super(host,{onReady:()=>{},onPause:()=>{},onStatus:()=>{},onToggleUI:()=>{},onGlide:()=>{},onError:()=>{}},{
+   deferStart:true,
+   antialias:PERF.antialias,
+   dprCap:PERF.dprCap,
+   particleCount:PERF.particleCount,
+  });
   this.ui=ui;this.rockMaps=loadCaveRockMaps(this.renderer);this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
   // Dirty ivory field. The three grades assign this color; they do not blend it.
   this.scene.background=new THREE.Color(DRY_FIELD);this.scene.fog=new THREE.FogExp2(DRY_FIELD,DRY_DENSITY);
@@ -379,8 +385,8 @@ export class CaveWorld extends OceanWorld {
   // No filmic shoulder — the clip pass clamps contrast.
   this.renderer.toneMappingExposure=1;this.renderer.toneMapping=THREE.NoToneMapping;
   this.setPixelRatio();
-  // Modest torch shadows only (no other casters) — 512² map for Safari cost.
-  this.renderer.shadowMap.enabled=true;
+  // Shadow maps re-draw the bunker each frame; playability profile keeps them off.
+  this.renderer.shadowMap.enabled=PERF.shadows;
   this.renderer.shadowMap.type=THREE.PCFShadowMap;
   const dry=GRADE_LIGHTS.dry;
   this.gradeHemi=new THREE.HemisphereLight(dry.sky,dry.ground,dry.hemi);
@@ -1790,15 +1796,17 @@ export class CaveWorld extends OceanWorld {
   this.torchLight.position.set(0,0,-.45);
   this.torchLight.target.position.set(0,0,-22);
   this.torchBody.add(this.torchLight,this.torchLight.target);
-  // Torch shadows: modest 512² map; lantern mesh itself must not cast (near-field acne).
-  this.torchLight.castShadow=true;
-  this.torchLight.shadow.mapSize.set(512,512);
-  this.torchLight.shadow.bias=-.00035;
-  this.torchLight.shadow.normalBias=.035;
-  this.torchLight.shadow.radius=1.5;
-  this.torchLight.shadow.camera.near=.35;
-  this.torchLight.shadow.camera.far=Math.max(12,torch0.distance);
-  this.torchLight.shadow.camera.updateProjectionMatrix();
+  // Torch shadows: optional (playability profile); lantern mesh itself must not cast.
+  this.torchLight.castShadow=PERF.shadows;
+  if(PERF.shadows){
+   this.torchLight.shadow.mapSize.set(512,512);
+   this.torchLight.shadow.bias=-.00035;
+   this.torchLight.shadow.normalBias=.035;
+   this.torchLight.shadow.radius=1.5;
+   this.torchLight.shadow.camera.near=.35;
+   this.torchLight.shadow.camera.far=Math.max(12,torch0.distance);
+   this.torchLight.shadow.camera.updateProjectionMatrix();
+  }
   this.torchBody.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=false;o.receiveShadow=false;}});
 
   const cone=new THREE.CylinderGeometry(.018,3.2,20,28,1,true);cone.rotateX(Math.PI/2);
@@ -2710,9 +2718,11 @@ export class CaveWorld extends OceanWorld {
    this.torchLight.intensity=torch.intensity;this.torchLight.distance=torch.distance;this.torchLight.decay=torch.decay;
    this.torchLight.color.setRGB(torch.r,torch.g,torch.b);
    // Keep shadow frustum matched to the attenuated range (avoids wasted Safari fill).
-   const far=Math.max(10,Math.min(48,torch.distance+2));
-   if(Math.abs(this.torchLight.shadow.camera.far-far)>.5){
-    this.torchLight.shadow.camera.far=far;this.torchLight.shadow.camera.updateProjectionMatrix();
+   if(PERF.shadows){
+    const far=Math.max(10,Math.min(48,torch.distance+2));
+    if(Math.abs(this.torchLight.shadow.camera.far-far)>.5){
+     this.torchLight.shadow.camera.far=far;this.torchLight.shadow.camera.updateProjectionMatrix();
+    }
    }
    const beamMat=this.beam.material as THREE.ShaderMaterial;
    const betaB=(torch.betaBackscatter.r+torch.betaBackscatter.g+torch.betaBackscatter.b)/3;
