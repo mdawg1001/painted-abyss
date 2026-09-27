@@ -1,8 +1,8 @@
 /**
  * Phase 2 scored combat outcomes — pure tags for SCRAPE / GRAZE / CLEAN / HEAD / MULTI.
  *
- * SCRAPE: player round that only lands because hitbox magnetism expanded the volume
- *          (assisted hitscan hits, honest scale-1 ray misses).
+ * SCRAPE: player round that only lands because magnetism helped — angular cone pull
+ *          and/or soft radius rim (assisted hitscan hits, honest pre-magnetism ray misses).
  * GRAZE:  enemy round that misses while the player is moving (skin-of-teeth path).
  * CLEAN:  solid unassisted body hit.
  * HEAD:   headshot (assisted or not — the helmet volume won).

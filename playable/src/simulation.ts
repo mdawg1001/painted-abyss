@@ -7,7 +7,8 @@ import { SURVIVAL, SURVIVAL_COVER, type GuardRole } from './survivalConfig';
 import { Director, patrolPosts, nearestFree, pistolDamage, rayWallPoint, smokeBlocks, smokeAlive, smokeLanding, survivalDoors, makeCaches, type SmokeCloud, type SmokeGrenade, type SupplyCache, type SupplyKind } from './survival';
 import {
  PISTOL, makePistol, tickPistol, startReload, canFire, spendRound, takeDamage, hitscan,
- playerVelocityMultiplier, type PistolState,
+ playerVelocityMultiplier, playerAssistAngle, magnetizeAim, movingScatterScale,
+ type PistolState,
 } from './playerPistol';
 import {
  classifyPlayerHit, classifyEnemyMiss, isMultiKill, COMBAT_OUTCOME,
@@ -19,6 +20,7 @@ import {
 } from './styleStreak';
 export {
  HITBOX_ASSIST, playerVelocityMultiplier, HitboxScale, dynamicTargetRadius,
+ playerAssistAngle, magnetizeAim, movingScatterScale, rotateToward,
 } from './playerPistol';
 export {
  classifyPlayerHit, classifyEnemyMiss, isMultiKill, COMBAT_OUTCOME, styleActionsForTag,
@@ -2056,8 +2058,11 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   }
   spendRound(p);
   this.hearGunshot();
-  // A worn barrel and loose sights throw the round off the crosshair.
-  dir=scatter(dir,spreadSigma(this.gunCond)*spreadMult(this.gunMods),this.rand);
+  // Horizontal speed gates scatter damp + cone/radius magnetism (read before scatter).
+  const horiz=Math.sqrt(this.playerVx*this.playerVx+this.playerVz*this.playerVz);
+  // Worn barrel scatter — slightly tighter while moving so assist isn't eaten by spread.
+  const sigma=spreadSigma(this.gunCond)*spreadMult(this.gunMods)*movingScatterScale(horiz);
+  dir=scatter(dir,sigma,this.rand);
   p.cool*=cycleMult(this.gunMods);
   // A pistol round is spent within a metre or two of water.
   const range=origin.y<this.breathWaterY?PISTOL.rangeUnderwater:PISTOL.range;
@@ -2065,18 +2070,19 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    .map((g,id)=>({g,id}))
    .filter(({g})=>liveGuard(g))
    .map(({g,id})=>({id,foot:{x:g.position.x,y:FLOOR_Y,z:g.position.z}}));
-  // Player→enemy magnetism: expand hitscan radii from +14% at rest to +30% at sprint.
-  // Walls / LOS stay honest (hitscan still rejects blocked impact points).
-  // Dual ray on the same target list: honest scale-1 vs assisted — magnetism-only → SCRAPE.
-  const horiz=Math.sqrt(this.playerVx*this.playerVx+this.playerVz*this.playerVz);
+  // Player→enemy magnetism: angular cone pull (primary) + modest radius rim (secondary).
+  // Applied after scatter. Walls / LOS stay honest. Dual ray: honest pre-magnetism dir
+  // at scale-1 vs magnetized dir + soft scale — magnetism-only contact → SCRAPE.
   const hitboxScale=playerVelocityMultiplier(horiz);
+  const assistAng=playerAssistAngle(horiz);
+  const assistedDir=magnetizeAim(origin,dir,targets,assistAng,range);
   const los=(a:Point,b:Point)=>visible(a,b);
   const unassisted=hitscan(origin,dir,targets,range,los,1);
-  const hit=hitscan(origin,dir,targets,range,los,hitboxScale);
+  const hit=hitscan(origin,assistedDir,targets,range,los,hitboxScale);
   if(p.mag===0&&p.reserve>0)startReload(p);
   if(!hit){
    this.combatCue='pistol-miss';
-   const wall=rayWallPoint(origin,dir,range);
+   const wall=rayWallPoint(origin,assistedDir,range);
    if(wall)this.lastImpact={point:wall,at:this.elapsed,shot:p.shots};
    return 'fired';
   }
