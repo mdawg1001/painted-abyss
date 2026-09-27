@@ -148,13 +148,22 @@ const CLIP_GRADE_SHADER = {
   uVignette: { value: IMPACT_VIGNETTE_MAX },
   uCrunch: { value: CRUNCH_PIXEL },
   uResolution: { value: new Vector2(1, 1) },
+  // Speed lens peripheral stretch (speedFov.ts), 0 when still.
+  uWarp: { value: 0 },
  },
  vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
  fragmentShader: `uniform sampler2D tDiffuse;uniform float uExposure;uniform float uContrast;uniform float uPivot;uniform float uSlam;
 uniform float uSaturation;uniform float uVibrance;uniform float uGamma;uniform vec3 uShadowTint;uniform vec3 uHighlightTint;uniform vec3 uLift;
-uniform float uIntensity;uniform float uChroma;uniform float uVignette;uniform float uCrunch;uniform vec2 uResolution;varying vec2 vUv;
+uniform float uIntensity;uniform float uChroma;uniform float uVignette;uniform float uCrunch;uniform vec2 uResolution;uniform float uWarp;varying vec2 vUv;
 void main(){
   vec2 uv=vUv;
+  // Speed lens: sample toward the centre in proportion to r², so the periphery is stretched
+  // out to the frame edges while the middle stays true. Aspect-corrected radius.
+  if(uWarp>1e-4){
+    vec2 d=uv-.5;vec2 a=vec2(d.x*uResolution.x/uResolution.y,d.y);
+    float r2=dot(a,a)/(.25+.25*(uResolution.x*uResolution.x)/(uResolution.y*uResolution.y));
+    uv=.5+d*(1.0-uWarp*r2);
+  }
   if(uCrunch>1.01){
     vec2 grid=max(uResolution/uCrunch,vec2(1.0));
     uv=(floor(uv*grid)+.5)/grid;
@@ -195,6 +204,8 @@ void main(){
 
 export type ClipGradePass = ShaderPass & {
  setIntensity(v: number): void;
+ /** Peripheral speed stretch, 0 (none) to ~0.1. */
+ setWarp(v: number): void;
  setSize(w: number, h: number): void;
 };
 
@@ -203,6 +214,9 @@ export function createClipGradePass(): ClipGradePass {
  const pass = new ShaderPass(CLIP_GRADE_SHADER) as ClipGradePass;
  pass.setIntensity = (v: number) => {
   pass.uniforms.uIntensity.value = Math.max(0, Math.min(1, v));
+ };
+ pass.setWarp = (v: number) => {
+  pass.uniforms.uWarp.value = Math.max(0, Math.min(.2, v));
  };
  pass.setSize = (w: number, h: number) => {
   pass.uniforms.uResolution.value.set(Math.max(1, w), Math.max(1, h));

@@ -79,3 +79,16 @@ test('bloom pass builds at quarter resolution', () => {
  assert.equal(bloom.resolution.y, 225);
  bloom.dispose();
 });
+
+test('the fused clip grade pass carries the speed lens stretch (the pass that actually runs)', async () => {
+ const { createClipGradePass } = await import('../src/frameGrade');
+ const pass = createClipGradePass();
+ pass.setWarp(.05);
+ assert.equal(pass.uniforms.uWarp.value, .05);
+ pass.setWarp(9);
+ assert.equal(pass.uniforms.uWarp.value, .2, 'clamped');
+ assert.match((pass as any).material.fragmentShader, /uWarp\*r2/);
+ const fs = await import('node:fs');
+ const src = fs.readFileSync(new URL('../src/CaveWorld.ts', import.meta.url), 'utf8');
+ assert.match(src, /this\.clipPass\?\.setWarp\(/, 'applyLens drives the fused pass');
+});

@@ -1,7 +1,31 @@
-# Painted Abyss — First Dive · 0.21.1
+# Painted Abyss — First Dive · 0.21.3
 
 
 
+
+## Runtime polish meets the speed lens (0.21.3)
+
+Merges the Cursor runtime pass (0.21.1 post/CPU polish) with the speed lens (0.21.2). The runtime pass fused the impact crunch into the clip-grade shader, which left the lens's peripheral stretch writing to a pass that no longer exists. The stretch now lives in the fused clip-grade pass, so you get the cheaper post stack and the lens together.
+
+## Speed lens toned down (0.21.2)
+
+The 0.21.1 lens swung from 60° to 110° and breathed with every step. It is now a rush rather than a trip:
+
+- **Range**: 64° (the game's normal view) up to 82° at slide speed, so +18° instead of +50°.
+- **Walking doesn't move it at all**: the lens only starts widening above 1.6 m/s. A run gives about 70°, and only slides and slide-jumps reach the top.
+- **No pulsing**: the lens follows your speed up over about a quarter of a second, so the stride's own speed ripple moves it less than 0.3°. It follows your speed down almost instantly, so stops still snap. Only horizontal speed counts, so bobbing in the water doesn't breathe the view.
+- **Snap kept, wobble gone**: stiffness 150, damping 13.5 (ζ ≈ 0.55). Stopping from a slide takes the view back halfway in about 0.13 s and dips about 2° under normal, then settles within about half a second. The old version dipped 10° and rang.
+- **Edge stretch**: 0.025 at top speed (was 0.08), a hint of tunnel rather than a fisheye.
+
+## Speed lens: FOV on a spring (0.21.1)
+
+`playable/src/speedFov.ts` makes the field of view follow your speed. It reads the player's velocity and never touches movement.
+
+- **Target**: V_norm = clamp(|v| / 7 m/s, 0, 1), and target FOV = 60° + V_norm × (110° − 60°). Walking gives about 71°, running about 84°, and a slide launch 110°. These are three.js vertical FOVs, as before (the old fixed lens was 64°).
+- **Spring, not a lerp**: acceleration = −stiffness × (fov − target) − damping × fovVel, integrated with semi-implicit Euler in sub-steps of at most 1/240 s. The feel is the same at any frame rate, and a hitch frame can't blow it up. With the defaults (stiffness 180, damping 12, ζ ≈ 0.45), a dead stop from top speed swings from 110° down to about 50° after 0.26 s, then settles on 60° within about 0.6 s.
+- **Peripheral stretch**: the post pass pulls samples toward the centre in proportion to r², so the walls stretch out to the frame edges while the centre stays true. It is up to 8% at the corners at top speed and follows the spring.
+- **Aiming** blends the lens toward the sights' fixed 52°, and the stretch fades out, so a scope does not breathe with your speed.
+- **Tuning**: `SPEED_FOV` at the top of the file has MIN_FOV, MAX_FOV, V_MAX, SPRING_STIFFNESS, SPRING_DAMPING, WARP_MAX, FLOOR_FOV and MAX_STEP. The per-frame update allocates nothing.
 
 ## Runtime post/CPU polish (0.21.1)
 
