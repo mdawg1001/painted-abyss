@@ -309,27 +309,72 @@ test('walk over supplies to take them; a lull restocks caches away from you',()=
  for(const c of SURVIVAL_CACHES)assert.ok(fits({x:c.x,y:WALK_EYE_Y,z:c.z},.5),'cache on open floor');
 });
 
-test('death and restart clean up the fight completely',()=>{
+test('death and restart clean up the fight pacing, not the garrison',()=>{
  const m=new Mission(true);m.rand=seeded(8);m.spawnGuards();m.breathWaterY=FLOOR_Y-.1;
  m.position={x:0,y:WALK_EYE_Y,z:-60};m.health=1e9;
  m.squadAlert(m.guards.find(liveGuard)!,'spotted');
  m.throwSmoke(0,-1);
  wait(m,40,()=>{m.health=1e9;});
  assert.ok(m.director.arrivals>0);
+ const liveBefore=m.guards.filter(liveGuard).length;
+ const deadBefore=m.guards.filter(g=>g.active&&g.hp<=0).map(g=>({x:g.position.x,z:g.position.z,life:g.life}));
  m.health=0;m.outcome='lost';
  m.respawnAtHatch();
  assert.equal(m.director.phase,'intro');
  assert.equal(m.director.pending.length,0);
  assert.equal(m.director.cues.length,0);
  assert.equal(m.clouds.length+m.grenades.length,0);
- assert.equal(m.guards.filter(liveGuard).length,SURVIVAL.director.initial);
- assert.ok(m.guards.every(g=>!g.active||(g.state==='patrol'&&g.hp===g.maxHp)));
+ // Garrison is NOT wiped — survivors and corpses persist; no fresh opening patrol.
+ assert.equal(m.guards.filter(liveGuard).length,liveBefore);
+ assert.equal(m.guards.filter(g=>g.active&&g.hp<=0).length,deadBefore.length);
+ for(const d of deadBefore){
+  const still=m.guards.find(g=>g.active&&g.hp<=0&&g.life===d.life&&g.position.x===d.x&&g.position.z===d.z);
+  assert.ok(still,'corpse stays at death position');
+ }
  assert.ok(m.caches.every(c=>c.stocked));
  assert.deepEqual(m.inventory,['knife',null,null,null,null],'wake with knife — gun/kit stay on the corpse');
  assert.equal(m.pistol.mag,0);
  assert.equal(m.pistol.reserve,0);
  assert.equal(m.smokes,SURVIVAL.smoke.start);
- assert.ok(m.guards.every(g=>!liveGuard(g)||distance(g.position,m.position)>=24),'nobody waiting at the hatch');
+ assert.ok(!/garrison has reset/i.test(m.notice),'say text no longer claims a garrison reset');
+});
+
+test('killed guards stay dead at the same place after hatch wake; director can still reinforce',()=>{
+ const m=new Mission(true);m.rand=seeded(41);m.spawnGuards();m.breathWaterY=FLOOR_Y-.1;
+ m.director.enabled=false;
+ const victims=m.guards.filter(liveGuard).slice(0,2);
+ assert.ok(victims.length>=2);
+ for(const g of victims){
+  g.position={x:0,y:WALK_EYE_Y,z:-48};
+  m.guardTakeDamage(g,9999);
+ }
+ assert.ok(victims.every(g=>g.active&&g.hp<=0));
+ const snap=victims.map(g=>({life:g.life,x:g.position.x,z:g.position.z}));
+ m.health=0;m.outcome='lost';
+ m.respawnAtHatch();
+ for(const s of snap){
+  const g=m.guards.find(x=>x.life===s.life)!;
+  assert.ok(g.active&&g.hp<=0,'slot still a corpse');
+  assert.equal(g.position.x,s.x);
+  assert.equal(g.position.z,s.z);
+  assert.ok(Math.hypot(g.position.x-500,g.position.z-500)>10,'not teleported to the deactivate dump');
+ }
+ // Reinforcements still work: empty slot → activate via the same path as the director.
+ m.director.enabled=true;
+ const empty=m.guards.find(g=>!g.active);
+ assert.ok(empty,'pool has an empty slot for arrivals');
+ const door=survivalDoors()[0];
+ const beforeLive=m.guards.filter(liveGuard).length;
+ m.activateGuard(empty,{x:door.spawn.x,z:door.spawn.z},door.yaw,'assault');
+ assert.ok(liveGuard(empty));
+ assert.equal(m.guards.filter(liveGuard).length,beforeLive+1);
+ // Corpse slots unchanged while a new live guard fills an empty slot.
+ for(const s of snap){
+  const g=m.guards.find(x=>x.life===s.life)!;
+  assert.ok(g.active&&g.hp<=0);
+  assert.equal(g.position.x,s.x);
+  assert.equal(g.position.z,s.z);
+ }
 });
 
 /** A scripted player: runs the route, shoots the nearest visible guard's head with some error, uses flares on the guardian. */
@@ -383,7 +428,8 @@ test('the mission is completable under the new pressure, and the pressure is rea
  assert.ok(wins>=1,`a scripted player gets out in ${wins} of 4 runs`);
  assert.ok(wins<4,'but not every time: it is dangerous');
  for(const r of runs.filter(r=>r.m.outcome==='won'))assert.ok(r.phases.has('final'),'the relic triggered the final push');
- assert.ok(runs.some(r=>r.maxLive>=8),'busy: eight or more guards alive at once');
+ // Peak phase targets 7 hunters; final can climb higher once corpses free slots.
+ assert.ok(runs.some(r=>r.maxLive>=SURVIVAL.director.peakTarget),'busy: peak-target concurrent live guards');
 });
 
 test('cost at the maximum guard count stays small',()=>{

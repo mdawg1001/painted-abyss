@@ -96,7 +96,11 @@ export const SURVIVAL={
   /** Role mix for reinforcements (weights), and heavy limits. Officer is never reinforced (exactly one main). */
   roleWeights:{assault:45,rusher:25,flanker:20,heavy:10,officer:0} as Record<GuardRole,number>,
   maxHeavy:1,maxHeavyFinal:2,
-  /** Downed bodies are recycled after this long if you are not looking at them. */
+  /**
+   * When the pool is full, a corpse may be recycled into a reinforcement only
+   * after this long and only if off-screen. Empty `!active` slots are always
+   * preferred first. Hatch wake never wipes bodies.
+   */
   corpseSeconds:18,
  },
 

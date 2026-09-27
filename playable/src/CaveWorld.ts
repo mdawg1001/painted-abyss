@@ -1276,7 +1276,8 @@ export class CaveWorld extends OceanWorld {
   this.fx?.reset();
   this.warFx?.clear();
   this.cueSeen=this.mission.elapsed;this.cloudSeen=-1;this.impactSeen=-1;this.hitFxSeen=-1;this.knifeFxSeen=-1;this.supplySeen=-1;
-  this.guardLifeSeen=this.sovietGuards.map(()=>-1);
+  // Do not wipe guardLifeSeen: hatch wake keeps corpses in place, and resetting
+  // life-seen would clear fallen poses (life mismatch → fall=0) for the same body.
  }
  /** Stereo position of a world point relative to where you look: −1 left … +1 right. */
  panFor(p:{x:number;z:number}){
