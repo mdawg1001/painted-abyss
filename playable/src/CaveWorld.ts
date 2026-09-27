@@ -57,7 +57,7 @@ import {
 } from './gunAsset';
 import { RIFLE, rifleIsPrize } from './rifleCondition';
 import { goldSinkAccel, goldThrustFactor } from './gold';
-import { SWIM_BUOYANCY_ACCEL, Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, groundNormal, GUARD_COUNT, STASH_POSITION, STASH_YAW, type BreathFootprint, type BreathTankMount } from './simulation';
+import { SWIM_BUOYANCY_ACCEL, Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, groundNormal, GUARD_COUNT, STASH_POSITION, STASH_YAW, GAME_TIME_SCALE, MAX_FRAME_DT, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
  airborne:boolean;
@@ -2473,12 +2473,13 @@ export class CaveWorld extends OceanWorld {
    });
   }
   this.frame=requestAnimationFrame(this.animate);
-  const realDt=Math.min(this.clock.getDelta(),.05);
-  this.shakeClock+=realDt;
-  const feedback=this.combatFeedback.tick(realDt,this.shakeClock);
+  // Wall clock drives hitstop / shake; scaled sim dt drives mission, movement, AI.
+  const wallDt=Math.min(this.clock.getDelta(),MAX_FRAME_DT);
+  this.shakeClock+=wallDt;
+  const feedback=this.combatFeedback.tick(wallDt,this.shakeClock);
   this.combatShakeOffset=feedback.offset;
-  // Hitstop freezes sim updates (mission, movement, AI) while rendering continues.
-  const dt=feedback.simDt;
+  // Hitstop freezes sim (mission, movement, AI) in wall time; scale the rest 5×.
+  const dt=feedback.simDt*GAME_TIME_SCALE;
   if(this.playing){this.time+=dt;const m=this.mission;this.drainStabQueue();
    const pressed=(...keys:string[])=>keys.some(k=>this.keys.has(k))?1:0;
    if(m.mapOpen){
@@ -2670,7 +2671,8 @@ export class CaveWorld extends OceanWorld {
     eyeZ=this.position.z+this.upAxis.z*bobY+this.right.z*bobSide+this.forward.z*bobFwd;
    }
    // Translation only — look-stick (yaw/pitch) stays as-is. Cap follow-dt so a hitch frame cannot teleport the eye.
-   const follow=this.onFoot?1:1-Math.exp(-80*Math.min(dt,.018));
+   // Hitch cap scales with GAME_TIME_SCALE so 5× frames still catch the swim bob.
+   const follow=this.onFoot?1:1-Math.exp(-80*Math.min(dt,.018*GAME_TIME_SCALE));
    this.camera.position.x=THREE.MathUtils.lerp(this.camera.position.x,eyeX,follow);
    this.camera.position.y=THREE.MathUtils.lerp(this.camera.position.y,eyeY,follow);
    this.camera.position.z=THREE.MathUtils.lerp(this.camera.position.z,eyeZ,follow);
