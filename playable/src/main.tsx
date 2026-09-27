@@ -5,7 +5,7 @@ import {smokeAt} from './survival';
 import {SURVIVAL} from './survivalConfig';
 import {rifleName} from './rifleCondition';
 import {fmtGold,goldWalkFactor,goldBcdShare,modTag,modLevel,modValue,upgradeCost,UPGRADE,MOD_TRACKS} from './gold';
-import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,pickupInteractPrompt,isMainGuard,liveGuard,MAP_FRAGMENT_ORDER,STASH_CAPACITY,type Item,type StashSlot} from './simulation';
+import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,pickupInteractPrompt,isMainGuard,liveGuard,MAP_FRAGMENT_ORDER,STASH_CAPACITY,COMBAT_OUTCOME,type Item,type StashSlot} from './simulation';
 import {DiveMap} from './DiveMap';
 import {KNIFE_THUMB_URL} from './knifeAsset';
 import {APP_VERSION,APP_BUILD_LABEL,APP_BUILD_SHA} from './version';
@@ -207,6 +207,13 @@ function App(){
     {snap.style.chain>1&&<div className="style-chain">×{snap.style.chain} CHAIN</div>}
     <div className="style-feed">{snap.style.feed.map(l=><div className="style-line" key={`${l.at}-${l.label}`}><b>+{l.points}</b> {l.label}</div>)}</div>
    </section>}
+   {(()=>{
+    const o=m.lastCombatOutcome;if(!o)return null;
+    const age=m.elapsed-o.at;if(age<0||age>=COMBAT_OUTCOME.calloutSeconds)return null;
+    // Juicy named beats only — CLEAN stays in the style feed to avoid centre-screen spam.
+    if(o.tag==='CLEAN')return null;
+    return <div key={`co-${o.at}-${o.tag}`} className={`combat-callout tag-${o.tag.toLowerCase()}`} aria-hidden="true">{o.tag}</div>;
+   })()}
    {snap?.audioNotice&&<div className="audio-notice" role="status">{snap.audioNotice}</div>}
    {m.health<40&&<div className="injury"/>}
    {/* Fresh blood: keyed on the heal so every close kill replays the flash. */}

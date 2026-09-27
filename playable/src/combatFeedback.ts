@@ -39,6 +39,11 @@ export const COMBAT_FEEDBACK={
  hitstopHead:90,
  /** Kill hitstop (ms). */
  hitstopKill:150,
+ /** Magnetism scrape — brief readable tick, not a freeze. */
+ scrapeTick:{intensity:.35,duration:.08},
+ hitstopScrape:45,
+ /** Enemy graze / skin-of-teeth miss — light camera kiss. */
+ grazeTick:{intensity:.28,duration:.07},
 } as const;
 
 export class CombatFeedbackManager{

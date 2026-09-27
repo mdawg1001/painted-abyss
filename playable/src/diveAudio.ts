@@ -340,16 +340,22 @@ export function playValveSeat(ctx: AudioContext, master: GainNode) {
  * Hit confirmation, AAA style: a short bright tick on a hit, a lower double tick on a
  * head shot or kill. Plays on top of the gunshot, so it is quiet and very short.
  */
-export function playHitMarker(ctx: AudioContext, master: GainNode, kind: 'hit' | 'head' | 'kill') {
+export function playHitMarker(ctx: AudioContext, master: GainNode, kind: 'hit' | 'head' | 'kill' | 'scrape' | 'graze' | 'multi') {
   const start = ctx.currentTime + .03;
-  const ticks = kind === 'hit' ? [{ f: 2300, t: 0 }] : [{ f: 1900, t: 0 }, { f: 1400, t: .055 }];
+  const ticks =
+    kind === 'scrape' ? [{ f: 2800, t: 0 }, { f: 2100, t: .04 }] :
+    kind === 'graze' ? [{ f: 1600, t: 0 }, { f: 2400, t: .05 }] :
+    kind === 'multi' ? [{ f: 2100, t: 0 }, { f: 2600, t: .04 }, { f: 1700, t: .09 }] :
+    kind === 'hit' ? [{ f: 2300, t: 0 }] :
+    [{ f: 1900, t: 0 }, { f: 1400, t: .055 }];
+  const gain = kind === 'scrape' || kind === 'graze' ? .12 : .16;
   for (const { f, t } of ticks) {
     const osc = ctx.createOscillator(); osc.type = 'triangle';
     osc.frequency.setValueAtTime(f, start + t);
     osc.frequency.exponentialRampToValueAtTime(f * .7, start + t + .05);
     const env = ctx.createGain();
     env.gain.setValueAtTime(0, start + t);
-    env.gain.linearRampToValueAtTime(.16, start + t + .002);
+    env.gain.linearRampToValueAtTime(gain, start + t + .002);
     env.gain.exponentialRampToValueAtTime(.001, start + t + .06);
     osc.connect(env).connect(master);
     osc.start(start + t); osc.stop(start + t + .07);

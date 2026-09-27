@@ -9,9 +9,17 @@ import {
  PISTOL, makePistol, tickPistol, startReload, canFire, spendRound, takeDamage, hitscan,
  playerVelocityMultiplier, type PistolState,
 } from './playerPistol';
+import {
+ classifyPlayerHit, classifyEnemyMiss, isMultiKill, COMBAT_OUTCOME,
+ type CombatTag,
+} from './combatOutcomes';
 export {
  HITBOX_ASSIST, playerVelocityMultiplier, HitboxScale, dynamicTargetRadius,
 } from './playerPistol';
+export {
+ classifyPlayerHit, classifyEnemyMiss, isMultiKill, COMBAT_OUTCOME, styleActionsForTag,
+ type CombatTag,
+} from './combatOutcomes';
 import { VALVE_CLOSE_RAD, VALVE_REACH, VALVE_STAND, WHEEL_CENTRE, leakFlowFraction } from './valve';
 import {
  STASH_AMMO_PACK, STASH_CAPACITY, STASH_POSITION, STASH_REACH,
@@ -1342,7 +1350,14 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  /** Last guard blow: when, and whether it connected (renderer: thud or swish). */
  lastStrike:{at:number;landed:boolean}|null=null;
  /** Last bullet that connected (renderer: hit marker, flinch, impact). */
- lastPistolHit:{guard:number;point:Point;headshot:boolean;killed:boolean;shot:number;at:number;damage?:number}|null=null;
+ lastPistolHit:{guard:number;point:Point;headshot:boolean;killed:boolean;shot:number;at:number;damage?:number;tag?:CombatTag;multi?:boolean}|null=null;
+ /**
+  * Latest scored combat beat (SCRAPE / GRAZE / CLEAN / HEAD / MULTI) for HUD callouts.
+  * Renderer clears nothing — age off `at` / `COMBAT_OUTCOME.calloutSeconds`.
+  */
+ lastCombatOutcome:{tag:CombatTag;at:number;shot?:number}|null=null;
+ /** Mission time of the previous gun/knife kill (MULTI window). */
+ lastKillAt=-1;
  decoy:{position:Point;until:number}|null=null;
  patrol=[world(16,22),world(6,22),world(6,13),world(16,13)];
  /** Player position last tick, for the guard's read on how fast you are moving. */
@@ -2032,9 +2047,12 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    .map(({g,id})=>({id,foot:{x:g.position.x,y:FLOOR_Y,z:g.position.z}}));
   // Player→enemy magnetism: expand hitscan radii from +15% at rest to +35% at sprint.
   // Walls / LOS stay honest (hitscan still rejects blocked impact points).
+  // Dual ray: honest scale-1 vs assisted — difference tags SCRAPE when magnetism alone lands it.
   const horiz=Math.sqrt(this.playerVx*this.playerVx+this.playerVz*this.playerVz);
   const hitboxScale=playerVelocityMultiplier(horiz);
-  const hit=hitscan(origin,dir,targets,range,(a,b)=>visible(a,b),hitboxScale);
+  const los=(a:Point,b:Point)=>visible(a,b);
+  const unassisted=hitscan(origin,dir,targets,range,los,1);
+  const hit=hitscan(origin,dir,targets,range,los,hitboxScale);
   if(p.mag===0&&p.reserve>0)startReload(p);
   if(!hit){
    this.combatCue='pistol-miss';
@@ -2042,12 +2060,15 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    if(wall)this.lastImpact={point:wall,at:this.elapsed,shot:p.shots};
    return 'fired';
   }
+  const tag=classifyPlayerHit(hit,unassisted)??'CLEAN';
   const g=this.guards[hit.id];
   const dmg=pistolDamage(hit.distance,hit.headshot,SURVIVAL.roles[g.role].headMult)*damageMult(this.gunMods);
   const killed=this.guardTakeDamage(g,dmg);
-  this.lastPistolHit={guard:hit.id,point:hit.point,headshot:hit.headshot,killed,shot:p.shots,at:this.elapsed,damage:dmg};
+  const multi=killed&&isMultiKill(this.elapsed,this.lastKillAt);
+  this.lastPistolHit={guard:hit.id,point:hit.point,headshot:hit.headshot,killed,shot:p.shots,at:this.elapsed,damage:dmg,tag,multi};
+  this.lastCombatOutcome={tag:multi?'MULTI':tag,at:this.elapsed,shot:p.shots};
   this.combatCue=killed?'pistol-kill':hit.headshot?'pistol-head':'pistol-hit';
-  if(killed)this.kills++;
+  if(killed){this.kills++;this.lastKillAt=this.elapsed;}
   if(killed&&(this.noticeUntil<=this.elapsed||!this.tipsSeen))this.say(hit.headshot?'Headshot. Guard down.':'Guard down.','ok');
   return 'fired';
  }
@@ -2249,7 +2270,11 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     const killed=this.guardTakeDamage(best,k.guardDamage*(back?k.backstabMultiplier:1));
     this.lastKnifeHit={guard:this.guards.indexOf(best),killed,backstab:back,at:this.elapsed};
     this.combatCue=killed?'stab-guard-kill':'stab-guard';
-    if(killed)this.kills++;
+    if(killed){
+     const multi=isMultiKill(this.elapsed,this.lastKillAt);
+     this.kills++;this.lastKillAt=this.elapsed;
+     if(multi)this.lastCombatOutcome={tag:'MULTI',at:this.elapsed};
+    }
     if(back&&killed)this.say('Silent kill.','ok');
     return 'hit';
    }
@@ -2432,6 +2457,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     if(g.ammo<=0){g.reload=SURVIVAL.guardReload;g.fireToken=false;g.burstLeft=0;g.burstIndex=0;}
     if(!hit){
      this.combatCue='guard-miss';
+     // Skin-of-teeth miss while moving → scored GRAZE (standing still is just a miss).
+     const graze=classifyEnemyMiss(playerSpeed);
+     if(graze)this.lastCombatOutcome={tag:graze,at:this.elapsed};
      if(this.noticeUntil<=this.elapsed)this.say('Shots! Get out of his line of fire.','blocked');
      return;
     }
@@ -2758,6 +2786,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.director=new Director();this.director.enabled=on;this.director.reset(this.elapsed);
   this.grenades=[];this.clouds=[];this.smokes=SURVIVAL.smoke.start;
   this.caches=makeCaches();this.damageFrom=[];this.supplyTaken=null;this.lastImpact=null;this.lastKnifeHit=null;
+  this.lastPistolHit=null;this.lastCombatOutcome=null;this.lastKillAt=-1;this.kills=0;
   this.pistol=makePistol(PISTOL.magazine,0);
   this.pistol.mag=0;
   this.jammed=false;

@@ -1,5 +1,5 @@
 /**
- * Style meter: scores how you fight, D → SSS.
+ * Style meter: scores how you fight, D → S (SS/SSS kept as stretch tiers).
  *
  * Every combat action is an event with a base value. What it actually scores depends on:
  *  - freshness: repeating the same action is worth less each time (×0.65 per repeat), and
@@ -8,8 +8,8 @@
  *    link, capped at ×2);
  *  - modifiers: the same kill is worth more mid-slide or in the air (stacked on top).
  * Points fill the current rank's bar; overflow promotes. With no events for `graceSeconds`, the
- * bar drains, faster at high ranks, and empties down through the tiers. Getting hurt costs a
- * slice of the bar.
+ * bar drains, faster at high ranks, and empties down through the tiers. Standing still drains
+ * even inside the grace window. Getting hurt costs a slice of the bar.
  *
  * Pure (no THREE, no DOM). Hook in with `onRankChange` for UI juice such as screen shake.
  */
@@ -19,10 +19,14 @@ export type StyleRank = typeof STYLE_RANKS[number];
 
 /** Combat actions the meter understands. */
 export type StyleAction =
- | 'hit'          // round lands on a body
+ | 'hit'          // legacy body hit (tests / melee path aliases)
+ | 'clean'        // solid unassisted body hit
+ | 'scrape'       // magnetism-only near-miss that stuck
+ | 'graze'        // enemy miss while you were moving
  | 'headshot'     // round lands on a head
  | 'kill'         // gun kill
  | 'headshotKill' // gun kill through the head
+ | 'multi'        // chained kill inside the multi window
  | 'meleeHit'     // knife connects
  | 'meleeKill'    // knife kill
  | 'monsterHit'   // wound the guardian
@@ -37,8 +41,8 @@ export type StyleEvent = { action: StyleAction; mods?: StyleModifier[] };
 export const STYLE_TUNING = {
  /** Base points per action. */
  points: {
-  hit: 40, headshot: 90, kill: 180, headshotKill: 280,
-  meleeHit: 70, meleeKill: 260, monsterHit: 120, monsterKill: 600,
+  hit: 40, clean: 55, scrape: 85, graze: 95, headshot: 90, kill: 180, headshotKill: 280,
+  multi: 140, meleeHit: 70, meleeKill: 260, monsterHit: 120, monsterKill: 600,
   parry: 220, closeCall: 110,
  } as Record<StyleAction, number>,
  /** Multipliers stacked onto an event per modifier. */
@@ -54,11 +58,15 @@ export const STYLE_TUNING = {
  chainWindow: 2.5,
  chainStep: .1,
  chainMax: 2,
- /** Seconds with no events before the bar drains. */
+ /** Seconds with no events before the idle bar drains. */
  graceSeconds: 2.5,
  /** Drain rate in points/s at D, growing per rank (so SSS is hard to hold). */
  drainBase: 60,
  drainPerRank: 35,
+ /** Horizontal speed (m/s) at or below which standing-still drain applies. */
+ stillSpeed: 0.4,
+ /** Extra drain (points/s) while standing still with an active rank. */
+ stillDrain: 90,
  /** Share of the current rank's bar lost when you take a hit. */
  hurtPenalty: .6,
  /** Feed lines kept, and how long each stays up (s). */
@@ -75,7 +83,8 @@ export type StyleRankChange = { from: StyleRank | null; to: StyleRank | null; ti
 export type StyleView = { rank: StyleRank | null; tier: number; fill: number; total: number; chain: number; feed: StyleFeedLine[] };
 
 const LABEL: Record<StyleAction, string> = {
- hit: 'HIT', headshot: 'HEADSHOT', kill: 'KILL', headshotKill: 'HEADSHOT KILL',
+ hit: 'HIT', clean: 'CLEAN', scrape: 'SCRAPE', graze: 'GRAZE',
+ headshot: 'HEAD', kill: 'KILL', headshotKill: 'HEAD', multi: 'MULTI',
  meleeHit: 'CUT', meleeKill: 'KNIFE KILL', monsterHit: 'GUARDIAN WOUND', monsterKill: 'GUARDIAN SLAIN',
  parry: 'PARRY', closeCall: 'CLOSE CALL',
 };
@@ -155,17 +164,25 @@ export class StyleMeter {
   this.setTier(tier);
  }
 
- /** Per-frame: freshness recovers; after the grace period the bar drains down through the tiers. */
- update(dt: number) {
+ /**
+  * Per-frame: freshness recovers; after the grace period the bar drains down through the tiers.
+  * `horizontalSpeed` (optional): standing still drains even inside the grace window — speed is currency.
+  */
+ update(dt: number, horizontalSpeed = Infinity) {
   const T = STYLE_TUNING;
   this.clock += dt;
   for (const [k, f] of this.freshness) {
    const n = Math.min(1, f + T.freshnessRegen * dt);
    if (n >= 1) this.freshness.delete(k); else this.freshness.set(k, n);
   }
-  if (this.tier < 0 || this.clock - this.lastEventAt < T.graceSeconds) return;
-  this.chain = 0;
-  let p = this.points - (T.drainBase + T.drainPerRank * this.tier) * dt;
+  if (this.tier < 0) return;
+  const still = !(horizontalSpeed > T.stillSpeed);
+  const idle = this.clock - this.lastEventAt >= T.graceSeconds;
+  if (!still && !idle) return;
+  if (idle) this.chain = 0;
+  const rate = (idle ? T.drainBase + T.drainPerRank * this.tier : 0) + (still ? T.stillDrain : 0);
+  if (rate <= 0) return;
+  let p = this.points - rate * dt;
   let tier = this.tier;
   while (p < 0 && tier >= 0) { tier--; p += tier >= 0 ? this.size(tier) : 0; }
   this.points = tier < 0 ? 0 : p;
