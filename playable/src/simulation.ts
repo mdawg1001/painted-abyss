@@ -182,12 +182,12 @@ export const GUARD_MOVING_FIRE_PENALTY=.09;
  * core-vs-shell read; live fire still goes through this chance function.
  */
 export const SKIN_OF_TEETH={
- /** Speeds at or below this (m/s) count as standing — no extra graze bias. */
- stillSpeed:.35,
+ /** Speeds at or below this (m/s) count as standing — no extra graze bias. Aligned with style/graze still. */
+ stillSpeed:.40,
  /** Horizontal speed (m/s) at which the full graze bias applies (brisk walk). */
  fullBiasSpeed:WALK_SPEED,
- /** Extra land-chance cut at full bias, on top of `guardHitChance`'s moving penalty. */
- maxGrazeBias:.10,
+ /** Extra land-chance cut at full bias, on top of `guardHitChance`'s moving penalty (Phase 4: modest). */
+ maxGrazeBias:.08,
  /** Floor so a moving player is never unhittable. */
  minChance:.05,
 } as const;
@@ -2065,9 +2065,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    .map((g,id)=>({g,id}))
    .filter(({g})=>liveGuard(g))
    .map(({g,id})=>({id,foot:{x:g.position.x,y:FLOOR_Y,z:g.position.z}}));
-  // Player→enemy magnetism: expand hitscan radii from +15% at rest to +35% at sprint.
+  // Player→enemy magnetism: expand hitscan radii from +14% at rest to +30% at sprint.
   // Walls / LOS stay honest (hitscan still rejects blocked impact points).
-  // Dual ray: honest scale-1 vs assisted — difference tags SCRAPE when magnetism alone lands it.
+  // Dual ray on the same target list: honest scale-1 vs assisted — magnetism-only → SCRAPE.
   const horiz=Math.sqrt(this.playerVx*this.playerVx+this.playerVz*this.playerVz);
   const hitboxScale=playerVelocityMultiplier(horiz);
   const los=(a:Point,b:Point)=>visible(a,b);

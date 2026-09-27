@@ -31,15 +31,15 @@ export type Vec3={x:number;y:number;z:number};
 export const HITBOX_ASSIST={
  /** Horizontal speed (m/s) that reaches the sprint ceiling (matches WALK_SPRINT). */
  sprintSpeed:3.4,
- /** Extra hit-volume at rest (+15%). Standing still still gets a soft sticky rim. */
- restBonus:.15,
- /** Extra hit-volume at full sprint (+35%). Moving is currency. */
- sprintBonus:.35,
+ /** Extra hit-volume at rest (+14%). Soft sticky rim — invisible assist, not aimbot. */
+ restBonus:.14,
+ /** Extra hit-volume at full sprint (+30%). Moving is currency; kept under the old 35% ceiling. */
+ sprintBonus:.30,
 } as const;
 
 /**
  * Map horizontal ground speed → enemy hitbox scale for player weapon hitscan.
- * Rest → 1.15; sprint (≥ sprintSpeed) → 1.35. Deterministic, allocation-free.
+ * Rest → 1.14; sprint (≥ sprintSpeed) → 1.30. Deterministic, allocation-free.
  */
 export function playerVelocityMultiplier(horizontalSpeed:number):number{
  if(!(horizontalSpeed>0))return 1+HITBOX_ASSIST.restBonus;

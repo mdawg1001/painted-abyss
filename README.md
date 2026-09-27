@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.22.5
+# Painted Abyss — First Dive · 0.22.6
 
 
 

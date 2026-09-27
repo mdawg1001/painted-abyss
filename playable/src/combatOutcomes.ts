@@ -21,8 +21,8 @@ export const COMBAT_OUTCOME = {
   grazeStillSpeed: 0.4,
   /** Seconds between kills that still count as MULTI. */
   multiWindow: 2.4,
-  /** Style / callout seconds a pip stays readable. */
-  calloutSeconds: 0.75,
+  /** Style / callout seconds a pip stays readable (Phase 4: shorter to cut spam linger). */
+  calloutSeconds: 0.6,
 } as const;
 
 /**

@@ -14,19 +14,20 @@ import {
  PLAYER_CORE,projectileCoreRadius,
 } from '../src/simulation';
 
-test('playerVelocityMultiplier: +15% at rest, +35% at sprint, linear in between',()=>{
+test('playerVelocityMultiplier: rest→sprint bonuses, linear in between',()=>{
  assert.equal(HITBOX_ASSIST.sprintSpeed,WALK_SPRINT);
  assert.ok(Math.abs(playerVelocityMultiplier(0)-(1+HITBOX_ASSIST.restBonus))<1e-12);
  assert.ok(Math.abs(playerVelocityMultiplier(WALK_SPRINT)-(1+HITBOX_ASSIST.sprintBonus))<1e-12);
- assert.ok(Math.abs(HitboxScale(WALK_SPRINT/2)-(1+.15+.1))<1e-12,'mid-sprint is halfway');
+ const mid=1+HITBOX_ASSIST.restBonus+(HITBOX_ASSIST.sprintBonus-HITBOX_ASSIST.restBonus)/2;
+ assert.ok(Math.abs(HitboxScale(WALK_SPRINT/2)-mid)<1e-12,'mid-sprint is halfway');
  assert.equal(playerVelocityMultiplier(-1),1+HITBOX_ASSIST.restBonus,'negative clamps to rest');
  assert.equal(playerVelocityMultiplier(99),1+HITBOX_ASSIST.sprintBonus,'over-sprint clamps');
 });
 
 test('dynamicTargetRadius scales head/body for hitscan only',()=>{
  const v=soldierHitVolumes({x:0,y:0,z:0});
- assert.ok(Math.abs(dynamicTargetRadius(v.head.radius,1.15)-v.head.radius*1.15)<1e-12);
- assert.ok(Math.abs(dynamicTargetRadius(v.body.radius,1.35)-v.body.radius*1.35)<1e-12);
+ assert.ok(Math.abs(dynamicTargetRadius(v.head.radius,1.14)-v.head.radius*1.14)<1e-12);
+ assert.ok(Math.abs(dynamicTargetRadius(v.body.radius,1.30)-v.body.radius*1.30)<1e-12);
  assert.equal(dynamicTargetRadius(.3,1),.3);
 });
 
@@ -36,15 +37,17 @@ test('hitscan magnetism: expanded radius catches a near-miss; walls still block'
  // Body radius .3 — aim just past the left shoulder so an honest ray misses.
  const foot={x:0,y:FLOOR,z:8};
  const targets=[{id:0,foot}];
- const missX=0.32; // > .3 honest body radius, < .3*1.15 assisted
+ const restScale=1+HITBOX_ASSIST.restBonus;
+ const missX=0.32; // > .3 honest body radius, < .3*restScale assisted
+ assert.ok(missX<0.3*restScale,'fixture inside rest magnetism rim');
  const dir={x:missX,y:0,z:8};
  assert.equal(hitscan(eye,dir,targets,45,()=>true,1),null,'honest volume misses');
  const sticky=hitscan(eye,dir,targets,45,()=>true,playerVelocityMultiplier(0));
- assert.ok(sticky,'rest magnetism (+15%) lands the scrape');
+ assert.ok(sticky,'rest magnetism lands the scrape');
  assert.equal(sticky!.id,0);
  assert.equal(sticky!.headshot,false);
  // LOS stays honest: a wall between eye and impact rejects the assisted hit.
- assert.equal(hitscan(eye,dir,targets,45,()=>false,1.35),null,'wall blocks assisted ray');
+ assert.equal(hitscan(eye,dir,targets,45,()=>false,1+HITBOX_ASSIST.sprintBonus),null,'wall blocks assisted ray');
 });
 
 test('skinOfTeethHitChance: standing stays hot; moving bleeds land chance',()=>{
