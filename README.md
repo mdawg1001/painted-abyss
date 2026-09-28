@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.22.16
+# Painted Abyss — First Dive · 0.22.17
+
+## Near-death Ego Savior Phase 3 — mercy per engagement (0.22.17)
+
+Lethal overflow still clamps to **1–3** with i-frames and critical theater, but mercy is no longer a free save every life: it recharges after a **player kill** or after **leaving combat for 8 s** (no chasing/firing guard, no fresh core damage). While spent and after the i-frame window you are glass. **Air-empty / flood drown never use Ego Savior** — those deaths stay honest. Still no INVULNERABLE / CLUTCH text.
 
 ## Near-death Ego Savior Phase 2 — critical theater (0.22.16)
 
