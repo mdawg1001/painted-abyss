@@ -1,7 +1,22 @@
-# Painted Abyss — First Dive · 0.22.11
+# Painted Abyss — First Dive · 0.22.12
 
 
 
+
+## Soviet bunker art pass (0.22.12)
+
+The prototype rock boxes are gone. The whole map is now a flooded Soviet civil defence shelter built from Quaternius's free Modular Sci-Fi MegaKit (CC0), repainted so nothing in it reads as science fiction. The simulation grid is untouched: the same 4 m cells drive collision, sight lines, AI and the flood, and the kit's 4 m grid lines up with them exactly.
+
+- **Walls**: riveted steel wainscot to 3 m, plaster plates above, a cable tray under the slab. Everything is painted by height in the shader: an oil paint dado to 1.55 m in each compartment's colour (green corridor, teal lab, bottle green hall, ochre service tunnel, oxide red back room), a thin dark stripe, then whitewash. Paint chips in patches and flakes down to plaster, whitewash peels near the damp ceiling, enamel chips to rust.
+- **Water has left its mark**: tide lines from earlier floods at about 1.2 m and 2.7 m with a damp film below, rust streaks running down from the tray and pipes, grime rising off the floor, glossy standing puddles, a little old blood low on the walls.
+- **Structure**: flat pilasters every 8 m on straight walls, hazard striped corner guards on every convex corner, ceiling beams every second row seam, deep lintels over each passage mouth, two colour coded service pipes on brackets that follow the walls round every corner without a break, whitewashed ceiling plates with water stains and ceiling vents.
+- **Hermetic doors**: the spawn hatch is now a proper sealed door (ГД-1) with a kit frame, a steel leaf, six lever clamps and a handwheel, and four more sealed doors dress the other compartments.
+- **Stencils**: sprayed Cyrillic signage painted into one canvas atlas at load, with stencil bridges, overspray and wear. Compartment names (ОТСЕК 1 to 7), the shelter plate (УБЕЖИЩЕ № 7), ВЫХОД arrows that point along the real route from the hall up the tunnel to the exit pool, ОСТОРОЖНО, НЕ КУРИТЬ, voltage warnings, red stars, a painted water depth gauge in every compartment (read the flood against it), and a structural grid mark on every pilaster.
+- **Props**: fuel drums in quiet corners, floor cable coils. The existing lamps, sconces, radiators, posters and pipes stay; posters are now pasted flat on the plaster and radiators sit closer to the wall, since there are no more boulders to clear.
+- **Physically honest**: a test samples every position the collision model lets the diver's eye reach, from a slide to the flood surface, and fails if any dressing contains it. Beams and lintels stay above the highest swimming eye.
+- **No new freezes**: all bunker surfaces share one shader program and add no lights. The kit streams in as a 650 KB binary plus six 1024 KTX2 trim maps (3 MB); until it lands the rooms are closed by plain painted planes using the same material, so the swap compiles nothing.
+
+Code: `playable/src/bunkerLayout.ts` (placement, pure and tested), `playable/src/sovietBunker.ts` (kit loading, the paint shader, baking), `playable/src/bunkerDecals.ts` (stencil atlas). Assets and the rebuild script: `playable/public/assets/soviet-bunker-kit/`, `playable/scripts/build_bunker_kit.py`.
 
 ## No freeze when switching items (0.22.11)
 
@@ -307,6 +322,7 @@ New mission rules live in `playable/src/simulation.ts`; cave rendering and input
 
 ## Third-party assets
 
+- **Modular Sci-Fi MegaKit** by [Quaternius](https://quaternius.com), CC0 1.0. Industrial pieces repainted as the Soviet bunker (`playable/public/assets/soviet-bunker-kit/`).
 - **Fish Knife** ([Poly Haven](https://polyhaven.com/a/fish_knife)) by Mateusz Sadek — CC0 1.0. Used as the diving-knife inventory icon and held FPS prop when the knife slot is selected (`playable/public/assets/knife/`). Other slots restore the dive torch as the held object.
 - **Dive chests** (CC0 1.0): [Wooden Military Crate](https://polyhaven.com/a/wooden_military_crate) (Prabhjinder Singh), [Plastic Crate 02](https://polyhaven.com/a/plastic_crate_02) (Fabi_G), [Vintage Suitcase](https://polyhaven.com/a/vintage_suitcase) (Maximilian Schuster). Floor props under `playable/public/assets/chests/`. The military crate and suitcase open with **E**, then **E** takes the chart scrap. The plastic crate has no lid — the scrap is already visible and **E** grabs it.
 - **Map scrap scroll** (CC BY 4.0): [Scroll (game ready asset)](https://sketchfab.com/3d-models/scroll-game-ready-asset-c1503d2292c74faebf83a5937646c1c7) (Aparicio Silva 3D). Authored mesh and PBR maps under `playable/public/assets/scroll/`. It sits in the open-top plastic crate the whole time, and inside a lidded crate after that crate is opened.

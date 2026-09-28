@@ -35,11 +35,13 @@ export type CaveRockMaps = {
   rock: PbrMaps; sand: PbrMaps; moss: PbrMaps;
   /** Settles after all previews have loaded (failed previews retain a neutral fallback). */
   previewsReady: Promise<void>;
+  /** The one KTX2 transcoder for the dive (other texture sets borrow it). */
+  loader: KTX2Loader;
   startDetail(): void;
   dispose(): void;
 };
 
-function pendingMap(kind: 'diff' | 'nor' | 'arm'): THREE.CompressedTexture {
+export function pendingMap(kind: 'diff' | 'nor' | 'arm'): THREE.CompressedTexture {
   const data = new Uint8Array(4 * 4 * 4);
   const pixel = kind === 'diff' ? [160,160,160,255] : kind === 'nor' ? [128,128,255,255] : [255,255,0,255];
   for(let i=0;i<data.length;i+=4)data.set(pixel,i);
@@ -63,7 +65,7 @@ function pendingMap(kind: 'diff' | 'nor' | 'arm'): THREE.CompressedTexture {
 }
 
 /** Copy a transcoded KTX2 onto the texture already bound in the rock shaders. */
-function adopt(dst: THREE.CompressedTexture, src: THREE.CompressedTexture, colorMap: boolean) {
+export function adopt(dst: THREE.CompressedTexture, src: THREE.CompressedTexture, colorMap: boolean) {
   // WebGL2 texture storage is immutable: release the old GPU allocation before resizing.
   // Keep this JS texture object so every existing shader uniform still references it.
   dst.dispose();
@@ -115,7 +117,7 @@ export function loadCaveRockMaps(renderer: THREE.WebGLRenderer): CaveRockMaps {
     abort.signal.addEventListener('abort',finish,{once:true});
   });
   return {
-    rock,sand,moss,previewsReady,
+    rock,sand,moss,previewsReady,loader,
     startDetail(){
       if(started||disposed)return;
       started=true;

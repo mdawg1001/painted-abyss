@@ -27,11 +27,11 @@ export const RADIATOR_TARGET_HEIGHT=1.35;
 /** Exact count of wall units (memorable corridor + lab faces only). */
 export const RADIATOR_COUNT=4;
 /**
- * Rear face stand-off from the wall plane into the room (m). Clears rock face
- * bumps without floating; depth after scale is ~0.43 m, so the front stays
+ * Rear face stand-off from the wall plane into the room (m): on wall brackets
+ * off the flat bunker plaster; depth after scale is ~0.43 m, so the front stays
  * well inside GUARD_WALL_CLEARANCE (1.3 m).
  */
-export const RADIATOR_WALL_CLEARANCE=.22;
+export const RADIATOR_WALL_CLEARANCE=.12;
 /** Keep radiators this far from the hatch stash (m). */
 export const RADIATOR_STASH_CLEAR=5;
 /** Keep radiators this far from the hatch spawn (m). */

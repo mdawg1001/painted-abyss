@@ -24,11 +24,10 @@ export const POSTER_GAP=.12;
 /** Aspect ≈ cropped preview sheets (width / height). */
 export const POSTER_ASPECT=.72;
 /**
- * Pull sheets into the room past the wall-face rock icosahedrons (centres sit
- * ~0.45 m into the wall box and bulge ~0.35 m toward the room). 0.55 clears
- * those bumps so the full propaganda art isn’t buried in the stone.
+ * Pasted on the flat plaster of the bunker wall (bunkerLayout.ts): just proud of the face so
+ * the sheet never z-fights the paint.
  */
-export const POSTER_STAND_OFF=.55;
+export const POSTER_STAND_OFF=.03;
 
 export type WallPosters={group:THREE.Group;ready:boolean};
 

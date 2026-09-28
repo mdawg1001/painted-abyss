@@ -54,7 +54,7 @@ test('wallPosterMount sits on a solid wall face away from sconces',()=>{
  assert.ok(POSTER_MOUNT_Y>2&&POSTER_MOUNT_Y<5);
  assert.ok(POSTER_TARGET_HEIGHT>1&&POSTER_TARGET_HEIGHT<2.5);
  // Wall-detail icosahedrons bulge ~0.35 m into the room — stand-off must clear them.
- assert.ok(POSTER_STAND_OFF>=.5,'stand-off clears cave rock blobs');
+ assert.ok(POSTER_STAND_OFF>0&&POSTER_STAND_OFF<=.06,'pasted flat on the plaster wall');
 });
 
 test('stub and createWallPosters expose two sheets',()=>{
