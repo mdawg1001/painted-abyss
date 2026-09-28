@@ -15,6 +15,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { PERF } from './perf';
 
 /** Cap device pixel ratio when the bloom stack is live (Retina + UnrealBloomPass hitch). */
+/** Highest render density; the resolution governor steps down from here (resolutionGovernor.ts). */
 export const POST_FX_DPR_CAP = PERF.dprCap;
 
 /** Soft bloom: high threshold, modest strength — neon / muzzle / pickups only. */
@@ -137,10 +138,20 @@ export function createImpactPass(): ImpactPass {
   return pass;
 }
 
-export function createBloomPass(width: number, height: number): UnrealBloomPass {
+/**
+ * `pixelRatio` is read whenever the composer resizes the pass: the composer hands passes render
+ * pixels, and bloom is a blur, so it stays sized from CSS pixels. A Retina 2× frame costs the
+ * same bloom as a 1× frame, and the glow keeps its size at every rung of the resolution governor.
+ */
+export function createBloomPass(width: number, height: number, pixelRatio: () => number = () => 1): UnrealBloomPass {
   const w = Math.max(1, Math.floor(width * BLOOM_RES_SCALE));
   const h = Math.max(1, Math.floor(height * BLOOM_RES_SCALE));
   const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
+  const setSize = bloom.setSize.bind(bloom);
+  bloom.setSize = (rw: number, rh: number) => {
+    const pr = Math.max(1e-3, pixelRatio());
+    setSize(Math.max(1, Math.round(rw / pr)), Math.max(1, Math.round(rh / pr)));
+  };
   return bloom;
 }
 

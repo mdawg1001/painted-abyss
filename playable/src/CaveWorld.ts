@@ -2,8 +2,9 @@ import { CombatFeedbackManager, COMBAT_FEEDBACK } from './combatFeedback';
 import { PropStreaming } from './propStreaming';
 import { PALETTE } from './artPalette';
 import { DRY_DENSITY, DRY_FIELD, FLUORESCENT, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type ClipGradePass, type FrameGrade } from './frameGrade';
-import { POST_FX_DPR_CAP, createBloomPass, createImpactFx, resizeBloomPass, type ImpactFx } from './postFx';
+import { createBloomPass, createImpactFx, resizeBloomPass, type ImpactFx } from './postFx';
 import { PERF } from './perf';
+import { ResolutionGovernor } from './resolutionGovernor';
 import * as THREE from 'three';
 import { applyGuardCombatPose, updateGuardMoveFrame } from './guardCombatPose';
 import { PISTOL } from './playerPistol';
@@ -415,6 +416,9 @@ export class CaveWorld extends OceanWorld {
  bunkerLightmaps?:ReturnType<typeof createBunkerLightmaps>;
  /** 1 once the baked lightmaps are on every bunker surface. */
  bunkerLmOn={value:0};
+ /** Render resolution and MSAA, stepped by frame time (resolutionGovernor.ts). */
+ resolution=new ResolutionGovernor(typeof window!=='undefined'?window.devicePixelRatio:1);
+ private lastFrameAt=0;
  /** Baked-lighting uniforms (shared by every bunker material), exposed for tuning. */
  bunkerLight=BUNKER_LIGHT;
  _lmTintA=new THREE.Color();_lmTintB=new THREE.Color();_lmTintC=new THREE.Color();
@@ -1973,15 +1977,18 @@ export class CaveWorld extends OceanWorld {
  buildComposer(){
   const w=this.host.clientWidth||1,h=this.host.clientHeight||1;
   // UnsignedByte RTs: HalfFloat doubles post bandwidth on Safari for an LDR stack.
+  const rung=this.resolution.rung;
+  // Scene target carries the MSAA: geometry edges are smoothed where they are drawn, and the
+  // post passes read the resolved image. The governor may take it away on slow machines.
   const rt=PERF.composerFloat?undefined:new THREE.WebGLRenderTarget(
-   Math.max(1,Math.floor(w*POST_FX_DPR_CAP)),
-   Math.max(1,Math.floor(h*POST_FX_DPR_CAP)),
-   {type:THREE.UnsignedByteType,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,format:THREE.RGBAFormat},
+   Math.max(1,Math.floor(w*rung.pixelRatio)),
+   Math.max(1,Math.floor(h*rung.pixelRatio)),
+   {type:THREE.UnsignedByteType,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,format:THREE.RGBAFormat,samples:rung.msaa},
   );
   this.composer=rt?new EffectComposer(this.renderer,rt):new EffectComposer(this.renderer);
   this.composer.addPass(new RenderPass(this.scene,this.camera));
   // Soft neon bloom at quarter-res + capped DPR.
-  this.bloom=createBloomPass(w,h);
+  this.bloom=createBloomPass(w,h,()=>this.resolution.rung.pixelRatio);
   this.composer.addPass(this.bloom);
   // Clip grade + damage/dash impact fused — one fewer full-screen blit.
   this.clipPass=createClipGradePass();
@@ -1990,10 +1997,19 @@ export class CaveWorld extends OceanWorld {
   this.composer.addPass(new OutputPass());
   this.setPixelRatio();
  }
+ /** Apply the governor's rung: pixel density, MSAA, and the point sprites that scale with it. */
  setPixelRatio(){
-  const dpr=Math.min(window.devicePixelRatio||1,POST_FX_DPR_CAP);
-  this.renderer.setPixelRatio(dpr);
-  this.composer?.setPixelRatio(dpr);
+  const {pixelRatio,msaa}=this.resolution.rung;
+  this.renderer.setPixelRatio(pixelRatio);
+  if(this.composer){
+   for(const t of [this.composer.renderTarget1,this.composer.renderTarget2])if(t.samples!==msaa){t.samples=msaa;t.dispose();}
+   this.composer.setPixelRatio(pixelRatio);
+   // The grade's pixel crunch and lens warp are laid out in CSS pixels, not render pixels.
+   this.clipPass?.setSize(this.host.clientWidth||1,this.host.clientHeight||1);
+  }
+  const pm=this.particles?.material as THREE.ShaderMaterial|undefined;
+  if(pm?.uniforms?.uPixelRatio)pm.uniforms.uPixelRatio.value=pixelRatio;
+  for(const layer of this.bloodLayers)layer.uniforms.uPixelRatio.value=pixelRatio;
  }
  resize(){
   if(!this.alive)return;
@@ -2728,6 +2744,16 @@ export class CaveWorld extends OceanWorld {
    });
   }
   this.frame=requestAnimationFrame(this.animate);
+  // Frame-time watchdog: step resolution / MSAA down under load, probe back up with headroom.
+  const frameAt=performance.now();
+  if(this.lastFrameAt){
+   const change=this.resolution.frame(frameAt-this.lastFrameAt,this.playing&&!document.hidden);
+   if(change){
+    this.setPixelRatio();
+    console.info(`Render ${change.rung.pixelRatio}× ${change.rung.msaa?`MSAA ${change.rung.msaa}×`:'no MSAA'} (${change.reason==='drop'?'frames over budget':change.reason==='probe'?'trying higher quality':'higher quality did not hold'})`);
+   }
+  }
+  this.lastFrameAt=frameAt;
   const realDt=Math.min(this.clock.getDelta(),.05);
   this.shakeClock+=realDt;
   const feedback=this.combatFeedback.tick(realDt,this.shakeClock);
