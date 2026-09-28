@@ -24,6 +24,9 @@ import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playG
 import { Gait, wadingDrag, runWeight, WALK_CAMERA_MOTION, type GaitEvent } from './gait';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
+import { BUNKER, buildBunkerLayout, type Keepout } from './bunkerLayout';
+import { SHEETS, bakeBunker, createBunkerMaterial, createBunkerTextures, loadBunkerKit, mergeBucket, type BunkerKit, type BunkerTextures, type Sheet } from './sovietBunker';
+import { createDecalMaterial, createStencilAtlas } from './bunkerDecals';
 import { KNIFE_CLICK_BUFFER, createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, knifeMeshReady, HELD_VIEW_POS, HELD_VIEW_ROT, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_TIME, KNIFE_EQUIP_TIME, stabOffset, equipOffset } from './knifeAsset';
 import { createSovietKeyHeld, createSovietKeyPickup } from './sovietKeyAsset';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -36,6 +39,10 @@ import {
  LIFEBUOY_POS, LIFEBUOY_YAW, type LifebuoyVisual,
 } from './lifebuoyAsset';
 import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLight } from './sconceAsset';
+import { radiatorMounts } from './radiatorAsset';
+import { wallPosterMount } from './posterAsset';
+import { copperWallSpan } from './copperPipeAsset';
+import { SURVIVAL_COVER } from './survivalConfig';
 import { createHangingLights, hangingLightMounts, stepHangingLights, upgradeHangingLights, type HangingLights } from './hangingLightAsset';
 import { createWallPosters, upgradeWallPosters, type WallPosters } from './posterAsset';
 import { createCopperPipe, upgradeCopperPipe, upgradeCopperPipeDetail, updateCopperPipe, type CopperPipe } from './copperPipeAsset';
@@ -396,6 +403,9 @@ export class CaveWorld extends OceanWorld {
  bloodLayers:BloodLayer[]=[];
  bloodLife=0;bloodPeakLife=14;
  rockMaps:CaveRockMaps;
+ bunkerTextures!:BunkerTextures;
+ /** Settles when the kit meshes have replaced the plain fallback walls. */
+ bunkerReady:Promise<void>=Promise.resolve();
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
   super(host,{onReady:()=>{},onPause:()=>{},onStatus:()=>{},onToggleUI:()=>{},onGlide:()=>{},onError:()=>{}},{
    deferStart:true,
@@ -993,51 +1003,76 @@ export class CaveWorld extends OceanWorld {
    else if(item.hidden){item.obj.visible=true;item.hidden=false;}
   }
  }
+ /** Wall props, loot and cover the bunker dressing must leave room for. */
+ bunkerKeepouts():Keepout[]{
+  const k:Keepout[]=[];
+  for(const m of wallSconceMounts())k.push({x:m.x,z:m.z,r:.9});
+  const poster=wallPosterMount();k.push({x:poster.x,z:poster.z,r:1.9});
+  for(const m of radiatorMounts())k.push({x:m.x,z:m.z,r:1.3});
+  const span=copperWallSpan();
+  for(let x=Math.min(span.x0,span.x1);x<=Math.max(span.x0,span.x1)+.01;x+=1)k.push({x,z:span.z,r:1});
+  k.push({x:PIPE_MOUNT.x,z:PIPE_MOUNT.z,r:2.2});
+  for(const m of breathTankMounts())k.push({x:m.x,z:m.z,r:1.2});
+  for(const c of this.mission.chests)k.push({x:c.position.x,z:c.position.z,r:1.3});
+  for(const c of SURVIVAL_COVER)k.push({x:c.x,z:c.z,r:Math.hypot(c.hx,c.hz)+.4});
+  k.push({x:STASH_POSITION.x,z:STASH_POSITION.z,r:1.6},{x:LIFEBUOY_POS.x,z:LIFEBUOY_POS.z,r:1.2});
+  const spawn=breathHatchSpawn();k.push({x:spawn.x,z:spawn.z+2.2,r:2.6});
+  return k;
+ }
  buildCave(){
-  const {rock:rockMaps,sand:sandMaps,moss:mossMaps}=this.rockMaps;
-  // Same meshes as one merged cave, split on a 2-cell grid so each draw only shades point lights that reach it.
-  type Bucket={floors:THREE.BufferGeometry[];roofs:THREE.BufferGeometry[];walls:THREE.BufferGeometry[];details:THREE.BufferGeometry[];breath:boolean};
+  const {rock:rockMaps,moss:mossMaps}=this.rockMaps;
+  // Soviet bunker art pass on the simulation grid (see bunkerLayout.ts): same cells, same collision.
+  const layout=buildBunkerLayout({keepouts:this.bunkerKeepouts()});
+  this.bunkerTextures=createBunkerTextures(this.renderer,this.rockMaps.loader);
+  const atlas=createStencilAtlas(layout.labels);
+  // Corridor cells stay in their own meshes. Sharing a 16 m chunk with the
+  // entrance cave forced every occluded cave triangle into the hatch view.
+  const bucketOf=(c:number,r:number)=>`${breathZone(c,r)!==''?'b':'c'}:${c>>2},${r>>2}`;
+  type Bucket={mats:Record<Sheet|'decal',THREE.Material>;box:THREE.Box3;breath:boolean};
   const buckets=new Map<string,Bucket>();
-  const take=(c:number,r:number)=>{
-   // Corridor cells stay in their own meshes. Sharing a 16 m chunk with the
-   // entrance cave forced every occluded cave triangle into the hatch view.
-   const breath=breathZone(c,r)!=='';
-   const key=`${breath?'b':'c'}:${c>>2},${r>>2}`;
-   let b=buckets.get(key);
-   if(!b){b={floors:[],roofs:[],walls:[],details:[],breath};buckets.set(key,b);}
-   return b;
-  };
-  for(const key of cells){const [c,r]=key.split(',').map(Number),p=world(c,r);
-   const b=take(c,r);
-   // The floor surface is the simulation's floor (FLOOR_Y): everything that stands, lies or walks uses that height.
-   const fg=new THREE.PlaneGeometry(CELL,CELL,2,2);fg.rotateX(-Math.PI/2);fg.translate(p.x,FLOOR_Y,p.z);b.floors.push(fg);
-   if(!(c===19&&r===3)){const cg=fg.clone();cg.rotateZ(Math.PI);cg.translate(p.x*2,8+FLOOR_Y,0);b.roofs.push(cg);}
-   for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]])if(!cells.has(`${c+dc},${r+dr}`)){
-    const g=new THREE.BoxGeometry(dc?1:CELL+.05,8.5,dr?1:CELL+.05);g.translate(p.x+dc*2.5,4,p.z-dr*2.5);b.walls.push(g);
-    for(let n=0;n<3;n++){const stone=new THREE.IcosahedronGeometry(1,1);stone.scale(dc?.7:1.7,1.3+(n%2)*.5,dr?.7:1.7);stone.translate(p.x+dc*2.45,1.3+n*2.5,p.z-dr*2.45);b.details.push(stone);}
+  const sheets=this.bunkerTextures.sheets;
+  for(const key of cells){
+   const [c,r]=key.split(',').map(Number),p=world(c,r),k=bucketOf(c,r);
+   let b=buckets.get(k);
+   if(!b){
+    const mats={} as Record<Sheet|'decal',THREE.Material>;
+    for(const s of SHEETS)mats[s]=createBunkerMaterial(sheets[s],FLOOR_Y);
+    mats.decal=createDecalMaterial(atlas);
+    b={mats,box:new THREE.Box3(),breath:k[0]==='b'};buckets.set(k,b);
    }
+   b.box.expandByPoint(new THREE.Vector3(p.x-CELL/2,FLOOR_Y-.3,p.z-CELL/2));
+   b.box.expandByPoint(new THREE.Vector3(p.x+CELL/2,FLOOR_Y+BUNKER.height+.3,p.z+CELL/2));
   }
-  for(const b of buckets.values()){
-   const floor=this.material(PALETTE.floor,'sand',.88,0,sandMaps,mossMaps);
-   const rock=this.material(PALETTE.stone,'rock',.86,1.6,rockMaps,mossMaps);
-   const ceiling=this.material(PALETTE.ceiling,'rock',.9,.6,rockMaps,mossMaps);
-   const box=new THREE.Box3();
-   const add=(geos:THREE.BufferGeometry[],mat:THREE.Material)=>{
-    if(!geos.length)return;
-    const merged=mergeGeometries(geos);if(!merged)return;
-    merged.computeBoundingBox();merged.computeBoundingSphere();
-    if(merged.boundingBox)box.union(merged.boundingBox);
-    const mesh=new THREE.Mesh(merged,mat);mesh.castShadow=true;mesh.receiveShadow=true;
-    mesh.matrixAutoUpdate=false;mesh.updateMatrix();
-    this.scene.add(mesh);
-    const pb=merged.boundingBox?.clone();
-    if(pb)this.portalItems.push({obj:mesh,box:pb,side:b.breath?'breath':'cave',hidden:false});
-    geos.forEach(g=>g.dispose());
-   };
-   add(b.floors,floor);add(b.roofs,ceiling);add(b.walls,rock);add(b.details,rock);
-   box.expandByScalar(.05);
-   this.trackPointCull(floor,box);this.trackPointCull(rock,box);this.trackPointCull(ceiling,box);
-  }
+  for(const b of buckets.values()){b.box.expandByScalar(.6);for(const m of Object.values(b.mats))this.trackPointCull(m,b.box);}
+  const addMeshes=(baked:ReturnType<typeof bakeBunker>,keep?:THREE.Mesh[])=>{
+   for(const [k,bb] of baked){
+    const b=buckets.get(k);if(!b)continue;
+    for(const [sheet,geos] of bb){
+     const merged=mergeBucket(geos);if(!merged)continue;
+     const mesh=new THREE.Mesh(merged,b.mats[sheet]);
+     mesh.castShadow=sheet!=='decal';mesh.receiveShadow=true;
+     mesh.matrixAutoUpdate=false;mesh.updateMatrix();
+     mesh.name=`bunker:${k}:${sheet}`;
+     this.scene.add(mesh);
+     this.portalItems.push({obj:mesh,box:merged.boundingBox!.clone(),side:b.breath?'breath':'cave',hidden:false});
+     keep?.push(mesh);
+    }
+   }
+  };
+  const bake=(kit:BunkerKit|null,kitPieces:boolean)=>bakeBunker(layout.placements,{kit,bucketOf,decalRect:atlas.rect,filter:p=>(p.kind==='kit')===kitPieces});
+  addMeshes(bake(null,false));
+  // Plain painted planes close the rooms until the kit binary lands (a few hundred ms).
+  const fallback:THREE.Mesh[]=[];
+  addMeshes(bake(null,true),fallback);
+  this.bunkerReady=loadBunkerKit().then(kit=>{
+   if(!this.alive)return;
+   for(const mesh of fallback){
+    this.scene.remove(mesh);mesh.geometry.dispose();
+    const i=this.portalItems.findIndex(item=>item.obj===mesh);if(i>=0)this.portalItems.splice(i,1);
+   }
+   addMeshes(bake(kit,true));
+   this.shaderGuardDirty=true;
+  }).catch(err=>console.warn('Bunker kit unavailable; keeping plain walls',err));
   const bone=this.material(0xc8c0a8,'rock',.82,1.5,rockMaps,mossMaps);
   const boneBox=new THREE.Box3();
   for(let i=0;i<6;i++)for(const s of [-1,1]){
@@ -1089,24 +1124,8 @@ export class CaveWorld extends OceanWorld {
   this.breathVolume.renderOrder=1;
   this.scene.add(this.breathVolume,this.breathWater);
 
-  const steel=new THREE.MeshStandardMaterial({color:PALETTE.steel,metalness:.72,roughness:.42});
+  // The hatch is a hermetic door in the bunker dressing (bunkerLayout.ts).
   const spawn=breathHatchSpawn();
-  const hatchBox=new THREE.Box3(
-   new THREE.Vector3(spawn.x-2.2,0,spawn.z+1.6),
-   new THREE.Vector3(spawn.x+2.2,3.4,spawn.z+2.8),
-  );
-  this.trackPointCull(steel,hatchBox);
-  const ring=new THREE.MeshBasicMaterial({color:0xf0d48a});
-  const hatch=new THREE.Group();
-  const door=new THREE.Mesh(new THREE.BoxGeometry(3.6,2.6,.22),steel);
-  door.position.y=1.65;
-  const wheel=new THREE.Mesh(new THREE.TorusGeometry(.42,.055,8,18),ring);
-  wheel.position.set(0,1.7,.16);
-  const rim=new THREE.Mesh(new THREE.TorusGeometry(.95,.04,8,24),ring);
-  rim.position.set(0,1.65,.13);
-  hatch.add(door,wheel,rim);
-  hatch.position.set(spawn.x,FLOOR_Y,spawn.z+2.2);
-  this.scene.add(hatch);
 
 
   const tank=new THREE.Group();
@@ -3058,5 +3077,5 @@ export class CaveWorld extends OceanWorld {
   this.guardNewShaders();
   this.composer.render();
  }
- dispose(){window.clearTimeout(this.akPrefetchTimer);if(this.copperPipe)this.copperPipe.disposed=true;this.rockMaps.dispose();this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
+ dispose(){window.clearTimeout(this.akPrefetchTimer);if(this.copperPipe)this.copperPipe.disposed=true;this.rockMaps.dispose();this.bunkerTextures?.dispose();this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
 }
