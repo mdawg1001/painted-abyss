@@ -258,7 +258,7 @@ export class CaveWorld extends OceanWorld {
  /** Every material compiled once up front (prewarmShaders). */
  shadersWarm=false;
  /** Set when something may have brought an uncompiled material into view (see guardNewShaders). */
- shaderGuardDirty=false;_guardSweep=-1;warmKeep:THREE.Material[]=[];_glowRank:{g:THREE.Group;score:number}[]=[];
+ shaderGuardDirty=false;_guardSweep=-1;_guardSelected=-1;warmKeep:THREE.Material[]=[];_glowRank:{g:THREE.Group;score:number}[]=[];
  /** Muzzle on the carbine's barrel bone, measured once the glTF mounts. */
  _muzzleAt=new THREE.Vector3();
  akMuzzle:{bone:THREE.Object3D;local:THREE.Vector3}|null=null;
@@ -487,7 +487,11 @@ export class CaveWorld extends OceanWorld {
   // Muzzle sits just past the barrel (viewmodel faces −Z).
   this.playerFlash.position.set(0,.05,-.34);this.playerFlashGlow.position.set(0,.05,-.34);
   this.playerFlashStar.position.set(0,.05,-.34);this.playerFlashSparks.position.set(0,.05,-.34);
-  this.gunVisual.add(this.playerFlash,this.playerFlashGlow,this.playerFlashStar,this.playerFlashSparks);
+  this.gunVisual.add(this.playerFlashGlow,this.playerFlashStar,this.playerFlashSparks);
+  // The muzzle light hangs off the camera, not the gun: hiding the gun on an item switch would
+  // take the light out of the scene, change the light count and recompile every lit shader.
+  this.camera.add(this.playerFlash);
+  this.playerFlash.position.set(0,-.03,-.4);
   this.keyVisual=createSovietKeyHeld();
   this.camera.add(this.keyVisual);
   this.keyVisual.visible=false;
@@ -2369,8 +2373,10 @@ export class CaveWorld extends OceanWorld {
   const mz=this.akMuzzle;if(!mz)return;
   gun.updateMatrixWorld(true);
   const at=this._muzzleAt.copy(mz.local);
-  mz.bone.localToWorld(at);gun.worldToLocal(at);
-  this.playerFlash.position.copy(at);this.playerFlashGlow.position.copy(at);
+  mz.bone.localToWorld(at);
+  this.playerFlash.position.copy(at);this.camera.worldToLocal(this.playerFlash.position);
+  gun.worldToLocal(at);
+  this.playerFlashGlow.position.copy(at);
   this.playerFlashStar.position.copy(at);this.playerFlashSparks.position.copy(at);
  }
  /**
@@ -3045,6 +3051,8 @@ export class CaveWorld extends OceanWorld {
   if(this.time-this.lastSent>.05){this.lastSent=this.time;this.publish();}
   this.updatePointCull();
   this.applyPortalOcclusion();
+  // Switching items shows a viewmodel that may never have been drawn: check it before this frame.
+  if(this.mission.selected!==this._guardSelected){this._guardSelected=this.mission.selected;this.shaderGuardDirty=true;}
   // Also sweep once a second, for anything that arrives outside prop streaming (held items).
   if(Math.floor(this.time)!==this._guardSweep){this._guardSweep=Math.floor(this.time);this.shaderGuardDirty=true;}
   this.guardNewShaders();
