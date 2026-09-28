@@ -35,19 +35,23 @@ test('a maintained rifle never jams or scatters; worn rifles do both, worse the 
  assert.ok(Math.abs(sum/2000-.02*Math.sqrt(Math.PI/2))<.003,'scatter angle matches its sigma (Rayleigh mean)');
 });
 
-test('killing a guard drops his worn rifle with a partial magazine; officer drops are called out',()=>{
- const a=setup('assault');kill(a.m,a.g);
+test('a paying kill drops a worn rifle with a partial magazine; officer prize rolls are called out',()=>{
+ // Field bucket for assault (unit ~0.75); prize bucket for officer (unit ~0.90).
+ let an=0;const a=setup('assault');a.m.lootRand=()=>{an+=1;return an===1?.75:.5;};
+ kill(a.m,a.g);
  const gun=a.m.pickups.find(p=>p.item==='gun')!;
  assert.ok(gun.cond!==undefined&&gun.cond<RIFLE.keepCond);
  assert.equal(a.m.prizeDrop,null);
- const o=setup('officer');kill(o.m,o.g);
+ let on=0;const o=setup('officer');o.m.lootRand=()=>{on+=1;return on===1?.90:.5;};
+ kill(o.m,o.g);
  const prize=o.m.pickups.find(p=>p.item==='gun')!;
  assert.ok(rifleIsPrize(prize.cond!));
  assert.equal(o.m.prizeDrop?.id,prize.id);
 });
 
 test('empty-handed, you take his rifle and inherit its wear; a stoppage blocks fire until R',()=>{
- const {m,g}=setup();kill(m,g);
+ let n=0;const {m,g}=setup();m.lootRand=()=>{n+=1;return n===1?.55:.5;}; // scrap bucket
+ kill(m,g);
  m.inventory=[null,null,null,null,null];m.selected=0;
  const gun=m.pickups.find(p=>p.item==='gun')!;
  m.pickups=m.pickups.filter(p=>p===gun);gun.position={...m.position,y:FLOOR_Y};
