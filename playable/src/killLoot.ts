@@ -1,8 +1,8 @@
 /**
- * Stage-one kill loot: variable-ratio category + magnitude on the kill operant.
- *
- * Every downed guard rolls an opaque bucket (dry → jackpot). Paying buckets vary
- * how good the rifle is and how many grams fall with it. Dry kills pay nothing.
+ * Kill loot: variable-ratio category + magnitude on the kill operant, plus stage-two
+ * theater (near-miss / LDW cues). Every downed guard rolls an opaque bucket
+ * (dry → jackpot). Paying buckets vary how good the rifle is and how many grams
+ * fall with it. Dry kills pay nothing.
  *
  * Outside the schedule (always):
  *  - the Soviet key on the main officer
@@ -12,6 +12,19 @@ import type { GuardRole } from './survivalConfig';
 import { RIFLE, rollDropCondition } from './rifleCondition';
 
 export type KillLootBucket = 'dry' | 'ammo' | 'scrap' | 'field' | 'prize' | 'jackpot';
+
+/**
+ * Classical cue kind for audio / notice / glow. `near_miss` is a scrap payout that
+ * reads almost prize-grade (LDW theater) — still below `RIFLE.keepCond`.
+ */
+export type KillLootCue =
+  | 'dry'
+  | 'ammo'
+  | 'scrap'
+  | 'near_miss'
+  | 'field'
+  | 'prize'
+  | 'jackpot';
 
 /** Bucket order used when walking the weight table (stable, low → high payoff). */
 export const KILL_LOOT_BUCKETS: readonly KillLootBucket[] = [
@@ -50,6 +63,13 @@ export const KILL_LOOT = {
   jackpotGold: [600, 1400] as [number, number],
   /** Scrap condition never reaches a prize keep. */
   scrapCondCap: 0.48,
+  /** Share of scrap kills that stage a near-miss frame (almost keepCond). */
+  nearMissChance: 0.35,
+  /**
+   * Near-miss condition: warm glow, reads "almost a keeper", always below keepCond.
+   * Small scrap gold still drops with it (LDW — win theater, scrap purse).
+   */
+  nearMissCond: [RIFLE.keepCond - 0.08, RIFLE.keepCond - 0.01] as [number, number],
   /** Rare non-officer prize band: at/above keepCond, always below kit. */
   luckyPrize: [RIFLE.keepCond, RIFLE.kitCond - 0.02] as [number, number],
 } as const;
@@ -64,6 +84,8 @@ export type KillLootRoll = {
   rounds: number;
   /** Pocket coins when `dropGold` (stolen corpse gold is added by the caller). */
   goldGrams: number;
+  /** Scrap staged as almost-prize (never a real keep). */
+  nearMiss: boolean;
 };
 
 const weightTotal = () =>
@@ -116,6 +138,12 @@ function rollRounds(magazine: number, share: readonly [number, number], rand: ()
   return Math.max(1, Math.round(magazine * lerp(share, rand())));
 }
 
+/** Map a schedule roll to the classical cue the renderer / audio should play. */
+export function killLootCueFor(roll: KillLootRoll): KillLootCue {
+  if (roll.nearMiss) return 'near_miss';
+  return roll.bucket;
+}
+
 /**
  * Roll kill loot for one downed guard. Stolen corpse returns and the Soviet key
  * are applied by the caller — they are not part of this schedule.
@@ -133,6 +161,7 @@ export function rollKillLoot(
     cond: 0,
     rounds: 0,
     goldGrams: 0,
+    nearMiss: false,
   };
 
   switch (bucket) {
@@ -146,16 +175,24 @@ export function rollKillLoot(
         cond: rollAmmoCond(role, rand),
         rounds: rollRounds(magazine, KILL_LOOT.ammoRoundsShare, rand),
         goldGrams: 0,
+        nearMiss: false,
       };
-    case 'scrap':
+    case 'scrap': {
+      // Near-miss theater: scrap purse + a frame that almost clears keepCond.
+      const nearMiss = rand() < KILL_LOOT.nearMissChance;
+      const cond = nearMiss
+        ? lerp(KILL_LOOT.nearMissCond, rand())
+        : rollScrapCond(role, rand);
       return {
         bucket,
         dropGun: true,
         dropGold: true,
-        cond: rollScrapCond(role, rand),
+        cond,
         rounds: rollRounds(magazine, RIFLE.dropMagShare, rand),
         goldGrams: Math.round(lerp(KILL_LOOT.scrapGold, rand())),
+        nearMiss,
       };
+    }
     case 'field':
       return {
         bucket,
@@ -164,6 +201,7 @@ export function rollKillLoot(
         cond: rollFieldCond(role, rand),
         rounds: rollRounds(magazine, RIFLE.dropMagShare, rand),
         goldGrams: Math.round(lerp(KILL_LOOT.fieldGold, rand())),
+        nearMiss: false,
       };
     case 'prize':
       return {
@@ -173,6 +211,7 @@ export function rollKillLoot(
         cond: rollPrizeCond(role, rand),
         rounds: rollRounds(magazine, RIFLE.dropMagShare, rand),
         goldGrams: Math.round(lerp(KILL_LOOT.prizeGold, rand())),
+        nearMiss: false,
       };
     case 'jackpot':
       return {
@@ -182,6 +221,7 @@ export function rollKillLoot(
         cond: rollJackpotCond(role, rand),
         rounds: rollRounds(magazine, RIFLE.dropMagShare, rand),
         goldGrams: Math.round(lerp(KILL_LOOT.jackpotGold, rand())),
+        nearMiss: false,
       };
   }
 }

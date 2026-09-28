@@ -5,7 +5,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {Mission,isolateGuards,FLOOR_Y,WALK_EYE_Y,breathFootprint,isMainGuard} from '../src/simulation';
 import {
- KILL_LOOT,KILL_LOOT_BUCKETS,selectKillLootBucket,rollKillLoot,type KillLootBucket,
+ KILL_LOOT,KILL_LOOT_BUCKETS,selectKillLootBucket,rollKillLoot,killLootCueFor,
+ type KillLootBucket,
 } from '../src/killLoot';
 import {RIFLE,lootStream,rifleIsPrize} from '../src/rifleCondition';
 import {PISTOL} from '../src/playerPistol';
@@ -81,6 +82,15 @@ test('a dry kill leaves no gun and no coins; officer key still drops',()=>{
  assert.equal(m.pickups.some(p=>p.item==='gun'),false,'dry: no rifle');
  assert.equal(m.pickups.some(p=>p.item==='gold'),false,'dry: no coins');
  assert.ok(m.pickups.some(p=>p.item==='sovietKey'),'Soviet key is outside the schedule');
+ assert.equal(m.killLootEvent?.kind,'dry','dry gets its own classical cue');
+});
+
+test('dry assault kill pulses blocked — no win juice on empty pockets',()=>{
+ const {m,g}=setup('assault',scriptedLoot(0.0));
+ kill(m,g);
+ assert.equal(m.killLootEvent?.kind,'dry');
+ assert.equal(m.feedbackKind,'blocked');
+ assert.equal(m.pickups.some(p=>p.item==='gun'||p.item==='gold'),false);
 });
 
 test('ammo kill drops a strip-frame with rounds and no gold',()=>{
@@ -124,4 +134,55 @@ test('stolen corpse rifle and gold always return even on a dry roll',()=>{
  assert.equal(back.cond,.85);
  assert.deepEqual(back.mods,{barrel:2,action:1,mag:0});
  assert.equal(m.pickups.find(p=>p.item==='gold')?.amount,3000);
+ assert.equal(m.killLootEvent,null,'stolen recovery skips schedule theater');
+});
+
+test('near-miss scrap: almost-prize cond, scrap gold, near_miss cue (never a keep)',()=>{
+ // Scrap bucket (0.50), then force near-miss (0.10 < 0.35), then magnitude fills.
+ let n=0;
+ const rand=()=>{
+  n+=1;
+  if(n===1)return 0.50; // scrap
+  if(n===2)return 0.10; // nearMissChance hit
+  return 0.5;
+ };
+ const roll=rollKillLoot('assault',PISTOL.magazine,rand);
+ assert.equal(roll.bucket,'scrap');
+ assert.equal(roll.nearMiss,true);
+ assert.equal(killLootCueFor(roll),'near_miss');
+ assert.ok(roll.cond>=KILL_LOOT.nearMissCond[0]&&roll.cond<=KILL_LOOT.nearMissCond[1]);
+ assert.ok(roll.cond<RIFLE.keepCond,'near-miss is never a prize keep');
+ assert.ok(roll.goldGrams>=KILL_LOOT.scrapGold[0]&&roll.goldGrams<=KILL_LOOT.scrapGold[1],'LDW: scrap purse');
+
+ n=0;
+ const {m,g}=setup('assault',()=>{
+  n+=1;
+  if(n===1)return 0.50;
+  if(n===2)return 0.10;
+  return 0.5;
+ });
+ kill(m,g);
+ const gun=m.pickups.find(p=>p.item==='gun')!;
+ assert.equal(gun.nearMiss,true);
+ assert.ok(gun.cond!<RIFLE.keepCond);
+ assert.equal(m.killLootEvent?.kind,'near_miss');
+ assert.match(m.notice,/almost a keeper/i);
+});
+
+test('paying buckets emit matching classical cues; dry ≠ prize',()=>{
+ const ammo=setup('assault',scriptedLoot(0.25));
+ kill(ammo.m,ammo.g);
+ assert.equal(ammo.m.killLootEvent?.kind,'ammo');
+
+ const field=setup('assault',scriptedLoot(0.75));
+ kill(field.m,field.g);
+ assert.equal(field.m.killLootEvent?.kind,'field');
+
+ const prize=setup('officer',scriptedLoot(0.90));
+ kill(prize.m,prize.g);
+ assert.equal(prize.m.killLootEvent?.kind,'prize');
+
+ const jack=setup('assault',scriptedLoot(0.99));
+ kill(jack.m,jack.g);
+ assert.equal(jack.m.killLootEvent?.kind,'jackpot');
 });

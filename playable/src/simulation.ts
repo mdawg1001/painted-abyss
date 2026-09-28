@@ -1,7 +1,8 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
 import { GOLD, UPGRADE, fmtGold, goldStaminaFactor, goldWalkFactor, noMods, modLevel, modTag, modValue, magBonus, damageMult, spreadMult, jamMult, cycleMult, upgradeCost, readBankedGold, writeBankedGold, type RifleMods, type ModTrack } from './gold';
 import { RIFLE, lootStream, jamChance, spreadSigma, scatter, rollDropRounds, rifleIsPrize, rifleName } from './rifleCondition';
-import { rollKillLoot } from './killLoot';
+import { rollKillLoot, killLootCueFor, type KillLootCue } from './killLoot';
+export type { KillLootCue } from './killLoot';
 import { ITEM_BODY, stepBody, submergedFraction, type BodyState } from './propPhysics';
 import { steerToward, faceStanding, yawToward, wrapAngle, turnToward, forwardOf, GUARD_STEER_WALK, GUARD_STEER_RUN } from './guardSteering';
 import { SURVIVAL, SURVIVAL_COVER, type GuardRole } from './survivalConfig';
@@ -55,6 +56,8 @@ export type Pickup={id:number;item:Item;position:Point;
  mods?:RifleMods;
  /** Grams, for a gold pickup. */
  amount?:number;
+ /** Kill-loot near-miss frame: warm glow, still below prize keep. */
+ nearMiss?:boolean;
  /** Just dropped by a swap: ignored by E until you step away, so a double tap cannot swap it straight back. */
  settling?:boolean;
  /** Falling / floating / resting state (propPhysics). Absent until the item first moves. */
@@ -1491,6 +1494,11 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  lootRand:()=>number=lootStream(Math.floor(Math.random()*2**31));
  /** Latest prize rifle to hit the floor (officer's grade): renderer / HUD call it out. */
  prizeDrop:{id:number;cond:number;at:number}|null=null;
+ /**
+  * Stage-two kill-loot theater: classical cue per kill (dry ≠ win juice).
+  * CaveWorld consumes `seq` changes for audio; notices are set alongside.
+  */
+ killLootEvent:{seq:number;kind:KillLootCue;at:number;cond?:number;goldGrams?:number}|null=null;
  /** Pacing director for the firefight (reinforcements, lulls, final push). */
  director=new Director();
  /** Smoke grenades you carry, grenades in the air and clouds on the floor. */
@@ -2376,11 +2384,14 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     const rounds=(stolen?rollDropRounds(PISTOL.magazine,this.lootRand):loot.rounds)+streakLootRoundsBonus(this.streak.tier);
     const drop:Pickup={id,item:'gun',cond,rounds,position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}};
     if(stolen?.mods)drop.mods=stolen.mods;
+    if(!stolen&&loot.nearMiss)drop.nearMiss=true;
     this.pickups.push(drop);
     if(stolen){this.prizeDrop={id,cond,at:this.elapsed};this.say(`He had your ${rifleName(cond)}${modTag(stolen.mods)}. Take it back.`,'ok');}
     else if(rifleIsPrize(cond)){
      this.prizeDrop={id,cond,at:this.elapsed};
      this.say(`${rifleName(cond)} on the floor. Fight on with it, or bank it in the stash.`,'ok');
+    }else if(loot.nearMiss&&this.noticeUntil<=this.elapsed){
+     this.say('Close — almost a keeper.','blocked');
     }
     g.dropId=id;
    }
@@ -2390,6 +2401,21 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    if(grams>0){
     const side={x:Math.sin(g.heading)*.35,z:Math.cos(g.heading)*.35};
     this.pickups.push({id:this.nextId++,item:'gold',amount:grams,position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}});
+   }
+   // Stage-two classical cue: dry must not share win juice. Stolen recovery skips schedule theater.
+   if(!stolen){
+    const kind=killLootCueFor(loot);
+    this.killLootEvent={
+     seq:(this.killLootEvent?.seq??0)+1,
+     kind,
+     at:this.elapsed,
+     cond:loot.dropGun?loot.cond:undefined,
+     goldGrams:loot.dropGold?loot.goldGrams:undefined,
+    };
+    if(kind==='dry')this.pulse('blocked');
+    else if(kind==='jackpot'&&this.noticeUntil<=this.elapsed){
+     this.say(`Fat purse — ${fmtGold(loot.goldGrams)} on the floor.`,'ok');
+    }
    }
    // Main officer drops the only Soviet key that unlocks the ammonite relic.
    if(isMainGuard(g)){

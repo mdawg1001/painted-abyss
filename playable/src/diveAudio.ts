@@ -741,6 +741,79 @@ export function playStashWithdraw(ctx: AudioContext, out: AudioNode) {
  * take = one clink per bar, bank = a cascading pour that rises, upgrade = a machined
  * clack then a two-note lift, lost/ditch = a dull falling clunk.
  */
+/**
+ * Stage-two kill-loot theater. Dry is a dull empty thud (never a win chime).
+ * Near-miss rises like a prize then falls short (LDW). Prize / jackpot are bright.
+ */
+export function playKillLoot(
+  ctx: AudioContext,
+  out: AudioNode,
+  kind: 'dry' | 'ammo' | 'scrap' | 'near_miss' | 'field' | 'prize' | 'jackpot',
+  goldGrams = 0,
+) {
+  const t0 = ctx.currentTime + .01;
+  const tone = (at: number, f: number, gain: number, len: number, type: OscillatorType = 'sine') => {
+    const o = ctx.createOscillator(); o.type = type; o.frequency.value = f;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, at);
+    g.gain.linearRampToValueAtTime(gain, at + .004);
+    g.gain.exponentialRampToValueAtTime(1e-4, at + len);
+    o.connect(g).connect(out); o.start(at); o.stop(at + len + .02);
+    o.onended = () => { o.disconnect(); g.disconnect(); };
+  };
+  const noise = (at: number, len: number, freq: number, gain: number) => {
+    const buf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * len)), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = 1.8;
+    const g = ctx.createGain(); g.gain.value = gain;
+    src.connect(bp).connect(g).connect(out); src.start(at);
+    src.onended = () => { src.disconnect(); bp.disconnect(); g.disconnect(); };
+  };
+  if (kind === 'dry') {
+    // Empty pockets: low thud, no sparkle.
+    noise(t0, .06, 220, .22);
+    tone(t0, 140, .1, .1, 'triangle');
+    return;
+  }
+  if (kind === 'ammo') {
+    noise(t0, .03, 3200, .28);
+    tone(t0 + .015, 1800, .08, .05, 'triangle');
+    return;
+  }
+  if (kind === 'scrap') {
+    tone(t0, 520, .1, .08);
+    if (goldGrams > 0) tone(t0 + .05, 900, .07, .07);
+    return;
+  }
+  if (kind === 'near_miss') {
+    // Rise like a prize… then sag. Small scrap gold still clinks (LDW).
+    tone(t0, 880, .14, .1);
+    tone(t0 + .07, 1320, .16, .1);
+    tone(t0 + .16, 700, .1, .12, 'triangle');
+    if (goldGrams > 0) tone(t0 + .1, 1100, .08, .06);
+    return;
+  }
+  if (kind === 'field') {
+    tone(t0, 1000, .12, .08);
+    tone(t0 + .05, 1400, .1, .08);
+    const n = Math.min(3, Math.max(1, Math.round(goldGrams / 120)));
+    for (let i = 0; i < n; i++) tone(t0 + .08 + i * .04, 1200 + i * 80, .09, .07);
+    return;
+  }
+  if (kind === 'prize') {
+    tone(t0, 980, .16, .1);
+    tone(t0 + .06, 1470, .18, .12);
+    tone(t0 + .14, 1960, .14, .14);
+    return;
+  }
+  // jackpot
+  const n = Math.min(8, Math.max(3, Math.round(goldGrams / 200)));
+  for (let i = 0; i < n; i++) tone(t0 + i * .04, 900 + i * 110, .12 + i * .01, .1);
+  tone(t0 + n * .04 + .04, 2100, .2, .16);
+}
+
 export function playGold(ctx: AudioContext, out: AudioNode, kind: 'take' | 'bank' | 'upgrade' | 'ditch' | 'lost', grams = 1000) {
   const t0 = ctx.currentTime + .005;
   const clink = (at: number, base: number, gain: number) => {

@@ -21,7 +21,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
-import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playSquadCall, pannedBus, playDoorBang, playSmokePop, playGrunt, playMeleeHit, playFleshHit, playSupply, playValveStroke, playValveSeat, playStashOpen, playStashClose, playStashDeposit, playStashWithdraw, playGold, playStreakBreak, type DiveAudioBus } from './diveAudio';
+import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playSquadCall, pannedBus, playDoorBang, playSmokePop, playGrunt, playMeleeHit, playFleshHit, playSupply, playValveStroke, playValveSeat, playStashOpen, playStashClose, playStashDeposit, playStashWithdraw, playGold, playKillLoot, playStreakBreak, type DiveAudioBus } from './diveAudio';
 import { Gait, wadingDrag, runWeight, WALK_CAMERA_MOTION, type GaitEvent } from './gait';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
@@ -242,8 +242,10 @@ export class CaveWorld extends OceanWorld {
  torchRestPos=V(HELD_VIEW_POS.x,HELD_VIEW_POS.y,HELD_VIEW_POS.z);torchRestRot=new THREE.Euler(HELD_VIEW_ROT.x,HELD_VIEW_ROT.y,HELD_VIEW_ROT.z);
  composer!:EffectComposer;
  /** Soft neon bloom (quarter-res) + fused damage/dash chroma in the clip pass. */
- goldSeqHeard=0;
- bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
+goldSeqHeard=0;
+/** Last consumed kill-loot theater seq (stage-two classical cues). */
+killLootSeqHeard=0;
+bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
  /** Rising-edge trackers for impact FX (health drop + Shift sprint/run). */
  fxHealthSeen=100;fxBursting=false;
  guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;decoyLight!:THREE.PointLight;
@@ -1398,6 +1400,13 @@ export class CaveWorld extends OceanWorld {
    const ctx2=this.audioContext,master2=this.master;
    if(this.sound&&ctx2&&master2&&ctx2.state==='running')playGold(ctx2,master2,m.goldEvent.kind,m.goldEvent.grams);
   }
+  if(m.killLootEvent&&m.killLootEvent.seq!==this.killLootSeqHeard){
+   this.killLootSeqHeard=m.killLootEvent.seq;
+   const ctx3=this.audioContext,master3=this.master;
+   if(this.sound&&ctx3&&master3&&ctx3.state==='running'){
+    playKillLoot(ctx3,master3,m.killLootEvent.kind,m.killLootEvent.goldGrams??0);
+   }
+  }
   const stashCue=m.stashCue;
   if(stashCue){
    m.stashCue='';
@@ -2099,11 +2108,17 @@ export class CaveWorld extends OceanWorld {
      const gear=this.gearPickupMesh(p.item);
      group.add(gear);
      if(p.item==='gun'){
-      // Loot tell by grade: a prize rifle burns gold, scavenged junk gives a dull grey glint,
-      // a maintained rifle keeps the neon cyan.
+      // Loot tell by grade: prize burns gold, near-miss warms amber (almost a keep),
+      // scavenged junk is dull grey, a maintained rifle keeps neon cyan.
       const cond=p.cond??RIFLE.kitCond;
       const prize=rifleIsPrize(cond)&&cond<RIFLE.kitCond;
-      group.userData.glow={color:prize?0xffc040:cond<RIFLE.keepCond?0x8a9aa4:0x5ce0ff,intensity:prize?4.2:cond<RIFLE.keepCond?1.3:2.8,distance:prize?7:4.5,priority:1};
+      const near=!!p.nearMiss&&!prize;
+      group.userData.glow={
+       color:prize?0xffc040:near?0xd4a86a:cond<RIFLE.keepCond?0x8a9aa4:0x5ce0ff,
+       intensity:prize?4.2:near?2.6:cond<RIFLE.keepCond?1.3:2.8,
+       distance:prize?7:near?5.5:4.5,
+       priority:1,
+      };
       this.propStreaming.add(`pickup-gun-${p.id}`,{x:p.position.x,z:p.position.z},()=>mountAk74u(gear,'pickup',{envMap:this.knifeEnvMap}),40);
      }
     }
