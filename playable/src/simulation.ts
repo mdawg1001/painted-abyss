@@ -1486,6 +1486,11 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  gold=0;
  /** Gold banked in the stash (grams): safe for good, spent at the workbench. */
  bankedGold=readBankedGold();
+ /**
+  * Last auto-bank / stash payday haul (grams). Win screen and dive-again use this so
+  * the vault hit is visible even after pockets are cleared.
+  */
+ lastHaulBanked=0;
  /** Last gold moment, for HUD count-ups and flashes (seq changes every event). */
  goldEvent:{seq:number;kind:'take'|'bank'|'upgrade'|'ditch'|'lost';grams:number;at:number;track?:ModTrack;level?:number}|null=null;
  /** A stoppage is in the chamber: the trigger does nothing until R clears it. */
@@ -1872,6 +1877,21 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'take',grams:g,at:this.elapsed};
   if(g>=GOLD.barGrams||this.noticeUntil<=this.elapsed)this.say(`+${fmtGold(g)} gold · carrying ${fmtGold(this.gold)}`,'ok');
  }
+ /**
+  * Pour every pocket gram into the persistent vault. Used by the hatch stash payday,
+  * extract, and dive-again / restart — never incinerate a haul when the dive ends.
+  * Returns grams banked (0 if pockets were empty).
+  */
+ bankCarriedGold(){
+  if(this.gold<=0)return 0;
+  const g=this.gold;
+  this.gold=0;
+  this.bankedGold+=g;
+  writeBankedGold(this.bankedGold);
+  this.lastHaulBanked=g;
+  this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'bank',grams:g,at:this.elapsed};
+  return g;
+ }
  /** B: throw every gram you carry at your feet. It sinks. */
  ditchGold(){
   if(this.outcome!=='playing'||this.gold<=0){this.pulse('blocked');return false;}
@@ -2045,7 +2065,16 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.say('Wall tank. Main cylinder filled.','ok');
    return;
   }
-  if(distance(this.position,EXIT)<4){if(this.hasRelic){this.outcome='won';this.reason='Relic secured. You made it back to the light.';}else this.say('Extraction needs the ammonite relic from the bone alcove.','blocked');return;}
+  if(distance(this.position,EXIT)<4){
+   if(!this.hasRelic){this.say('Extraction needs the ammonite relic from the bone alcove.','blocked');return;}
+   // Extract payday: pocket gold hits the vault before the dive ends (Skinner chain close).
+   const hauled=this.bankCarriedGold();
+   this.outcome='won';
+   this.reason=hauled>0
+    ?`Relic secured. Banked ${fmtGold(hauled)}. Vault: ${fmtGold(this.bankedGold)}.`
+    :'Relic secured. You made it back to the light.';
+   return;
+  }
   // Hatch stash — fixed bank near spawn; separate from map-scrap crates.
   if(this.nearStash()){
    if(!this.stashOpen){
@@ -2053,14 +2082,13 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     this.stashCue='open';
     if(this.gold>0){
      // Payday: everything in your pockets goes into the vault the moment the lid opens.
-     const g=this.gold;this.bankedGold+=g;this.gold=0;writeBankedGold(this.bankedGold);
-     this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'bank',grams:g,at:this.elapsed};
+     const g=this.bankCarriedGold();
      this.say(`Banked ${fmtGold(g)} of gold. Vault: ${fmtGold(this.bankedGold)}.`,'ok');
      return;
     }
     if(firstFilledStashSlot(this.stash)<0)this.stashFocus=0;
     else if(!this.stash[this.stashFocus])this.stashFocus=Math.max(0,firstFilledStashSlot(this.stash));
-    this.say('Stash open. E stores or takes · click a slot · Esc closes.','ok');
+    this.say('Stash open. Click or 1–5 pick a slot · E take/store · Esc closes.','ok');
     return;
    }
    this.transferWithStash();

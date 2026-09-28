@@ -1410,6 +1410,8 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   const stashCue=m.stashCue;
   if(stashCue){
    m.stashCue='';
+   if(stashCue==='open'&&document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();
+   if(stashCue==='close'&&this.playing)this.requestLookLock(false);
    if(a&&ctx&&master){
     if(stashCue==='open')playStashOpen(ctx,master);
     else if(stashCue==='close')playStashClose(ctx,master);
@@ -2768,6 +2770,8 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
  pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.aimHeld=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
  reset(){
   this.endValve();
+  // Dive-again / restart: bank any pocket gold before the mission is replaced.
+  this.mission.bankCarriedGold();
   this.backgroundMusic?.reset();this.mission=new Mission(readInventoryTipsSeen());
   resetGradeClock(this.gradeClock);this.frameGrade='dry';
   this.resetSurvivalFx();

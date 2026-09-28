@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {Mission,isolateGuards,FLOOR_Y,WALK_EYE_Y,breathFootprint,emptyStash,readStash,type Pickup} from '../src/simulation';
+import {Mission,isolateGuards,FLOOR_Y,WALK_EYE_Y,breathFootprint,emptyStash,readStash,EXIT,type Pickup} from '../src/simulation';
 import {GOLD,UPGRADE,goldBcdShare,goldSinkAccel,goldWalkFactor,goldThrustFactor,goldNetWeightN,BCD_LIFT_KG,GOLD_DENSITY,readBankedGold,writeBankedGold,modLevel} from '../src/gold';
 import {PISTOL} from '../src/playerPistol';
 import {GRAVITY,WATER_DENSITY,itemFloats} from '../src/propPhysics';
@@ -61,7 +61,40 @@ test('opening the stash banks every gram; the vault survives a reload',()=>{
  assert.ok(m.stashOpen);
  assert.equal(m.gold,0);assert.equal(m.bankedGold,2600);
  assert.equal(m.goldEvent?.kind,'bank');
+ assert.equal(m.lastHaulBanked,2600);
  if(globalThis.localStorage)assert.equal(readBankedGold(),2600);
+});
+
+test('extract with the relic auto-banks pocket gold into the vault',()=>{
+ writeBankedGold(0);
+ const m=setup();
+ m.gold=1800;m.bankedGold=200;
+ m.inventory=['relic',null,null,null,null];m.selected=0;
+ m.position={x:EXIT.x,y:WALK_EYE_Y,z:EXIT.z};
+ m.interact();
+ assert.equal(m.outcome,'won');
+ assert.equal(m.gold,0,'pockets cleared on extract');
+ assert.equal(m.bankedGold,2000);
+ assert.equal(m.lastHaulBanked,1800);
+ assert.equal(m.goldEvent?.kind,'bank');
+ assert.match(m.reason,/Banked/i);
+ if(globalThis.localStorage)assert.equal(readBankedGold(),2000);
+});
+
+test('dive-again banks leftover pocket gold before a fresh mission',()=>{
+ writeBankedGold(100);
+ const m=setup();m.gold=750;m.bankedGold=100;
+ assert.equal(m.bankCarriedGold(),750);
+ assert.equal(m.gold,0);
+ assert.equal(m.bankedGold,850);
+ assert.equal(m.lastHaulBanked,750);
+ // Without localStorage the vault is process-local; with it, a fresh mission must reload the haul.
+ if(globalThis.localStorage){
+  assert.equal(readBankedGold(),850);
+  const again=new Mission(true);
+  assert.equal(again.bankedGold,850);
+  assert.equal(again.gold,0);
+ }
 });
 
 test('workbench: upgrades cost banked gold, live on the rifle, and stop at level 3',()=>{
