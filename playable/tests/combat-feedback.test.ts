@@ -116,3 +116,10 @@ test('no light is ever created, removed or hidden mid-dive (each one recompiles 
  assert.doesNotMatch(src,/torchLight\.visible\s*=/);
  assert.doesNotMatch(src,/decoyMesh\.add\(new THREE\.PointLight/);
 });
+
+test('held-item switches keep the light count: no light lives inside a viewmodel that hides',async()=>{
+ const fs=await import('node:fs');
+ const src=fs.readFileSync(new URL('../src/CaveWorld.ts',import.meta.url),'utf8');
+ assert.doesNotMatch(src,/gunVisual\.add\([^)]*playerFlash[,)]/);
+ assert.match(src,/this\.camera\.add\(this\.playerFlash\)/);
+});

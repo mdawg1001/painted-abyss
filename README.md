@@ -1,7 +1,15 @@
-# Painted Abyss — First Dive · 0.22.10
+# Painted Abyss — First Dive · 0.22.11
 
 
 
+
+## No freeze when switching items (0.22.11)
+
+Switching away from the rifle froze the game for seconds. This was the same cause as the old kill freeze: the rifle's muzzle-flash light was a child of the rifle viewmodel. Putting the rifle away hid the viewmodel, which took its light out of the scene. The light count changed, and every lit shader in the bunker recompiled (27 programs in the headless test). Taking the rifle back out did it again.
+
+- **Muzzle light moved**: it now hangs off the camera and is placed at the barrel's muzzle each shot, so it never leaves the scene. The flash sprites stay on the rifle.
+- **Switching is checked in the same frame**: an item you've never held before (the knife, the rifle on first draw) has its shaders prepared in the background before it appears, instead of stalling the frame it is first shown.
+- **Measured headless**: gun, flare, knife, gun, bandage and air switches now compile nothing new beyond each viewmodel's own first appearance, and the light count stays at 34 point lights throughout.
 
 ## No more freezes on kills and smoke (0.22.10)
 
