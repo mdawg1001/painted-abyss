@@ -23,10 +23,18 @@ export const GOLD = {
  officerCoins: [800, 1200] as [number, number],
  /** Standard good-delivery kilobar. */
  barGrams: 1000,
- /** Loose kilobars hidden somewhere different every dive. */
- barsPerDive: 5,
- /** The relic chamber hoard: bars stacked round the plinth, the last greed of the dive. */
- hoardBars: 6,
+ /**
+  * Free floor bars per dive — kept at zero so gold is earned on the kill/extract
+  * levers, not by sightseeing. (scatterGold no-ops when both are 0.)
+  */
+ barsPerDive: 0,
+ /** Free bars around the relic plinth — zero; extract payday replaces the hoard. */
+ hoardBars: 0,
+ /**
+  * Extract jackpot: kilobars poured straight into the vault when you leave with
+  * the relic. [min, max] bar count, rolled per extract.
+  */
+ extractBars: [2, 4] as [number, number],
  /** Coins within this radius are scooped up as you walk over them (bars need E). */
  scoopRadius: 1.4,
 } as const;

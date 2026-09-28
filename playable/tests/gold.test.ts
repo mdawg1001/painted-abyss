@@ -26,11 +26,12 @@ test('gold physics: 19.3× water, sinks, and a BCD’s worth of gold cancels the
  assert.ok(goldThrustFactor(10000)<1);
 });
 
-test('each dive hides its kilobars somewhere new, plus the hoard round the relic',()=>{
- const a=new Mission(true),b=new Mission(true);
- const bars=(m:Mission)=>m.pickups.filter(p=>p.item==='gold').map(p=>`${p.position.x.toFixed(1)},${p.position.z.toFixed(1)}`).sort().join('|');
- assert.equal(a.pickups.filter(p=>p.item==='gold').length,GOLD.barsPerDive+GOLD.hoardBars);
- assert.notEqual(bars(a),bars(b));
+test('no free kilobars on the floor — gold comes from kills and extract',()=>{
+ assert.equal(GOLD.barsPerDive,0);
+ assert.equal(GOLD.hoardBars,0);
+ assert.ok(GOLD.extractBars[0]>=1);
+ const m=new Mission(true);
+ assert.equal(m.pickups.filter(p=>p.item==='gold').length,0,'scatterGold plants nothing');
 });
 
 test('a paying kill drops coins that you scoop by walking over; bars need E',()=>{
@@ -65,20 +66,23 @@ test('opening the stash banks every gram; the vault survives a reload',()=>{
  if(globalThis.localStorage)assert.equal(readBankedGold(),2600);
 });
 
-test('extract with the relic auto-banks pocket gold into the vault',()=>{
+test('extract with the relic auto-banks pocket gold and pays the extract bar jackpot',()=>{
  writeBankedGold(0);
  const m=setup();
  m.gold=1800;m.bankedGold=200;
+ // Deterministic extract bar roll: first lootRand call → 2 bars (lo + floor(0*(hi-lo+1))).
+ m.lootRand=()=>0;
  m.inventory=['relic',null,null,null,null];m.selected=0;
  m.position={x:EXIT.x,y:WALK_EYE_Y,z:EXIT.z};
  m.interact();
  assert.equal(m.outcome,'won');
  assert.equal(m.gold,0,'pockets cleared on extract');
- assert.equal(m.bankedGold,2000);
  assert.equal(m.lastHaulBanked,1800);
- assert.equal(m.goldEvent?.kind,'bank');
+ assert.equal(m.lastExtractBars,GOLD.extractBars[0]);
+ assert.equal(m.bankedGold,200+1800+GOLD.extractBars[0]*GOLD.barGrams);
  assert.match(m.reason,/Banked/i);
- if(globalThis.localStorage)assert.equal(readBankedGold(),2000);
+ assert.match(m.reason,/Extract jackpot/i);
+ if(globalThis.localStorage)assert.equal(readBankedGold(),m.bankedGold);
 });
 
 test('dive-again banks leftover pocket gold before a fresh mission',()=>{
