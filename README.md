@@ -1,7 +1,19 @@
-# Painted Abyss — First Dive · 0.22.12
+# Painted Abyss — First Dive · 0.22.13
 
 
 
+
+## Baked lighting (0.22.13)
+
+The bunker's lighting is now precomputed offline in Blender's Cycles path tracer, the way AAA interiors are lit. Every lamp in the bunker (26 wall sconces, 7 hanging tubes, the corridor lamps, the shaft light and the fluorescent fills) is traced through the real geometry, and three results are stored in lightmaps:
+
+- **Bounced light**: light hitting the red-brown floor and the whitewash and spilling onto everything else. Ceilings glow warm above the lamps, colour bleeds off the painted walls, and rooms fall off into darkness away from their lamps instead of being evenly filled.
+- **Ambient occlusion**: corners, the wall-floor junction, under pipes, behind pilasters, around crates, desks and the relic plinth all darken as they would in real light.
+- **Shadows of the fixed lamps**: pipes, brackets, pilasters, beams, door frames and cover now cast proper shadows from the wall sconces and corridor lamps, and their light no longer leaks through walls.
+
+The lamps' light itself stays real time, so everything that moves still works: the hanging tubes swing when you shoot, sconces flicker, the flood turns the bounce teal and the relic slam turns it red. Nothing is added per frame beyond two texture reads per pixel, no lights are added, and all bunker surfaces still share one shader program, so this cannot bring back the freezes.
+
+Assets: `bunker-lit.pack` (the bunker geometry with lightmap UVs, 3.7 MB gzip), `lm_indirect.ktx2` (1024²) and `lm_ao.ktx2` (2048², occlusion plus shadow mask) in `playable/public/assets/soviet-bunker-kit/baked/`. The bake is signed with the layout, so if the bunker changes without a rebake the game falls back to the unbaked kit and a test fails. Rebake with `playable/scripts/bunker-bake/run.sh` (about 30 minutes on two cores; see its README).
 
 ## Soviet bunker art pass (0.22.12)
 

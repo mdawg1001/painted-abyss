@@ -121,24 +121,16 @@ function weather(g: CanvasRenderingContext2D, x: number, y: number, w: number, h
 }
 
 export type StencilAtlas = { texture: THREE.CanvasTexture; rect(id: string): [number, number, number, number] | null };
+type Slot = { id: string; x: number; y: number; w: number; h: number; paint: Painter };
 
-/** Paint every fixed mark plus the per-pilaster grid labels into one atlas. */
-export function createStencilAtlas(labels: Map<string, string>): StencilAtlas {
- const canvas = document.createElement('canvas');
- canvas.width = canvas.height = SIZE;
- const g = canvas.getContext('2d')!;
- const rects = new Map<string, [number, number, number, number]>();
+/**
+ * Where every mark sits in the atlas (pixels). Pure: the offline light baker needs the same
+ * decal UVs as the running game.
+ */
+function atlasSlots(labels: Map<string, string>): Slot[] {
+ const slots: Slot[] = [];
  const gaugeW = Math.ceil(MARKS.gauge.w * SIZE / MARKS.gauge.h);
- const place = (id: string, x: number, y: number, w: number, h: number, paint: Painter) => {
-  g.save(); g.translate(x, y);
-  g.beginPath(); g.rect(0, 0, w, h); g.clip();
-  paint(g, w, h);
-  g.restore();
-  weather(g, x, y, w, h, id.length * 131 + x + y);
-  // UVs: canvas top-left origin, three flips canvas textures (flipY), so v runs bottom-up.
-  rects.set(id, [(x + 1) / SIZE, 1 - (y + h - 1) / SIZE, (x + w - 1) / SIZE, 1 - (y + 1) / SIZE]);
- };
- place('gauge', SIZE - gaugeW - 4, 0, gaugeW, SIZE, MARKS.gauge.paint);
+ slots.push({ id: 'gauge', x: SIZE - gaugeW - 4, y: 0, w: gaugeW, h: SIZE, paint: MARKS.gauge.paint });
  // Shelf-pack everything else to the left of the gauge.
  const maxX = SIZE - gaugeW - 12;
  let x = 4, y = 4, row = 0;
@@ -146,7 +138,7 @@ export function createStencilAtlas(labels: Map<string, string>): StencilAtlas {
   const w = Math.round(wm * PX_PER_M), h = Math.round(hm * PX_PER_M);
   if (x + w > maxX) { x = 4; y += row + 6; row = 0; }
   if (y + h > SIZE) return;
-  place(id, x, y, w, h, paint);
+  slots.push({ id, x, y, w, h, paint });
   x += w + 6; row = Math.max(row, h);
  };
  for (const [id, m] of Object.entries(MARKS)) if (id !== 'gauge') add(id, m.w, m.h, m.paint);
@@ -154,6 +146,29 @@ export function createStencilAtlas(labels: Map<string, string>): StencilAtlas {
   if (id.startsWith('door:')) add(id, .8, .34, (gg, w, h) => { fitText(gg, text, w / 2, h / 2, w * .95, h * .82, RED); });
   else add(id, .52, .26, (gg, w, h) => { fitText(gg, text, w / 2, h / 2, w * .95, h * .82, BLACK); });
  }
+ return slots;
+}
+
+/** Atlas UV rect per stencil id: canvas top-left origin, three flips canvas textures, so v runs bottom-up. */
+export function stencilRects(labels: Map<string, string>) {
+ const rects = new Map<string, [number, number, number, number]>();
+ for (const { id, x, y, w, h } of atlasSlots(labels)) rects.set(id, [(x + 1) / SIZE, 1 - (y + h - 1) / SIZE, (x + w - 1) / SIZE, 1 - (y + 1) / SIZE]);
+ return rects;
+}
+
+/** Paint every fixed mark plus the per-pilaster grid labels into one atlas. */
+export function createStencilAtlas(labels: Map<string, string>): StencilAtlas {
+ const canvas = document.createElement('canvas');
+ canvas.width = canvas.height = SIZE;
+ const g = canvas.getContext('2d')!;
+ for (const { id, x, y, w, h, paint } of atlasSlots(labels)) {
+  g.save(); g.translate(x, y);
+  g.beginPath(); g.rect(0, 0, w, h); g.clip();
+  paint(g, w, h);
+  g.restore();
+  weather(g, x, y, w, h, id.length * 131 + x + y);
+ }
+ const rects = stencilRects(labels);
  const texture = new THREE.CanvasTexture(canvas);
  texture.colorSpace = THREE.SRGBColorSpace;
  texture.anisotropy = 4;
