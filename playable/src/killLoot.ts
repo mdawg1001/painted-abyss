@@ -13,6 +13,7 @@
  */
 import type { GuardRole } from './survivalConfig';
 import { RIFLE, rollDropCondition } from './rifleCondition';
+import { GOLD } from './gold';
 
 export type KillLootBucket = 'dry' | 'ammo' | 'scrap' | 'field' | 'prize' | 'jackpot';
 
@@ -60,10 +61,13 @@ export const KILL_LOOT = {
   scrapGold: [40, 120] as [number, number],
   /** Field gold (grams). */
   fieldGold: [100, 280] as [number, number],
-  /** Prize gold (grams). */
+  /** Prize gold (grams) — pocket coins, not a free floor bar. */
   prizeGold: [200, 450] as [number, number],
-  /** Jackpot gold (grams) — fat purse, any role. */
-  jackpotGold: [600, 1400] as [number, number],
+  /**
+   * Kill jackpot: whole kilobars on the corpse (need E). Replaces free world bars.
+   * [min, max] bar count → grams = bars * GOLD.barGrams.
+   */
+  jackpotBars: [1, 2] as [number, number],
   /** Scrap condition never reaches a prize keep. */
   scrapCondCap: 0.48,
   /** Share of scrap kills that stage a near-miss frame (almost keepCond). */
@@ -179,6 +183,18 @@ function rollRounds(magazine: number, share: readonly [number, number], rand: ()
   return Math.max(1, Math.round(magazine * lerp(share, rand())));
 }
 
+/** Inclusive bar count in `KILL_LOOT.jackpotBars`. */
+function rollJackpotBars(rand: () => number) {
+  const [lo, hi] = KILL_LOOT.jackpotBars;
+  return lo + Math.floor(rand() * (hi - lo + 1));
+}
+
+/** Gram band for a kill jackpot (whole kilobars). */
+export const killJackpotGoldBand = (): [number, number] => [
+  KILL_LOOT.jackpotBars[0] * GOLD.barGrams,
+  KILL_LOOT.jackpotBars[1] * GOLD.barGrams,
+];
+
 /** Map a schedule roll to the classical cue the renderer / audio should play. */
 export function killLootCueFor(roll: KillLootRoll): KillLootCue {
   if (roll.nearMiss) return 'near_miss';
@@ -262,7 +278,8 @@ export function rollKillLoot(
         dropGold: true,
         cond: rollJackpotCond(role, rand),
         rounds: rollRounds(magazine, RIFLE.dropMagShare, rand),
-        goldGrams: Math.round(lerp(KILL_LOOT.jackpotGold, rand())),
+        // Whole kilobars — needs E; the big kill score that replaced free floor bars.
+        goldGrams: rollJackpotBars(rand) * GOLD.barGrams,
         nearMiss: false,
       };
   }

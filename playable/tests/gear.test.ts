@@ -21,9 +21,9 @@ test('gun, spare bottle, and coat lie in the corridor and not at the hatch',()=>
   assert.ok(distance(p.position,hatch)>6,`${p.item} is clear of the hatch`);
  }
  const m=new Mission(true);
- // Ids 1–5 are the relic and corridor gear; the dive's gold (bars + relic hoard) follows.
- assert.equal(m.nextId,6+GOLD.barsPerDive+GOLD.hoardBars);
- assert.equal(m.pickups.filter(p=>p.item==='gold').length,GOLD.barsPerDive+GOLD.hoardBars);
+ // Ids 1–5 are the relic and corridor gear; free floor bars are gone (kill/extract jackpots instead).
+ assert.equal(m.nextId,6);
+ assert.equal(m.pickups.filter(p=>p.item==='gold').length,0);
  assert.deepEqual(m.inventory,['knife','gun','flare','bandage','air'],'the survival kit: knife, pistol, flare, sealant, pony');
  for(const item of ['gun','bottle','coat'] as const){
   assert.equal(m.pickups.filter(p=>p.item===item).length,1);

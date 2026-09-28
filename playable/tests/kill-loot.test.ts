@@ -6,8 +6,9 @@ import assert from 'node:assert/strict';
 import {Mission,isolateGuards,FLOOR_Y,WALK_EYE_Y,breathFootprint,isMainGuard} from '../src/simulation';
 import {
  KILL_LOOT,KILL_LOOT_BUCKETS,selectKillLootBucket,rollKillLoot,killLootCueFor,
- killLootWeights,isEmptyKillLoot,type KillLootBucket,
+ killLootWeights,isEmptyKillLoot,killJackpotGoldBand,type KillLootBucket,
 } from '../src/killLoot';
+import {GOLD} from '../src/gold';
 import {RIFLE,lootStream,rifleIsPrize} from '../src/rifleCondition';
 import {PISTOL} from '../src/playerPistol';
 
@@ -60,7 +61,9 @@ test('rollKillLoot: dry pays nothing; ammo is gun-only; jackpot is fat gold + gu
  assert.equal(jack.bucket,'jackpot');
  assert.equal(jack.dropGun,true);
  assert.equal(jack.dropGold,true);
- assert.ok(jack.goldGrams>=KILL_LOOT.jackpotGold[0]&&jack.goldGrams<=KILL_LOOT.jackpotGold[1]);
+ const [jLo,jHi]=killJackpotGoldBand();
+ assert.ok(jack.goldGrams>=jLo&&jack.goldGrams<=jHi);
+ assert.equal(jack.goldGrams%GOLD.barGrams,0,'jackpot is whole kilobars');
  assert.ok(jack.cond<RIFLE.kitCond);
 });
 
@@ -122,7 +125,8 @@ test('field / prize / jackpot kills pay gun + gold in their bands',()=>{
  const jack=setup('assault',scriptedLoot(0.99));
  kill(jack.m,jack.g);
  const jcoin=jack.m.pickups.find(p=>p.item==='gold')!;
- assert.ok(jcoin.amount!>=KILL_LOOT.jackpotGold[0]);
+ assert.ok(jcoin.amount!>=killJackpotGoldBand()[0]);
+ assert.ok(jcoin.amount!>=GOLD.barGrams,'kill jackpot is a floor bar (needs E)');
 });
 
 test('stolen corpse rifle and gold always return even on a dry roll',()=>{

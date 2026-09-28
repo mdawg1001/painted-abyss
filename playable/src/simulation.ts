@@ -1489,6 +1489,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   * the vault hit is visible even after pockets are cleared.
   */
  lastHaulBanked=0;
+ /** Kilobars granted by the extract jackpot on the last successful extract. */
+ lastExtractBars=0;
  /** Last gold moment, for HUD count-ups and flashes (seq changes every event). */
  goldEvent:{seq:number;kind:'take'|'bank'|'upgrade'|'ditch'|'lost';grams:number;at:number;track?:ModTrack;level?:number}|null=null;
  /** A stoppage is in the chamber: the trigger does nothing until R clears it. */
@@ -1914,8 +1916,12 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.say(`${UPGRADE.blurbs[track][level]}. This rifle is now ${rifleName(this.gunCond)}${modTag(mods)}. Lose it, lose this.`,'ok');
   return true;
  }
- /** Gold for this dive: kilobars hidden in fresh spots, and the hoard round the relic. */
+ /**
+  * Free world bars — disabled (barsPerDive / hoardBars are 0). Gold is earned on
+  * kill jackpots and extract payday instead. Kept as a no-op hook so callers stay stable.
+  */
  scatterGold(){
+  if(GOLD.barsPerDive<=0&&GOLD.hoardBars<=0)return;
   const r=this.lootRand;
   const hatch=breathHatchSpawn();
   const spots=[...cells].map(k=>{const [c,rw]=k.split(',').map(Number);return world(c,rw);})
@@ -1929,6 +1935,22 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    const a=(i/GOLD.hoardBars)*Math.PI*2+r()*.3,rad=RELIC_PLINTH.radius+.55+r()*.35;
    this.pickups.push({id:this.nextId++,item:'gold',amount:GOLD.barGrams,position:{x:RELIC.x+Math.cos(a)*rad,y:FLOOR_Y,z:RELIC.z+Math.sin(a)*rad}});
   }
+ }
+ /**
+  * Extract jackpot: pour kilobars into the vault when you leave with the relic.
+  * Returns grams added (0 if extractBars is empty).
+  */
+ bankExtractBars(){
+  const [lo,hi]=GOLD.extractBars;
+  if(hi<=0)return 0;
+  const n=lo+Math.floor(this.lootRand()*(hi-lo+1));
+  const g=n*GOLD.barGrams;
+  if(g<=0)return 0;
+  this.bankedGold+=g;
+  writeBankedGold(this.bankedGold);
+  this.lastExtractBars=n;
+  this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'bank',grams:g,at:this.elapsed};
+  return g;
  }
  /** Chest slot for an item from your hands; a rifle keeps its condition. */
  stashSlotFor(item:StashItem):StashSlot{
@@ -2063,12 +2085,15 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   }
   if(distance(this.position,EXIT)<4){
    if(!this.hasRelic){this.say('Extraction needs the ammonite relic from the bone alcove.','blocked');return;}
-   // Extract payday: pocket gold hits the vault before the dive ends (Skinner chain close).
+   // Extract payday: pocket gold + kilobar jackpot into the vault (no free floor bars).
    const hauled=this.bankCarriedGold();
+   const extractPay=this.bankExtractBars();
    this.outcome='won';
-   this.reason=hauled>0
-    ?`Relic secured. Banked ${fmtGold(hauled)}. Vault: ${fmtGold(this.bankedGold)}.`
-    :'Relic secured. You made it back to the light.';
+   const bits:string[]=['Relic secured.'];
+   if(hauled>0)bits.push(`Banked ${fmtGold(hauled)}.`);
+   if(extractPay>0)bits.push(`Extract jackpot: ${this.lastExtractBars} kg.`);
+   bits.push(`Vault: ${fmtGold(this.bankedGold)}.`);
+   this.reason=bits.join(' ');
    return;
   }
   // Hatch stash — fixed bank near spawn; separate from map-scrap crates.
