@@ -1470,7 +1470,11 @@ export class CaveWorld extends OceanWorld {
     muzzle.addScaledVector(this._muzzleAim,.28);
    }
    this.fx.syncGuard(i,visual,g,this.mission.elapsed,flashFrom===i,muzzle,dt);
-   if(muzzle)this.warFx.guardShot(muzzle);
+   if(muzzle){
+    this.warFx.guardShot(muzzle);
+    // Whip-by tracer: aim is core centre on hits, graze offset on misses (sim is authority).
+    this.warFx.guardTracer(muzzle,g.lastShotAim,g.lastShotHit,combatCalmActive());
+   }
    if(flashFrom===i||(flashFrom<0&&i===0)){
     visual.gun.getWorldPosition(this._muzzle);
     this._muzzleAim.copy(this._aimTarget).sub(this._muzzle).normalize();

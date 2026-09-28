@@ -15,8 +15,11 @@
  * | Magnetism         | HITBOX_ASSIST.movingScatterDamp  | 25%          | Tighter wear spread while sprinting |
  * | Magnetism         | HITBOX_ASSIST.sprintSpeed        | 3.4 m/s      | = WALK_SPRINT |
  * | Graze bias        | SKIN_OF_TEETH.stillSpeed         | 0.40 m/s     | Aligned with style/graze still |
- * | Graze bias        | SKIN_OF_TEETH.maxGrazeBias       | 0.08         | Modest land-chance cut (was 0.10) |
+ * | Graze bias        | SKIN_OF_TEETH.maxGrazeBias       | 0.24         | Hardened land-chance cut (was 0.08) |
  * | Graze bias        | SKIN_OF_TEETH.fullBiasSpeed      | WALK_SPEED   | Full bias at brisk walk |
+ * | Player core       | PLAYER_CORE.visualRadius         | 0.55 m       | Thick visual / camera skim shell |
+ * | Player core       | PLAYER_CORE.coreShrink           | 0.40         | Core = visual × shrink ∈ [0.30,0.50] |
+ * | Player core       | projectileCoreRadius()           | 0.22 m       | Only volume that deals damage |
  * | Style points      | scrape / graze / clean           | 70 / 80 / 60 | Honest CLEAN competitive with scrape |
  * | Style decay       | stillDrain                       | 72 pts/s     | Speed currency without aim-freeze panic |
  * | Style decay       | graceSeconds                     | 2.8 s        | Slightly longer fight breath |
@@ -37,7 +40,7 @@ export {
   movingScatterScale,
   rotateToward,
 } from './playerPistol';
-export { SKIN_OF_TEETH, PLAYER_CORE } from './simulation';
+export { SKIN_OF_TEETH, PLAYER_CORE, projectileCoreRadius, projectileDamagesPlayer, enemyRayHitsPlayerCore, grazeAimPoint, playerCoreCenter } from './simulation';
 export { STYLE_TUNING, STYLE_RANKS } from './styleMeter';
 export { COMBAT_OUTCOME } from './combatOutcomes';
 export { STREAK, STREAK_REWARD_RANKS } from './styleStreak';
@@ -62,7 +65,8 @@ export const COMBAT_POLISH = {
     angleHardCapDeg: 2.5,
     movingScatterDamp: 0.25,
   },
-  graze: { stillSpeed: 0.4, maxGrazeBias: 0.08, minChance: 0.05 },
+  graze: { stillSpeed: 0.4, maxGrazeBias: 0.24, minChance: 0.05 },
+  core: { visualRadius: 0.55, coreShrink: 0.40, radius: 0.22, grazeShell: 0.28 },
   style: { scrape: 70, graze: 80, clean: 60, stillDrain: 72, stillSpeed: 0.4, graceSeconds: 2.8 },
   calloutSeconds: 0.6,
   streak: {

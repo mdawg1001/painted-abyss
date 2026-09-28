@@ -12,7 +12,8 @@ import {
 import {
  WALK_SPRINT,WALK_SPEED,
  guardHitChance,skinOfTeethHitChance,SKIN_OF_TEETH,
- PLAYER_CORE,projectileCoreRadius,
+ PLAYER_CORE,projectileCoreRadius,projectileDamagesPlayer,
+ enemyRayHitsPlayerCore,grazeAimPoint,playerCoreCenter,
 } from '../src/simulation';
 import {classifyPlayerHit} from '../src/combatOutcomes';
 
@@ -129,8 +130,43 @@ test('skinOfTeethHitChance: standing stays hot; moving bleeds land chance',()=>{
  assert.equal(creep,guardHitChance(8,SKIN_OF_TEETH.stillSpeed,false));
 });
 
-test('PLAYER_CORE / projectileCoreRadius ready for future tracers',()=>{
- assert.equal(projectileCoreRadius(),PLAYER_CORE.radius);
+test('PLAYER_CORE / projectileCoreRadius: shrink ∈ [0.30,0.50]; camera overlap ≠ damage',()=>{
+ assert.ok(PLAYER_CORE.coreShrink>=.30&&PLAYER_CORE.coreShrink<=.50);
+ assert.ok(Math.abs(projectileCoreRadius()-PLAYER_CORE.visualRadius*PLAYER_CORE.coreShrink)<1e-12);
+ assert.ok(Math.abs(projectileCoreRadius()-PLAYER_CORE.radius)<1e-12);
  assert.ok(PLAYER_CORE.radius>0&&PLAYER_CORE.grazeShell>0);
- assert.ok(PLAYER_CORE.radius+PLAYER_CORE.grazeShell<.6,'core+shell stays human-scale');
+ assert.ok(PLAYER_CORE.radius+PLAYER_CORE.grazeShell<1.0,'core+shell stays human-scale');
+ // A thick visual shell around the eye is NOT a hit — only the microscopic core.
+ const eye={x:0,y:2.25,z:0};
+ assert.equal(projectileDamagesPlayer({x:.4,y:2.25,z:0},eye),false,'visual skim misses core');
+ assert.equal(projectileDamagesPlayer(playerCoreCenter(eye),eye),true,'torso centre is a solid hit');
+});
+
+test('enemyRayHitsPlayerCore: core aim damages; graze aim does not',()=>{
+ const eye={x:0,y:2.25,z:0};
+ const muzzle={x:0,y:2.25,z:8};
+ const core=playerCoreCenter(eye);
+ const toCore={x:core.x-muzzle.x,y:core.y-muzzle.y,z:core.z-muzzle.z};
+ assert.equal(enemyRayHitsPlayerCore(muzzle,toCore,eye),true,'ray through torso core lands');
+ const graze=grazeAimPoint(muzzle,eye,1,.5,true);
+ const toGraze={x:graze.x-muzzle.x,y:graze.y-muzzle.y,z:graze.z-muzzle.z};
+ assert.equal(enemyRayHitsPlayerCore(muzzle,toGraze,eye),false,'near-miss whip-by skips core');
+ // Standing wide miss is even farther off.
+ const wide=grazeAimPoint(muzzle,eye,-1,.2,false);
+ const toWide={x:wide.x-muzzle.x,y:wide.y-muzzle.y,z:wide.z-muzzle.z};
+ assert.equal(enemyRayHitsPlayerCore(muzzle,toWide,eye),false);
+});
+
+test('grazeAimPoint skims past the shell on both sides',()=>{
+ const eye={x:0,y:2.25,z:0};
+ const muzzle={x:0,y:2.25,z:10};
+ const L=grazeAimPoint(muzzle,eye,1,.5,true);
+ const R=grazeAimPoint(muzzle,eye,-1,.5,true);
+ // Opposite sides of the player on X (muzzle is +Z).
+ assert.ok(L.x*R.x<0,'left/right graze sides differ');
+ const core=playerCoreCenter(eye);
+ const dL=Math.hypot(L.x-core.x,L.z-core.z);
+ const dR=Math.hypot(R.x-core.x,R.z-core.z);
+ assert.ok(dL>PLAYER_CORE.radius,'left graze clears core');
+ assert.ok(dR>PLAYER_CORE.radius,'right graze clears core');
 });
