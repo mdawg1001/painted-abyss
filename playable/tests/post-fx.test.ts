@@ -16,8 +16,16 @@ import {
  resizeBloomPass,
 } from '../src/postFx';
 
-test('post FX caps Retina DPR at 1× for the playability profile', () => {
- assert.equal(POST_FX_DPR_CAP, 1, 'bloom stack must not run above 1×');
+test('bloom costs the same at any pixel density: sized from CSS pixels', () => {
+ assert.equal(POST_FX_DPR_CAP, 2, 'Retina is the top rung');
+ let pr = 1;
+ const bloom = createBloomPass(960, 600, () => pr);
+ bloom.setSize(960, 600);
+ const w1 = bloom.renderTargetsHorizontal[0].width;
+ pr = 2; bloom.setSize(1920, 1200);
+ assert.equal(bloom.renderTargetsHorizontal[0].width, w1, 'a 2× frame blurs at the 1× size');
+ pr = 1.5; bloom.setSize(1440, 900);
+ assert.equal(bloom.renderTargetsHorizontal[0].width, w1);
 });
 
 test('UnrealBloomPass tunables stay soft and thresholded for neon only', () => {

@@ -7,10 +7,15 @@
  * on top of 0.21.0 without gutting rock maps or Ultrakill bloom).
  */
 export const PERF = {
- /** Cap device pixel ratio. 1.0 avoids Retina fill-rate cliffs with the composer. */
- dprCap: 1,
- /** MSAA costs a full extra resolve; off for the dive canvas. */
+ /**
+  * Highest render density (Retina 2×). The frame-time governor (resolutionGovernor.ts) steps down
+  * from here under load and never below 1×, the old playability floor.
+  */
+ dprCap: 2,
+ /** Canvas MSAA stays off: the scene renders into the composer target, which carries the MSAA. */
  antialias: false,
+ /** MSAA samples on the composer's scene target at the top rungs (the governor may drop to 0). */
+ msaa: 4,
  /**
   * Shadow maps (torch SpotLight + one hanging tube) each re-render the scene.
   * Silhouettes go; pools and grade stay.

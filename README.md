@@ -1,7 +1,18 @@
-# Painted Abyss — First Dive · 0.22.13
+# Painted Abyss — First Dive · 0.22.14
 
 
 
+
+## Sharp image: full Retina resolution and edge smoothing (0.22.14)
+
+The game now renders at your display's full pixel density (2× on a Retina Mac) with 4× MSAA on every geometry edge. Before this, the playability profile rendered one pixel per screen point with no anti-aliasing, so Safari stretched a half-resolution image across a Retina screen: soft textures, stair-stepped edges on every wall, pipe and cable tray, and thin things shimmering as you moved. That is most of what read as "low poly".
+
+A frame-time watchdog keeps it fast (`playable/src/resolutionGovernor.ts`):
+
+- **Steps down under load**: when more than about a fifth of recent frames run slower than 60 fps, it drops one rung (2× → 1.75× → 1.5× → 1.25× → 1× with MSAA → 1× without). The bottom rung is exactly the old profile, so no machine is slower than before.
+- **Probes back up**: the browser paces frames to the display, so spare headroom is invisible. After a stretch of clean frames it tries the rung above; if that rung starts missing frames it steps back and waits twice as long before trying again.
+- **Hitches never cost resolution**: single long frames (a garbage-collection pause, a texture upload, a tab switch) are ignored, and nothing is judged in menus or while paused. Changes are at least 1.2 s apart, since each one reallocates the render targets.
+- Each change is logged in the browser console (for example `Render 1.75× MSAA 4× (frames over budget)`).
 
 ## Baked lighting (0.22.13)
 
