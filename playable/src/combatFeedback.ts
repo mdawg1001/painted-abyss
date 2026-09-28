@@ -50,6 +50,9 @@ export const COMBAT_FEEDBACK={
  hitstopScrape:45,
  /** Enemy graze / skin-of-teeth miss — light camera kiss. */
  grazeTick:{intensity:.28,duration:.07},
+ /** Ego Savior lethal save — micro freeze, then hero clear (see EGO_SAVIOR.hitstopMs). */
+ hitstopEgoSave:48,
+ egoSaveShake:{intensity:1.05,duration:.18},
 } as const;
 
 export class CombatFeedbackManager{
