@@ -1,6 +1,7 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
 import { GOLD, UPGRADE, fmtGold, goldStaminaFactor, goldWalkFactor, noMods, modLevel, modTag, modValue, magBonus, damageMult, spreadMult, jamMult, cycleMult, upgradeCost, readBankedGold, writeBankedGold, type RifleMods, type ModTrack } from './gold';
-import { RIFLE, lootStream, jamChance, spreadSigma, scatter, rollDropCondition, rollDropRounds, rifleIsPrize, rifleName } from './rifleCondition';
+import { RIFLE, lootStream, jamChance, spreadSigma, scatter, rollDropRounds, rifleIsPrize, rifleName } from './rifleCondition';
+import { rollKillLoot } from './killLoot';
 import { ITEM_BODY, stepBody, submergedFraction, type BodyState } from './propPhysics';
 import { steerToward, faceStanding, yawToward, wrapAngle, turnToward, forwardOf, GUARD_STEER_WALK, GUARD_STEER_RUN } from './guardSteering';
 import { SURVIVAL, SURVIVAL_COVER, type GuardRole } from './survivalConfig';
@@ -2361,16 +2362,18 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    g.dealtByPlayer=0;
    g.speed=0;g.vx=0;g.vz=0;g.turnRate=0;g.flinch=0;g.windup=0;g.downFor=0;
    g.fireToken=false;g.meleeToken=false;
-   // His pistol falls beside him with what is left in it; E picks it up.
-   if(g.gun){
+   // Variable-ratio kill loot (killLoot.ts): category + magnitude. Dry kills pay nothing.
+   // Outside the schedule: stolen corpse returns, and the officer's Soviet key.
+   const stolen=g.loot;g.loot=undefined;
+   const stolenGold=g.gold??0;g.gold=0;
+   const loot=rollKillLoot(g.role,PISTOL.magazine,this.lootRand);
+   const dropGun=!!stolen||(loot.dropGun&&g.gun);
+   if(dropGun){
     const side={x:Math.cos(g.heading)*.45,z:-Math.sin(g.heading)*.45};
     const id=this.nextId++;
-    // His rifle is always worse than a maintained one, and its magazine is half spent.
-    // A rifle he took off your corpse comes back exactly as you lost it, upgrades and all.
-    const stolen=g.loot;g.loot=undefined;
-    const cond=stolen?stolen.cond:rollDropCondition(g.role,this.lootRand);
-    // Streak loot bias: a few extra rounds on the floor mag — never a full free resupply.
-    const rounds=rollDropRounds(PISTOL.magazine,this.lootRand)+streakLootRoundsBonus(this.streak.tier);
+    const cond=stolen?stolen.cond:loot.cond;
+    // Stolen mags re-roll fill; schedule mags use the rolled share. Streak bias is a few extras.
+    const rounds=(stolen?rollDropRounds(PISTOL.magazine,this.lootRand):loot.rounds)+streakLootRoundsBonus(this.streak.tier);
     const drop:Pickup={id,item:'gun',cond,rounds,position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}};
     if(stolen?.mods)drop.mods=stolen.mods;
     this.pickups.push(drop);
@@ -2379,12 +2382,12 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
      this.prizeDrop={id,cond,at:this.elapsed};
      this.say(`${rifleName(cond)} on the floor. Fight on with it, or bank it in the stash.`,'ok');
     }
-    g.dropId=id;g.gun=false;
+    g.dropId=id;
    }
-   // Coins in his pockets, plus anything he took off your body.
-   {
-    const [lo,hi]=isMainGuard(g)?GOLD.officerCoins:GOLD.guardCoins;
-    const grams=Math.round(lo+(hi-lo)*this.lootRand())+(g.gold??0);g.gold=0;
+   if(g.gun)g.gun=false;
+   // Schedule gold, plus anything he took off your body (always returned).
+   const grams=(loot.dropGold?loot.goldGrams:0)+stolenGold;
+   if(grams>0){
     const side={x:Math.sin(g.heading)*.35,z:Math.cos(g.heading)*.35};
     this.pickups.push({id:this.nextId++,item:'gold',amount:grams,position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}});
    }

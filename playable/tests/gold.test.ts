@@ -33,12 +33,14 @@ test('each dive hides its kilobars somewhere new, plus the hoard round the relic
  assert.notEqual(bars(a),bars(b));
 });
 
-test('a kill drops coins that you scoop by walking over; bars need E',()=>{
+test('a paying kill drops coins that you scoop by walking over; bars need E',()=>{
  const m=setup();
+ // Force a field bucket (unit 0.75) so the kill is on the paying side of the VR schedule.
+ let n=0;m.lootRand=()=>{n+=1;return n===1?.75:.5;};
  const g=m.guards[0];m.activateGuard(g,{x:CX,z:PLAYER.z-2},0,'assault');
  while(g.hp>0)m.guardTakeDamage(g,50);
  const coins=m.pickups.find(p=>p.item==='gold')!;
- assert.ok(coins.amount!>=GOLD.guardCoins[0]&&coins.amount!<=GOLD.guardCoins[1]);
+ assert.ok(coins.amount!>0&&coins.amount!<GOLD.barGrams,'pocket coins, not a kilobar');
  coins.position=at(m,.3);
  m.update(1/60);
  assert.equal(m.gold,coins.amount,'scooped');
