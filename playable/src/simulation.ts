@@ -199,9 +199,10 @@ export const SKIN_OF_TEETH={
  minChance:.05,
 } as const;
 /**
- * Near-death Ego Savior: silent lethal-overflow save (P1) + critical theater (P2).
- * Trigger is the hit that *would* kill in `hurtPlayer` — not “first time at 1 HP”.
- * One save per life until hatch respawn; no INVULNERABLE / CLUTCH UI; GRAZE tracers stay live.
+ * Near-death Ego Savior: silent lethal-overflow save (P1) + critical theater (P2)
+ * + engagement mercy gate (P3). Trigger is the hit that *would* kill in `hurtPlayer`.
+ * One save per engagement (recharge on player kill or leaving combat); hatch respawn
+ * still resets cleanly. Air-empty / flood drown never use this path. No INVULNERABLE UI.
  */
 export const EGO_SAVIOR={
  /** Surviving suit HP after a lethal save (inclusive integer band). */
@@ -223,6 +224,11 @@ export const EGO_SAVIOR={
  heroBoostSeconds:.55,
  /** Knife / gun cooldown scale during hero boost (<1 = snappier). */
  heroCooldownScale:.72,
+ /**
+  * Seconds with no chasing/firing guard and no fresh core damage before mercy recharges.
+  * Kill recharge is immediate and independent of this timer.
+  */
+ combatLeaveSeconds:8,
 } as const;
 /**
  * Player hurt-volume: thick visual shell vs microscopic damage core.
@@ -1516,15 +1522,18 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  /** Latest ammo-drip grant (HUD / tests); age off `at`. */
  lastStreakAmmo:{rounds:number;at:number}|null=null;
  /**
-  * Ego Savior: one silent lethal save per life. Recharges on hatch respawn only.
+  * Ego Savior: one silent lethal save per engagement (P3).
+  * Recharges on player kill, leaving combat for `combatLeaveSeconds`, or hatch respawn.
   * `egoIframesUntil` is mission elapsed; while active, `hurtPlayer` ignores damage.
   * `egoHeroUntil` is the brief snappier knife/gun window after a save (P2 theater).
   * `egoSaveSeq` increments on each save so CaveWorld can juice hitstop once.
+  * `egoLastThreatAt` stamps last chase/fire threat or core damage (engagement clock).
   */
  egoSaviorUsed=false;
  egoIframesUntil=0;
  egoHeroUntil=0;
  egoSaveSeq=0;
+ egoLastThreatAt=0;
  /** Mission time of the previous gun/knife kill (MULTI window). */
  lastKillAt=-1;
  decoy:{position:Point;until:number}|null=null;
@@ -1971,10 +1980,11 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.outcome='playing';
   this.reason='';
   this.pending=null;
-  // Ego Savior recharges only on hatch wake — one silent save per life.
+  // Ego Savior: hatch wake always clears engagement state.
   this.egoSaviorUsed=false;
   this.egoIframesUntil=0;
   this.egoHeroUntil=0;
+  this.egoLastThreatAt=0;
   this.resetFirefight();
   this.ensureKnife();
   // Knife-on-respawn + hatch stash unchanged; urge is one line, not a new HUD widget.
@@ -2347,6 +2357,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.squadAlert(g,'shot');
   if(killed){
    this.leechOnKill(g.position,g.dealtByPlayer??amount);
+   this.rechargeEgoMercy();
    g.dealtByPlayer=0;
    g.speed=0;g.vx=0;g.vz=0;g.turnRate=0;g.flinch=0;g.windup=0;g.downFor=0;
    g.fireToken=false;g.meleeToken=false;
@@ -2423,6 +2434,30 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  criticalTheaterActive(){
   return this.health<=EGO_SAVIOR.criticalHp||this.egoIframesActive();
  }
+ /** Live guard chasing or holding a fire token — still in the engagement. */
+ private egoThreatActive(){
+  for(const g of this.guards){
+   if(!liveGuard(g))continue;
+   if(g.state==='chase'||g.fireToken)return true;
+  }
+  return false;
+ }
+ /** Stamp the engagement clock (core damage or active chase/fire). */
+ private noteEgoThreat(){this.egoLastThreatAt=this.elapsed;}
+ /**
+  * Restore mercy for a new engagement. Does not clear live i-frames / hero window —
+  * those age off elapsed so the current save window stays honest.
+  */
+ rechargeEgoMercy(){this.egoSaviorUsed=false;}
+ /**
+  * Engagement tick: keep threat clock fresh while chase/fire is live; after
+  * `combatLeaveSeconds` without threat or core damage, mercy recharges.
+  */
+ private tickEgoEngagement(){
+  if(this.egoThreatActive())this.noteEgoThreat();
+  if(!this.egoSaviorUsed)return;
+  if(this.elapsed-this.egoLastThreatAt>=EGO_SAVIOR.combatLeaveSeconds)this.rechargeEgoMercy();
+ }
  /**
   * Stretch chase/fire shoot cadence without freezing the sim.
   * Called once on lethal save: bump shootCool, and keep padding burst gaps while i-frames last.
@@ -2440,13 +2475,16 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  }
  /** Extra seconds added to burst/rest gaps while Ego Savior i-frames are active. */
  private egoCadencePad(){return this.egoIframesActive()?EGO_SAVIOR.burstGapPad:0;}
- /** Every hit on you goes through here: health, panic breathing, pacing and the direction marker. */
+ /**
+  * Combat / creature core damage only. Air-empty and flood drown set `outcome='lost'`
+  * in `update` and must never call this — environmental deaths stay honest (no clamp / i-frames).
+  */
  hurtPlayer(amount:number,from:Point,reason:string,g:Guard|null){
   if(amount<=0||this.outcome!=='playing')return;
   // True i-frames: ignore damage entirely (no death, no streak break, no theater).
   if(this.egoIframesActive())return;
   const lethal=this.health-amount<=0;
-  // Silent lethal overflow save — once per life until hatch respawn.
+  // Silent lethal overflow save — once per engagement (kill / leave-combat recharges).
   if(lethal&&!this.egoSaviorUsed){
    this.egoSaviorUsed=true;
    const span=EGO_SAVIOR.clampHpMax-EGO_SAVIOR.clampHpMin;
@@ -2462,6 +2500,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.director.hurt.push({at:this.elapsed,amount});
    this.damageFrom.push({x:from.x,z:from.z,at:this.elapsed});
    if(this.damageFrom.length>8)this.damageFrom.shift();
+   this.noteEgoThreat();
    return;
   }
   // One solid core hit while B+ breaks the streak (loud juice in CaveWorld).
@@ -2471,6 +2510,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.director.hurt.push({at:this.elapsed,amount});
   this.damageFrom.push({x:from.x,z:from.z,at:this.elapsed});
   if(this.damageFrom.length>8)this.damageFrom.shift();
+  this.noteEgoThreat();
   if(this.health<=0){
    this.killedByGuard=!!g;
    if(g)this.lootGuardIndex=this.guards.indexOf(g);
@@ -2533,6 +2573,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   p.bite=Math.max(p.bite,.35);
   if(p.hp<=0){
    this.leechOnKill(p.position,PREDATOR_HP_MAX);
+   this.rechargeEgoMercy();
    p.state='dead';p.timer=0;p.raged=false;p.flinch=0;p.bite=999;
    this.combatCue='kill';
    this.say('Guardian down.','ok');
@@ -2556,6 +2597,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(this.outcome!=='playing')return;dt=Math.min(dt,.05);this.elapsed+=dt;
   // Knife recovery is the diver's arm, not the guardian: it runs whatever state the guardian is in.
   this.predator.stabCool=Math.max(0,this.predator.stabCool-dt);
+  this.tickEgoEngagement();
   if(this.floodTriggered)this.breathWaterY=stepFloodLevel(this.breathWaterY,dt,this.leakFlow);
   this.stepPickups(dt);
   if(this.floodDrained&&!this.drainDone){
@@ -2571,6 +2613,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   else{need-=this.air;this.air=0;this.bailout=Math.max(0,this.bailout-need);need=0;}
   // Legs last far longer than a finning sprint: ~12 s of hard running vs ~5.5 s of sprint kicking.
   this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?(onFoot?-8:-18)*goldStaminaFactor(this.gold):17)*dt));
+  // Environmental death — never Ego Savior. No hurtPlayer, no clamp, no i-frames.
   if(this.air<=0&&this.bailout<=0){this.outcome='lost';this.reason='Your air ran out. Arm the pony earlier or climb and calm your kick.';return;}
   if(this.pending!==null&&!this.pickups.some(p=>p.id===this.pending&&distance(p.position,this.position)<3.2))this.pending=null;
   // Walk away from the hatch stash → lid closes (contents stay persisted).
