@@ -497,6 +497,7 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   text-shadow:0 2px 0 rgba(0,0,0,.35);
 }
 .obj.done{opacity:.6}.obj.done .obj-icon{color:var(--good)}
+.obj.hot{color:#f0e2b0}.obj.hot .obj-icon{color:#f0c860}
 .obj-icon{font-size:12px;color:var(--accent);text-shadow:none}
 .map-chip{
   top:124px;border-radius:6px;background:var(--panel);border-color:var(--panel-edge);
