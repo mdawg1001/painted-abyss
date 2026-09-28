@@ -5,7 +5,7 @@ import {smokeAt} from './survival';
 import {SURVIVAL} from './survivalConfig';
 import {rifleName} from './rifleCondition';
 import {fmtGold,goldWalkFactor,goldBcdShare,modTag,modLevel,modValue,upgradeCost,UPGRADE,MOD_TRACKS} from './gold';
-import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,pickupInteractPrompt,isMainGuard,liveGuard,MAP_FRAGMENT_ORDER,STASH_CAPACITY,COMBAT_OUTCOME,STREAK,EGO_SAVIOR,type Item,type StashSlot} from './simulation';
+import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,pickupInteractPrompt,isMainGuard,MAP_FRAGMENT_ORDER,STASH_CAPACITY,COMBAT_OUTCOME,STREAK,EGO_SAVIOR,skinnerGoal,type Item,type StashSlot} from './simulation';
 import {combatCalloutAllowed} from './combatCalm';
 import {DiveMap} from './DiveMap';
 import {KNIFE_THUMB_URL} from './knifeAsset';
@@ -127,16 +127,7 @@ function App(){
  const cachePrompt=nearCache?(nearCache.kind==='ammo'?`Walk over · Ammo box (+${SURVIVAL.supplies.ammo} rounds)`:nearCache.kind==='medkit'?`Walk over · Field dressing (+${SURVIVAL.supplies.medkit} suit)`:`Walk over · Smoke grenade`):'';
  const prompt=m?.pending!==null&&m?.pending!==undefined?'Choose slot 1–5 · E confirms swap · Esc cancels':valvePrompt?valvePrompt:extraction?(m?.hasRelic?'E · Extract with the relic':'Relic required for extraction'):stashPrompt?stashPrompt:chestPrompt?chestPrompt:nearest?pickupInteractPrompt(m!,nearest.item,nearest):cachePrompt;
  const heading=(((-(snap?.yaw??0)*180)/Math.PI)%360+360)%360;
- const goal=(()=>{
-  if(!m)return null;
-  if(m.hasRelic)return{p:EXIT,label:'EXTRACT'};
-  if(m.inventory.includes('sovietKey'))return{p:RELIC,label:'RELIC'};
-  const keyDrop=m.pickups.find(p=>p.item==='sovietKey');
-  if(keyDrop)return{p:keyDrop.position,label:'KEY'};
-  const officer=m.guards.find(g=>liveGuard(g)&&isMainGuard(g));
-  if(officer)return{p:officer.position,label:'OFFICER'};
-  return{p:RELIC,label:'RELIC'};
- })();
+ const goal=m?skinnerGoal(m):null;
  const objective=m&&goal?{deg:compassDeg(goal.p.x-m.position.x,goal.p.z-m.position.z),label:`${goal.label} ${Math.round(Math.hypot(goal.p.x-m.position.x,goal.p.z-m.position.z))} m`}:undefined;
  const phaseLabel=m&&m.director.enabled?({intro:'',build:m.director.cycle?'THEY ARE COMING BACK HARDER':'CONTACT — THEY ARE COMING',peak:'OVERRUN — KEEP MOVING',lull:'LULL — RELOAD · RESUPPLY · MOVE',final:'FINAL PUSH — GET THE RELIC OUT'} as Record<string,string>)[m.director.phase]:'';
  const smokeVeil=m?Math.min(.82,smokeAt(m.clouds,m.position,m.elapsed)*.9):0;
@@ -177,10 +168,10 @@ function App(){
   {!playing&&<header><div className="brand"><span className="brand-mark">◉</span> PAINTED ABYSS<small>THE DROWNED SHELF</small></div><div className="build-label">FIRST DIVE <span> / </span> {APP_VERSION}</div></header>}
   {playing&&m&&<>
    <section className="objectives" aria-label="Objectives">
-    <div className={`obj ${m.guards.some(g=>isMainGuard(g)&&g.active&&g.hp<=0)||m.inventory.includes('sovietKey')||m.pickups.some(p=>p.item==='sovietKey')||m.hasRelic?'done':''}`}><span className="obj-icon" aria-hidden="true">★</span>{m.inventory.includes('sovietKey')||m.hasRelic?'Soviet key taken':m.pickups.some(p=>p.item==='sovietKey')?'Take the Soviet key':'Find and kill the main guard'}</div>
-    <div className={`obj ${m.hasRelic?'done':''}`}><span className="obj-icon" aria-hidden="true">◆</span>{m.hasRelic?'Carry the ammonite relic':m.inventory.includes('sovietKey')?'Unlock the ammonite relic':'Unlock the ammonite relic (needs key)'}</div>
-    <div className={`obj ${mapComplete?'done':''}`}><span className="obj-icon" aria-hidden="true">▣</span>{mapComplete?'Cave chart fitted':'Find map scraps in crates'}{mapCount>0&&!mapComplete?` (${mapCount}/3)`:''}</div>
-    <div className="obj"><span className="obj-icon" aria-hidden="true">○</span>Reach the extraction pool</div>
+    <div className={`obj ${m.gold>0?'hot':m.bankedGold>0?'done':''}`}><span className="obj-icon" aria-hidden="true">◈</span>{m.gold>0?'Bank gold at the hatch stash':m.bankedGold>0?'Vault ready — kill for more loot':'Kill for loot · bank at the hatch stash'}</div>
+    <div className={`obj ${m.stashOpen?'hot':modLevel(m.gunMods)>0?'done':''}`}><span className="obj-icon" aria-hidden="true">⚒</span>{m.stashOpen?'Workbench open — spend the vault':modLevel(m.gunMods)>0?'Rifle upgraded — keep banking':'Open the stash workbench to upgrade'}</div>
+    <div className={`obj ${m.guards.some(g=>isMainGuard(g)&&g.active&&g.hp<=0)||m.inventory.includes('sovietKey')||m.pickups.some(p=>p.item==='sovietKey')||m.hasRelic?'done':''}`}><span className="obj-icon" aria-hidden="true">★</span>{m.inventory.includes('sovietKey')||m.hasRelic?'Soviet key taken':m.pickups.some(p=>p.item==='sovietKey')?'Take the Soviet key':'Kill the officer for the key (extract jackpot)'}</div>
+    <div className={`obj ${m.hasRelic?'hot':''}`}><span className="obj-icon" aria-hidden="true">◆</span>{m.hasRelic?'Extract — vault payday + kilobar jackpot':m.inventory.includes('sovietKey')?'Unlock the relic for the extract jackpot':'Relic extract is the kilobar jackpot'}</div>
    </section>
    <div className={`map-chip ${mapComplete?'complete':''}`} aria-label={`Map fragments ${mapCount} of ${MAP_FRAGMENT_ORDER.length}`}>
     <span>MAP</span><strong>{mapCount}/{MAP_FRAGMENT_ORDER.length}</strong><em>Tab</em>
@@ -249,7 +240,11 @@ function App(){
     m.goldEvent.kind==='ditch'?`DITCHED ${fmtGold(m.goldEvent.grams)}`:`${fmtGold(m.goldEvent.grams)} LEFT ON YOUR BODY`}</div>}
    {m.stashOpen&&<div className="stash-panel" aria-label="Stash chest" onPointerDown={e=>e.stopPropagation()}>
     <div className="stash-title">STASH <span>{m.stash.filter(Boolean).length}/{STASH_CAPACITY}</span></div>
-    <p className="stash-hint">Click or 1–5 to pick a slot · E take / store · Esc close</p>
+    <p className="stash-hint">
+     {m.inventory[m.selected]
+      ?<>Holding <strong>{ITEMS[m.inventory[m.selected]!].name}</strong> — click a slot to store / swap</>
+      :<>Click a filled slot to take it · empty slot stores ammo · Esc closes</>}
+    </p>
     <div className="slots stash-slots">{m.stash.map((slot,i)=>{
      const focused=i===m.stashFocus;
      const kind=slot?.kind==='ammo'?'ammo':slot?.item??'';
@@ -257,8 +252,8 @@ function App(){
       e.preventDefault();
       e.stopPropagation();
       const eng=engine.current;if(!eng?.mission)return;
-      // Select only — E transfers the focused slot so you can choose before taking.
-      eng.mission.selectStashFocus(i);
+      // One click = that slot: take, store, or swap immediately.
+      eng.mission.activateStashSlot(i);
       eng.publish();
      }}><kbd>{i+1}</kbd><StashIcon slot={slot}/>{slot?.kind==='ammo'&&<em className="stash-amt">{slot.amount}</em>}{slot?.kind==='item'&&slot.rounds?<em className="stash-amt">+{slot.rounds}</em>:null}{slot?.kind==='item'&&modLevel(slot.mods)>0?<em className="stash-mods">+{modLevel(slot.mods)}</em>:null}</button>;
     })}</div>
@@ -294,13 +289,13 @@ function App(){
   {!playing&&<div className="menu-backdrop"><section className="menu">
    <div className="eyebrow">{terminal?m?.outcome==='won'?'EXPEDITION COMPLETE':'DIVE LOST':snap?.started?'DIVE PAUSED':'A SHORT UNDERWATER SURVIVAL PROTOTYPE'}</div>
    <h1>{terminal?m?.outcome==='won'?<>Back to<br/><em>the light.</em></>:<>The deep<br/><em>keeps its own.</em></>:snap?.started?<>Catch your<br/><em>breath.</em></>:<>Some things<br/><em>should stay buried.</em></>}</h1>
-   <p className="intro">{terminal?m?.reason:snap?.started?'Your dive is paused. Take a moment, then return to the cave.':'One cave. One ancient guardian. Recover the ammonite relic and bring it back to the light.'}</p>
+   <p className="intro">{terminal?m?.reason:snap?.started?'Your dive is paused. Take a moment, then return to the cave.':'Kill for loot. Bank it at the hatch stash. Upgrade. Dive again. Extract with the relic for a kilobar jackpot.'}</p>
    {terminal&&<div className="results"><span>{Math.floor((m?.elapsed||0)/60)}m {Math.floor((m?.elapsed||0)%60)}s underwater</span><span>{m?.outcome==='won'?'1 relic secured':'No relic secured'}</span>{m?.outcome==='won'&&m.lastExtractBars>0&&<span>Extract +{m.lastExtractBars} kg</span>}{m?.outcome==='won'&&(m.lastHaulBanked>0||m.bankedGold>0)&&<span>{m.lastHaulBanked>0?`Banked ${fmtGold(m.lastHaulBanked)} · vault ${fmtGold(m.bankedGold)}`:`Vault ${fmtGold(m.bankedGold)}`}</span>}</div>}
    {(error||snap?.error)?<p className="error" role="alert">{error||snap?.error}</p>:<button className="primary" disabled={!snap} onClick={()=>engine.current?.start()}>{!snap?'Opening the cave…':terminal?'Try another dive':snap.started?'Resume dive':'Begin dive'} <span>↗</span></button>}
    <div className="menu-actions"><button onClick={()=>{const w=engine.current;if(w){w.setSound(!w.sound);w.publish();}}}>{engine.current?.sound===false?'Sound off':'Sound on'}</button><button onClick={()=>engine.current?.testSound()}>Test sound</button>{snap?.started&&!terminal&&<button onClick={()=>{engine.current?.reset();engine.current?.start();}}>Restart dive</button>}</div>
    <p className="sound-help" role="status">{snap?.audioNotice||'Test sound plays two clear tones. During the dive, hear your music.'}</p>
    <div className="dive-note">2–4 MINUTES <span>·</span> DESKTOP / HEADPHONES <span>·</span> PROTOTYPE {APP_VERSION}</div>
-   </section><aside className="briefing"><div className="eyebrow">BEFORE YOU DESCEND</div><ol><li><b>Wake at the hatch.</b><span>A corridor joins the south of the cave. You start with only about 5% corridor water — WASD walk, Shift run. The cylinder does not burn until you swim. When corridor water rises past your eyes you leave the floor and swim with the usual buoyancy controls. Water rises there only and stays when you die. The wall tank is on a middle mount — after you die it is somewhere else. Press E to fill your cylinder. A gun, a spare bottle, and a coat lie farther up the corridor. Five Soviet guards patrol the dry floor in different kit colours — they stop where the water is too deep and cannot see through walls. Death drops whatever you carry on the corpse; if one of them killed you he takes the gun, bottle, and coat and will use them. You always wake with your diving knife — other gear stays on the corpse or in the hatch stash. Entering the flooded cave always means swimming.</span></li><li><b>Kill the main guard for the key.</b><span>One officer in a peaking cap patrols the west cavern — not at the hatch and not on the relic. His Soviet key unlocks the ammonite in the bone alcove (consumed on unlock). Extract still requires carrying the relic out.</span></li><li><b>Chart scraps in the crates.</b><span>The plastic crate has no lid — the scrap is already visible; press E to grab it. Lidded crates open with E, then E takes the scrap. Tab reviews the field chart. Exits stay unmarked until all three fit.</span></li><li><b>Make room for your discovery.</b><span>Five slots, no backpack. E picks up at once; with all five full it swaps with the item in your hand (pick that slot with 1–5 first) and the old item drops at your feet. Slot 1 starts with a diving knife.</span></li><li><b>Escape through the east fissure.</b><span>Follow amber lights north to the extraction pool. The guardian cannot enter the narrow passage.</span></li></ol><div className="control-grid"><span><kbd>W A S D</kbd> Walk then swim</span><span><kbd>Shift</kbd> Run / sprint</span><span><kbd>C</kbd> Hold to crouch · sneak; at a run, slide</span><span><kbd>Space</kbd> Jump (on foot)</span><span><kbd>Space / Q</kbd> Buoyancy (swim)</span><span><kbd>[ ]</kbd> Set trim bias</span><span><kbd>X</kbd> Clear trim</span><span><kbd>F</kbd> Torch</span><span><kbd>E</kbd> Collect / open crate</span><span><kbd>Tab</kbd> Cave chart</span><span><kbd>1–5</kbd> Select slot</span><span><kbd>Click</kbd> Stab (knife) / fire (pistol)</span><span><kbd>R</kbd> Use / reload</span><span><kbd>T</kbd> Throw smoke</span><span><kbd>G</kbd> Drop selected</span></div><p className="look-note">Move the mouse or trackpad to look — right looks right. No button held. If the browser limits the pointer, hold left or right of center to keep turning through 360° without leaving the dive window. Arrow keys also look. <kbd>Esc</kbd> pauses; <kbd>M</kbd> mutes.</p><p className="tip">Inventory: <kbd>1</kbd> selects the diving knife, then <kbd>click</kbd> stabs at close range — wound it and it rages; cut deep and it breaks off slow, or sinks bloody when killed. <kbd>R</kbd> uses consumables (air, sealant, flares). Crates yield chart scraps — <kbd>Tab</kbd> opens the field chart; exits stay unmarked until all three fit. A one-time tip appears on the first dive only. Rock blocks its sight; a flare distracts it while you move away. Killing is optional — extraction still only needs the relic.</p></aside></div>}
+   </section><aside className="briefing"><div className="eyebrow">BEFORE YOU DESCEND</div><ol><li><b>The hatch stash is home.</b><span>Wake at the hatch. Kill guards for loot — drops are random. Open the stash with E: every gram in your pockets hits the vault. Spend the vault at the workbench to upgrade the rifle in your hands. Die and you wake with the diving knife; banked gold and stashed gear stay. That loop is the game.</span></li><li><b>Kill, bank, upgrade, dive again.</b><span>Five Soviet guards patrol the corridor. Pocket gold slows you down — bank it. Upgrades live on the rifle: lose the gun, lose the upgrade (recover the corpse). Free gold bars are gone; rare kill jackpots and extract pay the kilobars.</span></li><li><b>Extract is the jackpot run.</b><span>One officer carries the Soviet key. Unlock the ammonite, then extract — pocket gold auto-banks and the vault gets a kilobar jackpot. The compass points BANK when you are carrying gold, STASH when you are empty-handed at home.</span></li><li><b>Chart scraps in the crates.</b><span>Plastic crate: scrap visible, E grabs it. Lidded crates open with E, then E takes the scrap. Tab reviews the field chart.</span></li><li><b>Inventory and the deep.</b><span>Five slots. E picks up; full pack swaps with the held slot. Corridor starts walkable; when water passes your eyes you swim. Death drops what you carry; a killer guard may take it until you drop him.</span></li></ol><div className="control-grid"><span><kbd>W A S D</kbd> Walk then swim</span><span><kbd>Shift</kbd> Run / sprint</span><span><kbd>C</kbd> Hold to crouch · sneak; at a run, slide</span><span><kbd>Space</kbd> Jump (on foot)</span><span><kbd>Space / Q</kbd> Buoyancy (swim)</span><span><kbd>[ ]</kbd> Set trim bias</span><span><kbd>X</kbd> Clear trim</span><span><kbd>F</kbd> Torch</span><span><kbd>E</kbd> Collect / open crate</span><span><kbd>Tab</kbd> Cave chart</span><span><kbd>1–5</kbd> Select slot</span><span><kbd>Click</kbd> Stab (knife) / fire (pistol)</span><span><kbd>R</kbd> Use / reload</span><span><kbd>T</kbd> Throw smoke</span><span><kbd>G</kbd> Drop selected</span></div><p className="look-note">Move the mouse or trackpad to look — right looks right. No button held. If the browser limits the pointer, hold left or right of center to keep turning through 360° without leaving the dive window. Arrow keys also look. <kbd>Esc</kbd> pauses; <kbd>M</kbd> mutes.</p><p className="tip">Inventory: <kbd>1</kbd> selects the diving knife, then <kbd>click</kbd> stabs at close range — wound it and it rages; cut deep and it breaks off slow, or sinks bloody when killed. <kbd>R</kbd> uses consumables (air, sealant, flares). Crates yield chart scraps — <kbd>Tab</kbd> opens the field chart; exits stay unmarked until all three fit. A one-time tip appears on the first dive only. Rock blocks its sight; a flare distracts it while you move away. Killing is optional — extraction still only needs the relic.</p></aside></div>}
  </main>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);

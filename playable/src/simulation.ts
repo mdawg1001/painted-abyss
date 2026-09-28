@@ -495,6 +495,32 @@ export function stashInteractPrompt(m:{
 /** True when this guard is the unique main officer who carries the Soviet relic key. */
 export const isMainGuard=(g:{role:GuardRole})=>g.role==='officer';
 
+/**
+ * Compass / HUD goal for the Skinner loop: kill → loot → bank at hatch → dive again.
+ * Relic extract is a jackpot on top, not the default home needle.
+ */
+export type SkinnerGoal={p:Point;label:string};
+export function skinnerGoal(m:{
+ hasRelic:boolean;
+ gold:number;
+ inventory:(Item|null)[];
+ pickups:Pickup[];
+ guards:Guard[];
+}):SkinnerGoal{
+ if(m.hasRelic)return{p:EXIT,label:'EXTRACT'};
+ if(m.gold>0)return{p:STASH_POSITION,label:'BANK'};
+ if(m.inventory.includes('sovietKey'))return{p:RELIC,label:'RELIC'};
+ const keyDrop=m.pickups.find(p=>p.item==='sovietKey');
+ if(keyDrop)return{p:keyDrop.position,label:'KEY'};
+ const officer=m.guards.find(g=>liveGuard(g)&&isMainGuard(g));
+ if(officer)return{p:officer.position,label:'OFFICER'};
+ return{p:STASH_POSITION,label:'STASH'};
+}
+
+/** First-dive tip — vault loop first, relic as the extract jackpot. */
+export const SKINNER_FIRST_TIP=
+ 'Kill for loot. Bank gold at the hatch stash (E). Upgrade there. Dive again. Relic extract pays a kilobar jackpot. WASD · Shift run · 1–5 select.';
+
 /** World / HUD prompt for a floor pickup (relic gate + key wording). */
 export function pickupInteractPrompt(m:{
  inventory:(Item|null)[];
@@ -1586,7 +1612,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.killedByGuard=false;
   this.ensureKnife();
   if(!tipsSeen){
-   this.notice='Find the main guard. Take his Soviet key, unlock the relic, extract. WASD walk · Shift run · 1–5 select · click stabs.';
+   this.notice=SKINNER_FIRST_TIP;
    this.noticeUntil=9;this.feedbackKind='select';
   }
  }
@@ -1711,6 +1737,16 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(i<0||i>=STASH_CAPACITY)return;
   this.stashFocus=i;
   this.pulse('select');
+ }
+ /**
+  * Click / 1–5 while the chest is open: focus that slot and transfer immediately.
+  * One press = choose and take/store/swap — no second confirmation.
+  */
+ activateStashSlot(i:number){
+  if(!this.stashOpen||this.outcome!=='playing')return;
+  if(i<0||i>=STASH_CAPACITY)return;
+  this.stashFocus=i;
+  this.transferWithStash();
  }
  closeStash(){
   if(!this.stashOpen)return;
@@ -1870,9 +1906,14 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  /** Pocket a gold pickup. */
  takeGold(p:Pickup){
   const g=p.amount??GOLD.barGrams;
+  const firstHaul=this.gold<=0;
   this.gold+=g;
   this.pickups=this.pickups.filter(q=>q.id!==p.id);
   this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'take',grams:g,at:this.elapsed};
+  if(firstHaul){
+   this.say(`+${fmtGold(g)} gold · bank it at the hatch stash`,'ok');
+   return;
+  }
   if(g>=GOLD.barGrams||this.noticeUntil<=this.elapsed)this.say(`+${fmtGold(g)} gold · carrying ${fmtGold(this.gold)}`,'ok');
  }
  /**
@@ -2109,7 +2150,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     }
     if(firstFilledStashSlot(this.stash)<0)this.stashFocus=0;
     else if(!this.stash[this.stashFocus])this.stashFocus=Math.max(0,firstFilledStashSlot(this.stash));
-    this.say('Stash open. Click or 1–5 pick a slot · E take/store · Esc closes.','ok');
+    this.say('Stash open. Click a slot (or 1–5) to take/store · Esc closes.','ok');
     return;
    }
    this.transferWithStash();

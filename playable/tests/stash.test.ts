@@ -161,7 +161,7 @@ test('prompts name open / store and capacity is finite',()=>{
  assert.equal(m.inventory[0],'coat');
 });
 
-test('selectStashFocus picks a slot without transferring; E takes that slot',()=>{
+test('activateStashSlot takes the chosen slot immediately (click / 1–5)',()=>{
  mockStorage();
  writeStash(emptyStash());
  const m=new Mission(true);
@@ -172,16 +172,16 @@ test('selectStashFocus picks a slot without transferring; E takes that slot',()=
  m.selected=1;m.stashFocus=1;m.interact(); // store coat in slot 1
  assert.equal(m.stash[0]?.kind==='item'&&m.stash[0].item,'bottle');
  assert.equal(m.stash[1]?.kind==='item'&&m.stash[1].item,'coat');
- // Hands empty, knife not held — select slot 1 only.
- m.inventory=[null,null,null,null,null];m.selected=0;
- m.selectStashFocus(1);
- assert.equal(m.stashFocus,1);
- assert.equal(m.stash[1]?.kind==='item'&&m.stash[1].item,'coat','select does not take');
- assert.match(stashInteractPrompt(m),/Take.*[Cc]oat/);
- m.interact();
+ m.inventory=[null,null,null,null,null];m.selected=0;m.pistol.reserve=0;
+ m.activateStashSlot(1);
  assert.equal(m.inventory[0],'coat');
  assert.equal(m.stash[1],null);
  assert.ok(m.stash[0]?.kind==='item'&&m.stash[0].item==='bottle','other slot untouched');
+ // Empty hands + empty slot + no ammo → close (does not yank bottle from slot 0).
+ m.inventory=[null,null,null,null,null];m.selected=0;m.pistol.reserve=0;
+ m.activateStashSlot(2);
+ assert.equal(m.stashOpen,false);
+ assert.ok(m.stash[0]?.kind==='item'&&m.stash[0].item==='bottle');
 });
 
 test('taking with an empty selected slot keeps other inventory items',()=>{

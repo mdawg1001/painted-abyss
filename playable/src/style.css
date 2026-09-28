@@ -271,14 +271,22 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   pointer-events:none;
 }
 .stash-panel{
-  position:absolute;bottom:100px;left:50%;transform:translateX(-50%);
+  /* Fixed + high z so the full-screen WebGL canvas never eats clicks. */
+  position:fixed;bottom:108px;left:50%;transform:translateX(-50%);
+  z-index:80;
   pointer-events:auto;
-  padding:10px 12px 12px;
-  background:rgba(8,14,16,.82);
-  border:1px solid rgba(180,160,110,.35);
+  cursor:default;
+  padding:12px 14px 14px;
+  min-width:340px;
+  background:rgba(8,14,16,.92);
+  border:1px solid rgba(180,160,110,.45);
   border-radius:6px;
-  box-shadow:0 8px 28px rgba(0,0,0,.45);
+  box-shadow:0 12px 40px rgba(0,0,0,.65);
 }
+.playing .stash-panel,.playing .stash-panel *{cursor:pointer}
+.playing .stash-panel .stash-hint,.playing .stash-panel .stash-title,
+.playing .stash-panel .workbench-title,.playing .stash-panel .workbench-risk{cursor:default}
+.playing .stash-panel .stash-hint strong{color:rgba(226,200,136,.95);font-weight:700}
 .stash-title{
   font-family:'Barlow Condensed',sans-serif;
   font-size:13px;font-weight:700;letter-spacing:.12em;
@@ -497,6 +505,7 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   text-shadow:0 2px 0 rgba(0,0,0,.35);
 }
 .obj.done{opacity:.6}.obj.done .obj-icon{color:var(--good)}
+.obj.hot{color:#f0e2b0}.obj.hot .obj-icon{color:#f0c860}
 .obj-icon{font-size:12px;color:var(--accent);text-shadow:none}
 .map-chip{
   top:124px;border-radius:6px;background:var(--panel);border-color:var(--panel-edge);

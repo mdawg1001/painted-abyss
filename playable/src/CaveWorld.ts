@@ -2211,9 +2211,9 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    }
    if(e.code==='KeyB'){this.mission.ditchGold();this.publish();}
    if(/^Digit[1-5]$/.test(e.code)){
-    // Stash open: 1–5 pick a chest slot (cursor is unlocked so clicks work too).
+    // Stash open: 1–5 activates that chest slot (take / store / swap immediately).
     if(this.mission.stashOpen){
-     this.mission.selectStashFocus(Number(e.code.slice(-1))-1);
+     this.mission.activateStashSlot(Number(e.code.slice(-1))-1);
      this.playSelectClick();
      this.publish();
      return;
@@ -2536,7 +2536,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   * inspect), the rig slides onto the sight line and the lens narrows.
   */
  updateAim(dt:number){
-  const can=this.playing&&this.aimHeld&&this.holdingGun()&&!this.valveStroke&&this.mission.pistol.reload<=0&&!this.mission.mapOpen;
+  const can=this.playing&&this.aimHeld&&this.holdingGun()&&!this.valveStroke&&this.mission.pistol.reload<=0&&!this.mission.mapOpen&&!this.mission.stashOpen;
   const step=dt/AK74U_ADS.seconds;
   this.aimBlend=can?Math.min(1,this.aimBlend+step):Math.max(0,this.aimBlend-step);
   document.documentElement.classList.toggle('ads',this.aimEase()>.5);
@@ -2844,8 +2844,9 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   if(this.playing){this.time+=dt;const m=this.mission;this.drainStabQueue();
    this.syncStreakTier();
    const pressed=(...keys:string[])=>keys.some(k=>this.keys.has(k))?1:0;
-   if(m.mapOpen){
-    // Chart reading: hold still, but the dive clock / gas / predator keep running.
+   if(m.mapOpen||m.stashOpen){
+    // Chart / stash UI: freeze the body so you cannot walk out of reach mid-click.
+    // Dive clock / gas / predator keep running (same as map).
     this.onFoot=canWalk(m.position,m.breathWaterY);
     this.velocity.set(0,0,0);this.keys.clear();
     this.gait.step(0,0,false,dt);
