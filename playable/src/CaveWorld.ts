@@ -24,8 +24,9 @@ import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playG
 import { Gait, wadingDrag, runWeight, WALK_CAMERA_MOTION, type GaitEvent } from './gait';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
-import { BUNKER, buildBunkerLayout, type Keepout } from './bunkerLayout';
-import { SHEETS, bakeBunker, createBunkerMaterial, createBunkerTextures, loadBunkerKit, mergeBucket, type BunkerKit, type BunkerTextures, type Sheet } from './sovietBunker';
+import { BUNKER, buildBunkerLayout } from './bunkerLayout';
+import { bunkerKeepouts } from './bunkerKeepouts';
+import { SHEETS, KIT_VERTICES, bakeBunker, bunkerBucketOf, bunkerSignature, createBunkerLightmaps, createBunkerMaterial, createBunkerTextures, injectLightmap, BUNKER_LIGHT, loadBunkerKit, loadLitBunker, mergeBucket, type BunkerKit, type BunkerTextures, type BakeKey } from './sovietBunker';
 import { createDecalMaterial, createStencilAtlas } from './bunkerDecals';
 import { KNIFE_CLICK_BUFFER, createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, knifeMeshReady, HELD_VIEW_POS, HELD_VIEW_ROT, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_TIME, KNIFE_EQUIP_TIME, stabOffset, equipOffset } from './knifeAsset';
 import { createSovietKeyHeld, createSovietKeyPickup } from './sovietKeyAsset';
@@ -39,10 +40,6 @@ import {
  LIFEBUOY_POS, LIFEBUOY_YAW, type LifebuoyVisual,
 } from './lifebuoyAsset';
 import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLight } from './sconceAsset';
-import { radiatorMounts } from './radiatorAsset';
-import { wallPosterMount } from './posterAsset';
-import { copperWallSpan } from './copperPipeAsset';
-import { SURVIVAL_COVER } from './survivalConfig';
 import { createHangingLights, hangingLightMounts, stepHangingLights, upgradeHangingLights, type HangingLights } from './hangingLightAsset';
 import { createWallPosters, upgradeWallPosters, type WallPosters } from './posterAsset';
 import { createCopperPipe, upgradeCopperPipe, upgradeCopperPipeDetail, updateCopperPipe, type CopperPipe } from './copperPipeAsset';
@@ -83,7 +80,7 @@ export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLoc
 const POINT_CULL_MAX=24;
 /** Loot-glow lights shared by the nearest glowing pickups (count fixed for shader stability). */
 const PICKUP_LIGHT_POOL=6;
-type PointCull={box:THREE.Box3;count:{value:number};pos:THREE.Vector3[];col:THREE.Vector3[];dist:Float32Array;decay:Float32Array};
+type PointCull={box:THREE.Box3;count:{value:number};pos:THREE.Vector3[];col:THREE.Vector3[];dist:Float32Array;decay:Float32Array;still:Float32Array};
 function pointCullLightsChunk(){
   const src=ShaderChunk.lights_fragment_begin;
   const start=src.indexOf('#if ( NUM_POINT_LIGHTS > 0 ) && defined( RE_Direct )');
@@ -98,12 +95,23 @@ function pointCullLightsChunk(){
 		pointLight.distance = uCullDist[ i ];
 		pointLight.decay = uCullDecay[ i ];
 		getPointLightInfo( pointLight, geometryPosition, directLight );
+		#ifdef BK_SHADOW
+		directLight.color *= mix( 1.0, bkShadow, uCullStatic[ i ] );
+		#endif
 		RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
 	}
 #endif
 
 `;
-  return src.slice(0,start)+block+src.slice(end);
+  // Bunker surfaces (BK_SHADOW, bunkerLightmap.ts) take the flat overhead fill through the baked
+  // occlusion: the lightmaps already carry the light that really reaches them.
+  const dir='getDirectionalLightInfo( directionalLight, directLight );';
+  const tail=src.slice(end);
+  if(!tail.includes(dir)) throw new Error('Three.js light chunk layout changed');
+  return src.slice(0,start)+block+tail.replace(dir,`${dir}
+		#ifdef BK_SHADOW
+		directLight.color *= mix( 1.0, bkLmAo * uBkSky, uBkLmOn );
+		#endif`);
 }
 const POINT_CULL_LIGHTS=pointCullLightsChunk();
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
@@ -404,6 +412,12 @@ export class CaveWorld extends OceanWorld {
  bloodLife=0;bloodPeakLife=14;
  rockMaps:CaveRockMaps;
  bunkerTextures!:BunkerTextures;
+ bunkerLightmaps?:ReturnType<typeof createBunkerLightmaps>;
+ /** 1 once the baked lightmaps are on every bunker surface. */
+ bunkerLmOn={value:0};
+ /** Baked-lighting uniforms (shared by every bunker material), exposed for tuning. */
+ bunkerLight=BUNKER_LIGHT;
+ _lmTintA=new THREE.Color();_lmTintB=new THREE.Color();_lmTintC=new THREE.Color();
  /** Settles when the kit meshes have replaced the plain fallback walls. */
  bunkerReady:Promise<void>=Promise.resolve();
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
@@ -597,6 +611,7 @@ export class CaveWorld extends OceanWorld {
   const {group,lights}=createWallSconces(mounts);
   this.scene.add(group);
   this.wallSconceLights=lights;
+  for(const s of lights)s.light.userData.bakedShadow=true;
   const anchor=mounts[0]??{x:0,z:0};
   this.propStreaming.add('sconces',anchor,async()=>{
    const ok=await upgradeWallSconces(group,mounts,lights);
@@ -847,6 +862,7 @@ export class CaveWorld extends OceanWorld {
   const col=Array.from({length:POINT_CULL_MAX},()=>new THREE.Vector3());
   const dist=new Float32Array(POINT_CULL_MAX);
   const decay=new Float32Array(POINT_CULL_MAX);
+  const still=new Float32Array(POINT_CULL_MAX);
   const prev=mat.onBeforeCompile?.bind(mat);
   const prevKey=mat.customProgramCacheKey.bind(mat);
   mat.onBeforeCompile=(shader,renderer)=>{
@@ -856,12 +872,13 @@ export class CaveWorld extends OceanWorld {
    shader.uniforms.uCullCol={value:col};
    shader.uniforms.uCullDist={value:dist};
    shader.uniforms.uCullDecay={value:decay};
-   shader.fragmentShader=`uniform int uCullCount;uniform vec3 uCullPos[${POINT_CULL_MAX}];uniform vec3 uCullCol[${POINT_CULL_MAX}];uniform float uCullDist[${POINT_CULL_MAX}];uniform float uCullDecay[${POINT_CULL_MAX}];\n`+shader.fragmentShader;
+   shader.uniforms.uCullStatic={value:still};
+   shader.fragmentShader=`uniform int uCullCount;uniform vec3 uCullPos[${POINT_CULL_MAX}];uniform vec3 uCullCol[${POINT_CULL_MAX}];uniform float uCullDist[${POINT_CULL_MAX}];uniform float uCullDecay[${POINT_CULL_MAX}];uniform float uCullStatic[${POINT_CULL_MAX}];\n`+shader.fragmentShader;
    shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_begin>',POINT_CULL_LIGHTS);
   };
   mat.customProgramCacheKey=()=>prevKey()+':pt'+POINT_CULL_MAX;
   mat.userData.pointCulled=true;
-  this.pointCullTargets.push({box,count,pos,col,dist,decay});
+  this.pointCullTargets.push({box,count,pos,col,dist,decay,still});
  }
  /** World AABB of every mesh under root. Lights that miss this box cannot shade it. */
  worldBox(root:THREE.Object3D){
@@ -947,6 +964,8 @@ export class CaveWorld extends OceanWorld {
     t.col[n].set(light.color.r*light.intensity,light.color.g*light.intensity,light.color.b*light.intensity);
     t.dist[n]=dist;
     t.decay[n]=light.decay;
+    // Fixed lamps are shadowed by the baked mask on bunker surfaces (bunkerLightmap.ts).
+    t.still[n]=light.userData.bakedShadow?1:0;
     n++;
    }
    t.count.value=n;
@@ -1003,76 +1022,78 @@ export class CaveWorld extends OceanWorld {
    else if(item.hidden){item.obj.visible=true;item.hidden=false;}
   }
  }
- /** Wall props, loot and cover the bunker dressing must leave room for. */
- bunkerKeepouts():Keepout[]{
-  const k:Keepout[]=[];
-  for(const m of wallSconceMounts())k.push({x:m.x,z:m.z,r:.9});
-  const poster=wallPosterMount();k.push({x:poster.x,z:poster.z,r:1.9});
-  for(const m of radiatorMounts())k.push({x:m.x,z:m.z,r:1.3});
-  const span=copperWallSpan();
-  for(let x=Math.min(span.x0,span.x1);x<=Math.max(span.x0,span.x1)+.01;x+=1)k.push({x,z:span.z,r:1});
-  k.push({x:PIPE_MOUNT.x,z:PIPE_MOUNT.z,r:2.2});
-  for(const m of breathTankMounts())k.push({x:m.x,z:m.z,r:1.2});
-  for(const c of this.mission.chests)k.push({x:c.position.x,z:c.position.z,r:1.3});
-  for(const c of SURVIVAL_COVER)k.push({x:c.x,z:c.z,r:Math.hypot(c.hx,c.hz)+.4});
-  k.push({x:STASH_POSITION.x,z:STASH_POSITION.z,r:1.6},{x:LIFEBUOY_POS.x,z:LIFEBUOY_POS.z,r:1.2});
-  const spawn=breathHatchSpawn();k.push({x:spawn.x,z:spawn.z+2.2,r:2.6});
-  return k;
- }
  buildCave(){
   const {rock:rockMaps,moss:mossMaps}=this.rockMaps;
   // Soviet bunker art pass on the simulation grid (see bunkerLayout.ts): same cells, same collision.
-  const layout=buildBunkerLayout({keepouts:this.bunkerKeepouts()});
+  const layout=buildBunkerLayout({keepouts:bunkerKeepouts()});
   this.bunkerTextures=createBunkerTextures(this.renderer,this.rockMaps.loader);
   const atlas=createStencilAtlas(layout.labels);
-  // Corridor cells stay in their own meshes. Sharing a 16 m chunk with the
+  // Corridor cells stay in their own meshes (bunkerBucketOf): sharing a 16 m chunk with the
   // entrance cave forced every occluded cave triangle into the hatch view.
-  const bucketOf=(c:number,r:number)=>`${breathZone(c,r)!==''?'b':'c'}:${c>>2},${r>>2}`;
-  type Bucket={mats:Record<Sheet|'decal',THREE.Material>;box:THREE.Box3;breath:boolean};
+  const bucketOf=bunkerBucketOf;
+  type Bucket={mats:Record<BakeKey,THREE.Material>;box:THREE.Box3;breath:boolean};
   const buckets=new Map<string,Bucket>();
   const sheets=this.bunkerTextures.sheets;
+  // Baked lighting: one switch for every lightmapped surface, off until the lightmaps are real.
+  const lightmaps=createBunkerLightmaps(this.rockMaps.loader);this.bunkerLightmaps=lightmaps;
+  const lmOn=this.bunkerLmOn,lmOff={value:0};
   for(const key of cells){
    const [c,r]=key.split(',').map(Number),p=world(c,r),k=bucketOf(c,r);
    let b=buckets.get(k);
    if(!b){
-    const mats={} as Record<Sheet|'decal',THREE.Material>;
-    for(const s of SHEETS)mats[s]=createBunkerMaterial(sheets[s],FLOOR_Y);
-    mats.decal=createDecalMaterial(atlas);
+    const mats={} as Record<BakeKey,THREE.Material>;
+    for(const s of SHEETS)mats[s]=injectLightmap(createBunkerMaterial(sheets[s],FLOOR_Y),lmOn);
+    // Cables are thin and near black: not worth lightmap space, same program.
+    mats.cable=injectLightmap(createBunkerMaterial(sheets.none,FLOOR_Y),lmOff);
+    mats.decal=injectLightmap(createDecalMaterial(atlas),lmOn);
     b={mats,box:new THREE.Box3(),breath:k[0]==='b'};buckets.set(k,b);
    }
    b.box.expandByPoint(new THREE.Vector3(p.x-CELL/2,FLOOR_Y-.3,p.z-CELL/2));
    b.box.expandByPoint(new THREE.Vector3(p.x+CELL/2,FLOOR_Y+BUNKER.height+.3,p.z+CELL/2));
   }
   for(const b of buckets.values()){b.box.expandByScalar(.6);for(const m of Object.values(b.mats))this.trackPointCull(m,b.box);}
-  const addMeshes=(baked:ReturnType<typeof bakeBunker>,keep?:THREE.Mesh[])=>{
-   for(const [k,bb] of baked){
-    const b=buckets.get(k);if(!b)continue;
-    for(const [sheet,geos] of bb){
-     const merged=mergeBucket(geos);if(!merged)continue;
-     const mesh=new THREE.Mesh(merged,b.mats[sheet]);
-     mesh.castShadow=sheet!=='decal';mesh.receiveShadow=true;
-     mesh.matrixAutoUpdate=false;mesh.updateMatrix();
-     mesh.name=`bunker:${k}:${sheet}`;
-     this.scene.add(mesh);
-     this.portalItems.push({obj:mesh,box:merged.boundingBox!.clone(),side:b.breath?'breath':'cave',hidden:false});
-     keep?.push(mesh);
-    }
-   }
+  const addMesh=(k:string,key:BakeKey,geometry:THREE.BufferGeometry,keep?:THREE.Mesh[])=>{
+   const b=buckets.get(k);if(!b)return;
+   const mesh=new THREE.Mesh(geometry,b.mats[key]);
+   mesh.castShadow=key!=='decal';mesh.receiveShadow=true;
+   mesh.matrixAutoUpdate=false;mesh.updateMatrix();
+   mesh.name=`bunker:${k}:${key}`;
+   this.scene.add(mesh);
+   this.portalItems.push({obj:mesh,box:geometry.boundingBox!.clone(),side:b.breath?'breath':'cave',hidden:false});
+   keep?.push(mesh);
   };
-  const bake=(kit:BunkerKit|null,kitPieces:boolean)=>bakeBunker(layout.placements,{kit,bucketOf,decalRect:atlas.rect,filter:p=>(p.kind==='kit')===kitPieces});
-  addMeshes(bake(null,false));
-  // Plain painted planes close the rooms until the kit binary lands (a few hundred ms).
-  const fallback:THREE.Mesh[]=[];
-  addMeshes(bake(null,true),fallback);
-  this.bunkerReady=loadBunkerKit().then(kit=>{
-   if(!this.alive)return;
-   for(const mesh of fallback){
+  const addBaked=(baked:ReturnType<typeof bakeBunker>,keep?:THREE.Mesh[])=>{
+   for(const [k,bb] of baked)for(const [key,geos] of bb){const merged=mergeBucket(geos);if(merged)addMesh(k,key,merged,keep);}
+  };
+  const removeMeshes=(list:THREE.Mesh[])=>{
+   for(const mesh of list){
     this.scene.remove(mesh);mesh.geometry.dispose();
     const i=this.portalItems.findIndex(item=>item.obj===mesh);if(i>=0)this.portalItems.splice(i,1);
    }
-   addMeshes(bake(kit,true));
+   list.length=0;
+  };
+  const bake=(kit:BunkerKit|null,kitPieces:boolean)=>bakeBunker(layout.placements,{kit,bucketOf,decalRect:atlas.rect,filter:p=>(p.kind==='kit')===kitPieces});
+  // First frame: procedural dressing plus plain painted planes where the kit goes.
+  const procedural:THREE.Mesh[]=[],fallback:THREE.Mesh[]=[];
+  addBaked(bake(null,false),procedural);
+  addBaked(bake(null,true),fallback);
+  // Then the baked bunker (geometry with lightmap UVs) if it matches this layout; the kit if not.
+  const signature=bunkerSignature(layout,KIT_VERTICES);
+  const kitPath=()=>loadBunkerKit().then(kit=>{
+   if(!this.alive)return;
+   removeMeshes(fallback);
+   addBaked(bake(kit,true));
    this.shaderGuardDirty=true;
-  }).catch(err=>console.warn('Bunker kit unavailable; keeping plain walls',err));
+  });
+  this.bunkerReady=loadLitBunker().then(lit=>{
+   if(!this.alive)return;
+   if(lit.signature!==signature){console.warn(`Baked bunker is stale (${lit.signature} != ${signature}); rebake with scripts/bunker-bake. Using unbaked kit.`);return kitPath();}
+   removeMeshes(procedural);removeMeshes(fallback);
+   for(const m of lit.meshes)addMesh(m.bucket,m.key as BakeKey,m.geometry);
+   this.shaderGuardDirty=true;
+   return lightmaps.load(lit.lmScale).then(ok=>{if(ok&&this.alive)lmOn.value=1;});
+  },err=>{console.warn('Baked bunker unavailable; using unbaked kit',err);return kitPath();})
+   .catch(err=>console.warn('Bunker kit unavailable; keeping plain walls',err));
   const bone=this.material(0xc8c0a8,'rock',.82,1.5,rockMaps,mossMaps);
   const boneBox=new THREE.Box3();
   for(let i=0;i<6;i++)for(const s of [-1,1]){
@@ -1154,7 +1175,7 @@ export class CaveWorld extends OceanWorld {
   const lamps=[{z:spawn.z-2,d:12},{z:16,d:11},{z:8,d:5}];
   for(const lamp of lamps){
    const light=new THREE.PointLight(PALETTE.amber,14,lamp.d,2);
-   light.position.set(foot.cx,2.4,lamp.z);
+   light.position.set(foot.cx,2.4,lamp.z);light.userData.bakedShadow=true;
    const lens=new THREE.MeshBasicMaterial({color:PALETTE.amberGlow});
    this.alarmFixtures.push({light,lens});this.scene.add(light);
   }
@@ -1930,7 +1951,7 @@ export class CaveWorld extends OceanWorld {
   ring.rotation.x=Math.PI/2;exit.add(ring);this.scene.add(exit);
   const sunlight=new THREE.SpotLight(PALETTE.ivory,480,26,.72,.8,1);
   sunlight.position.set(32,12,-12);sunlight.target.position.set(32,0,-12);this.scene.add(sunlight,sunlight.target);
-  const poolFill=new THREE.PointLight(WATER_FIELD,34,16,1.1);poolFill.position.set(32,5,-12);this.scene.add(poolFill);
+  const poolFill=new THREE.PointLight(WATER_FIELD,34,16,1.1);poolFill.position.set(32,5,-12);poolFill.userData.bakedShadow=true;this.scene.add(poolFill);
   this.addShaft(32,5.2,-12,9,.75,2.9,PALETTE.ivory,.3,0,0,{caustic:true,causticR:5.2});
 
   // Cavern ceiling fill + floor caustic. No volumetric column — the only god ray is the exit.
@@ -2988,6 +3009,13 @@ export class CaveWorld extends OceanWorld {
   this.gradeAmbient.intensity=lights.ambientI;
   this.gradeSky.color.setHex(lights.sun);
   this.gradeSky.intensity=lights.sunI;
+  // Baked bounce follows the grade's fill: white in the dry, teal flooded, red on the slam.
+  {
+   const dry=GRADE_LIGHTS.dry,t=BUNKER_LIGHT.uBkLmTint.value,a=this._lmTintA,b=this._lmTintB;
+   a.setHex(lights.sky).multiplyScalar(lights.hemi).add(b.setHex(lights.ambient).multiplyScalar(lights.ambientI));
+   b.setHex(dry.sky).multiplyScalar(dry.hemi).add(this._lmTintC.setHex(dry.ambient).multiplyScalar(dry.ambientI));
+   t.setRGB(a.r/b.r,a.g/b.g,a.b/b.b);
+  }
   const slam=gradeSlam(this.frameGrade);
   for(const spot of this.gradeSpots)spot.light.color.setHex(slam?field:spot.rest);
   if(this.clipPass)this.clipPass.uniforms.uSlam.value=slam;
@@ -3077,5 +3105,5 @@ export class CaveWorld extends OceanWorld {
   this.guardNewShaders();
   this.composer.render();
  }
- dispose(){window.clearTimeout(this.akPrefetchTimer);if(this.copperPipe)this.copperPipe.disposed=true;this.rockMaps.dispose();this.bunkerTextures?.dispose();this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
+ dispose(){window.clearTimeout(this.akPrefetchTimer);if(this.copperPipe)this.copperPipe.disposed=true;this.rockMaps.dispose();this.bunkerTextures?.dispose();this.bunkerLightmaps?.dispose();this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
 }

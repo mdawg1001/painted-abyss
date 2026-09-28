@@ -3,6 +3,8 @@
  * Pieces are Quaternius's Modular Sci-Fi MegaKit (CC0), node transforms already applied.
  */
 export const BUNKER_KIT_BASE = '/assets/soviet-bunker-kit/';
+/** Vertex count of kit.bin; part of the bake signature (a new kit means a new bake). */
+export const KIT_VERTICES = 16825;
 export type Sheet = 'T1' | 'T2' | 'T3' | 'none';
 export const SHEETS: Sheet[] = ['T1', 'T2', 'T3', 'none'];
 
