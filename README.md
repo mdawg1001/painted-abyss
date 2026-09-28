@@ -1,7 +1,8 @@
-# Painted Abyss — First Dive · 0.22.14
+# Painted Abyss — First Dive · 0.22.15
 
+## Near-death Ego Savior Phase 1 (0.22.15)
 
-
+The hit that would kill you can silently clamp suit HP to **1–3** once per life, with **0.4–0.7 s** true i-frames and a short enemy shoot-cadence desync (longer burst gaps / delayed next shot). No INVULNERABLE banner — GRAZE tracers keep whipping past. After the window you are glass; the save recharges on hatch respawn.
 
 ## Sharp image: full Retina resolution and edge smoothing (0.22.14)
 

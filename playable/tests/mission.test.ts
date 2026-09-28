@@ -224,7 +224,30 @@ test('each new mission rolls diver and predator spawns with separation',()=>{
 });
 test('predator transitions patrol → alert → chase → search → patrol',()=>{const m=new Mission();m.breathWaterY=FLOOR_Y+PREDATOR_SWIM_DEPTH+.3;isolateGuards(m); /* keep the armed corridor squad out of this predator-only test */m.predator.position=world(16,19);m.position=world(16,16);advance(m,.2);assert.equal(m.predator.state,'alert');advance(m,2);assert.equal(m.predator.state,'chase');m.position={...START};advance(m,3);assert.equal(m.predator.state,'search');advance(m,8);assert.equal(m.predator.state,'patrol');});
 test('predator cannot see or bite through rock',()=>{const m=new Mission();m.predator.position=world(8,17);m.position=world(13,17);advance(m,.2);assert.equal(m.predator.state,'patrol');assert.equal(m.health,100);});
-test('four bites lose the mission; fresh mission resets every system',()=>{const m=new Mission();m.breathWaterY=FLOOR_Y+PREDATOR_SWIM_DEPTH+.3;m.position=world(16,19);m.predator.position={...m.position};m.predator.state='chase';advance(m,6);assert.equal(m.outcome,'lost');assert.equal(m.health,0);const fresh=new Mission();fresh.breathWaterY=FLOOR_Y+PREDATOR_SWIM_DEPTH+.3;assert.equal(fresh.health,100);assert.equal(fresh.air,AIR_MAIN_MAX);assert.equal(fresh.bailout,0);assert.equal(fresh.outcome,'playing');assert.equal(fresh.pending,null);assert.equal(fresh.pickups[0].item,'relic');assert.ok(fits(fresh.position,.48));assert.equal(fresh.position.x,breathHatchSpawn().x);assert.equal(fresh.position.z,breathHatchSpawn().z);assert.ok(distance(fresh.predator.position,fresh.position)>SPAWN_SEPARATION);});
+test('four bites lose the mission; fresh mission resets every system',()=>{
+ const m=new Mission();
+ m.breathWaterY=FLOOR_Y+PREDATOR_SWIM_DEPTH+.3;
+ m.position=world(16,19);
+ m.predator.position={...m.position};
+ m.predator.state='chase';
+ // Burn Ego Savior so this fixture stays about bite lethality (savior has its own tests).
+ m.egoSaviorUsed=true;
+ advance(m,6);
+ assert.equal(m.outcome,'lost');
+ assert.equal(m.health,0);
+ const fresh=new Mission();
+ fresh.breathWaterY=FLOOR_Y+PREDATOR_SWIM_DEPTH+.3;
+ assert.equal(fresh.health,100);
+ assert.equal(fresh.air,AIR_MAIN_MAX);
+ assert.equal(fresh.bailout,0);
+ assert.equal(fresh.outcome,'playing');
+ assert.equal(fresh.pending,null);
+ assert.equal(fresh.pickups[0].item,'relic');
+ assert.ok(fits(fresh.position,.48));
+ assert.equal(fresh.position.x,breathHatchSpawn().x);
+ assert.equal(fresh.position.z,breathHatchSpawn().z);
+ assert.ok(distance(fresh.predator.position,fresh.position)>SPAWN_SEPARATION);
+});
 test('air loss, pony bailout, sealant and distraction have tangible effects',()=>{
  const m=new Mission();m.breathWaterY=FLOOR_Y+PREDATOR_SWIM_DEPTH+.3;m.inventory=['knife','wood','flare','air','bandage'];m.selected=0;m.air=20;m.selected=3;m.use();
  assert.equal(m.air,20);assert.equal(m.bailout,AIR_BAILOUT_LITRES);assert.equal(m.inventory[3],null);assert.equal(m.feedbackKind,'ok');
