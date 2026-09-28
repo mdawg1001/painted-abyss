@@ -199,6 +199,24 @@ export const SKIN_OF_TEETH={
  minChance:.05,
 } as const;
 /**
+ * Near-death Ego Savior (Phase 1): silent lethal-overflow save.
+ * Trigger is the hit that *would* kill in `hurtPlayer` — not “first time at 1 HP”.
+ * One save per life until hatch respawn; no INVULNERABLE UI; GRAZE tracers stay live.
+ */
+export const EGO_SAVIOR={
+ /** Surviving suit HP after a lethal save (inclusive integer band). */
+ clampHpMin:1,
+ clampHpMax:3,
+ /** True i-frame duration band (seconds) — hurtPlayer ignores damage while active. */
+ iframeMin:.4,
+ iframeMax:.7,
+ /** Extra shootCool applied to chasing / firing guards on save (seconds). */
+ shootCoolPadMin:.45,
+ shootCoolPadMax:.70,
+ /** Additive mid-burst / rest gap stretch while i-frames are live (seconds). */
+ burstGapPad:.10,
+} as const;
+/**
  * Player hurt-volume: thick visual shell vs microscopic damage core.
  * `projectileCoreRadius = visualRadius * coreShrink` with shrink ∈ [0.30, 0.50].
  */
@@ -1489,6 +1507,12 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  streak=new StyleStreak();
  /** Latest ammo-drip grant (HUD / tests); age off `at`. */
  lastStreakAmmo:{rounds:number;at:number}|null=null;
+ /**
+  * Ego Savior (P1): one silent lethal save per life. Recharges on hatch respawn only.
+  * `egoIframesUntil` is mission elapsed; while active, `hurtPlayer` ignores damage.
+  */
+ egoSaviorUsed=false;
+ egoIframesUntil=0;
  /** Mission time of the previous gun/knife kill (MULTI window). */
  lastKillAt=-1;
  decoy:{position:Point;until:number}|null=null;
@@ -1935,6 +1959,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.outcome='playing';
   this.reason='';
   this.pending=null;
+  // Ego Savior recharges only on hatch wake — one silent save per life.
+  this.egoSaviorUsed=false;
+  this.egoIframesUntil=0;
   this.resetFirefight();
   this.ensureKnife();
   // Knife-on-respawn + hatch stash unchanged; urge is one line, not a new HUD widget.
@@ -2369,9 +2396,47 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  leech:{seq:number;at:number;amount:number;point:Point}|null=null;
  /** Sync the CaveWorld style meter tier so streak gates match the pip. */
  syncStyleTier(tier:number){this.streak.syncTier(tier);}
+ /** True while Ego Savior i-frames are live (damage ignored in `hurtPlayer`). */
+ egoIframesActive(){return this.egoIframesUntil>this.elapsed;}
+ /**
+  * Stretch chase/fire shoot cadence without freezing the sim.
+  * Called once on lethal save: bump shootCool, and keep padding burst gaps while i-frames last.
+  */
+ private desyncEgoCadence(){
+  const pad=EGO_SAVIOR.shootCoolPadMin+(EGO_SAVIOR.shootCoolPadMax-EGO_SAVIOR.shootCoolPadMin)*this.rand();
+  for(const g of this.guards){
+   if(!liveGuard(g)||!g.gun)continue;
+   if(g.state!=='chase'&&!g.fireToken)continue;
+   const cfg=SURVIVAL.roles[g.role];
+   let cool=Math.max(g.shootCool,pad);
+   if(g.burstLeft>0)cool=Math.max(cool,cfg.burstGap+EGO_SAVIOR.burstGapPad);
+   g.shootCool=cool;
+  }
+ }
+ /** Extra seconds added to burst/rest gaps while Ego Savior i-frames are active. */
+ private egoCadencePad(){return this.egoIframesActive()?EGO_SAVIOR.burstGapPad:0;}
  /** Every hit on you goes through here: health, panic breathing, pacing and the direction marker. */
  hurtPlayer(amount:number,from:Point,reason:string,g:Guard|null){
   if(amount<=0||this.outcome!=='playing')return;
+  // True i-frames: ignore damage entirely (no death, no streak break, no theater).
+  if(this.egoIframesActive())return;
+  const lethal=this.health-amount<=0;
+  // Silent lethal overflow save — once per life until hatch respawn.
+  if(lethal&&!this.egoSaviorUsed){
+   this.egoSaviorUsed=true;
+   const span=EGO_SAVIOR.clampHpMax-EGO_SAVIOR.clampHpMin;
+   this.health=EGO_SAVIOR.clampHpMin+Math.floor(this.rand()*(span+1));
+   const iframe=EGO_SAVIOR.iframeMin+(EGO_SAVIOR.iframeMax-EGO_SAVIOR.iframeMin)*this.rand();
+   this.egoIframesUntil=this.elapsed+iframe;
+   this.desyncEgoCadence();
+   // Hit still registers (panic / direction / streak) — no “saved” / INVULNERABLE UI.
+   this.streak.noteCoreHit(amount,this.elapsed);
+   this.gasPanicUntil=this.elapsed+AIR_PANIC_SECONDS;
+   this.director.hurt.push({at:this.elapsed,amount});
+   this.damageFrom.push({x:from.x,z:from.z,at:this.elapsed});
+   if(this.damageFrom.length>8)this.damageFrom.shift();
+   return;
+  }
   // One solid core hit while B+ breaks the streak (loud juice in CaveWorld).
   this.streak.noteCoreHit(amount,this.elapsed);
   this.health=Math.max(0,this.health-amount);
@@ -2608,8 +2673,10 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     const adx=aim.x-muzzle.x,ady=aim.y-muzzle.y,adz=aim.z-muzzle.z;
     const hit=wantCore&&enemyRayHitsPlayerCore(muzzle,{x:adx,y:ady,z:adz},eye);
     g.shots+=1;g.lastShotHit=hit;g.lastShotAim=aim;g.ammo-=1;g.burstIndex+=1;g.burstLeft-=1;
-    if(g.burstLeft>0)g.shootCool=cfg.burstGap;
-    else{g.shootCool=cfg.restMin+(cfg.restMax-cfg.restMin)*this.rand();g.fireToken=false;g.tokenCool=g.shootCool;g.burstIndex=0;}
+    // Ego Savior window: stretch burst/rest gaps (desync cadence — do not freeze sim).
+    const egoPad=this.egoCadencePad();
+    if(g.burstLeft>0)g.shootCool=cfg.burstGap+egoPad;
+    else{g.shootCool=cfg.restMin+(cfg.restMax-cfg.restMin)*this.rand()+egoPad;g.fireToken=false;g.tokenCool=g.shootCool;g.burstIndex=0;}
     if(g.ammo<=0){g.reload=SURVIVAL.guardReload;g.fireToken=false;g.burstLeft=0;g.burstIndex=0;}
     if(!hit){
      this.combatCue='guard-miss';

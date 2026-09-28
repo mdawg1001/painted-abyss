@@ -40,7 +40,7 @@ export {
   movingScatterScale,
   rotateToward,
 } from './playerPistol';
-export { SKIN_OF_TEETH, PLAYER_CORE, projectileCoreRadius, projectileDamagesPlayer, enemyRayHitsPlayerCore, grazeAimPoint, playerCoreCenter } from './simulation';
+export { SKIN_OF_TEETH, PLAYER_CORE, EGO_SAVIOR, projectileCoreRadius, projectileDamagesPlayer, enemyRayHitsPlayerCore, grazeAimPoint, playerCoreCenter } from './simulation';
 export { STYLE_TUNING, STYLE_RANKS } from './styleMeter';
 export { COMBAT_OUTCOME } from './combatOutcomes';
 export { STREAK, STREAK_REWARD_RANKS } from './styleStreak';
