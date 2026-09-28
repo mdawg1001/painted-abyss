@@ -1,7 +1,7 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
 import { GOLD, UPGRADE, fmtGold, goldStaminaFactor, goldWalkFactor, noMods, modLevel, modTag, modValue, magBonus, damageMult, spreadMult, jamMult, cycleMult, upgradeCost, readBankedGold, writeBankedGold, type RifleMods, type ModTrack } from './gold';
 import { RIFLE, lootStream, jamChance, spreadSigma, scatter, rollDropRounds, rifleIsPrize, rifleName } from './rifleCondition';
-import { rollKillLoot, killLootCueFor, type KillLootCue } from './killLoot';
+import { rollKillLoot, killLootCueFor, isEmptyKillLoot, type KillLootCue } from './killLoot';
 export type { KillLootCue } from './killLoot';
 import { ITEM_BODY, stepBody, submergedFraction, type BodyState } from './propPhysics';
 import { steerToward, faceStanding, yawToward, wrapAngle, turnToward, forwardOf, GUARD_STEER_WALK, GUARD_STEER_RUN } from './guardSteering';
@@ -1499,6 +1499,11 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   * CaveWorld consumes `seq` changes for audio; notices are set alongside.
   */
  killLootEvent:{seq:number;kind:KillLootCue;at:number;cond?:number;goldGrams?:number}|null=null;
+ /**
+  * Consecutive empty schedule kills (dry / ammo-only). Soft pity in killLoot.ts
+  * shifts odds after `KILL_LOOT.pityAfter`. Reset on any paying bucket. Opaque.
+  */
+ killLootEmptyStreak=0;
  /** Pacing director for the firefight (reinforcements, lulls, final push). */
  director=new Director();
  /** Smoke grenades you carry, grenades in the air and clouds on the floor. */
@@ -2374,7 +2379,10 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    // Outside the schedule: stolen corpse returns, and the officer's Soviet key.
    const stolen=g.loot;g.loot=undefined;
    const stolenGold=g.gold??0;g.gold=0;
-   const loot=rollKillLoot(g.role,PISTOL.magazine,this.lootRand);
+   const loot=rollKillLoot(g.role,PISTOL.magazine,this.lootRand,this.killLootEmptyStreak);
+   // Soft pity tracker: empty pockets stack; a real drop clears the drought.
+   if(isEmptyKillLoot(loot.bucket))this.killLootEmptyStreak++;
+   else this.killLootEmptyStreak=0;
    const dropGun=!!stolen||(loot.dropGun&&g.gun);
    if(dropGun){
     const side={x:Math.cos(g.heading)*.45,z:-Math.sin(g.heading)*.45};

@@ -1,12 +1,12 @@
 /**
- * Stage-one kill loot: variable-ratio category + magnitude on the kill operant.
+ * Kill loot VR schedule: category + magnitude, near-miss cues, soft pity.
  */
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {Mission,isolateGuards,FLOOR_Y,WALK_EYE_Y,breathFootprint,isMainGuard} from '../src/simulation';
 import {
  KILL_LOOT,KILL_LOOT_BUCKETS,selectKillLootBucket,rollKillLoot,killLootCueFor,
- type KillLootBucket,
+ killLootWeights,isEmptyKillLoot,type KillLootBucket,
 } from '../src/killLoot';
 import {RIFLE,lootStream,rifleIsPrize} from '../src/rifleCondition';
 import {PISTOL} from '../src/playerPistol';
@@ -185,4 +185,49 @@ test('paying buckets emit matching classical cues; dry ≠ prize',()=>{
  const jack=setup('assault',scriptedLoot(0.99));
  kill(jack.m,jack.g);
  assert.equal(jack.m.killLootEvent?.kind,'jackpot');
+});
+
+test('soft pity: empty streak peels dry/ammo weight into scrap/field',()=>{
+ const base=killLootWeights(0);
+ assert.deepEqual(base,KILL_LOOT.weights);
+ assert.equal(isEmptyKillLoot('dry'),true);
+ assert.equal(isEmptyKillLoot('ammo'),true);
+ assert.equal(isEmptyKillLoot('scrap'),false);
+
+ const armed=killLootWeights(KILL_LOOT.pityAfter);
+ assert.ok(armed.dry<base.dry,'dry gets rarer');
+ assert.ok(armed.scrap+armed.field>base.scrap+base.field,'paying buckets grow');
+ assert.equal(
+  KILL_LOOT_BUCKETS.reduce((s,b)=>s+armed[b],0),
+  100,
+  'weights still sum to 100',
+ );
+
+ const maxed=killLootWeights(KILL_LOOT.pityAfter+10);
+ assert.equal(maxed.dry,0,'dry can be squeezed out at the cap');
+ assert.ok(maxed.ammo<base.ammo);
+ // Same unit that was dry with no pity lands on a paying bucket when maxed.
+ assert.equal(selectKillLootBucket(0.10,0),'dry');
+ assert.ok(!isEmptyKillLoot(selectKillLootBucket(0.10,KILL_LOOT.pityAfter+10)));
+});
+
+test('Mission counts empty kills and clears the drought on a real drop',()=>{
+ const m=setup('assault',scriptedLoot(0.0)).m;
+ // Reuse one mission: kill several guards dry, then one field.
+ for(let i=0;i<KILL_LOOT.pityAfter;i++){
+  const g=m.guards[i]??m.guards[0];
+  if(!g.active)m.activateGuard(g,{x:CX,z:PLAYER.z-2-i},0,'assault');
+  g.hp=g.maxHp;g.gun=true;g.loot=undefined;g.gold=0;
+  m.lootRand=scriptedLoot(0.0);
+  kill(m,g);
+ }
+ assert.equal(m.killLootEmptyStreak,KILL_LOOT.pityAfter);
+
+ const payer=m.guards[KILL_LOOT.pityAfter]??m.guards[0];
+ if(!payer.active)m.activateGuard(payer,{x:CX,z:PLAYER.z-8},0,'assault');
+ payer.hp=payer.maxHp;payer.gun=true;payer.loot=undefined;payer.gold=0;
+ m.lootRand=scriptedLoot(0.75);
+ kill(m,payer);
+ assert.equal(m.killLootEmptyStreak,0,'paying kill clears the drought');
+ assert.equal(m.killLootEvent?.kind,'field');
 });
