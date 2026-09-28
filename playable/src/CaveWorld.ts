@@ -21,7 +21,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
-import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playSquadCall, pannedBus, playDoorBang, playSmokePop, playGrunt, playMeleeHit, playFleshHit, playSupply, playValveStroke, playValveSeat, playStashOpen, playStashClose, playStashDeposit, playStashWithdraw, playGold, playStreakBreak } from './diveAudio';
+import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playSquadCall, pannedBus, playDoorBang, playSmokePop, playGrunt, playMeleeHit, playFleshHit, playSupply, playValveStroke, playValveSeat, playStashOpen, playStashClose, playStashDeposit, playStashWithdraw, playGold, playStreakBreak, type DiveAudioBus } from './diveAudio';
 import { Gait, wadingDrag, runWeight, WALK_CAMERA_MOTION, type GaitEvent } from './gait';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
@@ -69,7 +69,7 @@ import {
 } from './gunAsset';
 import { RIFLE, rifleIsPrize } from './rifleCondition';
 import { goldSinkAccel, goldThrustFactor } from './gold';
-import { SWIM_BUOYANCY_ACCEL, Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, groundNormal, GUARD_COUNT, STASH_POSITION, STASH_YAW, type BreathFootprint, type BreathTankMount } from './simulation';
+import { SWIM_BUOYANCY_ACCEL, Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, groundNormal, GUARD_COUNT, STASH_POSITION, STASH_YAW, EGO_SAVIOR, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
  airborne:boolean;
@@ -230,8 +230,10 @@ void main(){
 }`;
 
 export class CaveWorld extends OceanWorld {
- audioNotice='';audioProbe:AnalyserNode|null=null;audioTestTimer=0;
+ audioNotice='';audioProbe:DiveAudioBus|null=null;audioTestTimer=0;
  backgroundMusic:BackgroundMusic|null=null;
+ /** Rising-edge tracker for Ego Savior save juice (hitstop + hero clear). */
+ egoSaveSeqSeen=0;
  mission=new Mission(readInventoryTipsSeen());ui:(snapshot:Snapshot)=>void;error='';pointerLocked=false;everLocked=false;lastSent=0;
  fallbackTurn=0;lockDenied=false;lookPointer:{x:number;y:number}|null=null;
  torchLight=new THREE.SpotLight(0xeaf6ff,210,34,.38,.55,1.05);
@@ -1228,6 +1230,8 @@ export class CaveWorld extends OceanWorld {
   // Dying ends the run of style.
   this.style.reset();this.tech=makeTech();this.speedFov.reset();
   this.resetSurvivalFx();
+  this.egoSaveSeqSeen=this.mission.egoSaveSeq;
+  this.audioProbe?.setCritical(0);
   this.position.copy(this.mission.position);
   this.velocity.set(0,0,0);
   this.yaw=this.targetYaw=0;
@@ -2048,6 +2052,41 @@ export class CaveWorld extends OceanWorld {
   const a=this.audible(),ctx=this.audioContext,master=this.master;
   if(a&&ctx&&master&&ctx.state==='running')playStreakBreak(ctx,master);
  }
+ /**
+  * Ego Savior save juice (P2): micro hitstop + shake on the saving hit only.
+  * No INVULNERABLE / CLUTCH text — red vignette + audio carry the tell.
+  */
+ juiceEgoSave(){
+  this.combatFeedback.triggerScreenShake(
+   COMBAT_FEEDBACK.egoSaveShake.intensity,
+   COMBAT_FEEDBACK.egoSaveShake.duration,
+  );
+  this.combatFeedback.triggerHitstop(EGO_SAVIOR.hitstopMs);
+  this.impactFx.pulseHit(1);
+ }
+ /** Drive critical theater audio from suit / ego / gas-panic state. */
+ stepCriticalTheaterAudio(){
+  const bus=this.audioProbe;
+  if(!bus)return;
+  if(!this.playing||!this.sound){bus.setCritical(0);return;}
+  const m=this.mission;
+  let level=0;
+  if(m.criticalTheaterActive()){
+   level=m.egoIframesActive()?1:0.88;
+   // Gas panic (already set on save / hurt) thickens the muffling a hair.
+   if(m.elapsed<m.gasPanicUntil)level=Math.min(1,level+0.08);
+  }
+  if(combatCalmActive())level*=0.55;
+  bus.setCritical(level);
+ }
+ /** Rising-edge Ego Savior save → micro hitstop once per save. */
+ stepEgoSaveJuice(){
+  const seq=this.mission.egoSaveSeq;
+  if(seq!==this.egoSaveSeqSeen){
+   this.egoSaveSeqSeen=seq;
+   if(seq>0)this.juiceEgoSave();
+  }
+ }
  /** Keep Mission streak gates aligned with the live style pip. */
  syncStreakTier(){this.mission.syncStyleTier(this.style.tier);}
  syncPickups(){
@@ -2220,6 +2259,7 @@ export class CaveWorld extends OceanWorld {
    this.backgroundMusic=new BackgroundMusic(ctx,this.master);
    ctx.onstatechange=()=>{if(!this.alive)return;if(this.playing&&this.sound&&ctx.state!=='running')this.audioNotice='Sound interrupted. Pause and choose Test sound.';this.publish();};
   }catch{
+   this.audioProbe?.dispose();this.audioProbe=null;
    this.audioContext?.close().catch(()=>{});this.audioContext=null;this.master=null;
    this.audioNotice='Audio could not start in this browser. Try Test sound or open the game in Chrome.';
   }
@@ -2721,6 +2761,8 @@ export class CaveWorld extends OceanWorld {
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
   this.combatFeedback.reset();this.shakeClock=0;this.knifeFlashUntil=0;this.knifeEquipAt=null;this.stabQueue=0;
   this.impactFx.reset();this.fxHealthSeen=this.mission.health;this.fxBursting=false;
+  this.egoSaveSeqSeen=this.mission.egoSaveSeq;
+  this.audioProbe?.setCritical(0);
   if(this.knifeVisual){poseKnife(this.knifeVisual);this.knifeVisual.visible=this.holdingKnife()&&knifeMeshReady(this.knifeVisual);}
   if(this.gunVisual)this.gunVisual.visible=this.holdingGun();
   if(this.keyVisual)this.keyVisual.visible=this.holdingKey();
@@ -3009,6 +3051,8 @@ export class CaveWorld extends OceanWorld {
    else if(m.outcome!=='playing')this.pause();
   }
   this.stepImpactFx(this.playing?dt:0);
+  this.stepEgoSaveJuice();
+  this.stepCriticalTheaterAudio();
   // Style drains on sim time: hitstop and pause freeze it.
   // Style pip: idle grace drain + standing-still drain (speed is currency).
   if(this.playing){
@@ -3131,5 +3175,5 @@ export class CaveWorld extends OceanWorld {
   this.guardNewShaders();
   this.composer.render();
  }
- dispose(){window.clearTimeout(this.akPrefetchTimer);if(this.copperPipe)this.copperPipe.disposed=true;this.rockMaps.dispose();this.bunkerTextures?.dispose();this.bunkerLightmaps?.dispose();this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
+ dispose(){window.clearTimeout(this.akPrefetchTimer);if(this.copperPipe)this.copperPipe.disposed=true;this.rockMaps.dispose();this.bunkerTextures?.dispose();this.bunkerLightmaps?.dispose();this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.audioProbe?.dispose();this.audioProbe=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
 }

@@ -90,6 +90,7 @@ test('presets stay readable; hitstop is a few frames, never a visible freeze',()
  assert.ok(COMBAT_FEEDBACK.gunFireHeavy.intensity<1.2);
  assert.ok(COMBAT_FEEDBACK.hitstopHead>=30&&COMBAT_FEEDBACK.hitstopHead<=60);
  assert.ok(COMBAT_FEEDBACK.hitstopKill>=50&&COMBAT_FEEDBACK.hitstopKill<=90);
+ assert.ok(COMBAT_FEEDBACK.hitstopEgoSave>=30&&COMBAT_FEEDBACK.hitstopEgoSave<=60);
  // Peak offset at intensity 1 should clear ~5 cm — felt, not subtle
  const peak=noiseOffset(0.25,1);
  assert.ok(Math.hypot(peak.x,peak.y,peak.z)>0.05);

@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.22.15
+# Painted Abyss — First Dive · 0.22.16
+
+## Near-death Ego Savior Phase 2 — critical theater (0.22.16)
+
+When suit is ≤ ~15% or Ego Savior i-frames are live, the screen goes hard red with a heartbeat pulse, audio muffles (low-pass) with panic breath, and the lethal save itself gets a micro hitstop plus a brief snappier knife/gun clear — still no INVULNERABLE / CLUTCH text. Reduced-motion softens the pulse but keeps the critical read. P1 save math unchanged.
 
 ## Near-death Ego Savior Phase 1 (0.22.15)
 

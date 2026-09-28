@@ -5,7 +5,7 @@ import {smokeAt} from './survival';
 import {SURVIVAL} from './survivalConfig';
 import {rifleName} from './rifleCondition';
 import {fmtGold,goldWalkFactor,goldBcdShare,modTag,modLevel,modValue,upgradeCost,UPGRADE,MOD_TRACKS} from './gold';
-import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,pickupInteractPrompt,isMainGuard,liveGuard,MAP_FRAGMENT_ORDER,STASH_CAPACITY,COMBAT_OUTCOME,STREAK,type Item,type StashSlot} from './simulation';
+import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,pickupInteractPrompt,isMainGuard,liveGuard,MAP_FRAGMENT_ORDER,STASH_CAPACITY,COMBAT_OUTCOME,STREAK,EGO_SAVIOR,type Item,type StashSlot} from './simulation';
 import {combatCalloutAllowed} from './combatCalm';
 import {DiveMap} from './DiveMap';
 import {KNIFE_THUMB_URL} from './knifeAsset';
@@ -198,7 +198,7 @@ function App(){
     <div className="vital"><div className="vital-row"><span>{onBailout?'PONY':'AIR'}{ponyReady?` · +${Math.ceil(m.bailout)} L`:''}{airborne?' · OPEN':''}</span><strong className={airLitres<airMax*.2||onBailout?'warning':''}>{airLitres} L</strong></div><div className={`meter air ${onBailout?'bailout':''}`}><i style={{width:`${Math.min(100,airPool/airMax*100)}%`}}/></div></div>
     {!onFoot&&<div className="vital"><div className="vital-row"><span>TRIM</span><strong className={Math.abs(buoyancy)>.55?'warning':''}>{trimLabel}{biasLabel}</strong></div><div className="meter trim" aria-valuemin={-1} aria-valuemax={1} aria-valuenow={+buoyancy.toFixed(2)}><em className="trim-bias" style={{left:`${biasMark}%`}} aria-hidden="true"/><i style={{left:`${trimLeft}%`,width:`${trimWidth}%`}}/></div></div>}
     <div className="vital"><div className="vital-row"><span>FLOOD · {!m.floodTriggered?'DRY':m.floodDraining?'DRAINING':m.valveSealed?'SEALED':m.leakFlow<.999?'THROTTLED':'LEAK'}</span><strong className={flood>=50?'warning':''}>{flood}%</strong></div><div className="meter flood"><i style={{width:`${flood}%`}}/></div></div>
-    <div className="vital"><div className="vital-row"><span>SUIT</span><strong className={m.health<40?'warning':''}>{Math.ceil(m.health)}</strong></div><div key={m.leech?.seq??0} className={`meter suit${m.leech?' leeched':''}`}><i style={{width:`${m.health}%`}}/></div></div>
+    <div className="vital"><div className="vital-row"><span>SUIT</span><strong className={m.health<=EGO_SAVIOR.criticalHp?'warning':m.health<40?'warning':''}>{Math.ceil(m.health)}</strong></div><div key={m.leech?.seq??0} className={`meter suit${m.leech?' leeched':''}`}><i style={{width:`${m.health}%`}}/></div></div>
     <div className="vital"><div className="vital-row"><span>{onFoot?'LEGS':'FINS'}</span><strong>{Math.round(m.stamina)}</strong></div><div className="meter fins"><i style={{width:`${m.stamina}%`}}/></div></div>
    </section>
    {threat&&<div className={`threat ${predator}`} role="status">{threat}</div>}
@@ -224,7 +224,8 @@ function App(){
     return <div key={`co-${o.at}-${o.tag}`} className={`combat-callout tag-${o.tag.toLowerCase()}`} aria-hidden="true">{o.tag}</div>;
    })()}
    {snap?.audioNotice&&<div className="audio-notice" role="status">{snap.audioNotice}</div>}
-   {m.health<40&&<div className="injury"/>}
+   {/* Critical theater: hard red + heartbeat at ≤~15% suit and/or ego i-frames. Never name the save. */}
+   {m.criticalTheaterActive()?<div className="injury critical" aria-hidden="true"/>:m.health<40?<div className="injury" aria-hidden="true"/>:null}
    {/* Fresh blood: keyed on the heal so every close kill replays the flash. */}
    {m.leech&&<div key={m.leech.seq} className="leech-flash" aria-hidden="true"><span>+{Math.round(m.leech.amount)}</span></div>}
    <div className={`interaction${snap?.atWheel?' at-wheel':''}`} role="status">{prompt&&<div className="prompt">{prompt}</div>}{m.elapsed<m.noticeUntil&&<p key={m.feedbackPulse} className={`notice ${m.feedbackKind}`}>{m.notice}</p>}</div>

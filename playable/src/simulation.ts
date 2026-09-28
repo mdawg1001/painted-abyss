@@ -199,9 +199,9 @@ export const SKIN_OF_TEETH={
  minChance:.05,
 } as const;
 /**
- * Near-death Ego Savior (Phase 1): silent lethal-overflow save.
+ * Near-death Ego Savior: silent lethal-overflow save (P1) + critical theater (P2).
  * Trigger is the hit that *would* kill in `hurtPlayer` — not “first time at 1 HP”.
- * One save per life until hatch respawn; no INVULNERABLE UI; GRAZE tracers stay live.
+ * One save per life until hatch respawn; no INVULNERABLE / CLUTCH UI; GRAZE tracers stay live.
  */
 export const EGO_SAVIOR={
  /** Surviving suit HP after a lethal save (inclusive integer band). */
@@ -215,6 +215,14 @@ export const EGO_SAVIOR={
  shootCoolPadMax:.70,
  /** Additive mid-burst / rest gap stretch while i-frames are live (seconds). */
  burstGapPad:.10,
+ /** Suit HP at or below this (and/or ego i-frames) drives hard critical theater. */
+ criticalHp:15,
+ /** Micro hitstop on the saving hit only (ms) — a punch, never a freeze. */
+ hitstopMs:48,
+ /** Brief heroic attack window after save (seconds). */
+ heroBoostSeconds:.55,
+ /** Knife / gun cooldown scale during hero boost (<1 = snappier). */
+ heroCooldownScale:.72,
 } as const;
 /**
  * Player hurt-volume: thick visual shell vs microscopic damage core.
@@ -1508,11 +1516,15 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  /** Latest ammo-drip grant (HUD / tests); age off `at`. */
  lastStreakAmmo:{rounds:number;at:number}|null=null;
  /**
-  * Ego Savior (P1): one silent lethal save per life. Recharges on hatch respawn only.
+  * Ego Savior: one silent lethal save per life. Recharges on hatch respawn only.
   * `egoIframesUntil` is mission elapsed; while active, `hurtPlayer` ignores damage.
+  * `egoHeroUntil` is the brief snappier knife/gun window after a save (P2 theater).
+  * `egoSaveSeq` increments on each save so CaveWorld can juice hitstop once.
   */
  egoSaviorUsed=false;
  egoIframesUntil=0;
+ egoHeroUntil=0;
+ egoSaveSeq=0;
  /** Mission time of the previous gun/knife kill (MULTI window). */
  lastKillAt=-1;
  decoy:{position:Point;until:number}|null=null;
@@ -1962,6 +1974,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   // Ego Savior recharges only on hatch wake — one silent save per life.
   this.egoSaviorUsed=false;
   this.egoIframesUntil=0;
+  this.egoHeroUntil=0;
   this.resetFirefight();
   this.ensureKnife();
   // Knife-on-respawn + hatch stash unchanged; urge is one line, not a new HUD widget.
@@ -2205,7 +2218,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   // Worn barrel scatter — slightly tighter while moving so assist isn't eaten by spread.
   const sigma=spreadSigma(this.gunCond)*spreadMult(this.gunMods)*movingScatterScale(horiz);
   dir=scatter(dir,sigma,this.rand);
-  p.cool*=cycleMult(this.gunMods);
+  // Hero boost (ego save): hair of faster cyclic rate — no long freeze.
+  p.cool*=cycleMult(this.gunMods)*this.heroCoolScale();
   // A pistol round is spent within a metre or two of water.
   const range=origin.y<this.breathWaterY?PISTOL.rangeUnderwater:PISTOL.range;
   const targets=this.guards
@@ -2398,6 +2412,17 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  syncStyleTier(tier:number){this.streak.syncTier(tier);}
  /** True while Ego Savior i-frames are live (damage ignored in `hurtPlayer`). */
  egoIframesActive(){return this.egoIframesUntil>this.elapsed;}
+ /** True while the brief post-save knife/gun snap window is live. */
+ egoHeroActive(){return this.egoHeroUntil>this.elapsed;}
+ /** Cooldown multiplier while hero boost is live (<1 = faster); else 1. */
+ heroCoolScale(){return this.egoHeroActive()?EGO_SAVIOR.heroCooldownScale:1;}
+ /**
+  * Hard critical theater: suit ≤ ~15% and/or ego i-frames.
+  * Drives red vignette / heartbeat / audio — never INVULNERABLE text.
+  */
+ criticalTheaterActive(){
+  return this.health<=EGO_SAVIOR.criticalHp||this.egoIframesActive();
+ }
  /**
   * Stretch chase/fire shoot cadence without freezing the sim.
   * Called once on lethal save: bump shootCool, and keep padding burst gaps while i-frames last.
@@ -2428,6 +2453,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.health=EGO_SAVIOR.clampHpMin+Math.floor(this.rand()*(span+1));
    const iframe=EGO_SAVIOR.iframeMin+(EGO_SAVIOR.iframeMax-EGO_SAVIOR.iframeMin)*this.rand();
    this.egoIframesUntil=this.elapsed+iframe;
+   this.egoHeroUntil=this.elapsed+EGO_SAVIOR.heroBoostSeconds;
+   this.egoSaveSeq+=1;
    this.desyncEgoCadence();
    // Hit still registers (panic / direction / streak) — no “saved” / INVULNERABLE UI.
    this.streak.noteCoreHit(amount,this.elapsed);
@@ -2460,7 +2487,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(this.inventory[this.selected]!=='knife')return 'blocked';
   const p=this.predator;
   if(p.stabCool>0)return 'cooldown';
-  p.stabCool=KNIFE_COOLDOWN;
+  // Hero boost after ego save: snappier blade, still readable.
+  p.stabCool=KNIFE_COOLDOWN*this.heroCoolScale();
   // Guards first: the nearest one inside the blade's reach and cone, with nothing between.
   {
    const lookLen=Math.hypot(look.x,look.z)||1;const lx=look.x/lookLen,lz=look.z/lookLen;

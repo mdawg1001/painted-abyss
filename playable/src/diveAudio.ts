@@ -1,11 +1,122 @@
-/** Dive audio probe wiring. Background ambience comes from the supplied music. */
-export function buildDiveAudio(ctx: AudioContext, master: GainNode) {
+/** Dive audio probe wiring + near-death critical theater bus. Background ambience comes from the supplied music. */
+export type DiveAudioBus = {
+  probe: AnalyserNode;
+  /**
+   * Drive critical theater (0 = clear, 1 = full near-death).
+   * Slight master low-pass + panic breath / heartbeat thumps. Idle stays silent.
+   */
+  setCritical(level: number): void;
+  dispose(): void;
+};
+
+export function buildDiveAudio(ctx: AudioContext, master: GainNode): DiveAudioBus {
   // Probe after the master gain so mute can be verified as silence.
-  // Breathing/regulator loop removed — dive bed is music only.
+  // Breathing/regulator cruise loop stays removed — only critical panic is scheduled.
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 18000;
+  filter.Q.value = 0.65;
+
   const probe = ctx.createAnalyser();
   probe.fftSize = 2048;
-  master.connect(probe).connect(ctx.destination);
-  return probe;
+  master.connect(filter).connect(probe).connect(ctx.destination);
+
+  const panicGain = ctx.createGain();
+  panicGain.gain.value = 0;
+  panicGain.connect(filter);
+
+  let disposed = false;
+  let level = 0;
+  let nextPulseAt = 0;
+  let pulseTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearPulse = () => {
+    if (pulseTimer != null) {
+      clearTimeout(pulseTimer);
+      pulseTimer = null;
+    }
+  };
+
+  const schedulePulse = () => {
+    clearPulse();
+    if (disposed || level < 0.05 || ctx.state === 'closed') return;
+    const now = ctx.currentTime;
+    if (now < nextPulseAt) {
+      pulseTimer = setTimeout(schedulePulse, Math.max(16, (nextPulseAt - now) * 1000));
+      return;
+    }
+    // Lub-dub heartbeat + short inhale scrape — only while critical.
+    const t = now + 0.01;
+    const thump = (at: number, freq: number, gain: number, dur: number) => {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(freq, at);
+      o.frequency.exponentialRampToValueAtTime(freq * 0.55, at + dur);
+      const e = ctx.createGain();
+      e.gain.setValueAtTime(0, at);
+      e.gain.linearRampToValueAtTime(gain * level, at + 0.012);
+      e.gain.exponentialRampToValueAtTime(0.001, at + dur);
+      o.connect(e).connect(panicGain);
+      o.start(at);
+      o.stop(at + dur + 0.02);
+      o.onended = () => { o.disconnect(); e.disconnect(); };
+    };
+    thump(t, 62, 0.42, 0.11);
+    thump(t + 0.16, 48, 0.28, 0.1);
+    // Breath scrape (noise) — panic, not the old cruise regulator loop.
+    const dur = 0.22;
+    const buf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * dur)), ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 780;
+    bp.Q.value = 0.9;
+    const ne = ctx.createGain();
+    ne.gain.setValueAtTime(0, t + 0.04);
+    ne.gain.linearRampToValueAtTime(0.16 * level, t + 0.1);
+    ne.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    noise.connect(bp).connect(ne).connect(panicGain);
+    noise.start(t + 0.04);
+    noise.stop(t + 0.3);
+    noise.onended = () => { noise.disconnect(); bp.disconnect(); ne.disconnect(); };
+
+    // ~70 BPM at full critical; slower when softer.
+    const period = 0.72 + (1 - level) * 0.35;
+    nextPulseAt = t + period;
+    pulseTimer = setTimeout(schedulePulse, period * 1000);
+  };
+
+  return {
+    probe,
+    setCritical(next: number) {
+      if (disposed || ctx.state === 'closed') return;
+      const v = Math.max(0, Math.min(1, next));
+      level = v;
+      const now = ctx.currentTime;
+      // Transparent ~18 kHz → muffled ~1.1 kHz at full critical.
+      const freq = 18000 - v * (18000 - 1100);
+      filter.frequency.setTargetAtTime(freq, now, 0.12);
+      panicGain.gain.setTargetAtTime(v > 0.04 ? 0.55 + 0.45 * v : 0, now, 0.1);
+      if (v < 0.05) {
+        clearPulse();
+        nextPulseAt = 0;
+      } else if (!pulseTimer) {
+        schedulePulse();
+      }
+    },
+    dispose() {
+      disposed = true;
+      clearPulse();
+      try {
+        panicGain.disconnect();
+        filter.disconnect();
+        probe.disconnect();
+      } catch { /* already torn down */ }
+    },
+  };
 }
 
 export function playDiveChime(ctx: AudioContext, master: GainNode) {
