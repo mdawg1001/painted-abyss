@@ -166,6 +166,7 @@ export const GUARD_AIM_TOLERANCE=10*Math.PI/180;
  * Chance a shot hits: steady close shots almost always land, long ones in the dark
  * often miss, a running target is much harder, and the first snap shot is rushed.
  * Prefer `skinOfTeethHitChance` at live fire sites — it layers the graze bias on top.
+ * Damage still gates through `enemyRayHitsPlayerCore` / `PLAYER_CORE` (roll picks aim class).
  */
 export function guardHitChance(distance:number,targetSpeed:number,firstShot:boolean,shooterSpeed=0){
  const base=Math.max(.3,Math.min(.95,.98-.03*Math.max(0,distance-2)));
@@ -177,34 +178,146 @@ export function guardHitChance(distance:number,targetSpeed:number,firstShot:bool
 /** Hit-chance lost per m/s of his own footwork while firing. */
 export const GUARD_MOVING_FIRE_PENALTY=.09;
 /**
- * Enemy→player skin-of-teeth (probabilistic guns today). Standing still stays dangerous;
- * moving further bleeds land chance toward grazes / near-misses. Modest curve — not god mode.
+ * Enemy→player skin-of-teeth. Standing still stays lethal; moving bleeds land chance into
+ * readable GRAZE misses with whip-by tracers. Hardened curve (not god mode — minChance floor).
  *
- * Future projectile tracers can use `PLAYER_CORE` / `projectileCoreRadius` for a geometric
- * core-vs-shell read; live fire still goes through this chance function.
+ * Authority: the probabilistic roll picks a core-aim vs graze-aim class; geometric helpers
+ * (`enemyRayHitsPlayerCore` / `projectileDamagesPlayer`) are the only gate that deals damage.
+ * Visual tracer thickness may skim the camera; only the microscopic core can hurt.
  */
 export const SKIN_OF_TEETH={
  /** Speeds at or below this (m/s) count as standing — no extra graze bias. Aligned with style/graze still. */
  stillSpeed:.40,
  /** Horizontal speed (m/s) at which the full graze bias applies (brisk walk). */
  fullBiasSpeed:WALK_SPEED,
- /** Extra land-chance cut at full bias, on top of `guardHitChance`'s moving penalty (Phase 4: modest). */
- maxGrazeBias:.08,
+ /**
+  * Extra land-chance cut at full bias, on top of `guardHitChance`'s moving penalty.
+  * 0.24 ≈ obvious strafe GRAZEs (was Phase 4's subtle 0.08); standing still unchanged.
+  */
+ maxGrazeBias:.24,
  /** Floor so a moving player is never unhittable. */
  minChance:.05,
 } as const;
 /**
- * Player hurt-volume core for future projectile tracers. Probabilistic guns ignore this
- * today; keep the constants named so Phase 2+ can wire geometric graze without rediscovery.
+ * Player hurt-volume: thick visual shell vs microscopic damage core.
+ * `projectileCoreRadius = visualRadius * coreShrink` with shrink ∈ [0.30, 0.50].
  */
 export const PLAYER_CORE={
- /** Tight torso core radius (m) — a "solid" hit if tracers exist. */
+ /** Outer visual / graze shell radius (m) — tracers may skim this. */
+ visualRadius:.55,
+ /** Core = visual × shrink; keep in [0.30, 0.50] so camera overlap ≠ damage. */
+ coreShrink:.40,
+ /** Tight torso core radius (m) — equals `projectileCoreRadius()`. */
  radius:.22,
- /** Outer graze shell beyond the core (m). */
- grazeShell:.18,
+ /** Extra offset past the core for near-miss graze aims (m). */
+ grazeShell:.28,
+ /** Capsule half-extents along Y from eye: foot below, crown above (m). */
+ capsuleDown:1.55,
+ capsuleUp:.18,
+ /** Torso aim height below eye (m). */
+ torsoBelowEye:.28,
 } as const;
-/** Core radius helper for future tracers (hitscan guns do not use this yet). */
-export function projectileCoreRadius(){return PLAYER_CORE.radius;}
+/**
+ * Microscopic projectile core radius. Visual radius may be thick; damage uses this shrink.
+ * Optional override keeps tests / future physical tracers allocation-light.
+ */
+export function projectileCoreRadius(visualRadius=PLAYER_CORE.visualRadius){
+ const r=visualRadius*PLAYER_CORE.coreShrink;
+ return Math.max(1e-4,r);
+}
+/** Torso centre of the player core capsule (eye position → chest). */
+export function playerCoreCenter(playerEye:Point):Point{
+ return{x:playerEye.x,y:playerEye.y-PLAYER_CORE.torsoBelowEye,z:playerEye.z};
+}
+/**
+ * True when a projectile centre intersects the player core capsule.
+ * Visual / cam overlap with a thick tracer does NOT imply damage — only this volume.
+ */
+export function projectileDamagesPlayer(
+ projectileCenter:Point,
+ playerEye:Point,
+ coreRadius=projectileCoreRadius(),
+):boolean{
+ const r=Math.max(0,coreRadius);
+ const y0=playerEye.y-PLAYER_CORE.capsuleDown;
+ const y1=playerEye.y+PLAYER_CORE.capsuleUp;
+ const cy=Math.max(y0,Math.min(y1,projectileCenter.y));
+ const dx=projectileCenter.x-playerEye.x;
+ const dy=projectileCenter.y-cy;
+ const dz=projectileCenter.z-playerEye.z;
+ return dx*dx+dy*dy+dz*dz<=r*r;
+}
+/**
+ * True when a unit (or non-unit) ray from `origin` along `dir` clips the player core capsule.
+ * Closest approach on t≥0; used as the live damage authority for guard hitscan.
+ */
+export function enemyRayHitsPlayerCore(
+ origin:Point,
+ dir:Point,
+ playerEye:Point,
+ coreRadius=projectileCoreRadius(),
+):boolean{
+ const len=Math.hypot(dir.x,dir.y,dir.z);
+ if(!(len>1e-9)||!(coreRadius>0))return false;
+ const dx=dir.x/len,dy=dir.y/len,dz=dir.z/len;
+ const y0=playerEye.y-PLAYER_CORE.capsuleDown;
+ const y1=playerEye.y+PLAYER_CORE.capsuleUp;
+ const ox=origin.x-playerEye.x,oy=origin.y,oz=origin.z-playerEye.z;
+ // Closest approach of ray to vertical axis segment (cx=0,cz=0 in eye-xz frame).
+ // Horizontal: minimise |(Oxz + t Dxz)| for t≥0; then clamp Y onto [y0,y1].
+ const a=dx*dx+dz*dz;
+ let t:number;
+ if(a<1e-12){
+  // Ray nearly vertical — sample at eye xz.
+  t=dy>0?(y0-oy)/Math.max(dy,1e-9):dy<0?(y1-oy)/Math.min(dy,-1e-9):0;
+ }else{
+  t=-(ox*dx+oz*dz)/a;
+ }
+ t=Math.max(0,t);
+ const px=ox+dx*t,py=oy+dy*t,pz=oz+dz*t;
+ const cy=Math.max(y0,Math.min(y1,py));
+ const ddx=px,ddy=py-cy,ddz=pz;
+ return ddx*ddx+ddy*ddy+ddz*ddz<=coreRadius*coreRadius;
+}
+/**
+ * Near-miss aim point past the player so a tracer whips the lens rim without clipping core.
+ * `side` ±1 picks left/right; `jitter` ∈ [0,1) varies height / offset slightly.
+ * Standing misses (`nearMiss=false`) push wider so they do not read as heroic GRAZEs.
+ *
+ * Lateral offset is applied **at the player plane** (not only at the far tip), so the
+ * ray's closest approach clears `projectileCoreRadius` even when the tracer continues past.
+ */
+export function grazeAimPoint(
+ muzzle:Point,
+ playerEye:Point,
+ side:1|-1=1,
+ jitter=0.5,
+ nearMiss=true,
+):Point{
+ const core=playerCoreCenter(playerEye);
+ const fx=core.x-muzzle.x,fz=core.z-muzzle.z;
+ const dist=Math.hypot(fx,core.y-muzzle.y,fz)||1;
+ // Prefer a horizontal right vector so grazes skim across the view.
+ let rx=fz,rz=-fx;
+ const rl=Math.hypot(rx,rz);
+ if(rl<1e-6){rx=1;rz=0;}else{rx/=rl;rz/=rl;}
+ rx*=side;rz*=side;
+ const coreR=projectileCoreRadius();
+ // Clear the microscopic core with headroom; near-miss hugs the shell, standing misses go wide.
+ const clear=coreR+(nearMiss?PLAYER_CORE.grazeShell*(.55+.35*jitter):PLAYER_CORE.grazeShell*(1.6+.7*jitter));
+ const lift=(jitter-.5)*.32;
+ const besideX=core.x+rx*clear;
+ const besideY=core.y+lift;
+ const besideZ=core.z+rz*clear;
+ const bx=besideX-muzzle.x,by=besideY-muzzle.y,bz=besideZ-muzzle.z;
+ const bl=Math.hypot(bx,by,bz)||1;
+ const past=dist+2.4+.5*jitter;
+ return{
+  x:muzzle.x+(bx/bl)*past,
+  y:muzzle.y+(by/bl)*past,
+  z:muzzle.z+(bz/bl)*past,
+ };
+}
 /**
  * Land chance for guard gunfire after skin-of-teeth graze bias.
  * Standing still → same as `guardHitChance`. Moving → further reduction up to maxGrazeBias.
@@ -1167,6 +1280,8 @@ export type Guard={
  meleeCool:number;shootCool:number;
  ammo:number;reload:number;firstShot:boolean;
  shots:number;lastShotHit:boolean;aim:number;
+ /** World aim point of the latest round (core centre or graze offset) for whip-by tracers. */
+ lastShotAim:Point;
  gun:boolean;bottle:boolean;coat:boolean;air:number;
  beatStart:number;beatLen:number;beatDir:1|-1;outfit:number;
  /** Ground velocity (m/s, world). Equals speed along heading except in the firing stance, where he strafes. */
@@ -1231,7 +1346,7 @@ export function makeGuard(outfit=0):Guard{
   scanAlt:null,lastState:'patrol',
   meleeCool:0,shootCool:0,
   ammo:GUARD_MAGAZINE,reload:0,firstShot:true,
-  shots:0,lastShotHit:false,aim:0,
+  shots:0,lastShotHit:false,aim:0,lastShotAim:{x:0,y:WALK_EYE_Y,z:0},
   gun:true,bottle:false,coat:false,air:0,
   beatStart:beat.start,beatLen:beat.len,beatDir:1,outfit,
   vx:0,vz:0,
@@ -2482,9 +2597,17 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    const aimErr=Math.abs(wrapAngle(toward-g.heading));
    if(aimErr<=GUARD_BURST_TOLERANCE&&g.aim>=.99){
     const climb=Math.max(.35,1-SURVIVAL.burstClimb*g.burstIndex);
-    const hit=this.rand()<skinOfTeethHitChance(d,playerSpeed,g.firstShot,g.speed)*cfg.accuracy*climb;
+    // Roll picks core-aim vs graze-aim; geometric core is the only damage authority.
+    const wantCore=this.rand()<skinOfTeethHitChance(d,playerSpeed,g.firstShot,g.speed)*cfg.accuracy*climb;
     g.firstShot=false;
-    g.shots+=1;g.lastShotHit=hit;g.ammo-=1;g.burstIndex+=1;g.burstLeft-=1;
+    const muzzle={x:g.position.x,y:g.position.y,z:g.position.z};
+    const eye=this.position;
+    const nearMiss=playerSpeed>SKIN_OF_TEETH.stillSpeed;
+    const side:1|-1=this.rand()<.5?1:-1;
+    const aim=wantCore?playerCoreCenter(eye):grazeAimPoint(muzzle,eye,side,this.rand(),nearMiss);
+    const adx=aim.x-muzzle.x,ady=aim.y-muzzle.y,adz=aim.z-muzzle.z;
+    const hit=wantCore&&enemyRayHitsPlayerCore(muzzle,{x:adx,y:ady,z:adz},eye);
+    g.shots+=1;g.lastShotHit=hit;g.lastShotAim=aim;g.ammo-=1;g.burstIndex+=1;g.burstLeft-=1;
     if(g.burstLeft>0)g.shootCool=cfg.burstGap;
     else{g.shootCool=cfg.restMin+(cfg.restMax-cfg.restMin)*this.rand();g.fireToken=false;g.tokenCool=g.shootCool;g.burstIndex=0;}
     if(g.ammo<=0){g.reload=SURVIVAL.guardReload;g.fireToken=false;g.burstLeft=0;g.burstIndex=0;}

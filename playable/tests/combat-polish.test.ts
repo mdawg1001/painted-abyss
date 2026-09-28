@@ -4,7 +4,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
- COMBAT_POLISH, HITBOX_ASSIST, SKIN_OF_TEETH, STYLE_TUNING, COMBAT_OUTCOME, STREAK,
+ COMBAT_POLISH, HITBOX_ASSIST, SKIN_OF_TEETH, PLAYER_CORE, STYLE_TUNING, COMBAT_OUTCOME, STREAK,
  CALM_COMBAT, combatCalloutAllowed, calmShakeIntensity, calmHitstopMs,
 } from '../src/combatTuning';
 import {StyleMeter} from '../src/styleMeter';
@@ -22,6 +22,10 @@ test('Phase 4 polish table matches live combat exports',()=>{
  assert.equal(SKIN_OF_TEETH.stillSpeed,P.graze.stillSpeed);
  assert.equal(SKIN_OF_TEETH.maxGrazeBias,P.graze.maxGrazeBias);
  assert.equal(SKIN_OF_TEETH.minChance,P.graze.minChance);
+ assert.equal(PLAYER_CORE.visualRadius,P.core.visualRadius);
+ assert.equal(PLAYER_CORE.coreShrink,P.core.coreShrink);
+ assert.equal(PLAYER_CORE.radius,P.core.radius);
+ assert.equal(PLAYER_CORE.grazeShell,P.core.grazeShell);
  assert.equal(STYLE_TUNING.points.scrape,P.style.scrape);
  assert.equal(STYLE_TUNING.points.graze,P.style.graze);
  assert.equal(STYLE_TUNING.points.clean,P.style.clean);
@@ -43,7 +47,9 @@ test('Phase 4 polish table matches live combat exports',()=>{
  assert.ok(HITBOX_ASSIST.angleHardCapDeg<=2.5);
  assert.ok(HITBOX_ASSIST.restAngleDeg<=.5);
  assert.ok(HITBOX_ASSIST.movingScatterDamp<=.35);
- assert.ok(SKIN_OF_TEETH.maxGrazeBias<=.10);
+ assert.ok(SKIN_OF_TEETH.maxGrazeBias>=.20,'graze bias is obvious when strafing');
+ assert.ok(SKIN_OF_TEETH.maxGrazeBias<=.30,'still not strafe god-mode');
+ assert.ok(PLAYER_CORE.coreShrink>=.30&&PLAYER_CORE.coreShrink<=.50);
  assert.ok(STYLE_TUNING.points.clean>=55,'honest CLEAN stays rewarding');
 });
 

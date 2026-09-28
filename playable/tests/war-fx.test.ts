@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { impactNormal, onSurface, MAX_HOLES, HOLE_SIZE } from '../src/warFx';
+import { impactNormal, onSurface, MAX_HOLES, HOLE_SIZE, MAX_TRACERS, TRACER_LIFE, TRACER_LIFE_CALM, TRACER_VISUAL_RADIUS, TRACER_VISUAL_RADIUS_CALM, TRACER_HIT_TINT, TRACER_GRAZE_TINT } from '../src/warFx';
 import { isOpen, world, FLOOR_Y, cells } from '../src/simulation';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -40,4 +40,13 @@ test('floor hits face up; decals are small and pooled', () => {
  assert.deepEqual(impactNormal({ x: 0, y: FLOOR_Y, z: 0 }, { x: 1, z: 1 }), { x: 0, y: 1, z: 0 });
  assert.ok(HOLE_SIZE > 0.05 && HOLE_SIZE < 0.3);
  assert.ok(MAX_HOLES >= 16 && MAX_HOLES <= 96);
+});
+
+test('enemy tracer pool tunables stay readable without bloom white-out', () => {
+ assert.ok(MAX_TRACERS >= 8 && MAX_TRACERS <= 32);
+ assert.ok(TRACER_LIFE > TRACER_LIFE_CALM);
+ assert.ok(TRACER_VISUAL_RADIUS > TRACER_VISUAL_RADIUS_CALM);
+ assert.ok(TRACER_VISUAL_RADIUS < 0.12, 'tracer is a streak, not a flare');
+ assert.notEqual(TRACER_HIT_TINT as number, 0xffffff);
+ assert.notEqual(TRACER_GRAZE_TINT as number, 0xffffff);
 });
