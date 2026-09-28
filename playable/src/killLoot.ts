@@ -1,8 +1,11 @@
 /**
  * Kill loot: variable-ratio category + magnitude on the kill operant, plus stage-two
- * theater (near-miss / LDW cues). Every downed guard rolls an opaque bucket
- * (dry → jackpot). Paying buckets vary how good the rifle is and how many grams
- * fall with it. Dry kills pay nothing.
+ * theater (near-miss / LDW cues) and stage-three soft pity.
+ *
+ * Every downed guard rolls an opaque bucket (dry → jackpot). Paying buckets vary
+ * how good the rifle is and how many grams fall with it. Dry kills pay nothing.
+ * After several empty kills in a row (dry / ammo-only), odds quietly shift toward
+ * a real drop — no pity bar, still not a hard guarantee.
  *
  * Outside the schedule (always):
  *  - the Soviet key on the main officer
@@ -72,7 +75,21 @@ export const KILL_LOOT = {
   nearMissCond: [RIFLE.keepCond - 0.08, RIFLE.keepCond - 0.01] as [number, number],
   /** Rare non-officer prize band: at/above keepCond, always below kit. */
   luckyPrize: [RIFLE.keepCond, RIFLE.kitCond - 0.02] as [number, number],
+  /**
+   * Soft pity: after this many empty kills (dry or ammo-only) in a row, start
+   * shifting weight off empty buckets into scrap/field. Opaque — no UI.
+   */
+  pityAfter: 3,
+  /** Weight points moved from empty → paying per empty kill past the threshold. */
+  pityShiftPer: 10,
+  /** Cap on shifted weight so a rare dry can still happen. */
+  pityMaxShift: 40,
 } as const;
+
+/** Empty schedule payout: nothing worth taking (no gold, no keep-worthy gun). */
+export function isEmptyKillLoot(bucket: KillLootBucket): boolean {
+  return bucket === 'dry' || bucket === 'ammo';
+}
 
 export type KillLootRoll = {
   bucket: KillLootBucket;
@@ -88,15 +105,39 @@ export type KillLootRoll = {
   nearMiss: boolean;
 };
 
-const weightTotal = () =>
-  KILL_LOOT_BUCKETS.reduce((s, b) => s + KILL_LOOT.weights[b], 0);
+const weightTotalOf = (weights: Record<KillLootBucket, number>) =>
+  KILL_LOOT_BUCKETS.reduce((s, b) => s + weights[b], 0);
+
+/**
+ * Effective bucket weights after soft pity. `emptyStreak` is consecutive dry/ammo
+ * kills; at/above `pityAfter`, weight peels off dry+ammo into scrap+field.
+ */
+export function killLootWeights(emptyStreak = 0): Record<KillLootBucket, number> {
+  const w = { ...KILL_LOOT.weights };
+  if (emptyStreak < KILL_LOOT.pityAfter) return w;
+  const steps = emptyStreak - KILL_LOOT.pityAfter + 1;
+  const shift = Math.min(KILL_LOOT.pityMaxShift, steps * KILL_LOOT.pityShiftPer);
+  // Peel dry first, then ammo — keep relative prize/jackpot rarity.
+  let left = shift;
+  const fromDry = Math.min(w.dry, left);
+  w.dry -= fromDry;
+  left -= fromDry;
+  const fromAmmo = Math.min(w.ammo, left);
+  w.ammo -= fromAmmo;
+  const moved = fromDry + fromAmmo;
+  const toScrap = Math.round(moved * 0.6);
+  w.scrap += toScrap;
+  w.field += moved - toScrap;
+  return w;
+}
 
 /** Pick a bucket from unit random in [0, 1). Exported for tests. */
-export function selectKillLootBucket(unit: number): KillLootBucket {
+export function selectKillLootBucket(unit: number, emptyStreak = 0): KillLootBucket {
+  const weights = killLootWeights(emptyStreak);
   const u = Math.min(Math.max(unit, 0), 0.999999);
-  let t = u * weightTotal();
+  let t = u * weightTotalOf(weights);
   for (const b of KILL_LOOT_BUCKETS) {
-    t -= KILL_LOOT.weights[b];
+    t -= weights[b];
     if (t < 0) return b;
   }
   return 'jackpot';
@@ -152,8 +193,9 @@ export function rollKillLoot(
   role: GuardRole,
   magazine: number,
   rand: () => number,
+  emptyStreak = 0,
 ): KillLootRoll {
-  const bucket = selectKillLootBucket(rand());
+  const bucket = selectKillLootBucket(rand(), emptyStreak);
   const empty: KillLootRoll = {
     bucket,
     dropGun: false,
