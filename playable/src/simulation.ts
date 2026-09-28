@@ -481,17 +481,15 @@ export function stashInteractPrompt(m:{
  const focus=m.stash[m.stashFocus]??null;
  if(held==='relic')return 'Relic must leave the map — cannot store';
  if(held&&isStashItem(held)){
-  if(focus===null||firstEmptyStashSlot(m.stash)>=0)return `E · Store ${ITEMS[held].name}`;
-  if(focus)return `E · Swap for ${stashSlotLabel(focus)}`;
+  if(focus===null)return `E · Store ${ITEMS[held].name}`;
+  return `E · Swap for ${stashSlotLabel(focus)}`;
  }
- if(!held&&m.pistol.reserve>0&&firstEmptyStashSlot(m.stash)>=0)return 'E · Store ammo';
+ if(!held&&focus===null&&m.pistol.reserve>0&&firstEmptyStashSlot(m.stash)>=0)return 'E · Store ammo';
  if(focus){
   if(!held)return `E · Take ${stashSlotLabel(focus)}`;
   return `E · Swap for ${stashSlotLabel(focus)}`;
  }
- const filled=firstFilledStashSlot(m.stash);
- if(filled>=0)return `E · Take ${stashSlotLabel(m.stash[filled])}`;
- return 'E · Close chest';
+ return 'E · Close chest · 1–5 pick slot';
 }
 
 /** True when this guard is the unique main officer who carries the Soviet relic key. */
@@ -1730,14 +1728,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    return;
   }
   let slot=this.stash[focus];
-  // Prefer an empty slot when depositing into a filled focus.
-  if(held&&isStashItem(held)&&slot!==null){
-   const empty=firstEmptyStashSlot(this.stash);
-   if(empty>=0){focus=empty;slot=null;this.stashFocus=empty;}
-  }
-  // Holding nothing: withdraw, store ammo, or close.
+  // Holding nothing: withdraw the focused slot, store ammo into an empty focus, or close.
+  // Never yank a random other slot — the player must pick with click / 1–5 first.
   if(!held){
-   // Empty focus → store ammo if possible, else withdraw from another slot, else close.
    if(slot===null){
     if(this.pistol.reserve>0){
      const empty=firstEmptyStashSlot(this.stash);
@@ -1754,16 +1747,12 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
       return;
      }
     }
-    const filled=firstFilledStashSlot(this.stash);
-    if(filled>=0){focus=filled;slot=this.stash[filled];this.stashFocus=filled;}
-    else{
-     this.closeStash();
-     this.say('Chest closed.','ok');
-     return;
-    }
+    this.closeStash();
+    this.say('Chest closed.','ok');
+    return;
    }
    if(!slot)return;
-   // Withdraw focused slot into the selected (empty) inventory slot — or ammo into reserve.
+   // Withdraw focused slot into an empty inventory slot — or ammo into reserve.
    if(slot.kind==='ammo'){
     if(this.pistol.reserve>=PISTOL.reserveMax){this.say('Spare rounds are full.','blocked');return;}
     const room=PISTOL.reserveMax-this.pistol.reserve;
@@ -1790,7 +1779,14 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     this.say(`Stripped ${take} rounds from the stashed pistol.`,'ok');
     return;
    }
-   this.inventory[this.selected]=slot.item;
+   // Prefer an empty inventory slot so taking never silently overwrites the knife.
+   let dest=this.selected;
+   if(this.inventory[dest]!==null){
+    const empty=this.inventory.findIndex(x=>x===null);
+    if(empty<0){this.say('Inventory full — drop something first.','blocked');return;}
+    dest=empty;this.selected=empty;
+   }
+   this.inventory[dest]=slot.item;
    if(slot.item==='gun'&&slot.rounds){
     this.pistol.reserve=Math.min(PISTOL.reserveMax,this.pistol.reserve+slot.rounds);
    }

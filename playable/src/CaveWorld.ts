@@ -2200,7 +2200,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    if(this.valveStroke&&e.code!=='Escape'&&e.code!=='KeyM'){this.publish();return;}
    if(e.code==='Escape'){
     if(this.mission.mapOpen){this.mission.mapOpen=false;this.requestLookLock(false);this.publish();return;}
-    if(this.mission.stashOpen){this.mission.closeStash();this.publish();return;}
+    if(this.mission.stashOpen){this.mission.closeStash();this.requestLookLock(false);this.publish();return;}
     if(this.mission.pending!==null){this.mission.pending=null;this.publish();}else this.pause();
    }
    // Inventory keys bind on window (not the canvas), so select/use/drop work without canvas focus.
@@ -2211,6 +2211,13 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    }
    if(e.code==='KeyB'){this.mission.ditchGold();this.publish();}
    if(/^Digit[1-5]$/.test(e.code)){
+    // Stash open: 1–5 pick a chest slot (cursor is unlocked so clicks work too).
+    if(this.mission.stashOpen){
+     this.mission.selectStashFocus(Number(e.code.slice(-1))-1);
+     this.playSelectClick();
+     this.publish();
+     return;
+    }
     if(this.mission.select(Number(e.code.slice(-1))-1))this.playSelectClick();
    }
    if(e.code==='Tab'){
@@ -2221,7 +2228,19 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
     this.publish();return;
    }
    if(this.mission.mapOpen){this.publish();return;}
-   if(e.code==='KeyE'){if(this.mission.nearValve())this.beginValve();else this.mission.interact();}
+   if(e.code==='KeyE'){
+    if(this.mission.nearValve())this.beginValve();
+    else{
+     const wasStash=this.mission.stashOpen;
+     this.mission.interact();
+     // Free the cursor while the chest UI is up — same pattern as the map.
+     if(this.mission.stashOpen&&!wasStash){
+      if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();
+     }else if(wasStash&&!this.mission.stashOpen){
+      this.requestLookLock(false);
+     }
+    }
+   }
    if(e.code==='KeyF')this.mission.torch=!this.mission.torch;
    // Movement tech (on foot only; in water Space keeps its buoyancy meaning). Edges only:
    // auto-repeat returned above, so holding Space never queues a second jump.
@@ -2236,7 +2255,8 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   on(window,'blur',(()=>this.pause()) as EventListener);on(document,'visibilitychange',(()=>{if(document.hidden)this.pause();}) as EventListener);
   const canvas=this.renderer.domElement;
   on(canvas,'pointerdown',((e:PointerEvent)=>{
-   if(!this.playing||this.mission.mapOpen)return;
+   // Map / stash UI own the pointer — do not steal lock or fire through the panel.
+   if(!this.playing||this.mission.mapOpen||this.mission.stashOpen)return;
    try{canvas.setPointerCapture(e.pointerId);}catch{/* unsupported */}
    if(document.pointerLockElement!==canvas)this.requestLookLock(false);
    // Primary click: pistol in hand fires; knife in hand stabs.
@@ -2258,7 +2278,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   }) as EventListener);
   on(window,'mouseout',((e:MouseEvent)=>{if(!e.relatedTarget){this.lookPointer=null;this.fallbackTurn=0;}}) as EventListener);
   on(canvas,'wheel',((e:WheelEvent)=>{if(!this.playing)return;e.preventDefault();const scale=e.deltaMode===1?16:e.deltaMode===2?200:1;const delta=lookDelta(this.targetYaw,this.targetPitch,e.deltaX*scale,e.deltaY*scale);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;}) as EventListener,{passive:false});
-  on(document,'pointerlockchange',(()=>{const was=this.pointerLocked;this.pointerLocked=document.pointerLockElement===canvas;if(this.pointerLocked){this.everLocked=true;this.lockDenied=false;this.lookPointer=null;this.fallbackTurn=0;}if(was&&!this.pointerLocked&&!this.mission.mapOpen)this.pause();this.publish();}) as EventListener);
+  on(document,'pointerlockchange',(()=>{const was=this.pointerLocked;this.pointerLocked=document.pointerLockElement===canvas;if(this.pointerLocked){this.everLocked=true;this.lockDenied=false;this.lookPointer=null;this.fallbackTurn=0;}if(was&&!this.pointerLocked&&!this.mission.mapOpen&&!this.mission.stashOpen)this.pause();this.publish();}) as EventListener);
   on(document,'pointerlockerror',(()=>{this.lockDenied=true;this.mission.say('360° free look active. Steer left or right of center to keep turning — pointer stays in the dive.');this.publish();}) as EventListener);
   on(canvas,'webglcontextlost',((e:Event)=>{e.preventDefault();this.error='The graphics connection was lost. Reload the page to restart the dive.';this.pause();this.publish();}) as EventListener);
  }
