@@ -74,6 +74,8 @@ export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLoc
  style:StyleView};
 /** Point lights packed per cave chunk. 24 covers every light whose range reaches a chunk; the rest of the set still exists in the scene for spots/shadows. */
 const POINT_CULL_MAX=24;
+/** Loot-glow lights shared by the nearest glowing pickups (count fixed for shader stability). */
+const PICKUP_LIGHT_POOL=6;
 type PointCull={box:THREE.Box3;count:{value:number};pos:THREE.Vector3[];col:THREE.Vector3[];dist:Float32Array;decay:Float32Array};
 function pointCullLightsChunk(){
   const src=ShaderChunk.lights_fragment_begin;
@@ -226,7 +228,7 @@ export class CaveWorld extends OceanWorld {
  bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
  /** Rising-edge trackers for impact FX (health drop + Shift sprint/run). */
  fxHealthSeen=100;fxBursting=false;
- guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
+ guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;decoyLight!:THREE.PointLight;
  /** Five Soviet guards (Quaternius soldier, dyed kits). */
  sovietGuards:SovietGuardVisual[]=[];
  get sovietGuard(){return this.sovietGuards[0]??null;}
@@ -251,6 +253,12 @@ export class CaveWorld extends OceanWorld {
  baseFov=SPEED_FOV.MIN_FOV;
  /** Speed-driven lens on a spring (speedFov.ts); reads this.velocity, never writes it. */
  speedFov=new SpeedFov();
+ /** Fixed pool of loot-glow lights (see assignPickupGlows). */
+ pickupLights:THREE.PointLight[]=[];
+ /** Every material compiled once up front (prewarmShaders). */
+ shadersWarm=false;
+ /** Set when something may have brought an uncompiled material into view (see guardNewShaders). */
+ shaderGuardDirty=false;_guardSweep=-1;warmKeep:THREE.Material[]=[];_glowRank:{g:THREE.Group;score:number}[]=[];
  /** Muzzle on the carbine's barrel bone, measured once the glTF mounts. */
  _muzzleAt=new THREE.Vector3();
  akMuzzle:{bone:THREE.Object3D;local:THREE.Vector3}|null=null;
@@ -372,7 +380,7 @@ export class CaveWorld extends OceanWorld {
  _pcx=[0,0,0,0];
  _pcy=[0,0,0,0];
  _adoptTmp=new THREE.Box3();
- propStreaming=new PropStreaming();
+ propStreaming=(()=>{const ps=new PropStreaming();ps.onLoaded=()=>{this.shaderGuardDirty=true;};return ps;})();
  lastPropCheck=0;
  /** Knife / guards / FX maps — started on Begin dive so the menu only pays for rock previews + JS. */
  essentialsBooted=false;
@@ -462,7 +470,8 @@ export class CaveWorld extends OceanWorld {
    'gl_FragColor=vec4(.78,.92,.96,a*smoothstep(.5,.0,d));'
   );
   this.decoyMesh=new THREE.Mesh(new THREE.IcosahedronGeometry(.18,1),new THREE.MeshBasicMaterial({color:0xff7040}));
-  this.decoyMesh.add(new THREE.PointLight(0xff6831,12,12));this.scene.add(this.decoyMesh);
+  // The flare's light lives in the scene for good and is dimmed, never hidden (see assignPickupGlows).
+  this.decoyLight=new THREE.PointLight(0xff6831,0,12);this.scene.add(this.decoyMesh,this.decoyLight);
   this.buildBlood();
   // Mount knife stub immediately so selecting slot 1 always shows a held prop;
   // Poly Haven glTF upgrades on Begin dive (with RoomEnvironment specular).
@@ -511,6 +520,8 @@ export class CaveWorld extends OceanWorld {
   });
   this.adoptPointCull(this.torchBody,this.heldLightBox,false,false);
   this.adoptPointCull(this.guardian.group,this.guardianLightBox,false,true);
+  // Loot glow pool: created once so the scene's light count never changes mid-dive.
+  for(let i=0;i<PICKUP_LIGHT_POOL;i++){const l=new THREE.PointLight(0xffc050,0,4,2);l.castShadow=false;l.name='pickupGlow';this.scene.add(l);this.pickupLights.push(l);}
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
  }
  /**
@@ -901,7 +912,8 @@ export class CaveWorld extends OceanWorld {
   for(const light of this._cullLightCache){
    let hidden=false;
    for(let p:THREE.Object3D|null=light;p;p=p.parent)if(!p.visible){hidden=true;break;}
-   if(hidden)continue;
+   // Dark pool / flash lights keep their shader slot but take no packed cull slot.
+   if(hidden||light.intensity<=0)continue;
    const i=lights.length;
    lights.push(light);
    const v=wp[i]??(wp[i]=new THREE.Vector3());
@@ -1821,7 +1833,9 @@ export class CaveWorld extends OceanWorld {
   const torchHeld=this.holdingTorch();
   const shine=torchShouldShine(this.mission.torch,selected);
   this.setTorchMeshesVisible(torchHeld);
-  this.torchLight.visible=shine;
+  // Dim, never hide: a light leaving the scene recompiles every lit shader (a freeze on F).
+  if(!shine)this.torchLight.intensity=0;
+  this.torchLight.shadow.autoUpdate=shine;
   this.beam.visible=shine;
   this.torchLensMat.emissiveIntensity=shine?1.25:.06;
   this.torchLensMat.emissive.set(shine?0xc8e4ff:0x223038);
@@ -1977,9 +1991,11 @@ export class CaveWorld extends OceanWorld {
  /** Keep Mission streak gates aligned with the live style pip. */
  syncStreakTier(){this.mission.syncStyleTier(this.style.tier);}
  syncPickups(){
-  for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);group.traverse(o=>{o.userData.gunAlive=false;if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
+  for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);
+   const si=this.pointCullSyncs.indexOf(group.userData.cullSync);if(si>=0)this.pointCullSyncs.splice(si,1);
+   const cb=group.userData.cullBox;if(cb)this.pointCullTargets=this.pointCullTargets.filter(t=>t.box!==cb);group.traverse(o=>{o.userData.gunAlive=false;if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
   for(const p of this.mission.pickups){let group=this.pickupMeshes.get(p.id);if(!group){group=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:p.item==='relic'?0xe2b65e:0x82c8b7,emissive:p.item==='relic'?0xff9a28:0x1a6a5c,emissiveIntensity:p.item==='relic'?1.35:.95,metalness:.4,roughness:.45});
-    if(p.item==='relic'){const points:THREE.Vector3[]=[],radii:number[]=[];for(let i=0;i<=72;i++){const t=i/72,a=t*Math.PI*4.5,r=.03+t*t*.62;points.push(V(Math.cos(a)*r,Math.sin(a)*r,0));radii.push(.01+t*.12);}group.add(this.tube(points,radii,mat,90,8));group.add(new THREE.PointLight(0xffb45a,5.5,8));}
+    if(p.item==='relic'){const points:THREE.Vector3[]=[],radii:number[]=[];for(let i=0;i<=72;i++){const t=i/72,a=t*Math.PI*4.5,r=.03+t*t*.62;points.push(V(Math.cos(a)*r,Math.sin(a)*r,0));radii.push(.01+t*.12);}group.add(this.tube(points,radii,mat,90,8));group.userData.glow={color:0xffb45a,intensity:5.5,distance:8,priority:3};}
     else if(p.item==='gun'||p.item==='bottle'||p.item==='coat'){
      const gear=this.gearPickupMesh(p.item);
      group.add(gear);
@@ -1988,7 +2004,7 @@ export class CaveWorld extends OceanWorld {
       // a maintained rifle keeps the neon cyan.
       const cond=p.cond??RIFLE.kitCond;
       const prize=rifleIsPrize(cond)&&cond<RIFLE.kitCond;
-      group.add(new THREE.PointLight(prize?0xffc040:cond<RIFLE.keepCond?0x8a9aa4:0x5ce0ff,prize?4.2:cond<RIFLE.keepCond?1.3:2.8,prize?7:4.5));
+      group.userData.glow={color:prize?0xffc040:cond<RIFLE.keepCond?0x8a9aa4:0x5ce0ff,intensity:prize?4.2:cond<RIFLE.keepCond?1.3:2.8,distance:prize?7:4.5,priority:1};
       this.propStreaming.add(`pickup-gun-${p.id}`,{x:p.position.x,z:p.position.z},()=>mountAk74u(gear,'pickup',{envMap:this.knifeEnvMap}),40);
      }
     }
@@ -2006,17 +2022,20 @@ export class CaveWorld extends OceanWorld {
       const n=Math.max(3,Math.min(24,Math.round(grams/15)));
       for(let i=0;i<n;i++){const c=new THREE.Mesh(coin,gm);const a=i*2.399,r=.025*Math.sqrt(i);c.position.set(Math.cos(a)*r,.0011+(i%4)*.0022,Math.sin(a)*r);c.rotation.set((i%3)*.2,0,(i%5)*.15);group.add(c);}
      }
-     group.add(new THREE.PointLight(0xffc050,grams>=1000?2.2:1.1,grams>=1000?4:2.5));
+     group.userData.glow={color:0xffc050,intensity:grams>=1000?2.2:1.1,distance:grams>=1000?4:2.5,priority:1};
     }
-    else if(p.item==='sovietKey'){group.add(createSovietKeyPickup());group.add(new THREE.PointLight(0xffc050,2.2,4.5));}
+    else if(p.item==='sovietKey'){group.add(createSovietKeyPickup());group.userData.glow={color:0xffc050,intensity:2.2,distance:4.5,priority:2};}
     else group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.3,1),mat));
     group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
     const pickup=group;
     const box=new THREE.Box3();
-    this.pointCullSyncs.push(()=>{
+    const cullSync=()=>{
      box.min.set(pickup.position.x-1,pickup.position.y-1,pickup.position.z-1);
      box.max.set(pickup.position.x+1,pickup.position.y+1,pickup.position.z+1);
-    });
+    };
+    // Remembered so the cull hooks leave with the pickup (they used to pile up with every drop).
+    group.userData.cullSync=cullSync;group.userData.cullBox=box;
+    this.pointCullSyncs.push(cullSync);
     this.adoptPointCull(pickup,box,false,true);
     // Sim y is the item's underside: lift the mesh so its lowest point sits exactly there.
     group.rotation.y=(p.id*2.399)%(Math.PI*2);group.updateMatrixWorld(true);
@@ -2026,6 +2045,32 @@ export class CaveWorld extends OceanWorld {
    // Streamed glTFs replace stubs after spawn, so re-measure the underside now and then.
    const nowMs=performance.now();if(!(group.userData.bottomAt>nowMs-1000)){group.position.set(0,0,0);group.updateMatrixWorld(true);const bb=new THREE.Box3().setFromObject(group);if(!bb.isEmpty())group.userData.bottom=-bb.min.y;group.userData.bottomAt=nowMs;}
    group.position.set(p.position.x,p.position.y+(group.userData.bottom??0),p.position.z);
+  }
+  this.assignPickupGlows();
+ }
+ /**
+  * Loot glows come from a fixed pool of point lights made once at start. Adding or removing a
+  * light (or toggling one's visibility) changes the light count baked into every lit shader,
+  * so three.js recompiles every material in the bunker: that was the multi-second freeze on
+  * each kill (the dropped rifle and coins each brought a light) and on each pickup. The pool
+  * lights never leave the scene; the nearest glowing pickups borrow them, the rest go dark.
+  */
+ assignPickupGlows(){
+  const cam=this.position,ranked=this._glowRank;ranked.length=0;
+  for(const g of this.pickupMeshes.values()){
+   const glow=g.userData.glow as {color:number;intensity:number;distance:number;priority:number}|undefined;
+   if(!glow)continue;
+   const d=Math.hypot(g.position.x-cam.x,g.position.z-cam.z);
+   if(d>glow.distance+30)continue;
+   ranked.push({g,score:d-glow.priority*6});
+  }
+  ranked.sort((a,b)=>a.score-b.score);
+  for(let i=0;i<this.pickupLights.length;i++){
+   const light=this.pickupLights[i],hit=ranked[i];
+   if(!hit){light.intensity=0;continue;}
+   const glow=hit.g.userData.glow as {color:number;intensity:number;distance:number};
+   light.color.setHex(glow.color);light.intensity=glow.intensity;light.distance=glow.distance;
+   light.position.set(hit.g.position.x,hit.g.position.y+.25,hit.g.position.z);
   }
  }
  publish(){this.ui({mission:this.mission,playing:this.playing,started:this.started,pointerLocked:this.pointerLocked,error:this.error,audioNotice:this.audioNotice,yaw:this.yaw,onFoot:this.onFoot,airborne:this.airborne,atWheel:!!this.valveStroke,style:this.style.view()});}
@@ -2486,12 +2531,103 @@ export class CaveWorld extends OceanWorld {
   else if(this.master&&this.audioContext)this.master.gain.setTargetAtTime(0,this.audioContext.currentTime,.04);
   this.publish();
  }
+ /**
+  * Compile every shader the dive can need before play starts. Pooled effects (smoke puffs,
+  * blood, muzzle and impact cards, held items) sit hidden until their first use, and three.js
+  * only compiles a material the first time it is drawn: that first smoke grenade or first kill
+  * stalled the frame while the GPU driver compiled. Here everything hidden is shown for one
+  * compile pass (lights excluded, so the light count the shaders bake in stays the real one),
+  * then hidden again. Uses the parallel compile path where the browser has it.
+  */
+ /**
+  * Compile `root` the way the frame renders it: into the composer's scene target (no tone
+  * mapping, linear output), with the whole scene's lights. Compiling against the screen would
+  * build different shader variants and the frame would compile again anyway.
+  */
+ compileLikeRender(root:THREE.Object3D,lightsFrom:THREE.Scene):Promise<unknown>{
+  const r=this.renderer,prev=r.getRenderTarget();
+  r.setRenderTarget(this.composer?.readBuffer??null);
+  let mats:Set<THREE.Material>;
+  try{mats=r.compile(root,this.camera,lightsFrom) as unknown as Set<THREE.Material>;}
+  finally{r.setRenderTarget(prev);}
+  // Our own readiness poll (three's compileAsync throws from a timer if a program is swapped
+  // out while it waits). A missing program counts as ready: it will build on first draw.
+  const props=(r as unknown as {properties:{get(m:THREE.Material):{currentProgram?:{isReady?:()=>boolean}}}}).properties;
+  return new Promise(resolve=>{
+   let tries=0;
+   const poll=()=>{
+    tries++;
+    for(const m of [...mats]){
+     let ready=true;
+     try{const pr=props.get(m).currentProgram;ready=!pr||!pr.isReady||pr.isReady();}catch{ready=true;}
+     if(ready)mats.delete(m);
+    }
+    if(!mats.size||tries>300)resolve(root);else setTimeout(poll,16);
+   };
+   poll();
+  });
+ }
+ /**
+  * Streamed props (lamps, sconces, radiators, the AK on the floor) arrive mid-dive with
+  * materials the GPU has never compiled; drawing them straight away stalls the frame while the
+  * driver compiles. After a load, any visible mesh whose material has no program yet is held
+  * off-screen while the driver compiles it in the background (KHR_parallel_shader_compile),
+  * then shown. Costs one scene walk per finished load.
+  */
+ guardNewShaders(){
+  if(!this.shaderGuardDirty)return;
+  this.shaderGuardDirty=false;
+  const props=(this.renderer as unknown as {properties:{get(m:THREE.Material):{currentProgram?:unknown}}}).properties;
+  const fresh:THREE.Object3D[]=[];
+  this.scene.traverseVisible(o=>{
+   if(o===this.camera)return;
+   const mat=(o as THREE.Mesh).material as THREE.Material|THREE.Material[]|undefined;
+   if(!mat||!((o as THREE.Mesh).isMesh||(o as THREE.Sprite).isSprite))return;
+   for(const m of Array.isArray(mat)?mat:[mat])if(m&&!props.get(m).currentProgram){fresh.push(o);return;}
+  });
+  for(const o of fresh){
+   o.userData.shaderGuard=true;
+   let done:Promise<unknown>=Promise.resolve();
+   try{done=this.compileLikeRender(o,this.scene);}catch{/* compile on first draw instead */}
+   o.visible=false;
+   done.catch(()=>{}).then(()=>{if(o.userData.shaderGuard){o.userData.shaderGuard=false;o.visible=true;}});
+  }
+ }
+ prewarmShaders(){
+  if(this.shadersWarm)return;
+  this.shadersWarm=true;
+  const hidden:THREE.Object3D[]=[];
+  this.scene.traverse(o=>{if(!o.visible&&!(o as THREE.Light).isLight){hidden.push(o);o.visible=true;}});
+  // Loot that only appears when a guard dies: warm its shader too (gold is metal + env map).
+  const warm=new THREE.Group();
+  const gold=new THREE.Mesh(new THREE.CylinderGeometry(.01,.01,.002,6),new THREE.MeshStandardMaterial({color:0xd8a531,metalness:1,roughness:.24,emissive:0x4a2c00,emissiveIntensity:.6,envMap:this.knifeEnvMap??null,envMapIntensity:1.4}));
+  const tag=new THREE.Mesh(new THREE.IcosahedronGeometry(.05,0),new THREE.MeshStandardMaterial({color:0x82c8b7,emissive:0x1a6a5c,emissiveIntensity:.95,metalness:.4,roughness:.45}));
+  warm.add(gold,tag);warm.position.copy(this.camera.position);
+  this.adoptPointCull(warm,new THREE.Box3(),false,true);
+  this.scene.add(warm);
+  // Upload their textures now too (compile builds programs but leaves textures for first draw).
+  const seenTex=new Set<THREE.Texture>();
+  for(const root of [...hidden,warm])root.traverse(o=>{
+   const mat=(o as THREE.Mesh).material as THREE.Material|THREE.Material[]|undefined;
+   if(!mat)return;
+   for(const m of Array.isArray(mat)?mat:[mat])for(const v of Object.values(m))if((v as THREE.Texture)?.isTexture&&!seenTex.has(v as THREE.Texture)){seenTex.add(v as THREE.Texture);try{this.renderer.initTexture(v as THREE.Texture);}catch{/* not ready yet */}}
+  });
+  try{this.compileLikeRender(this.scene,this.scene);}catch(err){console.warn('Shader prewarm skipped',err);}
+  finally{
+   for(const o of hidden)o.visible=false;
+   this.scene.remove(warm);
+   // Keep the materials alive (a disposed program is recompiled on next use); drop the geometry.
+   gold.geometry.dispose();tag.geometry.dispose();
+   this.warmKeep.push(gold.material,tag.material);
+  }
+ }
  start(){
   if(this.mission.outcome!=='playing')this.reset();
   // One-time tip is already on this mission when tipsSeen is false; persist so the next launch stays quiet.
   if(!this.mission.tipsSeen)writeInventoryTipsSeen();
   this.bootEssentials();
   this.rockMaps.startDetail();
+  this.prewarmShaders();
   this.playing=true;this.started=true;this.keys.clear();this.clock.getDelta();this.testingAudio=false;
   this.onFoot=canWalk(this.mission.position,this.mission.breathWaterY);
   this.wasOnFoot=this.onFoot;
@@ -2886,7 +3022,8 @@ export class CaveWorld extends OceanWorld {
    beamMat.uniforms.uBeamLen.value=beamLen;
    // No camera-forward particle cone — that was a second beam fighting the lantern aim.
    (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
-  }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
+  }else{(this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;this.torchLight.intensity=0;this.torchLight.shadow.autoUpdate=false;}
+  if(torchOn)this.torchLight.shadow.autoUpdate=true;
   const p=this.mission.predator;this.guardian.group.position.copy(p.position);
   if(p.state==='dead'){
    // Corpse settles; limp fins, no chase heading lerp.
@@ -2904,10 +3041,13 @@ export class CaveWorld extends OceanWorld {
   this.syncSovietGuard(dt);
   if(this.fx)this.syncSurvival(dt);
   this.syncBreathProps();
-  this.syncPickups();this.syncChests(dt);this.decoyMesh.visible=!!this.mission.decoy;if(this.mission.decoy)this.decoyMesh.position.copy(this.mission.decoy.position);
+  this.syncPickups();this.syncChests(dt);this.decoyMesh.visible=!!this.mission.decoy;this.decoyLight.intensity=this.mission.decoy?12:0;if(this.mission.decoy){this.decoyMesh.position.copy(this.mission.decoy.position);this.decoyLight.position.copy(this.mission.decoy.position);}
   if(this.time-this.lastSent>.05){this.lastSent=this.time;this.publish();}
   this.updatePointCull();
   this.applyPortalOcclusion();
+  // Also sweep once a second, for anything that arrives outside prop streaming (held items).
+  if(Math.floor(this.time)!==this._guardSweep){this._guardSweep=Math.floor(this.time);this.shaderGuardDirty=true;}
+  this.guardNewShaders();
   this.composer.render();
  }
  dispose(){window.clearTimeout(this.akPrefetchTimer);if(this.copperPipe)this.copperPipe.disposed=true;this.rockMaps.dispose();this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}

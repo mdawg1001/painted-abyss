@@ -39,10 +39,12 @@ export const COMBAT_FEEDBACK={
  meleeHit:{intensity:1.55,duration:.32},
  /** Guardian / predator connected hit. */
  predatorHit:{intensity:1.3,duration:.28},
- /** Headshot hitstop (ms). */
- hitstopHead:90,
- /** Kill hitstop (ms). */
- hitstopKill:150,
+ /**
+  * Headshot / kill hitstop (ms). Kept to a few frames: a punch you feel, never a pause you see.
+  * At 150 ms the kill freeze read as the game locking up.
+  */
+ hitstopHead:35,
+ hitstopKill:55,
  /** Magnetism scrape — brief readable tick, not a freeze. */
  scrapeTick:{intensity:.35,duration:.08},
  hitstopScrape:45,

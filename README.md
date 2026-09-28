@@ -1,7 +1,20 @@
-# Painted Abyss — First Dive · 0.22.9
+# Painted Abyss — First Dive · 0.22.10
 
 
 
+
+## No more freezes on kills and smoke (0.22.10)
+
+The freeze on every kill was the renderer recompiling every shader in the bunker. three.js builds the number of lights into each lit material's shader. Each dead guard dropped a rifle and coins that brought their own point lights, so the light count changed and every lit material recompiled at once. In a headless test on 0.22.8, one kill recompiled 27 shaders and took a 6.7 s frame. After this fix, the same kill recompiles none and the light count stays fixed for the whole dive.
+
+- **Loot glows** borrow from a fixed pool of 6 point lights made at start. The nearest glowing pickups (relic, Soviet key, rifles, gold) light up and the rest go dark. Picked-up items also release their light-cull hooks, which used to pile up with every drop.
+- **Torch (F) and flare**: their lights are dimmed to zero instead of hidden, because hiding a light changes the count as well.
+- **Shader prewarm on Begin dive**: everything that starts hidden (smoke puffs, blood, muzzle and impact cards, held items, gold and loot materials) is compiled and has its textures uploaded before play, so the first smoke grenade or first kill doesn't stall.
+- **Smoke**: 9 puff cards per cloud (was 14), and puffs the camera is inside fade out and aren't drawn. Those screen-filling layers were the fill-rate cost; the HUD smoke veil already shows being inside a cloud.
+- **Hitstop** shortened to a few frames: kill 55 ms (was 150), headshot 35 ms (was 90). It is still a punch you feel, not a pause you see.
+
+- **Streamed props no longer stall on arrival**: lamps, sconces, radiators and the floor AK used to compile their shaders during the frame they appeared. Now anything arriving with an uncompiled material is held off-screen while the driver compiles it in the background (KHR_parallel_shader_compile, which Chrome and Safari on Mac have), then pops in a moment later.
+- **Shaders match what's drawn**: warm-up compiles now target the post-processing buffer the frame really renders into. Before, they built variants for the screen that were never used, so the real ones still compiled mid-play; the headless build now makes 56 programs instead of 76.
 
 ## Undo 5× simulation scale (0.22.1)
 

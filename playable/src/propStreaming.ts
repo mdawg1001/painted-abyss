@@ -13,6 +13,8 @@ export class PropStreaming {
  private lastTime=0;
  private armed=false;
  private startedAt=0;
+ /** Called after each prop finishes loading (CaveWorld's shader guard listens). */
+ onLoaded:(()=>void)|null=null;
  constructor(private concurrency=2,private warmup=0.35){}
  /** Begin dive — start the short warmup, then stream nearest stubs → glTF. */
  arm(now=performance.now()/1000){
@@ -37,6 +39,7 @@ export class PropStreaming {
    Promise.resolve().then(()=>this.stopped?false:job.load()).then(ok=>{
     if(ok===false)throw new Error('Prop upgrade did not complete');
     job.state='ready';
+    this.onLoaded?.();
    }).catch(()=>{
     job.state=job.attempts<3?'waiting':'failed';job.retryAt=this.lastTime+10;
    }).finally(()=>{this.active--;});
