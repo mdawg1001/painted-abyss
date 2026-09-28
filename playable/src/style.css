@@ -286,6 +286,12 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   margin:0 0 8px;text-align:center;
 }
 .stash-title span{color:rgba(200,210,210,.7);letter-spacing:.06em;margin-left:8px;font-weight:600}
+.stash-hint{
+  margin:0 0 8px;text-align:center;
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:11px;letter-spacing:.04em;
+  color:rgba(200,210,210,.65);
+}
 .stash-slots .stash-slot{
   cursor:pointer;
   pointer-events:auto;
