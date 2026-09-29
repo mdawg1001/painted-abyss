@@ -1,7 +1,6 @@
 /**
  * Persistent bunker stash chest — small bank near the hatch.
  * Contents survive death, extract, dive-again, and full page reload via localStorage.
- * The ammonite relic cannot be stored (extract win condition).
  *
  * Keep this module free of value imports from simulation.ts (Mission loads stash).
  */
@@ -28,7 +27,7 @@ export const STASH_REACH = 3.6;
 /** Spare rounds moved in one Store-ammo press (matches a floor ammo box). */
 export const STASH_AMMO_PACK = SURVIVAL.supplies.ammo;
 
-/** Bankable inventory items — never the extract relic. */
+/** Anything that can sit in a chest / bag slot (gold is a separate pocket / vault). */
 export type StashItem =
  | 'stone'
  | 'wood'
@@ -39,9 +38,10 @@ export type StashItem =
  | 'gun'
  | 'bottle'
  | 'coat'
- | 'sovietKey';
+ | 'sovietKey'
+ | 'relic';
 
-export type Item = StashItem | 'relic' | 'gold';
+export type Item = StashItem | 'gold';
 
 /** One chest slot: gear, or a spare-ammo pack (not inventoriable elsewhere). */
 export type StashSlot =
@@ -56,7 +56,7 @@ export function emptyStash(): StashSlot[] {
 }
 
 export function isStashItem(item: Item): item is StashItem {
- return item !== 'relic' && item !== 'gold';
+ return item !== 'gold';
 }
 
 export function stashSlotLabel(slot: StashSlot): string {
@@ -74,6 +74,7 @@ export function stashSlotLabel(slot: StashSlot): string {
   bottle: 'Spare air bottle',
   coat: 'Coat',
   sovietKey: 'Soviet key',
+  relic: 'Ammonite relic',
  };
  return names[slot.item];
 }
@@ -84,7 +85,7 @@ function parseSlot(raw: unknown): StashSlot {
  if (o.kind === 'ammo' && typeof o.amount === 'number' && o.amount > 0) {
   return { kind: 'ammo', amount: Math.floor(o.amount) };
  }
- if (o.kind === 'item' && typeof o.item === 'string' && o.item !== 'relic') {
+ if (o.kind === 'item' && typeof o.item === 'string' && o.item !== 'gold') {
   const item = o.item as StashItem;
   const rounds = typeof o.rounds === 'number' && o.rounds > 0 ? Math.floor(o.rounds) : undefined;
   const cond = typeof o.cond === 'number' && o.cond > 0 && o.cond <= 1 ? o.cond : undefined;
@@ -96,7 +97,7 @@ function parseSlot(raw: unknown): StashSlot {
   return slot;
  }
  // Legacy flat shape { item, rounds? }
- if (typeof o.item === 'string' && o.item !== 'relic' && o.kind !== 'ammo') {
+ if (typeof o.item === 'string' && o.item !== 'gold' && o.kind !== 'ammo') {
   const item = o.item as StashItem;
   const rounds = typeof o.rounds === 'number' && o.rounds > 0 ? Math.floor(o.rounds) : undefined;
   const cond = typeof o.cond === 'number' && o.cond > 0 && o.cond <= 1 ? o.cond : undefined;

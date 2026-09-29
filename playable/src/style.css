@@ -270,50 +270,102 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   position:absolute;bottom:26px;left:50%;transform:translateX(-50%);
   pointer-events:none;
 }
-.stash-panel{
-  /* Fixed + high z so the full-screen WebGL canvas never eats clicks. */
-  position:fixed;bottom:108px;left:50%;transform:translateX(-50%);
-  z-index:80;
+/* Rust-style full overlay for the hatch stash (drag bag ↔ chest). */
+.stash-screen{
+  position:fixed;inset:0;z-index:80;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(2,8,10,.78);
   pointer-events:auto;
   cursor:default;
-  padding:12px 14px 14px;
-  min-width:340px;
-  background:rgba(8,14,16,.92);
-  border:1px solid rgba(180,160,110,.45);
-  border-radius:6px;
-  box-shadow:0 12px 40px rgba(0,0,0,.65);
 }
-.playing .stash-panel,.playing .stash-panel *{cursor:pointer}
-.playing .stash-panel .stash-hint,.playing .stash-panel .stash-title,
-.playing .stash-panel .workbench-title,.playing .stash-panel .workbench-risk{cursor:default}
-.playing .stash-panel .stash-hint strong{color:rgba(226,200,136,.95);font-weight:700}
-.stash-title{
-  font-family:'Barlow Condensed',sans-serif;
-  font-size:13px;font-weight:700;letter-spacing:.12em;
-  color:rgba(226,200,136,.9);
-  margin:0 0 8px;text-align:center;
+.stash-screen-sheet{
+  width:min(920px,96vw);max-height:min(92vh,720px);
+  display:flex;flex-direction:column;
+  background:
+    linear-gradient(165deg,rgba(28,32,30,.98),rgba(14,18,16,.99) 55%,rgba(10,12,12,1)),
+    radial-gradient(ellipse at 30% 20%,rgba(90,78,48,.18),transparent 60%);
+  border:1px solid rgba(170,150,100,.4);
+  box-shadow:0 24px 60px rgba(0,0,0,.6),inset 0 1px 0 rgba(220,200,150,.08);
+  color:#d8cba8;overflow:hidden;
 }
-.stash-title span{color:rgba(200,210,210,.7);letter-spacing:.06em;margin-left:8px;font-weight:600}
-.stash-hint{
-  margin:0 0 8px;text-align:center;
-  font-family:'Barlow Condensed',sans-serif;
-  font-size:11px;letter-spacing:.04em;
-  color:rgba(200,210,210,.65);
+.stash-screen-head{
+  display:flex;justify-content:space-between;align-items:flex-start;gap:16px;
+  padding:16px 20px 12px;border-bottom:1px solid rgba(140,120,70,.28);
 }
-.stash-slots .stash-slot{
-  cursor:pointer;
-  pointer-events:auto;
-  border:0;
-  font:inherit;color:inherit;
-  padding:0;
+.stash-screen-head .eyebrow{color:#c4b07a;font-size:10px;letter-spacing:2.2px;font-weight:600}
+.stash-screen-head h2{
+  margin:6px 0 0;font-family:'Barlow Condensed',sans-serif;
+  font-size:28px;font-weight:700;letter-spacing:.04em;color:#efe6c8;text-transform:uppercase;
 }
-.stash-slots .stash-slot:focus{outline:1px solid rgba(226,200,136,.6)}
-.stash-amt{
+.stash-screen-hint{
+  margin:6px 0 0;font-size:12px;color:rgba(200,210,200,.65);
+  font-family:'Barlow Condensed',sans-serif;letter-spacing:.03em;
+}
+.stash-screen-close{
+  background:none;border:1px solid rgba(180,160,110,.35);color:#d8cba8;
+  padding:8px 12px;font-family:'Barlow Condensed',sans-serif;
+  font-size:13px;letter-spacing:.08em;display:flex;align-items:center;gap:8px;cursor:pointer;
+}
+.stash-screen-close:hover{background:rgba(200,180,120,.1);border-color:rgba(200,180,120,.55)}
+.stash-screen-close kbd{font-size:11px;color:#e8d7a8}
+.stash-screen-body{
+  display:grid;grid-template-columns:1fr 1fr;gap:18px;
+  padding:16px 20px 20px;overflow:auto;min-height:0;
+}
+@media (max-width:720px){
+  .stash-screen-body{grid-template-columns:1fr}
+}
+.stash-col h3{
+  margin:0 0 10px;font-family:'Barlow Condensed',sans-serif;
+  font-size:13px;letter-spacing:.16em;color:rgba(226,200,136,.9);
+}
+.stash-col h3 em{font-style:normal;color:rgba(200,210,210,.6);margin-left:8px;letter-spacing:.06em}
+.stash-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.stash-cell{
+  position:relative;aspect-ratio:1;min-height:72px;
+  border:1px solid rgba(120,130,120,.35);background:rgba(12,16,14,.85);
+  color:#c5d5d8;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:4px;cursor:grab;font:inherit;
+}
+.stash-cell:hover{border-color:rgba(200,180,120,.45)}
+.stash-cell.hot{border-color:rgba(226,200,136,.7);box-shadow:inset 0 0 0 1px rgba(226,200,136,.25)}
+.stash-cell.picked,.stash-cell.drop{
+  border-color:rgba(140,200,120,.85);
+  background:rgba(30,48,28,.9);
+  box-shadow:0 0 0 1px rgba(140,200,120,.35);
+}
+.stash-cell kbd{
+  position:absolute;left:5px;top:3px;font-size:10px;
+  font-family:'Barlow Condensed',sans-serif;color:rgba(242,247,248,.55);
+}
+.stash-cell svg,.stash-cell .slot-thumb{width:36px;height:36px;margin-top:2px;pointer-events:none}
+.stash-cell-name{
+  font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:.04em;
+  color:rgba(220,210,180,.75);margin-top:2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.stash-amt,.stash-mods{
   position:absolute;right:4px;bottom:3px;
   font-family:'Barlow Condensed',sans-serif;
   font-size:11px;font-style:normal;font-weight:700;
   color:#d5e0a8;line-height:1;
 }
+.stash-mods{bottom:14px;color:#e2c888}
+.stash-chips{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.stash-chip{
+  display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  padding:10px 12px;border:1px solid rgba(120,130,120,.35);
+  background:rgba(12,16,14,.85);color:#c5d5d8;cursor:grab;font:inherit;text-align:left;
+}
+.stash-chip strong{font-family:'Barlow Condensed',sans-serif;font-size:18px;color:#efe6c8}
+.stash-chip span{font-size:11px;letter-spacing:.04em;color:rgba(200,210,200,.55);font-family:'Barlow Condensed',sans-serif}
+.stash-chip.live{border-color:rgba(200,180,100,.4)}
+.stash-chip.gold.live strong{color:#f2c14e}
+.stash-chip.vault.live{border-color:rgba(226,200,136,.55);margin-top:12px}
+.stash-chip.picked,.stash-chip.drop{
+  border-color:rgba(140,200,120,.85);background:rgba(30,48,28,.9);
+}
+.stash-workbench{margin-top:14px}
+.stash-workbench .workbench-title{margin-bottom:8px}
 .slot.ammo{color:#c8d0a8}
 .slots{display:flex;gap:8px}
 .slot{

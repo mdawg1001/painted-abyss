@@ -2211,13 +2211,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    }
    if(e.code==='KeyB'){this.mission.ditchGold();this.publish();}
    if(/^Digit[1-5]$/.test(e.code)){
-    // Stash open: 1–5 activates that chest slot (take / store / swap immediately).
-    if(this.mission.stashOpen){
-     this.mission.activateStashSlot(Number(e.code.slice(-1))-1);
-     this.playSelectClick();
-     this.publish();
-     return;
-    }
+    // Stash overlay owns the mouse; keep 1–5 as bag select for the workbench rifle.
     if(this.mission.select(Number(e.code.slice(-1))-1))this.playSelectClick();
    }
    if(e.code==='Tab'){

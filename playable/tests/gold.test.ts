@@ -53,13 +53,15 @@ test('a paying kill drops coins that you scoop by walking over; bars need E',()=
  assert.ok(m.loadWalkFactor()<1,'and now you are slower');
 });
 
-test('opening the stash banks every gram; the vault survives a reload',()=>{
+test('opening the stash keeps pocket gold; bankPocketGold fills the vault',()=>{
  writeBankedGold(0);
  const m=setup();m.gold=2600;
  m.position={x:-4.85+1.2,y:WALK_EYE_Y,z:31.55};
  m.inventory=[null,null,null,null,null];m.selected=0;
  m.interact();
  assert.ok(m.stashOpen);
+ assert.equal(m.gold,2600);assert.equal(m.bankedGold,0);
+ assert.ok(m.bankPocketGold());
  assert.equal(m.gold,0);assert.equal(m.bankedGold,2600);
  assert.equal(m.goldEvent?.kind,'bank');
  assert.equal(m.lastHaulBanked,2600);

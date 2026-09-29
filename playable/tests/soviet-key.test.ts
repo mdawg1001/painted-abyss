@@ -101,8 +101,8 @@ test('soviet key can be stored in the hatch chest like other gear',()=>{
  const m=new Mission(true);isolateGuards(m);
  m.position={x:STASH_POSITION.x,y:WALK_EYE_Y,z:STASH_POSITION.z};
  m.inventory=['sovietKey',null,null,null,null];m.selected=0;
- m.interact(); // open
- m.interact(); // store
+ m.interact(); // open drag stash
+ assert.ok(m.moveInvStash(0,0),'drag key into chest');
  assert.equal(m.inventory[0],null);
  assert.ok(m.stash.some(s=>s?.kind==='item'&&s.item==='sovietKey'));
 });
