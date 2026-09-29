@@ -36,8 +36,8 @@ test('no free kilobars on the floor — gold comes from kills and extract',()=>{
 
 test('a paying kill drops coins that you scoop by walking over; bars need E',()=>{
  const m=setup();
- // Force a field bucket (unit 0.90) so the kill is on the paying side of the VR schedule.
- let n=0;m.lootRand=()=>{n+=1;return n===1?.90:.5;};
+ // Force a field bucket (unit 0.965) so the kill is on the paying side of the VR schedule.
+ let n=0;m.lootRand=()=>{n+=1;return n===1?.965:.5;};
  const g=m.guards[0];m.activateGuard(g,{x:CX,z:PLAYER.z-2},0,'assault');
  while(g.hp>0)m.guardTakeDamage(g,50);
  const coins=m.pickups.find(p=>p.item==='gold')!;

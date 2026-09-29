@@ -1525,8 +1525,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   */
  killLootEvent:{seq:number;kind:KillLootCue;at:number;cond?:number;goldGrams?:number}|null=null;
  /**
-  * Consecutive empty schedule kills (dry / ammo-only). Soft pity in killLoot.ts
-  * shifts odds after `KILL_LOOT.pityAfter`. Reset on any paying bucket. Opaque.
+  * Consecutive empty schedule kills (dry / ammo-only). Telemetry only — pity does
+  * not shift the VR table (a drought must not teach "payday is due"). Reset on pay.
   */
  killLootEmptyStreak=0;
  /** Pacing director for the firefight (reinforcements, lulls, final push). */

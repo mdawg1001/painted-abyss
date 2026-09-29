@@ -392,6 +392,7 @@ function playMission(seed:number){
  const m=new Mission(true);m.rand=rnd;m.lootRand=lootStream(seed*9973+42);m.spawnGuards();m.air=1e6;
  // Rat cage: no free floor ammo. Probe starts with an earned-stash mag dump and
  // strips corpse frames when dry — same pressure the player feels.
+ // Lean VR loot = fewer corpse strips; probe carries an earned-stash dump.
  m.pistol.reserve=Math.max(m.pistol.reserve,80);
  const route:(readonly [number,number]|'relic'|'exit')[]=[[0,-8],[0,-44],[20,-58],[-20,-48],[-20,-70],[-12,-96],[-4,-104],[0,-110],'relic',[-4,-104],[0,-96],[12,-92],[24,-92],[28,-84],[32,-80],[32,-12],'exit'];
  let wi=0,t=0,maxLive=0,worstTick=0,ticks=0,total=0;const phases=new Set<string>();

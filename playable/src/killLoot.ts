@@ -1,11 +1,10 @@
 /**
- * Kill loot: variable-ratio category + magnitude on the kill operant, plus stage-two
- * theater (near-miss / LDW cues) and stage-three soft pity.
+ * Kill loot: variable-ratio (VR) schedule on the kill operant — Ferster & Skinner.
  *
- * Every downed guard rolls an opaque bucket (dry → jackpot). Paying buckets vary
- * how good the rifle is and how many grams fall with it. Dry kills pay nothing.
- * After several empty kills in a row (dry / ammo-only), odds quietly shift toward
- * a real drop — no pity bar, still not a hard guarantee.
+ * Obsession = unpredictable + still possible, not a generous hit rate. Roughly
+ * VR10 on real pellets (scrap→jackpot ≈ 10% of kills): most presses dry, the next
+ * one might pay, and nothing teaches "it never pays now" (no pity telegraph).
+ * Near-miss / LDW is stage-two theater on scrap, not a payout guarantee.
  *
  * Outside the schedule (always):
  *  - the Soviet key on the main officer
@@ -42,16 +41,16 @@ export const KILL_LOOT_BUCKETS: readonly KillLootBucket[] = [
 
 export const KILL_LOOT = {
   /**
-   * Relative weights (sum 100). Opaque to the player — the schedule, not a UI %.
-   * Rat cage: dry is the default (~3 in 5). Ammo strips are uncommon. Real gold
-   * and keepers are rare; jackpot is a freak event.
+   * Relative weights (sum 100). Opaque VR table — not a UI %.
+   * Real pellets (scrap→jackpot) ≈ 10% → ~VR10. Ammo strips ≈ 5% lean theater.
+   * Dry ≈ 85%. Next kill might still pay; no fixed cadence.
    */
   weights: {
-    dry: 58,
-    ammo: 18,
-    scrap: 12,
-    field: 8,
-    prize: 3,
+    dry: 85,
+    ammo: 5,
+    scrap: 6,
+    field: 2,
+    prize: 1,
     jackpot: 1,
   } as Record<KillLootBucket, number>,
   /** Ammo-only mag fill: short strip, never a keep-worthy rifle. */
@@ -81,14 +80,13 @@ export const KILL_LOOT = {
   /** Rare non-officer prize band: at/above keepCond, always below kit. */
   luckyPrize: [RIFLE.keepCond, RIFLE.kitCond - 0.02] as [number, number],
   /**
-   * Soft pity: after a long dry streak, nudge odds a little. Opaque — no UI.
-   * Kept late and soft so empty stays the feeling, not a countdown to payday.
+   * Pity disabled (shift 0). A drought→payday nudge teaches "it never pays now,
+   * then it must" — the opposite of VR. emptyStreak is still counted for tests /
+   * telemetry; it must not change the schedule.
    */
-  pityAfter: 6,
-  /** Weight points moved from empty → paying per empty kill past the threshold. */
-  pityShiftPer: 5,
-  /** Cap on shifted weight — dry must still dominate even after a drought. */
-  pityMaxShift: 20,
+  pityAfter: 999,
+  pityShiftPer: 0,
+  pityMaxShift: 0,
   /** HUD classical flash lifetime (s). Dry still flashes — empty ≠ silent. */
   hudFlashSeconds: 0.55,
 } as const;
@@ -136,14 +134,15 @@ const weightTotalOf = (weights: Record<KillLootBucket, number>) =>
   KILL_LOOT_BUCKETS.reduce((s, b) => s + weights[b], 0);
 
 /**
- * Effective bucket weights after soft pity. `emptyStreak` is consecutive dry/ammo
- * kills; at/above `pityAfter`, weight peels off dry+ammo into scrap+field.
+ * Effective bucket weights. Pity is off (`pityMaxShift` 0) so a dry streak never
+ * becomes a reliable payday signal — every kill stays the same opaque VR draw.
  */
 export function killLootWeights(emptyStreak = 0): Record<KillLootBucket, number> {
   const w = { ...KILL_LOOT.weights };
-  if (emptyStreak < KILL_LOOT.pityAfter) return w;
+  if (KILL_LOOT.pityMaxShift <= 0 || emptyStreak < KILL_LOOT.pityAfter) return w;
   const steps = emptyStreak - KILL_LOOT.pityAfter + 1;
   const shift = Math.min(KILL_LOOT.pityMaxShift, steps * KILL_LOOT.pityShiftPer);
+  if (shift <= 0) return w;
   // Peel dry first, then ammo — keep relative prize/jackpot rarity.
   let left = shift;
   const fromDry = Math.min(w.dry, left);
