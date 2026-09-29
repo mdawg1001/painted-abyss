@@ -5,8 +5,9 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {Mission,isolateGuards,FLOOR_Y,WALK_EYE_Y,breathFootprint,isMainGuard} from '../src/simulation';
 import {
- KILL_LOOT,KILL_LOOT_BUCKETS,selectKillLootBucket,rollKillLoot,killLootCueFor,
- killLootWeights,isEmptyKillLoot,killJackpotGoldBand,type KillLootBucket,
+ KILL_LOOT,KILL_LOOT_BUCKETS,KILL_LOOT_HUD_LABEL,selectKillLootBucket,rollKillLoot,killLootCueFor,
+ killLootWeights,isEmptyKillLoot,killJackpotGoldBand,killLootHudLabel,killLootFeedback,
+ type KillLootBucket,type KillLootCue,
 } from '../src/killLoot';
 import {GOLD} from '../src/gold';
 import {RIFLE,lootStream,rifleIsPrize} from '../src/rifleCondition';
@@ -94,6 +95,36 @@ test('dry assault kill pulses blocked — no win juice on empty pockets',()=>{
  assert.equal(m.killLootEvent?.kind,'dry');
  assert.equal(m.feedbackKind,'blocked');
  assert.equal(m.pickups.some(p=>p.item==='gun'||p.item==='gold'),false);
+});
+
+test('HUD flash fires on every kill result including empty',()=>{
+ // Labels + feedback cover the classical cue set; Mission stamps seq/at for the HUD.
+ assert.equal(killLootHudLabel('dry'),'EMPTY');
+ assert.equal(killLootFeedback('dry'),'blocked');
+ assert.ok(KILL_LOOT.hudFlashSeconds>0&&KILL_LOOT.hudFlashSeconds<=1);
+ const kinds:KillLootCue[]=['dry','ammo','scrap','near_miss','field','prize','jackpot'];
+ for(const k of kinds){
+  assert.ok(KILL_LOOT_HUD_LABEL[k].length>=4,`${k} has a readable HUD label`);
+  assert.equal(killLootHudLabel(k),KILL_LOOT_HUD_LABEL[k]);
+ }
+ const dry=setup('assault',scriptedLoot(0.0));
+ const pulse0=dry.m.feedbackPulse;
+ kill(dry.m,dry.g);
+ assert.equal(dry.m.killLootEvent?.kind,'dry');
+ assert.ok((dry.m.killLootEvent?.seq??0)>=1);
+ assert.equal(dry.m.killLootEvent?.at,dry.m.elapsed);
+ assert.ok(dry.m.feedbackPulse>pulse0,'dry still bumps the HUD pulse');
+ assert.equal(dry.m.feedbackKind,'blocked');
+
+ const ammo=setup('assault',scriptedLoot(0.25));
+ kill(ammo.m,ammo.g);
+ assert.equal(ammo.m.killLootEvent?.kind,'ammo');
+ assert.equal(ammo.m.feedbackKind,'ok','paying cue pulses ok');
+
+ const jack=setup('assault',scriptedLoot(0.99));
+ kill(jack.m,jack.g);
+ assert.equal(jack.m.killLootEvent?.kind,'jackpot');
+ assert.equal(jack.m.feedbackKind,'ok');
 });
 
 test('ammo kill drops a strip-frame with rounds and no gold',()=>{
