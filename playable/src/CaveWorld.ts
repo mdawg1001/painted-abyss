@@ -68,7 +68,7 @@ import {
  AK74U_HELD_POS, AK74U_HELD_ROT, AK74U_ADS,
 } from './gunAsset';
 import { RIFLE, rifleIsPrize } from './rifleCondition';
-import { goldSinkAccel, goldThrustFactor } from './gold';
+import { goldSinkAccel, goldThrustFactor, nextUpgradeTarget } from './gold';
 import { SWIM_BUOYANCY_ACCEL, Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, groundNormal, GUARD_COUNT, STASH_POSITION, STASH_YAW, EGO_SAVIOR, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
@@ -1398,7 +1398,11 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   if(m.goldEvent&&m.goldEvent.seq!==this.goldSeqHeard){
    this.goldSeqHeard=m.goldEvent.seq;
    const ctx2=this.audioContext,master2=this.master;
-   if(this.sound&&ctx2&&master2&&ctx2.state==='running')playGold(ctx2,master2,m.goldEvent.kind,m.goldEvent.grams);
+   if(this.sound&&ctx2&&master2&&ctx2.state==='running'){
+    const buy=m.goldEvent.kind==='bank'?nextUpgradeTarget(m.gunMods,m.bankedGold,m.inventory.includes('gun')):null;
+    const almost=!!buy&&(buy.ready||buy.almost);
+    playGold(ctx2,master2,m.goldEvent.kind,m.goldEvent.grams,almost);
+   }
   }
   if(m.killLootEvent&&m.killLootEvent.seq!==this.killLootSeqHeard){
    this.killLootSeqHeard=m.killLootEvent.seq;
@@ -2204,7 +2208,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
     if(this.mission.pending!==null){this.mission.pending=null;this.publish();}else this.pause();
    }
    // Inventory keys bind on window (not the canvas), so select/use/drop work without canvas focus.
-   // Workbench: with the stash open, 7 / 8 / 9 buy Barrel / Action / Magazine for the rifle in hand.
+   // Shop: with the stash open, 7 / 8 / 9 buy Harder hits / Fewer jams / Bigger mag.
    if(this.mission.stashOpen&&/^Digit[789]$/.test(e.code)){
     const track=(['barrel','action','mag'] as const)[Number(e.code.slice(-1))-7];
     this.mission.buyUpgrade(track);this.publish();return;

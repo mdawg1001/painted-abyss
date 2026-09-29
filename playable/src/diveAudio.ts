@@ -814,7 +814,7 @@ export function playKillLoot(
   tone(t0 + n * .04 + .04, 2100, .2, .16);
 }
 
-export function playGold(ctx: AudioContext, out: AudioNode, kind: 'take' | 'bank' | 'upgrade' | 'ditch' | 'lost', grams = 1000) {
+export function playGold(ctx: AudioContext, out: AudioNode, kind: 'take' | 'bank' | 'upgrade' | 'ditch' | 'lost', grams = 1000, almost = false) {
   const t0 = ctx.currentTime + .005;
   const clink = (at: number, base: number, gain: number) => {
     for (const [ratio, amp, dec] of [[1, 1, .18], [2.76, .5, .09], [5.4, .25, .05]] as const) {
@@ -833,6 +833,11 @@ export function playGold(ctx: AudioContext, out: AudioNode, kind: 'take' | 'bank
     const n = Math.min(24, Math.max(4, Math.round(grams / 250)));
     for (let i = 0; i < n; i++) clink(t0 + i * .038, 900 + i * 45 + Math.random() * 120, .12);
     clink(t0 + n * .038 + .05, 2100, .22);
+    // Rising almost-afford tease when the vault lands in the unfinished buy band.
+    if (almost) {
+      const a0 = t0 + n * .038 + .12;
+      clink(a0, 880, .16); clink(a0 + .07, 1175, .18); clink(a0 + .14, 1560, .22);
+    }
   } else if (kind === 'upgrade') {
     clink(t0, 520, .3); clink(t0 + .09, 1040, .22); clink(t0 + .2, 1560, .26);
   } else {

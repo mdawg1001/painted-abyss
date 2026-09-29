@@ -364,8 +364,66 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .stash-chip.picked,.stash-chip.drop{
   border-color:rgba(140,200,120,.85);background:rgba(30,48,28,.9);
 }
-.stash-workbench{margin-top:14px}
-.stash-workbench .workbench-title{margin-bottom:8px}
+.stash-shop{
+  margin-top:14px;padding-top:12px;
+  border-top:1px solid rgba(180,160,110,.28);
+}
+.stash-shop-head{
+  display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:12px;
+}
+.stash-shop-head h3{
+  margin:0;font-family:'Barlow Condensed',sans-serif;
+  font-size:18px;letter-spacing:.18em;color:#f0d48a;
+}
+.stash-shop-gold{
+  font-family:'Barlow Condensed',sans-serif;font-size:20px;color:#ffd46a;font-weight:700;
+}
+.stash-shop-list{display:flex;flex-direction:column;gap:10px}
+.stash-shop-item{
+  display:flex;flex-direction:column;gap:6px;
+  padding:12px;border:1px solid rgba(160,140,90,.4);background:rgba(18,22,18,.9);
+}
+.stash-shop-item.afford{border-color:rgba(255,200,80,.65)}
+.stash-shop-item.almost{border-color:rgba(255,170,60,.85);box-shadow:0 0 16px rgba(255,160,40,.22) inset;animation:afford 1.4s ease-in-out infinite}
+.stash-shop-row{display:flex;align-items:baseline;gap:12px}
+.stash-shop-name{
+  font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;letter-spacing:.03em;color:#ffd46a;
+}
+.stash-shop-detail{margin:0;font-size:12px;line-height:1.35;color:rgba(200,210,200,.65)}
+.stash-shop-blocked{margin:0;font-size:12px;color:#ff9a7a}
+.stash-shop-buy-btn{
+  margin-top:4px;width:100%;padding:12px 14px;border:0;cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:800;letter-spacing:.14em;
+  color:#1a1408;background:#e2c14e;
+}
+.stash-shop-buy-btn:hover:not(:disabled){background:#f0d46a}
+.stash-shop-buy-btn:disabled{
+  cursor:not-allowed;background:rgba(120,110,80,.35);color:rgba(220,210,180,.45);
+}
+.stash-confirm{
+  position:absolute;inset:0;z-index:5;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.55);
+}
+.stash-confirm-card{
+  width:min(360px,90%);padding:20px 22px;
+  background:rgba(16,18,16,.98);border:1px solid rgba(200,180,120,.5);
+  color:#e8dcc0;box-shadow:0 16px 40px rgba(0,0,0,.55);
+}
+.stash-confirm-card h4{
+  margin:0 0 10px;font-family:'Barlow Condensed',sans-serif;
+  font-size:22px;letter-spacing:.04em;color:#efe6c8;
+}
+.stash-confirm-card p{margin:0 0 6px;font-size:14px}
+.stash-confirm-balance{color:rgba(200,210,200,.7)}
+.stash-confirm-actions{display:flex;gap:10px;margin-top:16px}
+.stash-confirm-cancel,.stash-confirm-ok{
+  flex:1;padding:12px;border:0;cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;letter-spacing:.08em;
+}
+.stash-confirm-cancel{background:rgba(80,80,80,.5);color:#ddd}
+.stash-confirm-ok{background:#e2c14e;color:#1a1408}
+
 .slot.ammo{color:#c8d0a8}
 .slots{display:flex;gap:8px}
 .slot{
@@ -734,6 +792,13 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .gold-carry span{font-size:10px;letter-spacing:.06em;color:#e8c98a;opacity:.85}
 .gold-vault{font-size:11px;letter-spacing:.12em;color:#c9ab6c}
 .gold-vault strong{margin-left:6px;color:#f2d38a}
+.gold-hud.almost .gold-vault strong{color:#ffe08a}
+.gold-buy{display:flex;flex-direction:column;align-items:flex-end;gap:2px;margin-top:2px;font:600 10px/1.2 var(--mono,monospace);letter-spacing:.1em;color:#e8c98a}
+.gold-buy.ready{color:#ffe08a}
+.gold-buy strong{font-size:13px;color:#ffd46a}
+.gold-buy-meter{width:110px;height:4px;background:rgba(255,255,255,.12);border-radius:1px;overflow:hidden}
+.gold-buy-meter i{display:block;height:100%;background:linear-gradient(90deg,#c4923a,#ffd46a);box-shadow:0 0 8px rgba(255,190,60,.55)}
+.gold-pop.almost{font-size:28px;color:#ffe08a}
 @keyframes gold-bump{0%{transform:scale(1.25)}100%{transform:scale(1)}}
 .gold-pop{position:fixed;left:50%;top:36%;transform:translate(-50%,-50%);z-index:41;pointer-events:none;
  font:800 30px/1 var(--mono,monospace);letter-spacing:.1em;color:#ffd978;
@@ -763,4 +828,4 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .workbench .pips i.on{background:#ffc94a;box-shadow:0 0 6px rgba(255,190,60,.8)}
 .workbench-risk{margin-top:6px;font-size:10px;letter-spacing:.04em;color:#ff9a7a}
 @keyframes afford{0%,100%{box-shadow:0 0 10px rgba(255,180,40,.18) inset}50%{box-shadow:0 0 18px rgba(255,190,60,.4) inset}}
-@media (prefers-reduced-motion:reduce){.gold-pop,.gold-carry,.workbench .track.afford{animation:none}}
+@media (prefers-reduced-motion:reduce){.gold-pop,.gold-carry,.workbench .track.afford,.stash-shop-item.almost,.stash-shop-item.afford{animation:none}}
