@@ -385,12 +385,9 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   padding:12px;border:1px solid rgba(160,140,90,.4);background:rgba(18,22,18,.9);
 }
 .stash-shop-item.afford{border-color:rgba(255,200,80,.65)}
-.stash-shop-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.stash-shop-row{display:flex;align-items:baseline;gap:12px}
 .stash-shop-name{
-  font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:700;letter-spacing:.03em;color:#efe6c8;
-}
-.stash-shop-tag{
-  font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:#ffd46a;
+  font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;letter-spacing:.03em;color:#ffd46a;
 }
 .stash-shop-detail{margin:0;font-size:12px;line-height:1.35;color:rgba(200,210,200,.65)}
 .stash-shop-blocked{margin:0;font-size:12px;color:#ff9a7a}
