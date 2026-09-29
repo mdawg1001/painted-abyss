@@ -160,9 +160,9 @@ test('B ditches all your gold at your feet',()=>{
 
 
 test('almost-upgrade band: short ≤35% of cost or ≤250 g; ready at 0',()=>{
- assert.ok(isAlmostShort(140,400),'140 of 400 is almost');
- assert.ok(isAlmostShort(250,1800),'absolute 250 g cap');
- assert.ok(!isAlmostShort(251,1800));
+ assert.ok(isAlmostShort(140,400),'140 of 400 is almost (35%)');
+ assert.ok(isAlmostShort(250,900),'absolute 250 g cap on mid tier');
+ assert.ok(!isAlmostShort(251,900),'251 > 250 and > 35% of 900');
  assert.ok(!isAlmostShort(0,400),'ready is not almost');
  const mods=noMods();
  const far=nextUpgradeTarget(mods,0,true)!;
