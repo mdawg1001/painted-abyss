@@ -292,13 +292,13 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
       </div>
       <div className="stash-shop-list">
        {offers.map(offer=>{
-        const priceLabel=offer.blocked==='Owned (max)'||offer.blocked==='Already owned'
-         ?offer.blocked
-         :fmtShopMoney(offer.price);
+        const owned=offer.blocked==='Owned (max)'||offer.blocked==='Already owned';
+        const title=owned
+         ?`${offer.name}: ${offer.blocked}`
+         :`${offer.name}: ${fmtShopMoney(offer.price)}`;
         return <div key={offer.id} className={`stash-shop-item${offer.canBuy?' afford':''}`}>
          <div className="stash-shop-row">
-          <strong className="stash-shop-name">{offer.name}</strong>
-          <span className="stash-shop-tag">{priceLabel}</span>
+          <strong className="stash-shop-name">{title}</strong>
          </div>
          <p className="stash-shop-detail">{offer.detail}</p>
          {offer.blocked&&offer.blocked!=='Owned (max)'&&offer.blocked!=='Already owned'&&(
