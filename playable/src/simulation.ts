@@ -1,5 +1,5 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
-import { GOLD, UPGRADE, SHOP_RIFLE_PRICE, fmtGold, goldStaminaFactor, goldWalkFactor, noMods, modLevel, modTag, modValue, magBonus, damageMult, spreadMult, jamMult, cycleMult, upgradeCost, readBankedGold, writeBankedGold, type RifleMods, type ModTrack } from './gold';
+import { GOLD, UPGRADE, SHOP_RIFLE_PRICE, fmtGold, goldStaminaFactor, goldWalkFactor, noMods, modLevel, modTag, modValue, magBonus, damageMult, spreadMult, jamMult, cycleMult, upgradeCost, readBankedGold, writeBankedGold, nextUpgradeTarget, almostUpgradeLine, type RifleMods, type ModTrack } from './gold';
 import { RIFLE, lootStream, jamChance, spreadSigma, scatter, rollDropRounds, rifleIsPrize, rifleName } from './rifleCondition';
 import { rollKillLoot, killLootCueFor, isEmptyKillLoot, killLootFeedback, type KillLootCue } from './killLoot';
 export type { KillLootCue } from './killLoot';
@@ -483,12 +483,17 @@ export type SkinnerGoal={p:Point;label:string};
 export function skinnerGoal(m:{
  hasRelic:boolean;
  gold:number;
+ bankedGold:number;
+ gunMods:RifleMods;
  inventory:(Item|null)[];
  pickups:Pickup[];
  guards:Guard[];
 }):SkinnerGoal{
  if(m.hasRelic)return{p:EXIT,label:'EXTRACT'};
  if(m.gold>0)return{p:STASH_POSITION,label:'BANK'};
+ // Unfinished buy beats the relic chase — vault is one kill from a spend.
+ const buy=nextUpgradeTarget(m.gunMods,m.bankedGold,m.inventory.includes('gun'));
+ if(buy&&(buy.ready||buy.almost))return{p:STASH_POSITION,label:'BUY'};
  if(m.inventory.includes('sovietKey'))return{p:RELIC,label:'RELIC'};
  const keyDrop=m.pickups.find(p=>p.item==='sovietKey');
  if(keyDrop)return{p:keyDrop.position,label:'KEY'};
@@ -2143,6 +2148,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    if(hauled>0)bits.push(`Banked ${fmtGold(hauled)}.`);
    if(extractPay>0)bits.push(`Extract jackpot: ${this.lastExtractBars} kg.`);
    bits.push(`Vault: ${fmtGold(this.bankedGold)}.`);
+   const tip=almostUpgradeLine(this.gunMods,this.bankedGold,this.inventory.includes('gun'));
+   if(tip)bits.push(tip);
    this.reason=bits.join(' ');
    return;
   }
@@ -2153,9 +2160,13 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     this.stashOpen=true;
     this.stashCue='open';
     const g=this.bankCarriedGold();
-    this.say(g>0
-     ?`Stash open. Gold: $${Math.round(this.bankedGold)}. Esc closes.`
-     :'Stash open. Drag gear. Buy in the Shop. Esc closes.','ok');
+    const tip=almostUpgradeLine(this.gunMods,this.bankedGold,this.inventory.includes('gun'));
+    if(g>0){
+     this.stashCue='deposit';
+     this.say(tip?`Banked ${fmtGold(g)}. ${tip}`:`Stash open. Gold: $${Math.round(this.bankedGold)}. Esc closes.`,'ok');
+    }else{
+     this.say(tip?`Stash open. ${tip}`:'Stash open. Drag gear. Buy in the Shop. Esc closes.','ok');
+    }
     return;
    }
    this.closeStash();
@@ -2649,7 +2660,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.killedByGuard=!!g;
    if(g)this.lootGuardIndex=this.guards.indexOf(g);
    this.outcome='lost';
-   this.reason=reason;
+   // Pockets auto-bank on dive-again; count them toward the unfinished buy tease.
+   const tip=almostUpgradeLine(this.gunMods,this.bankedGold+this.gold,this.inventory.includes('gun'));
+   this.reason=tip?`${reason} ${tip}`:reason;
   }
  }
  /**
@@ -2748,7 +2761,14 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   // Legs last far longer than a finning sprint: ~12 s of hard running vs ~5.5 s of sprint kicking.
   this.stamina=Math.max(0,Math.min(100,this.stamina+(sprinting?(onFoot?-8:-18)*goldStaminaFactor(this.gold):17)*dt));
   // Environmental death — never Ego Savior. No hurtPlayer, no clamp, no i-frames.
-  if(this.air<=0&&this.bailout<=0){this.outcome='lost';this.reason='Your air ran out. Arm the pony earlier or climb and calm your kick.';return;}
+  if(this.air<=0&&this.bailout<=0){
+   this.outcome='lost';
+   const tip=almostUpgradeLine(this.gunMods,this.bankedGold+this.gold,this.inventory.includes('gun'));
+   this.reason=tip
+    ?`Your air ran out. Arm the pony earlier or climb and calm your kick. ${tip}`
+    :'Your air ran out. Arm the pony earlier or climb and calm your kick.';
+   return;
+  }
   if(this.pending!==null&&!this.pickups.some(p=>p.id===this.pending&&distance(p.position,this.position)<3.2))this.pending=null;
   // Walk away from the hatch stash → lid closes (contents stay persisted).
   if(this.stashOpen&&!this.nearStash())this.closeStash();

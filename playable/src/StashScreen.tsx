@@ -5,7 +5,7 @@
  */
 import React,{useCallback,useRef,useState} from 'react';
 import {
- fmtShopMoney,modLevel,upgradeCost,UPGRADE,MOD_TRACKS,SHOP_RIFLE_PRICE,
+ fmtShopMoney,modLevel,upgradeCost,UPGRADE,MOD_TRACKS,SHOP_RIFLE_PRICE,isAlmostShort,
 } from './gold';
 import {ITEMS,STASH_CAPACITY,type Item,type StashSlot} from './simulation';
 import {KNIFE_THUMB_URL} from './knifeAsset';
@@ -296,7 +296,9 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
         const title=owned
          ?`${offer.name}: ${offer.blocked}`
          :`${offer.name}: ${fmtShopMoney(offer.price)}`;
-        return <div key={offer.id} className={`stash-shop-item${offer.canBuy?' afford':''}`}>
+        const short=Math.max(0,offer.price-m.bankedGold);
+        const almost=!offer.canBuy&&!owned&&offer.price>0&&isAlmostShort(short,offer.price);
+        return <div key={offer.id} className={`stash-shop-item${offer.canBuy?' afford':''}${almost?' almost':''}`}>
          <div className="stash-shop-row">
           <strong className="stash-shop-name">{title}</strong>
          </div>

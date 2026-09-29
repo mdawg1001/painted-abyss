@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {Mission,isolateGuards,FLOOR_Y,WALK_EYE_Y,breathFootprint,emptyStash,readStash,EXIT,type Pickup} from '../src/simulation';
-import {GOLD,UPGRADE,goldBcdShare,goldSinkAccel,goldWalkFactor,goldThrustFactor,goldNetWeightN,BCD_LIFT_KG,GOLD_DENSITY,readBankedGold,writeBankedGold,modLevel} from '../src/gold';
+import {Mission,isolateGuards,FLOOR_Y,WALK_EYE_Y,breathFootprint,emptyStash,readStash,EXIT,skinnerGoal,type Pickup} from '../src/simulation';
+import {GOLD,UPGRADE,goldBcdShare,goldSinkAccel,goldWalkFactor,goldThrustFactor,goldNetWeightN,BCD_LIFT_KG,GOLD_DENSITY,readBankedGold,writeBankedGold,modLevel,nextUpgradeTarget,isAlmostShort,almostUpgradeLine,bankAlmostSuffix,ALMOST_UPGRADE,noMods} from '../src/gold';
 import {PISTOL} from '../src/playerPistol';
 import {GRAVITY,WATER_DENSITY,itemFloats} from '../src/propPhysics';
 
@@ -156,4 +156,38 @@ test('B ditches all your gold at your feet',()=>{
  assert.equal(m.gold,0);
  assert.equal(m.pickups.find(p=>p.item==='gold')?.amount,4200);
  assert.ok(!m.ditchGold());
+});
+
+
+test('almost-upgrade band: short ≤35% of cost or ≤250 g; ready at 0',()=>{
+ assert.ok(isAlmostShort(140,400),'140 of 400 is almost');
+ assert.ok(isAlmostShort(250,1800),'absolute 250 g cap');
+ assert.ok(!isAlmostShort(251,1800));
+ assert.ok(!isAlmostShort(0,400),'ready is not almost');
+ const mods=noMods();
+ const far=nextUpgradeTarget(mods,0,true)!;
+ assert.equal(far.track,'barrel');
+ assert.equal(far.cost,UPGRADE.cost[0]);
+ assert.ok(!far.almost&&!far.ready);
+ const near=nextUpgradeTarget(mods,UPGRADE.cost[0]-140,true)!;
+ assert.ok(near.almost&&!near.ready);
+ assert.equal(near.short,140);
+ const ready=nextUpgradeTarget(mods,UPGRADE.cost[0],true)!;
+ assert.ok(ready.ready&&!ready.almost);
+ assert.match(almostUpgradeLine(mods,UPGRADE.cost[0]-140,true)!,/short of/i);
+ assert.match(bankAlmostSuffix(mods,UPGRADE.cost[0],true),/BUY .* NOW/);
+ assert.equal(nextUpgradeTarget(mods,1e9,false),null);
+ assert.ok(ALMOST_UPGRADE.frac===.35&&ALMOST_UPGRADE.grams===250);
+});
+
+test('skinnerGoal points BUY when vault is almost or ready for an upgrade',()=>{
+ const m=setup();
+ m.inventory=['gun',null,null,null,null];
+ m.bankedGold=UPGRADE.cost[0]-100;
+ m.gold=0;
+ assert.equal(skinnerGoal(m).label,'BUY');
+ m.bankedGold=UPGRADE.cost[0];
+ assert.equal(skinnerGoal(m).label,'BUY');
+ m.gold=50;
+ assert.equal(skinnerGoal(m).label,'BANK','carrying still banks first');
 });
