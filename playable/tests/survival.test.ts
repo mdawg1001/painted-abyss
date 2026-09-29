@@ -290,13 +290,14 @@ test('director: build → peak → lull → harder build; the relic starts the f
 });
 
 // ── 6. Supplies, objective, restart ─────────────────────────────────────────────
-test('walk over supplies to take them; scarce ammo starts stocked; lull never restocks ammo',()=>{
+test('no free floor caches; walk-over still works when a box is stocked; lull never restocks',()=>{
  const m=new Mission(true);isolateGuards(m,-1);
- const ammoBoxes=m.caches.filter(c=>c.kind==='ammo');
- assert.equal(ammoBoxes.filter(c=>c.stocked).length,2,'hatch + one mid-route ammo');
- assert.ok(ammoBoxes.some(c=>!c.stocked),'deeper ammo starts empty');
- const ammo=m.caches.findIndex(c=>c.kind==='ammo'&&c.stocked&&Math.hypot(c.x,c.z+6)<8);
+ assert.ok(m.caches.every(c=>!c.stocked),'rat cage: every cache starts empty');
+ assert.equal(SURVIVAL.supplies.restockPerLull,0,'lulls do not restock pellets');
+ // Artificially stock one ammo box to prove the walk-over path still works.
+ const ammo=m.caches.findIndex(c=>c.kind==='ammo'&&Math.hypot(c.x,c.z+6)<8);
  assert.ok(ammo>=0);
+ m.caches[ammo].stocked=true;
  m.pistol.reserve=0;m.position={x:m.caches[ammo].x,y:WALK_EYE_Y,z:m.caches[ammo].z};
  assert.ok(m.canTakeCache(m.caches[ammo]));
  assert.equal(m.nearestTakeableCache()?.id,m.caches[ammo].id,'ammo box prompts as walk-over loot');
@@ -305,15 +306,8 @@ test('walk over supplies to take them; scarce ammo starts stocked; lull never re
  assert.ok(SURVIVAL.supplies.ammo<=12,'scarce pack');
  assert.equal(m.caches[ammo].stocked,false);
  assert.equal(m.canTakeCache(m.caches[ammo]),false);
- // Lull restock must not refill ammo.
- m.caches[ammo].stocked=false;
- m.position={x:0,y:WALK_EYE_Y,z:-60};
- const emptyAmmo=m.caches.filter(c=>c.kind==='ammo'&&!c.stocked).length;
- // Force a lull cue path by calling the same filter Mission uses.
- const restockable=m.caches.filter(c=>!c.stocked&&c.kind!=='ammo');
- assert.ok(restockable.every(c=>c.kind!=='ammo'));
- assert.equal(m.caches.filter(c=>c.kind==='ammo'&&!c.stocked).length,emptyAmmo);
  const med=SURVIVAL_CACHES.findIndex(c=>c.kind==='medkit');
+ m.caches[med].stocked=true;
  m.health=100;m.position={x:SURVIVAL_CACHES[med].x,y:WALK_EYE_Y,z:SURVIVAL_CACHES[med].z};
  m.update(1/60,false);
  assert.equal(m.caches[med].stocked,true,'a full-health walk-over leaves the kit');
@@ -345,9 +339,8 @@ test('death and restart clean up the fight pacing, not the garrison',()=>{
   const still=m.guards.find(g=>g.active&&g.hp<=0&&g.life===d.life&&g.position.x===d.x&&g.position.z===d.z);
   assert.ok(still,'corpse stays at death position');
  }
- // Reset restores makeCaches(): med/smoke full; scarce ammo (hatch + mid-route) only.
- assert.ok(m.caches.filter(c=>c.kind!=='ammo').every(c=>c.stocked),'med/smoke restock on wake');
- assert.equal(m.caches.filter(c=>c.kind==='ammo'&&c.stocked).length,2,'scarce ammo on wake');
+ // Reset restores makeCaches(): every cache empty — strip the dead.
+ assert.ok(m.caches.every(c=>!c.stocked),'wake with empty floor caches');
  assert.deepEqual(m.inventory,['knife',null,null,null,null],'wake with knife — gun/kit stay on the corpse');
  assert.equal(m.pistol.mag,0);
  assert.equal(m.pistol.reserve,0);
@@ -397,7 +390,9 @@ test('killed guards stay dead at the same place after hatch wake; director can s
 function playMission(seed:number){
  const rnd=seeded(seed);
  const m=new Mission(true);m.rand=rnd;m.lootRand=lootStream(seed*9973+42);m.spawnGuards();m.air=1e6;
- // Route hits hatch ammo, mid-route scarce box (20,-58), then relic → extract.
+ // Rat cage: no free floor ammo. Probe starts with an earned-stash mag dump and
+ // strips corpse frames when dry — same pressure the player feels.
+ m.pistol.reserve=Math.max(m.pistol.reserve,80);
  const route:(readonly [number,number]|'relic'|'exit')[]=[[0,-8],[0,-44],[20,-58],[-20,-48],[-20,-70],[-12,-96],[-4,-104],[0,-110],'relic',[-4,-104],[0,-96],[12,-92],[24,-92],[28,-84],[32,-80],[32,-12],'exit'];
  let wi=0,t=0,maxLive=0,worstTick=0,ticks=0,total=0;const phases=new Set<string>();
  while(m.outcome==='playing'&&t<400&&wi<route.length){

@@ -43,15 +43,16 @@ export const KILL_LOOT_BUCKETS: readonly KillLootBucket[] = [
 export const KILL_LOOT = {
   /**
    * Relative weights (sum 100). Opaque to the player — the schedule, not a UI %.
-   * Roughly: ~1 in 5 dry, ~1 in 4 ammo-only, rare prize/jackpot.
+   * Rat cage: dry is the default (~3 in 5). Ammo strips are uncommon. Real gold
+   * and keepers are rare; jackpot is a freak event.
    */
   weights: {
-    dry: 20,
-    ammo: 26,
-    scrap: 24,
-    field: 18,
-    prize: 8,
-    jackpot: 4,
+    dry: 58,
+    ammo: 18,
+    scrap: 12,
+    field: 8,
+    prize: 3,
+    jackpot: 1,
   } as Record<KillLootBucket, number>,
   /** Ammo-only mag fill: short strip, never a keep-worthy rifle. */
   ammoRoundsShare: [0.12, 0.35] as [number, number],
@@ -80,14 +81,14 @@ export const KILL_LOOT = {
   /** Rare non-officer prize band: at/above keepCond, always below kit. */
   luckyPrize: [RIFLE.keepCond, RIFLE.kitCond - 0.02] as [number, number],
   /**
-   * Soft pity: after this many empty kills (dry or ammo-only) in a row, start
-   * shifting weight off empty buckets into scrap/field. Opaque — no UI.
+   * Soft pity: after a long dry streak, nudge odds a little. Opaque — no UI.
+   * Kept late and soft so empty stays the feeling, not a countdown to payday.
    */
-  pityAfter: 3,
+  pityAfter: 6,
   /** Weight points moved from empty → paying per empty kill past the threshold. */
-  pityShiftPer: 10,
-  /** Cap on shifted weight so a rare dry can still happen. */
-  pityMaxShift: 40,
+  pityShiftPer: 5,
+  /** Cap on shifted weight — dry must still dominate even after a drought. */
+  pityMaxShift: 20,
   /** HUD classical flash lifetime (s). Dry still flashes — empty ≠ silent. */
   hudFlashSeconds: 0.55,
 } as const;

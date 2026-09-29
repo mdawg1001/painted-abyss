@@ -716,14 +716,12 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
 export function occupiesFpsHand(item:Item|null):boolean{
  return item==='knife'||item==='gun'||item==='sovietKey';
 }
-/** Corridor floor gear. Not on the hatch. */
+/**
+ * Corridor floor gear. Rat cage: empty — no free gun / bottle / coat on the
+ * floor. Earn the rifle from a kill, the stash, or the shop.
+ */
 export function corridorGearPickups():Pickup[]{
- const spots:{item:Item;x:number;z:number}[]=[
-  {item:'gun',x:-3.2,z:22},
-  {item:'bottle',x:-.5,z:14},
-  {item:'coat',x:-2.6,z:8},
- ];
- return spots.map((s,i)=>({id:3+i,item:s.item,position:{x:s.x,y:FLOOR_Y,z:s.z}}));
+ return [];
 }
 /** True when the selected slot should show the dive torch (and may shine). */
 export function holdingTorchItem(item:Item|null):boolean{
@@ -1452,7 +1450,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  /** Elevated gas effort until this mission elapsed time (bite / panic). */
  gasPanicUntil=0;
  inventory:(Item|null)[]=[...SURVIVAL_KIT,'flare','bandage','air'];selected=1;
- pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC,y:FLOOR_Y+RELIC_PLINTH.height}},...corridorGearPickups()];nextId=6;
+ pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC,y:FLOOR_Y+RELIC_PLINTH.height}},...corridorGearPickups()];nextId=2;
  chests:Chest[]=createDiveChests();
  /**
   * Persistent hatch stash (localStorage). Survives death, extract, dive-again, and reload.
@@ -3363,7 +3361,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    const empty=this.caches.filter(c=>!c.stocked&&c.kind!=='ammo'&&Math.hypot(c.x-this.position.x,c.z-this.position.z)>=SURVIVAL.supplies.restockMinDistance);
    for(let k=0;k<SURVIVAL.supplies.restockPerLull&&empty.length;k++)empty.splice(Math.floor(this.rand()*empty.length),1)[0].stocked=true;
    D.cues.push({kind:'lull',x:this.position.x,z:this.position.z,at:now,label:'Lull'});
-   this.say('They are regrouping. Strip the dead for rounds — medkits may have dropped.','ok');
+   this.say('They are regrouping. Strip the dead — nothing free on the floor.','ok');
   }else if(changed==='final'){
    D.cues.push({kind:'final',x:EXIT.x,z:EXIT.z,at:now,label:'Final push'});
    this.say('Relic booby trap sprung! Water is rising and the garrison is coming. Reach extraction!','blocked');
