@@ -1,12 +1,10 @@
 /**
  * Phase 3 streak economy — payoffs while style rank is high (B / A / S+).
  *
- * Pure (no THREE / DOM). Mission syncs the live style tier each tick; rewards drip
- * ammo, soften the next director arrival, and bias brief loot pickups. One solid
- * core hit (real HP damage) breaks the streak loudly; death clears it and can urge
- * a corpse-recovery run. Stash / knife-on-respawn stay the soft landing.
- *
- * Tunables stay modest so survival tension and the hatch stash never become pointless.
+ * Pure (no THREE / DOM). Mission syncs the live style tier each tick. Free ammo
+ * drip is OFF (Skinner: strip corpses / stash for rounds). Streak still softens
+ * director pressure and biases kill-loot mags. One solid core hit breaks the
+ * streak loudly; death can urge a corpse-recovery run.
  */
 
 import { STYLE_RANKS, type StyleRank } from './styleMeter';
@@ -18,10 +16,13 @@ export type StreakRewardRank = (typeof STREAK_REWARD_RANKS)[number];
 export const STREAK = {
   /** Style tier index of B (STYLE_RANKS). */
   rewardMinTier: 2,
-  /** Seconds between modest ammo drips while the streak is live (Phase 4: slower). */
+  /** Seconds between ammo drips while streaking — unused while ammoRounds are 0. */
   ammoInterval: 6,
-  /** Rounds granted per drip by reward rank — mag top-up preferred when low. */
-  ammoRounds: { B: 1, A: 1, S: 1, SS: 2, SSS: 2 } as Record<StreakRewardRank, number>,
+  /**
+   * Free streak ammo drip — zeroed. Ammo comes from kill strips / stash / scarce boxes.
+   * Keep the keys so tests and applyAmmoDrip stay wired if we ever re-enable.
+   */
+  ammoRounds: { B: 0, A: 0, S: 0, SS: 0, SSS: 0 } as Record<StreakRewardRank, number>,
   /** Prefer topping the magazine when it is below this fill fraction. */
   magPreferBelow: 0.55,
   /** Extra seconds added to the next reinforcement wait while streaking. */

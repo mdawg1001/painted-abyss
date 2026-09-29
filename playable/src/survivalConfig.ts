@@ -147,10 +147,11 @@ export const SURVIVAL={
 
  // ── Supplies (walk over to collect) ────────────────────────────────────────────
  supplies:{
-  ammo:20,medkit:40,smoke:1,
+  /** Scarce walk-over pack — not a free mag dump. Kill strips stay the main ammo lever. */
+  ammo:12,medkit:40,smoke:1,
   pickupRadius:1.3,
-  /** At each lull the director restocks this many caches at least `restockMinDistance` away. */
-  restockPerLull:2,restockMinDistance:12,
+  /** Lull restocks med/smoke only (ammo excluded in Mission.stepDirector). */
+  restockPerLull:1,restockMinDistance:12,
  },
 
  // ── Player ─────────────────────────────────────────────────────────────────────

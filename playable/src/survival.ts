@@ -150,7 +150,15 @@ export function smokeLanding(from:Point,dirX:number,dirZ:number,range:number=SUR
 export type SupplyKind='ammo'|'medkit'|'smoke';
 export type SupplyCache={id:number;kind:SupplyKind;x:number;z:number;stocked:boolean};
 export function makeCaches():SupplyCache[]{
- return SURVIVAL_CACHES.map((c,i)=>({id:i,kind:c.kind,x:c.x,z:c.z,stocked:true}));
+ // Skinner: scarce world ammo — hatch starter + one mid-route box. Other ammo
+ // empty; earn rounds from corpse strips / stash. Medkits and smoke stay up.
+ return SURVIVAL_CACHES.map((c,i)=>{
+  if(c.kind!=='ammo')return{id:i,kind:c.kind,x:c.x,z:c.z,stocked:true};
+  const nearHatch=Math.hypot(c.x,c.z+6)<8;
+  // Risky mid cavern (east of the approach) — one finite top-up, not a restock loop.
+  const midRoute=Math.hypot(c.x-20,c.z+58)<4;
+  return{id:i,kind:c.kind,x:c.x,z:c.z,stocked:nearHatch||midRoute};
+ });
 }
 
 // ── Director ───────────────────────────────────────────────────────────────────
