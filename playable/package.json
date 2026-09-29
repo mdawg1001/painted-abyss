@@ -1,10 +1,6 @@
 {
   "name": "painted-abyss-first-dive",
-<<<<<<< HEAD
-  "version": "0.22.26",
-=======
   "version": "0.22.27",
->>>>>>> origin/cursor/stash-drag-inventory-e7d1
   "private": true,
   "type": "module",
   "scripts": {
