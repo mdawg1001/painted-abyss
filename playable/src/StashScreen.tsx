@@ -1,10 +1,12 @@
 /**
- * Rust-style stash overlay — bag left, chest right, drag to move.
- * Gold is a separate chip you drag onto the vault (manual bank).
+ * Hatch stash overlay — drag gear bag↔chest.
+ * Shop is a plain catalog: Gold: $X, priced items, big BUY + confirm.
+ * Pocket gold auto-banks when the stash opens (no gold dragging).
  */
 import React,{useCallback,useRef,useState} from 'react';
-import {fmtGold,modLevel,modTag,upgradeCost,UPGRADE,MOD_TRACKS} from './gold';
-import {rifleName} from './rifleCondition';
+import {
+ fmtShopMoney,modLevel,upgradeCost,UPGRADE,MOD_TRACKS,SHOP_RIFLE_PRICE,
+} from './gold';
 import {ITEMS,STASH_CAPACITY,type Item,type StashSlot} from './simulation';
 import {KNIFE_THUMB_URL} from './knifeAsset';
 
@@ -20,20 +22,27 @@ export type StashMissionApi={
  moveInvStash:(invI:number,stashI:number)=>boolean;
  moveInv:(from:number,to:number)=>boolean;
  moveStash:(from:number,to:number)=>boolean;
- bankPocketGold:()=>boolean;
- withdrawVaultGold:()=>boolean;
  depositAmmoPack:(stashI:number)=>boolean;
  withdrawAmmoPack:(stashI:number)=>boolean;
  buyUpgrade:(track:'barrel'|'action'|'mag')=>boolean;
+ buyShopRifle:()=>boolean;
  closeStash:()=>void;
 };
 
 type DragPayload=
  |{kind:'inv';index:number}
  |{kind:'stash';index:number}
- |{kind:'gold'}
- |{kind:'vault'}
  |{kind:'ammo'};
+
+type ShopOffer={
+ id:string;
+ name:string;
+ price:number;
+ detail:string;
+ canBuy:boolean;
+ blocked?:string;
+ run:()=>boolean;
+};
 
 const DRAG_MIME='application/x-abyss-stash';
 
@@ -88,6 +97,47 @@ function readDrag(e:React.DragEvent):DragPayload|null{
  }catch{return null;}
 }
 
+function shopOffers(m:StashMissionApi):ShopOffer[]{
+ const hasGun=m.inventory.includes('gun');
+ const money=m.bankedGold;
+ const offers:ShopOffer[]=[];
+ {
+  const price=SHOP_RIFLE_PRICE;
+  let blocked:string|undefined;
+  if(hasGun)blocked='Already owned';
+  else if(m.inventory.every(x=>x!==null))blocked='Bag full';
+  else if(money<price)blocked=`Need ${fmtShopMoney(price)}`;
+  offers.push({
+   id:'rifle',
+   name:'AK-74U',
+   price,
+   detail:'A rifle for your bag. Upgrades stick to this gun.',
+   canBuy:!blocked,
+   blocked,
+   run:()=>m.buyShopRifle(),
+  });
+ }
+ for(const t of MOD_TRACKS){
+  const lv=m.gunMods[t];
+  const price=upgradeCost(lv);
+  const maxed=lv>=UPGRADE.maxLevel;
+  let blocked:string|undefined;
+  if(!hasGun)blocked='Need a rifle in your bag';
+  else if(maxed)blocked='Owned (max)';
+  else if(money<price)blocked=`Need ${fmtShopMoney(price)}`;
+  offers.push({
+   id:t,
+   name:UPGRADE.shopNames[t],
+   price:maxed?0:price,
+   detail:maxed?UPGRADE.blurbs[t][2]:UPGRADE.blurbs[t][lv],
+   canBuy:!blocked,
+   blocked,
+   run:()=>m.buyUpgrade(t),
+  });
+ }
+ return offers;
+}
+
 type Props={
  open:boolean;
  mission:StashMissionApi|null;
@@ -98,6 +148,7 @@ type Props={
 export function StashScreen({open,mission,onClose,onChanged}:Props){
  const [hover,setHover]=useState<string|null>(null);
  const [pick,setPick]=useState<DragPayload|null>(null);
+ const [confirm,setConfirm]=useState<ShopOffer|null>(null);
  const dragRef=useRef<DragPayload|null>(null);
 
  const apply=useCallback((src:DragPayload,dest:DragPayload)=>{
@@ -107,8 +158,6 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
   else if(src.kind==='stash'&&dest.kind==='inv')ok=mission.moveInvStash(dest.index,src.index);
   else if(src.kind==='inv'&&dest.kind==='inv')ok=mission.moveInv(src.index,dest.index);
   else if(src.kind==='stash'&&dest.kind==='stash')ok=mission.moveStash(src.index,dest.index);
-  else if(src.kind==='gold'&&dest.kind==='vault')ok=mission.bankPocketGold();
-  else if(src.kind==='vault'&&(dest.kind==='gold'||dest.kind==='inv'))ok=mission.withdrawVaultGold();
   else if(src.kind==='ammo'&&dest.kind==='stash')ok=mission.depositAmmoPack(dest.index);
   else if(src.kind==='stash'&&dest.kind==='ammo')ok=mission.withdrawAmmoPack(src.index);
   if(ok)onChanged();
@@ -134,12 +183,11 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
  if(!open||!mission)return null;
  const m=mission;
  const filled=m.stash.filter(Boolean).length;
+ const offers=shopOffers(m);
 
  const clickSlot=(payload:DragPayload,empty:boolean)=>{
   if(!pick){
-   if(empty&&payload.kind!=='vault'&&payload.kind!=='gold'&&payload.kind!=='ammo')return;
-   if(payload.kind==='gold'&&m.gold<=0)return;
-   if(payload.kind==='vault'&&m.bankedGold<=0)return;
+   if(empty&&payload.kind!=='ammo')return;
    if(payload.kind==='ammo'&&m.pistol.reserve<=0)return;
    if(payload.kind==='inv'&&!m.inventory[payload.index])return;
    if(payload.kind==='stash'&&!m.stash[payload.index])return;
@@ -163,7 +211,7 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
     <div>
      <div className="eyebrow">HATCH STORAGE</div>
      <h2>Stash</h2>
-     <p className="stash-screen-hint">Drag gear into the chest. Drag gold onto Your money. Buy rifle upgrades in the Shop. Esc closes.</p>
+     <p className="stash-screen-hint">Drag gear into the chest. Buy guns and upgrades in the Shop. Esc closes.</p>
     </div>
     <button type="button" className="stash-screen-close" onClick={onClose}>Close <kbd>Esc</kbd></button>
    </header>
@@ -193,37 +241,23 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
       })}
      </div>
 
-     <div className="stash-chips">
-      <button type="button"
-       className={`stash-chip gold ${m.gold>0?'live':''} ${pick?.kind==='gold'?'picked':''} ${hover==='gold'?'drop':''}`}
-       draggable={m.gold>0}
-       onDragStart={e=>{const p:DragPayload={kind:'gold'};dragRef.current=p;writeDrag(e,p);}}
-       onDragEnd={()=>{dragRef.current=null;setHover(null);}}
-       onDragOver={allowDrop('gold')}
-       onDragLeave={()=>setHover(null)}
-       onDrop={onDropDest({kind:'gold'})}
-       onClick={()=>clickSlot({kind:'gold'},m.gold<=0)}
-      >
-       <strong>{fmtGold(m.gold)}</strong>
-       <span>GOLD YOU'RE HOLDING · drag onto Your money</span>
-      </button>
-      <button type="button"
-       className={`stash-chip ammo ${m.pistol.reserve>0?'live':''} ${pick?.kind==='ammo'?'picked':''} ${hover==='ammo'?'drop':''}`}
-       draggable={m.pistol.reserve>0}
-       onDragStart={e=>{const p:DragPayload={kind:'ammo'};dragRef.current=p;writeDrag(e,p);}}
-       onDragEnd={()=>{dragRef.current=null;setHover(null);}}
-       onDragOver={allowDrop('ammo')}
-       onDragLeave={()=>setHover(null)}
-       onDrop={onDropDest({kind:'ammo'})}
-       onClick={()=>clickSlot({kind:'ammo'},m.pistol.reserve<=0)}
-      >
-       <strong>{m.pistol.reserve}</strong>
-       <span>SPARE ROUNDS · drag to chest</span>
-      </button>
-     </div>
+     <button type="button"
+      className={`stash-chip ammo ${m.pistol.reserve>0?'live':''} ${pick?.kind==='ammo'?'picked':''} ${hover==='ammo'?'drop':''}`}
+      style={{marginTop:12,width:'100%'}}
+      draggable={m.pistol.reserve>0}
+      onDragStart={e=>{const p:DragPayload={kind:'ammo'};dragRef.current=p;writeDrag(e,p);}}
+      onDragEnd={()=>{dragRef.current=null;setHover(null);}}
+      onDragOver={allowDrop('ammo')}
+      onDragLeave={()=>setHover(null)}
+      onDrop={onDropDest({kind:'ammo'})}
+      onClick={()=>clickSlot({kind:'ammo'},m.pistol.reserve<=0)}
+     >
+      <strong>{m.pistol.reserve}</strong>
+      <span>SPARE ROUNDS · drag to chest</span>
+     </button>
     </section>
 
-    <section className="stash-col" aria-label="Chest">
+    <section className="stash-col" aria-label="Chest and shop">
      <h3>CHEST <em>{filled}/{STASH_CAPACITY}</em></h3>
      <div className="stash-grid">
       {m.stash.map((slot,i)=>{
@@ -251,50 +285,50 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
       })}
      </div>
 
-     <button type="button"
-      className={`stash-chip vault ${m.bankedGold>0?'live':''} ${pick?.kind==='vault'?'picked':''} ${hover==='vault'?'drop':''}`}
-      draggable={m.bankedGold>0}
-      onDragStart={e=>{const p:DragPayload={kind:'vault'};dragRef.current=p;writeDrag(e,p);}}
-      onDragEnd={()=>{dragRef.current=null;setHover(null);}}
-      onDragOver={allowDrop('vault')}
-      onDragLeave={()=>setHover(null)}
-      onDrop={onDropDest({kind:'vault'})}
-      onClick={()=>clickSlot({kind:'vault'},m.bankedGold<=0)}
-     >
-      <strong>{fmtGold(m.bankedGold)}</strong>
-      <span>YOUR MONEY · drop gold here to spend in the shop</span>
-     </button>
-
      <div className="stash-shop" aria-label="Shop">
       <div className="stash-shop-head">
        <h3>SHOP</h3>
-       <b>Your money: {fmtGold(m.bankedGold)}</b>
+       <b className="stash-shop-gold">Gold: {fmtShopMoney(m.bankedGold)}</b>
       </div>
-      {!m.inventory.includes('gun')&&<p className="stash-shop-need">Put a rifle in your bag, then buy upgrades below.</p>}
-      {m.inventory.includes('gun')&&<p className="stash-shop-need">Buying for: {rifleName(m.gunCond)}{modTag(m.gunMods)}. Upgrades stick to this rifle.</p>}
       <div className="stash-shop-list">
-       {MOD_TRACKS.map((t,i)=>{
-        const lv=m.gunMods[t],cost=upgradeCost(lv),maxed=lv>=UPGRADE.maxLevel;
-        const hasGun=m.inventory.includes('gun');
-        const afford=hasGun&&!maxed&&m.bankedGold>=cost;
-        const label=t==='barrel'?'Harder hits':t==='action'?'Fewer jams':'Bigger magazine';
-        const price=maxed?'Owned (max)':!hasGun?'Need a rifle in your bag':m.bankedGold<cost?`Need ${fmtGold(cost)}`:`BUY for ${fmtGold(cost)}`;
-        return <button type="button" key={t}
-         className={`stash-shop-buy${afford?' afford':''}${maxed?' maxed':''}`}
-         disabled={!afford}
-         onClick={e=>{e.preventDefault();if(m.buyUpgrade(t))onChanged();}}
-        >
-         <span className="stash-shop-name"><kbd>{7+i}</kbd>{label}</span>
-         <span className="stash-shop-level">Level {lv}/{UPGRADE.maxLevel}</span>
-         <strong className="stash-shop-price">{price}</strong>
-         <small>{maxed?UPGRADE.blurbs[t][2]:UPGRADE.blurbs[t][lv]}</small>
-        </button>;
+       {offers.map(offer=>{
+        const priceLabel=offer.blocked==='Owned (max)'||offer.blocked==='Already owned'
+         ?offer.blocked
+         :fmtShopMoney(offer.price);
+        return <div key={offer.id} className={`stash-shop-item${offer.canBuy?' afford':''}`}>
+         <div className="stash-shop-row">
+          <strong className="stash-shop-name">{offer.name}</strong>
+          <span className="stash-shop-tag">{priceLabel}</span>
+         </div>
+         <p className="stash-shop-detail">{offer.detail}</p>
+         {offer.blocked&&offer.blocked!=='Owned (max)'&&offer.blocked!=='Already owned'&&(
+          <p className="stash-shop-blocked">{offer.blocked}</p>
+         )}
+         <button type="button" className="stash-shop-buy-btn"
+          disabled={!offer.canBuy}
+          onClick={()=>setConfirm(offer)}
+         >BUY</button>
+        </div>;
        })}
       </div>
-      {m.inventory.includes('gun')&&modLevel(m.gunMods)>0&&<p className="stash-shop-risk">Die with this rifle and the upgrades drop on your corpse.</p>}
      </div>
     </section>
    </div>
   </div>
+
+  {confirm&&<div className="stash-confirm" role="alertdialog" aria-label="Confirm purchase">
+   <div className="stash-confirm-card">
+    <h4>Buy {confirm.name}?</h4>
+    <p>Price: <strong>{fmtShopMoney(confirm.price)}</strong></p>
+    <p className="stash-confirm-balance">Your gold: {fmtShopMoney(m.bankedGold)}</p>
+    <div className="stash-confirm-actions">
+     <button type="button" className="stash-confirm-cancel" onClick={()=>setConfirm(null)}>Cancel</button>
+     <button type="button" className="stash-confirm-ok" onClick={()=>{
+      if(confirm.run())onChanged();
+      setConfirm(null);
+     }}>Confirm BUY</button>
+    </div>
+   </div>
+  </div>}
  </div>;
 }
