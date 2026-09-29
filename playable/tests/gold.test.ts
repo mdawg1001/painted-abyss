@@ -80,8 +80,9 @@ test('extract with the relic auto-banks pocket gold and pays the extract bar jac
  assert.equal(m.lastHaulBanked,1800);
  assert.equal(m.lastExtractBars,GOLD.extractBars[0]);
  assert.equal(m.bankedGold,200+1800+GOLD.extractBars[0]*GOLD.barGrams);
- assert.match(m.reason,/Banked/i);
- assert.match(m.reason,/Extract jackpot/i);
+ assert.match(m.reason,/Saved/i);
+ assert.match(m.reason,/Extract bonus/i);
+ assert.match(m.reason,/Money/i);
  if(globalThis.localStorage)assert.equal(readBankedGold(),m.bankedGold);
 });
 
@@ -189,5 +190,5 @@ test('skinnerGoal points BUY when vault is almost or ready for an upgrade',()=>{
  m.bankedGold=UPGRADE.cost[0];
  assert.equal(skinnerGoal(m).label,'BUY');
  m.gold=50;
- assert.equal(skinnerGoal(m).label,'BANK','carrying still banks first');
+ assert.equal(skinnerGoal(m).label,'SAVE GOLD','carrying gold still goes to the hatch first');
 });

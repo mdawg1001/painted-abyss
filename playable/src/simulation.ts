@@ -476,8 +476,9 @@ export function stashInteractPrompt(m:{stashOpen:boolean}){
 export const isMainGuard=(g:{role:GuardRole})=>g.role==='officer';
 
 /**
- * Compass / HUD goal for the Skinner loop: kill → loot → bank at hatch → dive again.
- * Relic extract is a jackpot on top, not the default home needle.
+ * Compass needle for the home loop, in plain words:
+ * gold on you → hatch · no gun after death → get it back · money almost buys → shop.
+ * Relic extract is a bonus payday on top.
  */
 export type SkinnerGoal={p:Point;label:string};
 export function skinnerGoal(m:{
@@ -490,8 +491,17 @@ export function skinnerGoal(m:{
  guards:Guard[];
 }):SkinnerGoal{
  if(m.hasRelic)return{p:EXIT,label:'EXTRACT'};
- if(m.gold>0)return{p:STASH_POSITION,label:'BANK'};
- // Unfinished buy beats the relic chase — vault is one kill from a spend.
+ // Gold in your pockets is not spendable until you walk it to the hatch and press E.
+ if(m.gold>0)return{p:STASH_POSITION,label:'SAVE GOLD'};
+ // Died with a rifle: point at the thief or the floor pile — not a vague "recover".
+ // Only a thief who looted YOUR corpse, or a rifle still on the floor — not every armed guard.
+ if(!m.inventory.includes('gun')){
+  const thief=m.guards.find(g=>liveGuard(g)&&!!g.loot);
+  if(thief)return{p:thief.position,label:'GET GUN'};
+  const gunDrop=m.pickups.find(p=>p.item==='gun');
+  if(gunDrop)return{p:gunDrop.position,label:'GET GUN'};
+ }
+ // Money almost / fully buys the next upgrade — open the hatch shop.
  const buy=nextUpgradeTarget(m.gunMods,m.bankedGold,m.inventory.includes('gun'));
  if(buy&&(buy.ready||buy.almost))return{p:STASH_POSITION,label:'BUY'};
  if(m.inventory.includes('sovietKey'))return{p:RELIC,label:'RELIC'};
@@ -499,12 +509,12 @@ export function skinnerGoal(m:{
  if(keyDrop)return{p:keyDrop.position,label:'KEY'};
  const officer=m.guards.find(g=>liveGuard(g)&&isMainGuard(g));
  if(officer)return{p:officer.position,label:'OFFICER'};
- return{p:STASH_POSITION,label:'STASH'};
+ return{p:STASH_POSITION,label:'HATCH'};
 }
 
-/** First-dive tip — vault loop first, relic as the extract jackpot. */
+/** First-dive tip — plain steps, no "bank" jargon. */
 export const SKINNER_FIRST_TIP=
- 'Kill for loot. Bank gold at the hatch stash (E). Upgrade there. Dive again. Relic extract pays a kilobar jackpot. WASD · Shift run · 1–5 select.';
+ 'Kill guards for gold. Walk to the hatch and press E — that gold becomes money. Open Shop and press BUY. If you die, follow GET GUN back to your rifle. Relic extract is a bonus payday. WASD · Shift run · 1–5 select.';
 
 /** World / HUD prompt for a floor pickup (relic gate + key wording). */
 export function pickupInteractPrompt(m:{
@@ -689,7 +699,7 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  air:{name:'Pony bottle',short:'Pony',description:`R · Arm a separate bailout cylinder (~${AIR_BAILOUT_LITRES} L). Drains after the main tank.`,hint:'R arm bailout · consumed'},
  bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
- gold:{name:'Gold',short:'Gold',description:'Real gold: 19 times denser than water. It slows you on foot and drags you down in the flood. Bank it at the stash to buy rifle upgrades.',hint:'E take · B ditch · bank at stash'},
+ gold:{name:'Gold',short:'Gold',description:'Real gold: 19 times denser than water. It slows you on foot and drags you down in the flood. Walk it to the hatch (E) — it becomes money you spend in the Shop.',hint:'E take · B ditch · hatch E to save'},
  gun:{name:'AK-74U',short:'AK-74U',description:'Compact 5.45 mm carbine with FPS arms viewmodel. Click fires one round at the centre of the screen; R changes the magazine. Three body hits or one to the head drop a guard, and every shot brings nearby guards running. Take spare rounds off the guards you drop. If a corridor guard kills you, he takes it.',hint:'Click fire · R reload'},
  bottle:{name:'Spare air bottle',short:'Bottle',description:`R · Add ${SPARE_BOTTLE_LITRES} L to the main cylinder (consumed). A corridor guard will drink it as his air if he takes it from your corpse.`,hint:'R use · consumed'},
  coat:{name:'Coat',short:'Coat',description:'Carry it. It does not soften guardian bites. If a corridor guard takes it from your corpse, his strikes hurt less.',hint:'Carry · death drops it'},
@@ -1829,7 +1839,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(this.gold<=0){this.pulse('blocked');return false;}
   const g=this.bankCarriedGold();
   this.stashCue='deposit';
-  this.say(`Banked ${fmtGold(g)} of gold. Vault: ${fmtGold(this.bankedGold)}.`,'ok');
+  this.say(`Saved ${fmtGold(g)} as money. You can spend $${Math.round(this.bankedGold)} in the Shop.`,'ok');
   return true;
  }
  withdrawVaultGold(){
@@ -1906,7 +1916,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.pickups=this.pickups.filter(q=>q.id!==p.id);
   this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'take',grams:g,at:this.elapsed};
   if(firstHaul){
-   this.say(`+${fmtGold(g)} gold · bank it at the hatch stash`,'ok');
+   this.say(`+${fmtGold(g)} gold · walk to the hatch and press E to make it money`,'ok');
    return;
   }
   if(g>=GOLD.barGrams||this.noticeUntil<=this.elapsed)this.say(`+${fmtGold(g)} gold · carrying ${fmtGold(this.gold)}`,'ok');
@@ -2095,7 +2105,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.resetFirefight();
   this.ensureKnife();
   // Knife-on-respawn + hatch stash unchanged; urge is one line, not a new HUD widget.
-  this.say(urge??'You wake at the hatch with your diving knife. Everything else you carried is on your corpse — recover it. The dead stay where they fell.','blocked');
+  this.say(urge??'You only have a knife. Your gun is where you died — follow the compass: GET GUN.','blocked');
  }
  /**
   * After a guard kill, pull gun / bottle / coat lying on the corpse into his kit.
@@ -2145,9 +2155,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    const extractPay=this.bankExtractBars();
    this.outcome='won';
    const bits:string[]=['Relic secured.'];
-   if(hauled>0)bits.push(`Banked ${fmtGold(hauled)}.`);
-   if(extractPay>0)bits.push(`Extract jackpot: ${this.lastExtractBars} kg.`);
-   bits.push(`Vault: ${fmtGold(this.bankedGold)}.`);
+   if(hauled>0)bits.push(`Saved ${fmtGold(hauled)} as money.`);
+   if(extractPay>0)bits.push(`Extract bonus: ${this.lastExtractBars} kg.`);
+   bits.push(`Money: $${Math.round(this.bankedGold)}.`);
    const tip=almostUpgradeLine(this.gunMods,this.bankedGold,this.inventory.includes('gun'));
    if(tip)bits.push(tip);
    this.reason=bits.join(' ');
@@ -2163,9 +2173,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     const tip=almostUpgradeLine(this.gunMods,this.bankedGold,this.inventory.includes('gun'));
     if(g>0){
      this.stashCue='deposit';
-     this.say(tip?`Banked ${fmtGold(g)}. ${tip}`:`Stash open. Gold: $${Math.round(this.bankedGold)}. Esc closes.`,'ok');
+     this.say(tip?`Saved ${fmtGold(g)} as money. ${tip}`:`Hatch open. Money: $${Math.round(this.bankedGold)}. Press BUY in the Shop. Esc closes.`,'ok');
     }else{
-     this.say(tip?`Stash open. ${tip}`:'Stash open. Drag gear. Buy in the Shop. Esc closes.','ok');
+     this.say(tip?`Hatch open. ${tip}`:'Hatch open. Drag gear into the chest. Press BUY in the Shop to spend money. Esc closes.','ok');
     }
     return;
    }
@@ -2504,7 +2514,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     if(stolen){this.prizeDrop={id,cond,at:this.elapsed};this.say(`He had your ${rifleName(cond)}${modTag(stolen.mods)}. Take it back.`,'ok');}
     else if(rifleIsPrize(cond)){
      this.prizeDrop={id,cond,at:this.elapsed};
-     this.say(`${rifleName(cond)} on the floor. Fight on with it, or bank it in the stash.`,'ok');
+     this.say(`${rifleName(cond)} on the floor. Pick it up, or stash it in the hatch chest.`,'ok');
     }else if(loot.nearMiss&&this.noticeUntil<=this.elapsed){
      this.say('Close — almost a keeper.','blocked');
     }

@@ -211,7 +211,7 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
     <div>
      <div className="eyebrow">HATCH STORAGE</div>
      <h2>Stash</h2>
-     <p className="stash-screen-hint">Drag gear into the chest. Buy guns and upgrades in the Shop. Esc closes.</p>
+     <p className="stash-screen-hint">Gold you carried is already money (top right). Drag gear into the chest. Press BUY to spend. Esc closes.</p>
     </div>
     <button type="button" className="stash-screen-close" onClick={onClose}>Close <kbd>Esc</kbd></button>
    </header>

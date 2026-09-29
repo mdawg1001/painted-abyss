@@ -179,7 +179,7 @@ export function almostUpgradeLine(mods: RifleMods, banked: number, hasGun: boole
  const t = nextUpgradeTarget(mods, banked, hasGun);
  if (!t) return null;
  const name = UPGRADE.shopNames[t.track];
- if (t.ready) return `${name} ready — BUY in the shop.`;
+ if (t.ready) return `${name} ready — open the hatch (E) and press BUY.`;
  if (t.almost) return `${fmtShopMoney(t.short)} short of ${name}.`;
  return null;
 }
