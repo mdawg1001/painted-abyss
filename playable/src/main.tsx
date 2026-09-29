@@ -257,9 +257,7 @@ function App(){
      <div key={`g${m.goldEvent.seq}`} className={`gold-pop bank jackpot${bankAlmostSuffix(m.gunMods,m.bankedGold,m.inventory.includes('gun'))?' almost':''}`} aria-hidden="true">
       <em>SAVED</em>
       <strong>{fmtGold(m.goldEvent.grams)}</strong>
-      {!!bankAlmostSuffix(m.gunMods,m.bankedGold,m.inventory.includes('gun'))&&(
-       <span>{bankAlmostSuffix(m.gunMods,m.bankedGold,m.inventory.includes('gun')).replace(/^ · /,'')}</span>
-      )}
+      {!!bankAlmostSuffix(m.gunMods,m.bankedGold,m.inventory.includes('gun'))&&<span>Upgrade Now</span>}
      </div>
     ):(
      <div key={`g${m.goldEvent.seq}`} className={`gold-pop ${m.goldEvent.kind}`} aria-hidden="true">

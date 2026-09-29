@@ -828,9 +828,14 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .gold-pop.take{font-size:22px;top:44%}
 .gold-pop.bank{font-size:40px;animation-duration:2.2s}
 .gold-pop.bank.jackpot{
-  top:42%;display:flex;flex-direction:column;align-items:center;gap:6px;
+  top:42%;display:flex;flex-direction:column;align-items:center;gap:8px;
+  padding:22px 36px 20px;min-width:280px;
   font-size:inherit;animation:gold-jackpot 3.4s cubic-bezier(.2,.9,.3,1) forwards;
-  text-shadow:0 0 28px rgba(255,190,60,.95),0 0 4px #fff,0 2px 0 rgba(80,40,0,.55);
+  text-shadow:0 0 18px rgba(255,190,60,.85),0 0 2px #fff,0 2px 0 rgba(80,40,0,.55);
+  background:linear-gradient(180deg,rgba(28,18,6,.92),rgba(12,8,4,.94));
+  border:1px solid rgba(255,210,120,.55);
+  box-shadow:0 0 0 1px rgba(0,0,0,.55),0 12px 40px rgba(0,0,0,.55),0 0 36px rgba(255,180,40,.28);
+  border-radius:6px;
 }
 .gold-pop.bank.jackpot em{
   font-style:normal;font:800 28px/1 var(--mono,monospace);letter-spacing:.28em;color:#ffe08a;
@@ -839,7 +844,8 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   font:900 72px/1 var(--mono,monospace);letter-spacing:.06em;color:#ffd46a;
 }
 .gold-pop.bank.jackpot span{
-  margin-top:4px;font:700 16px/1.2 var(--mono,monospace);letter-spacing:.14em;color:#ffe9a8;
+  margin-top:2px;padding-top:10px;border-top:1px solid rgba(255,210,120,.28);
+  font:700 18px/1.2 var(--mono,monospace);letter-spacing:.16em;color:#ffe9a8;text-transform:uppercase;
 }
 .gold-pop.upgrade{font-size:44px;color:#fff1c2;z-index:120}
 .gold-pop.ditch,.gold-pop.lost{color:#c9a46a;text-shadow:0 0 12px rgba(120,60,0,.8)}
