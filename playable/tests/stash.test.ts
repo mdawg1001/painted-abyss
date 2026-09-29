@@ -31,7 +31,7 @@ test('stash sits in the hatch alcove, clear of the relic and corridor centerline
  assert.equal(STASH_CAPACITY,5);
 });
 
-test('open auto-banks pocket gold into shop money',()=>{
+test('open auto-saves pocket gold into the shop balance',()=>{
  mockStorage();
  writeStash(emptyStash());
  writeBankedGold(0);
@@ -122,7 +122,7 @@ test('E toggles open/close; Esc path uses closeStash',()=>{
  atStash(m);
  assert.equal(stashInteractPrompt(m),'E · Open hatch · Shop');
  m.gold=400;
- assert.equal(stashInteractPrompt(m),'E · Save gold as money');
+ assert.equal(stashInteractPrompt(m),'E · Save Gold');
  m.gold=0;
  m.interact();
  assert.equal(m.stashOpen,true);
@@ -169,12 +169,12 @@ test('corpse loot and chest loot stay separate on death',()=>{
 });
 
 
-test('prompt names the deposit when you are carrying gold',()=>{
+test('prompt says Save Gold when you are carrying gold',()=>{
  const m=new Mission(true);
  m.stashOpen=false;m.gold=0;
  assert.equal(stashInteractPrompt(m),'E · Open hatch · Shop');
  m.gold=900;
- assert.equal(stashInteractPrompt(m),'E · Save gold as money');
+ assert.equal(stashInteractPrompt(m),'E · Save Gold');
  m.stashOpen=true;
  assert.equal(stashInteractPrompt(m),'E · Close hatch');
 });
