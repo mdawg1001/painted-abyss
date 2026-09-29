@@ -5,7 +5,7 @@ import {smokeAt} from './survival';
 import {SURVIVAL} from './survivalConfig';
 import {rifleName} from './rifleCondition';
 import {fmtGold,goldWalkFactor,goldBcdShare,modTag,modLevel,modValue,upgradeCost,UPGRADE,MOD_TRACKS} from './gold';
-import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,pickupInteractPrompt,isMainGuard,MAP_FRAGMENT_ORDER,STASH_CAPACITY,COMBAT_OUTCOME,STREAK,EGO_SAVIOR,skinnerGoal,type Item,type StashSlot} from './simulation';
+import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,pickupInteractPrompt,isMainGuard,MAP_FRAGMENT_ORDER,STASH_CAPACITY,COMBAT_OUTCOME,STREAK,EGO_SAVIOR,skinnerGoal,KILL_LOOT,killLootHudLabel,type Item,type StashSlot} from './simulation';
 import {combatCalloutAllowed} from './combatCalm';
 import {DiveMap} from './DiveMap';
 import {KNIFE_THUMB_URL} from './knifeAsset';
@@ -213,6 +213,15 @@ function App(){
     // CLEAN never centre-shouts; calm combat also hides SCRAPE / GRAZE spam.
     if(!combatCalloutAllowed(o.tag))return null;
     return <div key={`co-${o.at}-${o.tag}`} className={`combat-callout tag-${o.tag.toLowerCase()}`} aria-hidden="true">{o.tag}</div>;
+   })()}
+   {/* Kill-loot classical flash: every schedule kill including EMPTY. Keyed on seq so dry still replays. */}
+   {(()=>{
+    const e=m.killLootEvent;if(!e)return null;
+    const age=m.elapsed-e.at;if(age<0||age>=KILL_LOOT.hudFlashSeconds)return null;
+    const kindClass=e.kind.replace('_','-');
+    return <div key={`kl-${e.seq}`} className={`kill-loot-flash kind-${kindClass}`} aria-hidden="true">
+     <span>{killLootHudLabel(e.kind)}</span>
+    </div>;
    })()}
    {snap?.audioNotice&&<div className="audio-notice" role="status">{snap.audioNotice}</div>}
    {/* Critical theater: hard red + heartbeat at ≤~15% suit and/or ego i-frames. Never name the save. */}

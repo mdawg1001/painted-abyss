@@ -1,8 +1,9 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
 import { GOLD, UPGRADE, fmtGold, goldStaminaFactor, goldWalkFactor, noMods, modLevel, modTag, modValue, magBonus, damageMult, spreadMult, jamMult, cycleMult, upgradeCost, readBankedGold, writeBankedGold, type RifleMods, type ModTrack } from './gold';
 import { RIFLE, lootStream, jamChance, spreadSigma, scatter, rollDropRounds, rifleIsPrize, rifleName } from './rifleCondition';
-import { rollKillLoot, killLootCueFor, isEmptyKillLoot, type KillLootCue } from './killLoot';
+import { rollKillLoot, killLootCueFor, isEmptyKillLoot, killLootFeedback, type KillLootCue } from './killLoot';
 export type { KillLootCue } from './killLoot';
+export { KILL_LOOT, killLootHudLabel, killLootFeedback } from './killLoot';
 import { ITEM_BODY, stepBody, submergedFraction, type BodyState } from './propPhysics';
 import { steerToward, faceStanding, yawToward, wrapAngle, turnToward, forwardOf, GUARD_STEER_WALK, GUARD_STEER_RUN } from './guardSteering';
 import { SURVIVAL, SURVIVAL_COVER, type GuardRole } from './survivalConfig';
@@ -2500,7 +2501,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     const side={x:Math.sin(g.heading)*.35,z:Math.cos(g.heading)*.35};
     this.pickups.push({id:this.nextId++,item:'gold',amount:grams,position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}});
    }
-   // Stage-two classical cue: dry must not share win juice. Stolen recovery skips schedule theater.
+   // Classical cue every kill (incl. dry): HUD flash + inventory pulse. Stolen recovery skips theater.
    if(!stolen){
     const kind=killLootCueFor(loot);
     this.killLootEvent={
@@ -2510,8 +2511,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
      cond:loot.dropGun?loot.cond:undefined,
      goldGrams:loot.dropGold?loot.goldGrams:undefined,
     };
-    if(kind==='dry')this.pulse('blocked');
-    else if(kind==='jackpot'&&this.noticeUntil<=this.elapsed){
+    // Dry still flashes — empty pockets get blocked juice, never silence.
+    this.pulse(killLootFeedback(kind));
+    if(kind==='jackpot'&&this.noticeUntil<=this.elapsed){
      this.say(`Fat purse — ${fmtGold(loot.goldGrams)} on the floor.`,'ok');
     }
    }
