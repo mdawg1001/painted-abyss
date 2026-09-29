@@ -240,11 +240,6 @@ function App(){
      </div>}
     </div>;
    })()}
-   {m.goldEvent&&m.elapsed-m.goldEvent.at<2.2&&<div key={`g${m.goldEvent.seq}`} className={`gold-pop ${m.goldEvent.kind}${m.goldEvent.kind==='bank'&&bankAlmostSuffix(m.gunMods,m.bankedGold,m.inventory.includes('gun'))?' almost':''}`} aria-hidden="true">
-    {m.goldEvent.kind==='take'?`+${fmtGold(m.goldEvent.grams)}`:
-    m.goldEvent.kind==='bank'?`SAVED ${fmtGold(m.goldEvent.grams)}${bankAlmostSuffix(m.gunMods,m.bankedGold,m.inventory.includes('gun'))}`:
-    m.goldEvent.kind==='upgrade'?(m.goldEvent.track?`${UPGRADE.shopNames[m.goldEvent.track].toUpperCase()} ${'I'.repeat(m.goldEvent.level!)}`:'BOUGHT'):
-    m.goldEvent.kind==='ditch'?`DITCHED ${fmtGold(m.goldEvent.grams)}`:`${fmtGold(m.goldEvent.grams)} LEFT ON YOUR BODY`}</div>}
    <StashScreen
     open={!!m.stashOpen}
     mission={m}
@@ -256,6 +251,24 @@ function App(){
     }}
     onChanged={()=>engine.current?.publish()}
    />
+   {/* Above the stash sheet (z-index): Save Gold is a jackpot beat, not a buried notice. */}
+   {m.goldEvent&&m.elapsed-m.goldEvent.at<(m.goldEvent.kind==='bank'?3.4:2.2)&&(
+    m.goldEvent.kind==='bank'?(
+     <div key={`g${m.goldEvent.seq}`} className={`gold-pop bank jackpot${bankAlmostSuffix(m.gunMods,m.bankedGold,m.inventory.includes('gun'))?' almost':''}`} aria-hidden="true">
+      <em>SAVED</em>
+      <strong>{fmtGold(m.goldEvent.grams)}</strong>
+      {!!bankAlmostSuffix(m.gunMods,m.bankedGold,m.inventory.includes('gun'))&&(
+       <span>{bankAlmostSuffix(m.gunMods,m.bankedGold,m.inventory.includes('gun')).replace(/^ · /,'')}</span>
+      )}
+     </div>
+    ):(
+     <div key={`g${m.goldEvent.seq}`} className={`gold-pop ${m.goldEvent.kind}`} aria-hidden="true">
+      {m.goldEvent.kind==='take'?`+${fmtGold(m.goldEvent.grams)}`:
+      m.goldEvent.kind==='upgrade'?(m.goldEvent.track?`${UPGRADE.shopNames[m.goldEvent.track].toUpperCase()} ${'I'.repeat(m.goldEvent.level!)}`:'BOUGHT'):
+      m.goldEvent.kind==='ditch'?`DITCHED ${fmtGold(m.goldEvent.grams)}`:`${fmtGold(m.goldEvent.grams)} LEFT ON YOUR BODY`}
+     </div>
+    )
+   )}
    <DiveMap
     open={!!m.mapOpen}
     fragments={m.mapFragments}
