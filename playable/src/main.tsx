@@ -240,7 +240,11 @@ function App(){
     m.goldEvent.kind==='ditch'?`DITCHED ${fmtGold(m.goldEvent.grams)}`:`${fmtGold(m.goldEvent.grams)} LEFT ON YOUR BODY`}</div>}
    {m.stashOpen&&<div className="stash-panel" aria-label="Stash chest" onPointerDown={e=>e.stopPropagation()}>
     <div className="stash-title">STASH <span>{m.stash.filter(Boolean).length}/{STASH_CAPACITY}</span></div>
-    <p className="stash-hint">Click or 1–5 to pick a slot · E take / store · Esc close</p>
+    <p className="stash-hint">
+     {m.inventory[m.selected]
+      ?<>Holding <strong>{ITEMS[m.inventory[m.selected]!].name}</strong> — click a slot to store / swap</>
+      :<>Click a filled slot to take it · empty slot stores ammo · Esc closes</>}
+    </p>
     <div className="slots stash-slots">{m.stash.map((slot,i)=>{
      const focused=i===m.stashFocus;
      const kind=slot?.kind==='ammo'?'ammo':slot?.item??'';
@@ -248,8 +252,8 @@ function App(){
       e.preventDefault();
       e.stopPropagation();
       const eng=engine.current;if(!eng?.mission)return;
-      // Select only — E transfers the focused slot so you can choose before taking.
-      eng.mission.selectStashFocus(i);
+      // One click = that slot: take, store, or swap immediately.
+      eng.mission.activateStashSlot(i);
       eng.publish();
      }}><kbd>{i+1}</kbd><StashIcon slot={slot}/>{slot?.kind==='ammo'&&<em className="stash-amt">{slot.amount}</em>}{slot?.kind==='item'&&slot.rounds?<em className="stash-amt">+{slot.rounds}</em>:null}{slot?.kind==='item'&&modLevel(slot.mods)>0?<em className="stash-mods">+{modLevel(slot.mods)}</em>:null}</button>;
     })}</div>

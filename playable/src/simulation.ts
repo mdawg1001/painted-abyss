@@ -1738,6 +1738,16 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.stashFocus=i;
   this.pulse('select');
  }
+ /**
+  * Click / 1–5 while the chest is open: focus that slot and transfer immediately.
+  * One press = choose and take/store/swap — no second confirmation.
+  */
+ activateStashSlot(i:number){
+  if(!this.stashOpen||this.outcome!=='playing')return;
+  if(i<0||i>=STASH_CAPACITY)return;
+  this.stashFocus=i;
+  this.transferWithStash();
+ }
  closeStash(){
   if(!this.stashOpen)return;
   this.stashOpen=false;
@@ -2140,7 +2150,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     }
     if(firstFilledStashSlot(this.stash)<0)this.stashFocus=0;
     else if(!this.stash[this.stashFocus])this.stashFocus=Math.max(0,firstFilledStashSlot(this.stash));
-    this.say('Stash open. Click or 1–5 pick a slot · E take/store · Esc closes.','ok');
+    this.say('Stash open. Click a slot (or 1–5) to take/store · Esc closes.','ok');
     return;
    }
    this.transferWithStash();
