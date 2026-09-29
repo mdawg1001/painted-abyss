@@ -1485,7 +1485,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  gunMods:RifleMods=noMods();
  /** Gold you are carrying (grams): heavy, and lost where you die. */
  gold=0;
- /** Gold banked in the stash (grams): safe for good, spent at the workbench. */
+ /** Gold saved at the stash (grams): safe for good, spent in the shop. */
  bankedGold=readBankedGold();
  /**
   * Last auto-bank / stash payday haul (grams). Win screen and dive-again use this so
@@ -1931,19 +1931,20 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  }
  /** Walk speed share left under the gold you carry. */
  loadWalkFactor(){return goldWalkFactor(this.gold);}
- /** Workbench: spend banked gold on the rifle in your hands. Needs the stash open. */
+ /** Shop: spend saved gold on the rifle in your bag. Needs the stash open. */
  buyUpgrade(track:ModTrack){
   if(this.outcome!=='playing'||!this.stashOpen){this.pulse('blocked');return false;}
-  if(!this.inventory.includes('gun')){this.say('Hold a rifle to fit an upgrade.','blocked');return false;}
+  if(!this.inventory.includes('gun')){this.say('Put a rifle in your bag first.','blocked');return false;}
   const level=this.gunMods[track],cost=upgradeCost(level);
-  if(level>=UPGRADE.maxLevel){this.say(`${UPGRADE.names[track]} is maxed on this rifle.`,'blocked');return false;}
-  if(this.bankedGold<cost){this.say(`${UPGRADE.names[track]} ${level+1} needs ${fmtGold(cost)}. Vault: ${fmtGold(this.bankedGold)}.`,'blocked');return false;}
+  const label=track==='barrel'?'Harder hits':track==='action'?'Fewer jams':'Bigger magazine';
+  if(level>=UPGRADE.maxLevel){this.say(`${label} is already maxed.`,'blocked');return false;}
+  if(this.bankedGold<cost){this.say(`Need ${fmtGold(cost)}. You have ${fmtGold(this.bankedGold)}.`,'blocked');return false;}
   this.bankedGold-=cost;writeBankedGold(this.bankedGold);
   const mods={...this.gunMods,[track]:level+1};
   this.equipRifle(this.gunCond,mods);
   this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'upgrade',grams:cost,at:this.elapsed,track,level:level+1};
   this.stashCue='deposit';
-  this.say(`${UPGRADE.blurbs[track][level]}. This rifle is now ${rifleName(this.gunCond)}${modTag(mods)}. Lose it, lose this.`,'ok');
+  this.say(`Bought ${label}. ${UPGRADE.blurbs[track][level]}`,'ok');
   return true;
  }
  /**

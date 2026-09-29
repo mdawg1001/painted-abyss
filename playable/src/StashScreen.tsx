@@ -3,7 +3,7 @@
  * Gold is a separate chip you drag onto the vault (manual bank).
  */
 import React,{useCallback,useRef,useState} from 'react';
-import {fmtGold,modLevel,modTag,modValue,upgradeCost,UPGRADE,MOD_TRACKS} from './gold';
+import {fmtGold,modLevel,modTag,upgradeCost,UPGRADE,MOD_TRACKS} from './gold';
 import {rifleName} from './rifleCondition';
 import {ITEMS,STASH_CAPACITY,type Item,type StashSlot} from './simulation';
 import {KNIFE_THUMB_URL} from './knifeAsset';
@@ -163,7 +163,7 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
     <div>
      <div className="eyebrow">HATCH STORAGE</div>
      <h2>Stash</h2>
-     <p className="stash-screen-hint">Drag items between bags · drag gold onto the vault · Esc closes</p>
+     <p className="stash-screen-hint">Drag gear into the chest. Drag gold onto Your money. Buy rifle upgrades in the Shop. Esc closes.</p>
     </div>
     <button type="button" className="stash-screen-close" onClick={onClose}>Close <kbd>Esc</kbd></button>
    </header>
@@ -205,7 +205,7 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
        onClick={()=>clickSlot({kind:'gold'},m.gold<=0)}
       >
        <strong>{fmtGold(m.gold)}</strong>
-       <span>CARRIED GOLD · drag to vault</span>
+       <span>GOLD YOU'RE HOLDING · drag onto Your money</span>
       </button>
       <button type="button"
        className={`stash-chip ammo ${m.pistol.reserve>0?'live':''} ${pick?.kind==='ammo'?'picked':''} ${hover==='ammo'?'drop':''}`}
@@ -262,24 +262,36 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
       onClick={()=>clickSlot({kind:'vault'},m.bankedGold<=0)}
      >
       <strong>{fmtGold(m.bankedGold)}</strong>
-      <span>VAULT · drop carried gold here · drag out to haul</span>
+      <span>YOUR MONEY · drop gold here to spend in the shop</span>
      </button>
 
-     <div className="stash-workbench workbench" aria-label="Rifle workbench">
-      <div className="workbench-title">WORKBENCH <span>{m.inventory.includes('gun')?`${rifleName(m.gunCond)}${modTag(m.gunMods)}`:'put a rifle in your bag'}</span><b>{fmtGold(m.bankedGold)}</b></div>
-      {m.inventory.includes('gun')&&<div className="workbench-tracks">{MOD_TRACKS.map((t,i)=>{
-       const lv=m.gunMods[t],cost=upgradeCost(lv),maxed=lv>=UPGRADE.maxLevel,afford=!maxed&&m.bankedGold>=cost;
-       return <button type="button" key={t} className={`track${afford?' afford':''}${maxed?' maxed':''}`} onClick={e=>{
-        e.preventDefault();
-        if(m.buyUpgrade(t))onChanged();
-       }}>
-        <kbd>{7+i}</kbd><strong>{UPGRADE.names[t]}</strong>
-        <span className="pips">{[0,1,2].map(k=><i key={k} className={k<lv?'on':''}/>)}</span>
-        <em>{maxed?'MAX':`${fmtGold(cost)}`}</em>
-        <small>{maxed?UPGRADE.blurbs[t][2]:UPGRADE.blurbs[t][lv]}</small>
-       </button>;
-      })}</div>}
-      {m.inventory.includes('gun')&&modLevel(m.gunMods)>0&&<div className="workbench-risk">{fmtGold(modValue(m.gunMods))} of upgrades on this rifle. Die with it and they lie on your corpse.</div>}
+     <div className="stash-shop" aria-label="Shop">
+      <div className="stash-shop-head">
+       <h3>SHOP</h3>
+       <b>Your money: {fmtGold(m.bankedGold)}</b>
+      </div>
+      {!m.inventory.includes('gun')&&<p className="stash-shop-need">Put a rifle in your bag, then buy upgrades below.</p>}
+      {m.inventory.includes('gun')&&<p className="stash-shop-need">Buying for: {rifleName(m.gunCond)}{modTag(m.gunMods)}. Upgrades stick to this rifle.</p>}
+      <div className="stash-shop-list">
+       {MOD_TRACKS.map((t,i)=>{
+        const lv=m.gunMods[t],cost=upgradeCost(lv),maxed=lv>=UPGRADE.maxLevel;
+        const hasGun=m.inventory.includes('gun');
+        const afford=hasGun&&!maxed&&m.bankedGold>=cost;
+        const label=t==='barrel'?'Harder hits':t==='action'?'Fewer jams':'Bigger magazine';
+        const price=maxed?'Owned (max)':!hasGun?'Need a rifle in your bag':m.bankedGold<cost?`Need ${fmtGold(cost)}`:`BUY for ${fmtGold(cost)}`;
+        return <button type="button" key={t}
+         className={`stash-shop-buy${afford?' afford':''}${maxed?' maxed':''}`}
+         disabled={!afford}
+         onClick={e=>{e.preventDefault();if(m.buyUpgrade(t))onChanged();}}
+        >
+         <span className="stash-shop-name"><kbd>{7+i}</kbd>{label}</span>
+         <span className="stash-shop-level">Level {lv}/{UPGRADE.maxLevel}</span>
+         <strong className="stash-shop-price">{price}</strong>
+         <small>{maxed?UPGRADE.blurbs[t][2]:UPGRADE.blurbs[t][lv]}</small>
+        </button>;
+       })}
+      </div>
+      {m.inventory.includes('gun')&&modLevel(m.gunMods)>0&&<p className="stash-shop-risk">Die with this rifle and the upgrades drop on your corpse.</p>}
      </div>
     </section>
    </div>
