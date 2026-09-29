@@ -468,8 +468,11 @@ export function chestInteractPrompt(chest:Chest,taken:boolean){
 }
 
 /** HUD line for the hatch stash while in reach. */
-export function stashInteractPrompt(m:{stashOpen:boolean}){
- return m.stashOpen?'E · Close chest':'E · Open chest';
+export function stashInteractPrompt(m:{stashOpen:boolean;gold?:number}){
+ if(m.stashOpen)return 'E · Close hatch';
+ // Carrying gold: say the deposit action, not a vague "open chest".
+ if((m.gold??0)>0)return 'E · Save gold as money';
+ return 'E · Open hatch · Shop';
 }
 
 /** True when this guard is the unique main officer who carries the Soviet relic key. */
@@ -1717,10 +1720,12 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    .filter(c=>distance(c.position,this.position)<3.4&&visible(this.position,{...c.position,y:c.position.y+.4}))
    .sort((a,b)=>distance(a.position,this.position)-distance(b.position,this.position))[0];
  }
- /** True when standing at the hatch stash with line of sight. */
+ /** True when standing at the hatch stash. Very close skips LOS so a pillar cannot block deposit. */
  nearStash(){
   const p=STASH_POSITION;
-  return distance(this.position,p)<STASH_REACH&&visible(this.position,{...p,y:p.y+.4});
+  const d=distance(this.position,p);
+  if(d<STASH_REACH*.55)return true;
+  return d<STASH_REACH&&visible(this.position,{...p,y:p.y+.4});
  }
  /** Persist current stash slots (death / extract / reload all read this key). */
  private persistStash(){
@@ -2173,9 +2178,13 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     const tip=almostUpgradeLine(this.gunMods,this.bankedGold,this.inventory.includes('gun'));
     if(g>0){
      this.stashCue='deposit';
-     this.say(tip?`Saved ${fmtGold(g)} as money. ${tip}`:`Hatch open. Money: $${Math.round(this.bankedGold)}. Press BUY in the Shop. Esc closes.`,'ok');
+     this.say(tip
+      ?`Saved ${fmtGold(g)} as money. ${tip}`
+      :`Saved ${fmtGold(g)} as money. You can spend $${Math.round(this.bankedGold)} — press BUY in the Shop.`,'ok');
     }else{
-     this.say(tip?`Hatch open. ${tip}`:'Hatch open. Drag gear into the chest. Press BUY in the Shop to spend money. Esc closes.','ok');
+     this.say(tip
+      ?`Hatch open. Money: $${Math.round(this.bankedGold)}. ${tip}`
+      :`Hatch open. Money: $${Math.round(this.bankedGold)}. Press BUY in the Shop. Esc closes.`,'ok');
     }
     return;
    }

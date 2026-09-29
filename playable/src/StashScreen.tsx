@@ -1,11 +1,11 @@
 /**
  * Hatch stash overlay — drag gear bag↔chest.
- * Shop is a plain catalog: Gold: $X, priced items, big BUY + confirm.
- * Pocket gold auto-banks when the stash opens (no gold dragging).
+ * Pocket gold becomes money: auto-saved on open, plus an explicit SAVE GOLD button.
+ * Shop is a plain catalog: Money $X, priced items, big BUY + confirm.
  */
 import React,{useCallback,useRef,useState} from 'react';
 import {
- fmtShopMoney,modLevel,upgradeCost,UPGRADE,MOD_TRACKS,SHOP_RIFLE_PRICE,isAlmostShort,
+ fmtGold,fmtShopMoney,modLevel,upgradeCost,UPGRADE,MOD_TRACKS,SHOP_RIFLE_PRICE,isAlmostShort,
 } from './gold';
 import {ITEMS,STASH_CAPACITY,type Item,type StashSlot} from './simulation';
 import {KNIFE_THUMB_URL} from './knifeAsset';
@@ -24,6 +24,7 @@ export type StashMissionApi={
  moveStash:(from:number,to:number)=>boolean;
  depositAmmoPack:(stashI:number)=>boolean;
  withdrawAmmoPack:(stashI:number)=>boolean;
+ bankPocketGold:()=>boolean;
  buyUpgrade:(track:'barrel'|'action'|'mag')=>boolean;
  buyShopRifle:()=>boolean;
  closeStash:()=>void;
@@ -211,7 +212,7 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
     <div>
      <div className="eyebrow">HATCH STORAGE</div>
      <h2>Stash</h2>
-     <p className="stash-screen-hint">Gold you carried is already money (top right). Drag gear into the chest. Press BUY to spend. Esc closes.</p>
+     <p className="stash-screen-hint">Gold on you becomes money here (SAVE GOLD). Drag gear into the chest. Press BUY to spend money. Esc closes.</p>
     </div>
     <button type="button" className="stash-screen-close" onClick={onClose}>Close <kbd>Esc</kbd></button>
    </header>
@@ -285,10 +286,24 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
       })}
      </div>
 
+     <div className="stash-save" aria-label="Save gold as money">
+      {m.gold>0?(
+       <button type="button" className="stash-save-btn" onClick={()=>{if(m.bankPocketGold())onChanged();}}>
+        <strong>SAVE {fmtGold(m.gold)} AS MONEY</strong>
+        <span>Gold on you is not spendable until you save it</span>
+       </button>
+      ):(
+       <div className={`stash-save-banner${m.bankedGold>0?' live':''}`}>
+        <strong>{m.bankedGold>0?`Money saved: ${fmtShopMoney(m.bankedGold)}`:'No money saved yet'}</strong>
+        <span>{m.bankedGold>0?'Press BUY below to spend it':'Kill guards, bring gold here, press SAVE GOLD'}</span>
+       </div>
+      )}
+     </div>
+
      <div className="stash-shop" aria-label="Shop">
       <div className="stash-shop-head">
        <h3>SHOP</h3>
-       <b className="stash-shop-gold">Gold: {fmtShopMoney(m.bankedGold)}</b>
+       <b className="stash-shop-gold">Money: {fmtShopMoney(m.bankedGold)}</b>
       </div>
       <div className="stash-shop-list">
        {offers.map(offer=>{
