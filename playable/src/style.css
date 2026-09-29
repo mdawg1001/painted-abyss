@@ -270,50 +270,102 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   position:absolute;bottom:26px;left:50%;transform:translateX(-50%);
   pointer-events:none;
 }
-.stash-panel{
-  /* Fixed + high z so the full-screen WebGL canvas never eats clicks. */
-  position:fixed;bottom:108px;left:50%;transform:translateX(-50%);
-  z-index:80;
+/* Rust-style full overlay for the hatch stash (drag bag ↔ chest). */
+.stash-screen{
+  position:fixed;inset:0;z-index:80;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(2,8,10,.78);
   pointer-events:auto;
   cursor:default;
-  padding:12px 14px 14px;
-  min-width:340px;
-  background:rgba(8,14,16,.92);
-  border:1px solid rgba(180,160,110,.45);
-  border-radius:6px;
-  box-shadow:0 12px 40px rgba(0,0,0,.65);
 }
-.playing .stash-panel,.playing .stash-panel *{cursor:pointer}
-.playing .stash-panel .stash-hint,.playing .stash-panel .stash-title,
-.playing .stash-panel .workbench-title,.playing .stash-panel .workbench-risk{cursor:default}
-.playing .stash-panel .stash-hint strong{color:rgba(226,200,136,.95);font-weight:700}
-.stash-title{
-  font-family:'Barlow Condensed',sans-serif;
-  font-size:13px;font-weight:700;letter-spacing:.12em;
-  color:rgba(226,200,136,.9);
-  margin:0 0 8px;text-align:center;
+.stash-screen-sheet{
+  width:min(920px,96vw);max-height:min(92vh,720px);
+  display:flex;flex-direction:column;
+  background:
+    linear-gradient(165deg,rgba(28,32,30,.98),rgba(14,18,16,.99) 55%,rgba(10,12,12,1)),
+    radial-gradient(ellipse at 30% 20%,rgba(90,78,48,.18),transparent 60%);
+  border:1px solid rgba(170,150,100,.4);
+  box-shadow:0 24px 60px rgba(0,0,0,.6),inset 0 1px 0 rgba(220,200,150,.08);
+  color:#d8cba8;overflow:hidden;
 }
-.stash-title span{color:rgba(200,210,210,.7);letter-spacing:.06em;margin-left:8px;font-weight:600}
-.stash-hint{
-  margin:0 0 8px;text-align:center;
-  font-family:'Barlow Condensed',sans-serif;
-  font-size:11px;letter-spacing:.04em;
-  color:rgba(200,210,210,.65);
+.stash-screen-head{
+  display:flex;justify-content:space-between;align-items:flex-start;gap:16px;
+  padding:16px 20px 12px;border-bottom:1px solid rgba(140,120,70,.28);
 }
-.stash-slots .stash-slot{
-  cursor:pointer;
-  pointer-events:auto;
-  border:0;
-  font:inherit;color:inherit;
-  padding:0;
+.stash-screen-head .eyebrow{color:#c4b07a;font-size:10px;letter-spacing:2.2px;font-weight:600}
+.stash-screen-head h2{
+  margin:6px 0 0;font-family:'Barlow Condensed',sans-serif;
+  font-size:28px;font-weight:700;letter-spacing:.04em;color:#efe6c8;text-transform:uppercase;
 }
-.stash-slots .stash-slot:focus{outline:1px solid rgba(226,200,136,.6)}
-.stash-amt{
+.stash-screen-hint{
+  margin:6px 0 0;font-size:12px;color:rgba(200,210,200,.65);
+  font-family:'Barlow Condensed',sans-serif;letter-spacing:.03em;
+}
+.stash-screen-close{
+  background:none;border:1px solid rgba(180,160,110,.35);color:#d8cba8;
+  padding:8px 12px;font-family:'Barlow Condensed',sans-serif;
+  font-size:13px;letter-spacing:.08em;display:flex;align-items:center;gap:8px;cursor:pointer;
+}
+.stash-screen-close:hover{background:rgba(200,180,120,.1);border-color:rgba(200,180,120,.55)}
+.stash-screen-close kbd{font-size:11px;color:#e8d7a8}
+.stash-screen-body{
+  display:grid;grid-template-columns:1fr 1fr;gap:18px;
+  padding:16px 20px 20px;overflow:auto;min-height:0;
+}
+@media (max-width:720px){
+  .stash-screen-body{grid-template-columns:1fr}
+}
+.stash-col h3{
+  margin:0 0 10px;font-family:'Barlow Condensed',sans-serif;
+  font-size:13px;letter-spacing:.16em;color:rgba(226,200,136,.9);
+}
+.stash-col h3 em{font-style:normal;color:rgba(200,210,210,.6);margin-left:8px;letter-spacing:.06em}
+.stash-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.stash-cell{
+  position:relative;aspect-ratio:1;min-height:72px;
+  border:1px solid rgba(120,130,120,.35);background:rgba(12,16,14,.85);
+  color:#c5d5d8;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:4px;cursor:grab;font:inherit;
+}
+.stash-cell:hover{border-color:rgba(200,180,120,.45)}
+.stash-cell.hot{border-color:rgba(226,200,136,.7);box-shadow:inset 0 0 0 1px rgba(226,200,136,.25)}
+.stash-cell.picked,.stash-cell.drop{
+  border-color:rgba(140,200,120,.85);
+  background:rgba(30,48,28,.9);
+  box-shadow:0 0 0 1px rgba(140,200,120,.35);
+}
+.stash-cell kbd{
+  position:absolute;left:5px;top:3px;font-size:10px;
+  font-family:'Barlow Condensed',sans-serif;color:rgba(242,247,248,.55);
+}
+.stash-cell svg,.stash-cell .slot-thumb{width:36px;height:36px;margin-top:2px;pointer-events:none}
+.stash-cell-name{
+  font-family:'Barlow Condensed',sans-serif;font-size:10px;letter-spacing:.04em;
+  color:rgba(220,210,180,.75);margin-top:2px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.stash-amt,.stash-mods{
   position:absolute;right:4px;bottom:3px;
   font-family:'Barlow Condensed',sans-serif;
   font-size:11px;font-style:normal;font-weight:700;
   color:#d5e0a8;line-height:1;
 }
+.stash-mods{bottom:14px;color:#e2c888}
+.stash-chips{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.stash-chip{
+  display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+  padding:10px 12px;border:1px solid rgba(120,130,120,.35);
+  background:rgba(12,16,14,.85);color:#c5d5d8;cursor:grab;font:inherit;text-align:left;
+}
+.stash-chip strong{font-family:'Barlow Condensed',sans-serif;font-size:18px;color:#efe6c8}
+.stash-chip span{font-size:11px;letter-spacing:.04em;color:rgba(200,210,200,.55);font-family:'Barlow Condensed',sans-serif}
+.stash-chip.live{border-color:rgba(200,180,100,.4)}
+.stash-chip.gold.live strong{color:#f2c14e}
+.stash-chip.vault.live{border-color:rgba(226,200,136,.55);margin-top:12px}
+.stash-chip.picked,.stash-chip.drop{
+  border-color:rgba(140,200,120,.85);background:rgba(30,48,28,.9);
+}
+.stash-workbench{margin-top:14px}
+.stash-workbench .workbench-title{margin-bottom:8px}
 .slot.ammo{color:#c8d0a8}
 .slots{display:flex;gap:8px}
 .slot{
@@ -635,6 +687,41 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   .style-meter.tier-6{text-shadow:0 1px 8px rgba(0,0,0,.8)}
 }
 @media (max-width:640px){.style-meter{left:16px;top:150px;width:130px}.style-rank{font-size:32px}.style-feed{display:none}.combat-callout{font-size:20px}}
+
+/* Kill-loot classical flash: every schedule kill, including EMPTY. Edge wash + centre label. */
+.kill-loot-flash{position:fixed;inset:0;pointer-events:none;z-index:41;
+  mix-blend-mode:screen;animation:kill-loot-flash .55s cubic-bezier(.2,.9,.3,1) forwards}
+.kill-loot-flash span{position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);
+  font:800 28px/1 'Barlow Condensed',sans-serif;letter-spacing:.2em;
+  text-shadow:0 1px 12px rgba(0,0,0,.9);animation:kill-loot-label .55s ease-out forwards}
+.kill-loot-flash.kind-dry{
+  background:radial-gradient(ellipse at center,transparent 40%,rgba(90,100,110,.35) 78%,rgba(40,48,56,.55) 100%)}
+.kill-loot-flash.kind-dry span{color:#9aa3aa;letter-spacing:.28em;font-size:22px}
+.kill-loot-flash.kind-ammo{
+  background:radial-gradient(ellipse at center,transparent 42%,rgba(140,170,190,.4) 80%,rgba(60,90,110,.5) 100%)}
+.kill-loot-flash.kind-ammo span{color:#c8dde8}
+.kill-loot-flash.kind-scrap{
+  background:radial-gradient(ellipse at center,transparent 42%,rgba(180,140,60,.38) 80%,rgba(90,60,20,.45) 100%)}
+.kill-loot-flash.kind-scrap span{color:#e0c070}
+.kill-loot-flash.kind-near-miss{
+  background:radial-gradient(ellipse at center,transparent 38%,rgba(220,160,70,.48) 76%,rgba(120,50,20,.55) 100%)}
+.kill-loot-flash.kind-near-miss span{color:#ffc878}
+.kill-loot-flash.kind-field{
+  background:radial-gradient(ellipse at center,transparent 36%,rgba(230,180,70,.5) 74%,rgba(140,90,20,.55) 100%)}
+.kill-loot-flash.kind-field span{color:#ffd978}
+.kill-loot-flash.kind-prize{
+  background:radial-gradient(ellipse at center,rgba(255,240,200,.08) 28%,rgba(255,200,80,.55) 72%,rgba(160,100,20,.65) 100%)}
+.kill-loot-flash.kind-prize span{color:#fff1c2;font-size:32px}
+.kill-loot-flash.kind-jackpot{
+  background:radial-gradient(ellipse at center,rgba(255,250,220,.16) 22%,rgba(255,210,80,.7) 68%,rgba(180,110,20,.75) 100%)}
+.kill-loot-flash.kind-jackpot span{color:#fff8e0;font-size:36px;letter-spacing:.24em;
+  text-shadow:0 0 18px rgba(255,180,40,.9),0 1px 12px rgba(0,0,0,.9)}
+@keyframes kill-loot-flash{0%{opacity:0}10%{opacity:1}100%{opacity:0}}
+@keyframes kill-loot-label{0%{opacity:0;transform:translate(-50%,-30%) scale(1.2)}14%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-70%) scale(.96)}}
+@media (prefers-reduced-motion:reduce){
+  .kill-loot-flash{animation-duration:.2s}
+  .kill-loot-flash span{animation-duration:.2s}
+}
 
 /* Rifle stoppage: the ammo label turns red and pulses until R clears it. */
 .ammo em.jam{color:#ff5a45;animation:jam-pulse .5s ease-in-out infinite alternate}
