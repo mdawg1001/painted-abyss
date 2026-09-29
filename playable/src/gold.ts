@@ -79,8 +79,8 @@ export function goldStaminaFactor(grams: number) {
 }
 
 export const fmtGold = (grams: number) => grams >= 1000 ? `${(grams / 1000).toFixed(grams >= 10000 ? 0 : 1)} kg` : `${Math.round(grams)} g`;
-/** Shop price tag — grams of banked gold shown as dollars. */
-export const fmtShopMoney = (grams: number) => `$${Math.max(0, Math.round(grams))}`;
+/** Shop price tag — grams of banked gold shown as $ gold. */
+export const fmtShopGold = (grams: number) => `$${Math.max(0, Math.round(grams))}`;
 
 // ── Upgrades / shop catalog ───────────────────────────────────────────────────────────
 
@@ -180,7 +180,7 @@ export function almostUpgradeLine(mods: RifleMods, banked: number, hasGun: boole
  if (!t) return null;
  const name = UPGRADE.shopNames[t.track];
  if (t.ready) return `${name} ready — open the hatch (E) and press BUY.`;
- if (t.almost) return `${fmtShopMoney(t.short)} short of ${name}.`;
+ if (t.almost) return `${fmtShopGold(t.short)} short of ${name}.`;
  return null;
 }
 
@@ -190,7 +190,7 @@ export function bankAlmostSuffix(mods: RifleMods, banked: number, hasGun: boolea
  if (!t) return '';
  const name = UPGRADE.shopNames[t.track].toUpperCase();
  if (t.ready) return ` · BUY ${name} NOW`;
- if (t.almost) return ` · ${fmtShopMoney(t.short)} TO ${name}`;
+ if (t.almost) return ` · ${fmtShopGold(t.short)} TO ${name}`;
  return '';
 }
 

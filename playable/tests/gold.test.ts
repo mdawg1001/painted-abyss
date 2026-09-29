@@ -53,7 +53,7 @@ test('a paying kill drops coins that you scoop by walking over; bars need E',()=
  assert.ok(m.loadWalkFactor()<1,'and now you are slower');
 });
 
-test('opening the stash banks pocket gold into shop money (no drag)',()=>{
+test('opening the stash saves pocket gold into the shop balance (no drag)',()=>{
  writeBankedGold(0);
  const m=setup();m.gold=2600;
  m.position={x:-4.85+1.2,y:WALK_EYE_Y,z:31.55};
@@ -82,7 +82,7 @@ test('extract with the relic auto-banks pocket gold and pays the extract bar jac
  assert.equal(m.bankedGold,200+1800+GOLD.extractBars[0]*GOLD.barGrams);
  assert.match(m.reason,/Saved/i);
  assert.match(m.reason,/Extract bonus/i);
- assert.match(m.reason,/Money/i);
+ assert.match(m.reason,/Gold:/i);
  if(globalThis.localStorage)assert.equal(readBankedGold(),m.bankedGold);
 });
 

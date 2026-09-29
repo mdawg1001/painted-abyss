@@ -31,7 +31,7 @@ test('stash sits in the hatch alcove, clear of the relic and corridor centerline
  assert.equal(STASH_CAPACITY,5);
 });
 
-test('open auto-banks pocket gold into shop money',()=>{
+test('open auto-saves pocket gold into the shop balance',()=>{
  mockStorage();
  writeStash(emptyStash());
  writeBankedGold(0);
@@ -120,10 +120,13 @@ test('E toggles open/close; Esc path uses closeStash',()=>{
  writeStash(emptyStash());
  const m=new Mission(true);
  atStash(m);
- assert.equal(stashInteractPrompt(m),'E · Open chest');
+ assert.equal(stashInteractPrompt(m),'E · Open hatch · Shop');
+ m.gold=400;
+ assert.equal(stashInteractPrompt(m),'E · Save Gold');
+ m.gold=0;
  m.interact();
  assert.equal(m.stashOpen,true);
- assert.equal(stashInteractPrompt(m),'E · Close chest');
+ assert.equal(stashInteractPrompt(m),'E · Close hatch');
  m.interact();
  assert.equal(m.stashOpen,false);
  m.interact();
@@ -163,4 +166,39 @@ test('corpse loot and chest loot stay separate on death',()=>{
  m.dropCarriedAt(corpse);
  assert.ok(m.pickups.some(p=>p.item==='flare'));
  assert.ok(m.stash.some(s=>s?.kind==='item'&&s.item==='gun'),'gun stayed in the chest');
+});
+
+
+test('prompt says Save Gold when you are carrying gold',()=>{
+ const m=new Mission(true);
+ m.stashOpen=false;m.gold=0;
+ assert.equal(stashInteractPrompt(m),'E · Open hatch · Shop');
+ m.gold=900;
+ assert.equal(stashInteractPrompt(m),'E · Save Gold');
+ m.stashOpen=true;
+ assert.equal(stashInteractPrompt(m),'E · Close hatch');
+});
+
+test('SAVE GOLD button path: bankPocketGold while stash is open',()=>{
+ mockStorage();
+ writeStash(emptyStash());
+ writeBankedGold(100);
+ const m=new Mission(true);
+ atStash(m);
+ m.gold=0;m.bankedGold=100;
+ m.interact(); // open — nothing to auto-bank
+ assert.ok(m.stashOpen);
+ // Gold scooped after the chest is already open still needs an explicit save.
+ m.gold=750;
+ assert.ok(m.bankPocketGold());
+ assert.equal(m.gold,0);
+ assert.equal(m.bankedGold,850);
+ assert.equal(m.goldEvent?.kind,'bank');
+ assert.match(m.notice,/Saved/i);
+});
+
+test('nearStash still works when LOS is tight but you are on top of the chest',()=>{
+ const m=new Mission(true);
+ m.position={x:STASH_POSITION.x,y:WALK_EYE_Y,z:STASH_POSITION.z};
+ assert.ok(m.nearStash());
 });

@@ -468,8 +468,11 @@ export function chestInteractPrompt(chest:Chest,taken:boolean){
 }
 
 /** HUD line for the hatch stash while in reach. */
-export function stashInteractPrompt(m:{stashOpen:boolean}){
- return m.stashOpen?'E · Close chest':'E · Open chest';
+export function stashInteractPrompt(m:{stashOpen:boolean;gold?:number}){
+ if(m.stashOpen)return 'E · Close hatch';
+ // Carrying gold: say the deposit action, not a vague "open chest".
+ if((m.gold??0)>0)return 'E · Save Gold';
+ return 'E · Open hatch · Shop';
 }
 
 /** True when this guard is the unique main officer who carries the Soviet relic key. */
@@ -477,7 +480,7 @@ export const isMainGuard=(g:{role:GuardRole})=>g.role==='officer';
 
 /**
  * Compass needle for the home loop, in plain words:
- * gold on you → hatch · no gun after death → get it back · money almost buys → shop.
+ * gold on you → hatch · no gun after death → get it back · almost enough gold to buy → shop.
  * Relic extract is a bonus payday on top.
  */
 export type SkinnerGoal={p:Point;label:string};
@@ -501,7 +504,7 @@ export function skinnerGoal(m:{
   const gunDrop=m.pickups.find(p=>p.item==='gun');
   if(gunDrop)return{p:gunDrop.position,label:'GET GUN'};
  }
- // Money almost / fully buys the next upgrade — open the hatch shop.
+ // Almost / fully enough banked gold for the next upgrade — open the hatch shop.
  const buy=nextUpgradeTarget(m.gunMods,m.bankedGold,m.inventory.includes('gun'));
  if(buy&&(buy.ready||buy.almost))return{p:STASH_POSITION,label:'BUY'};
  if(m.inventory.includes('sovietKey'))return{p:RELIC,label:'RELIC'};
@@ -514,7 +517,7 @@ export function skinnerGoal(m:{
 
 /** First-dive tip — plain steps, no "bank" jargon. */
 export const SKINNER_FIRST_TIP=
- 'Kill guards for gold. Walk to the hatch and press E — that gold becomes money. Open Shop and press BUY. If you die, follow GET GUN back to your rifle. Relic extract is a bonus payday. WASD · Shift run · 1–5 select.';
+ 'Kill guards for gold. Walk to the hatch and press E to Save Gold. Open Shop and press BUY. If you die, follow GET GUN back to your rifle. Relic extract is a bonus payday. WASD · Shift run · 1–5 select.';
 
 /** World / HUD prompt for a floor pickup (relic gate + key wording). */
 export function pickupInteractPrompt(m:{
@@ -699,7 +702,7 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  air:{name:'Pony bottle',short:'Pony',description:`R · Arm a separate bailout cylinder (~${AIR_BAILOUT_LITRES} L). Drains after the main tank.`,hint:'R arm bailout · consumed'},
  bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
- gold:{name:'Gold',short:'Gold',description:'Real gold: 19 times denser than water. It slows you on foot and drags you down in the flood. Walk it to the hatch (E) — it becomes money you spend in the Shop.',hint:'E take · B ditch · hatch E to save'},
+ gold:{name:'Gold',short:'Gold',description:'Real gold: 19 times denser than water. It slows you on foot and drags you down in the flood. Walk it to the hatch (E) and Save Gold to spend it in the Shop.',hint:'E take · B ditch · hatch E to Save Gold'},
  gun:{name:'AK-74U',short:'AK-74U',description:'Compact 5.45 mm carbine with FPS arms viewmodel. Click fires one round at the centre of the screen; R changes the magazine. Three body hits or one to the head drop a guard, and every shot brings nearby guards running. Take spare rounds off the guards you drop. If a corridor guard kills you, he takes it.',hint:'Click fire · R reload'},
  bottle:{name:'Spare air bottle',short:'Bottle',description:`R · Add ${SPARE_BOTTLE_LITRES} L to the main cylinder (consumed). A corridor guard will drink it as his air if he takes it from your corpse.`,hint:'R use · consumed'},
  coat:{name:'Coat',short:'Coat',description:'Carry it. It does not soften guardian bites. If a corridor guard takes it from your corpse, his strikes hurt less.',hint:'Carry · death drops it'},
@@ -1717,10 +1720,12 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    .filter(c=>distance(c.position,this.position)<3.4&&visible(this.position,{...c.position,y:c.position.y+.4}))
    .sort((a,b)=>distance(a.position,this.position)-distance(b.position,this.position))[0];
  }
- /** True when standing at the hatch stash with line of sight. */
+ /** True when standing at the hatch stash. Very close skips LOS so a pillar cannot block deposit. */
  nearStash(){
   const p=STASH_POSITION;
-  return distance(this.position,p)<STASH_REACH&&visible(this.position,{...p,y:p.y+.4});
+  const d=distance(this.position,p);
+  if(d<STASH_REACH*.55)return true;
+  return d<STASH_REACH&&visible(this.position,{...p,y:p.y+.4});
  }
  /** Persist current stash slots (death / extract / reload all read this key). */
  private persistStash(){
@@ -1839,7 +1844,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(this.gold<=0){this.pulse('blocked');return false;}
   const g=this.bankCarriedGold();
   this.stashCue='deposit';
-  this.say(`Saved ${fmtGold(g)} as money. You can spend $${Math.round(this.bankedGold)} in the Shop.`,'ok');
+  this.say(`Saved ${fmtGold(g)} gold. Spend $${Math.round(this.bankedGold)} in the Shop.`,'ok');
   return true;
  }
  withdrawVaultGold(){
@@ -1916,7 +1921,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.pickups=this.pickups.filter(q=>q.id!==p.id);
   this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'take',grams:g,at:this.elapsed};
   if(firstHaul){
-   this.say(`+${fmtGold(g)} gold · walk to the hatch and press E to make it money`,'ok');
+   this.say(`+${fmtGold(g)} gold · walk to the hatch and press E to Save Gold`,'ok');
    return;
   }
   if(g>=GOLD.barGrams||this.noticeUntil<=this.elapsed)this.say(`+${fmtGold(g)} gold · carrying ${fmtGold(this.gold)}`,'ok');
@@ -2155,16 +2160,16 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    const extractPay=this.bankExtractBars();
    this.outcome='won';
    const bits:string[]=['Relic secured.'];
-   if(hauled>0)bits.push(`Saved ${fmtGold(hauled)} as money.`);
+   if(hauled>0)bits.push(`Saved ${fmtGold(hauled)} gold.`);
    if(extractPay>0)bits.push(`Extract bonus: ${this.lastExtractBars} kg.`);
-   bits.push(`Money: $${Math.round(this.bankedGold)}.`);
+   bits.push(`Gold: $${Math.round(this.bankedGold)}.`);
    const tip=almostUpgradeLine(this.gunMods,this.bankedGold,this.inventory.includes('gun'));
    if(tip)bits.push(tip);
    this.reason=bits.join(' ');
    return;
   }
   // Hatch stash — fixed bank near spawn; separate from map-scrap crates.
-  // Opening banks pocket gold into shop money (no drag). Gear still drags bag↔chest.
+  // Opening saves pocket gold into the shop balance (no drag). Gear still drags bag↔chest.
   if(this.nearStash()){
    if(!this.stashOpen){
     this.stashOpen=true;
@@ -2173,9 +2178,13 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     const tip=almostUpgradeLine(this.gunMods,this.bankedGold,this.inventory.includes('gun'));
     if(g>0){
      this.stashCue='deposit';
-     this.say(tip?`Saved ${fmtGold(g)} as money. ${tip}`:`Hatch open. Money: $${Math.round(this.bankedGold)}. Press BUY in the Shop. Esc closes.`,'ok');
+     this.say(tip
+      ?`Saved ${fmtGold(g)} gold. ${tip}`
+      :`Saved ${fmtGold(g)} gold. You have $${Math.round(this.bankedGold)} — press BUY in the Shop.`,'ok');
     }else{
-     this.say(tip?`Hatch open. ${tip}`:'Hatch open. Drag gear into the chest. Press BUY in the Shop to spend money. Esc closes.','ok');
+     this.say(tip
+      ?`Hatch open. Gold: $${Math.round(this.bankedGold)}. ${tip}`
+      :`Hatch open. Gold: $${Math.round(this.bankedGold)}. Press BUY in the Shop. Esc closes.`,'ok');
     }
     return;
    }

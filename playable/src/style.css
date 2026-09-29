@@ -364,6 +364,27 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .stash-chip.picked,.stash-chip.drop{
   border-color:rgba(140,200,120,.85);background:rgba(30,48,28,.9);
 }
+.stash-save{margin-top:14px}
+.stash-save-btn{
+  display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;
+  padding:14px 16px;border:1px solid rgba(255,200,80,.75);cursor:pointer;text-align:left;
+  background:rgba(60,42,12,.92);color:#ffe08a;
+  box-shadow:0 0 18px rgba(255,180,40,.28) inset;animation:afford 1.4s ease-in-out infinite;
+}
+.stash-save-btn strong{
+  font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:800;letter-spacing:.08em;
+}
+.stash-save-btn span{font-size:12px;color:rgba(255,230,180,.75);letter-spacing:.03em}
+.stash-save-btn:hover{background:rgba(80,55,14,.95);border-color:#ffd46a}
+.stash-save-banner{
+  display:flex;flex-direction:column;gap:3px;width:100%;
+  padding:12px 14px;border:1px solid rgba(160,140,90,.35);background:rgba(18,22,18,.9);
+}
+.stash-save-banner.live{border-color:rgba(226,200,136,.55)}
+.stash-save-banner strong{
+  font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;color:#ffd46a;
+}
+.stash-save-banner span{font-size:12px;color:rgba(200,210,200,.65)}
 .stash-shop{
   margin-top:14px;padding-top:12px;
   border-top:1px solid rgba(180,160,110,.28);
@@ -828,4 +849,4 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .workbench .pips i.on{background:#ffc94a;box-shadow:0 0 6px rgba(255,190,60,.8)}
 .workbench-risk{margin-top:6px;font-size:10px;letter-spacing:.04em;color:#ff9a7a}
 @keyframes afford{0%,100%{box-shadow:0 0 10px rgba(255,180,40,.18) inset}50%{box-shadow:0 0 18px rgba(255,190,60,.4) inset}}
-@media (prefers-reduced-motion:reduce){.gold-pop,.gold-carry,.workbench .track.afford,.stash-shop-item.almost,.stash-shop-item.afford{animation:none}}
+@media (prefers-reduced-motion:reduce){.gold-pop,.gold-carry,.workbench .track.afford,.stash-shop-item.almost,.stash-shop-item.afford,.stash-save-btn{animation:none}}

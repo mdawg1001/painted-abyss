@@ -1,11 +1,11 @@
 /**
  * Hatch stash overlay — drag gear bag↔chest.
- * Shop is a plain catalog: Gold: $X, priced items, big BUY + confirm.
- * Pocket gold auto-banks when the stash opens (no gold dragging).
+ * Pocket gold is saved on open, plus an explicit SAVE GOLD button.
+ * Shop is a plain catalog: Gold $X, priced items, big BUY + confirm.
  */
 import React,{useCallback,useRef,useState} from 'react';
 import {
- fmtShopMoney,modLevel,upgradeCost,UPGRADE,MOD_TRACKS,SHOP_RIFLE_PRICE,isAlmostShort,
+ fmtGold,fmtShopGold,modLevel,upgradeCost,UPGRADE,MOD_TRACKS,SHOP_RIFLE_PRICE,isAlmostShort,
 } from './gold';
 import {ITEMS,STASH_CAPACITY,type Item,type StashSlot} from './simulation';
 import {KNIFE_THUMB_URL} from './knifeAsset';
@@ -24,6 +24,7 @@ export type StashMissionApi={
  moveStash:(from:number,to:number)=>boolean;
  depositAmmoPack:(stashI:number)=>boolean;
  withdrawAmmoPack:(stashI:number)=>boolean;
+ bankPocketGold:()=>boolean;
  buyUpgrade:(track:'barrel'|'action'|'mag')=>boolean;
  buyShopRifle:()=>boolean;
  closeStash:()=>void;
@@ -99,14 +100,14 @@ function readDrag(e:React.DragEvent):DragPayload|null{
 
 function shopOffers(m:StashMissionApi):ShopOffer[]{
  const hasGun=m.inventory.includes('gun');
- const money=m.bankedGold;
+ const gold=m.bankedGold;
  const offers:ShopOffer[]=[];
  {
   const price=SHOP_RIFLE_PRICE;
   let blocked:string|undefined;
   if(hasGun)blocked='Already owned';
   else if(m.inventory.every(x=>x!==null))blocked='Bag full';
-  else if(money<price)blocked=`Need ${fmtShopMoney(price)}`;
+  else if(gold<price)blocked=`Need ${fmtShopGold(price)}`;
   offers.push({
    id:'rifle',
    name:'AK-74U',
@@ -124,7 +125,7 @@ function shopOffers(m:StashMissionApi):ShopOffer[]{
   let blocked:string|undefined;
   if(!hasGun)blocked='Need a rifle in your bag';
   else if(maxed)blocked='Owned (max)';
-  else if(money<price)blocked=`Need ${fmtShopMoney(price)}`;
+  else if(gold<price)blocked=`Need ${fmtShopGold(price)}`;
   offers.push({
    id:t,
    name:UPGRADE.shopNames[t],
@@ -211,7 +212,7 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
     <div>
      <div className="eyebrow">HATCH STORAGE</div>
      <h2>Stash</h2>
-     <p className="stash-screen-hint">Gold you carried is already money (top right). Drag gear into the chest. Press BUY to spend. Esc closes.</p>
+     <p className="stash-screen-hint">Gold on you: press SAVE GOLD. Drag gear into the chest. Press BUY to spend gold. Esc closes.</p>
     </div>
     <button type="button" className="stash-screen-close" onClick={onClose}>Close <kbd>Esc</kbd></button>
    </header>
@@ -285,17 +286,31 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
       })}
      </div>
 
+     <div className="stash-save" aria-label="Save Gold">
+      {m.gold>0?(
+       <button type="button" className="stash-save-btn" onClick={()=>{if(m.bankPocketGold())onChanged();}}>
+        <strong>SAVE GOLD</strong>
+        <span>{fmtGold(m.gold)} on you — save it to spend in the Shop</span>
+       </button>
+      ):(
+       <div className={`stash-save-banner${m.bankedGold>0?' live':''}`}>
+        <strong>{m.bankedGold>0?`Gold saved: ${fmtShopGold(m.bankedGold)}`:'No gold saved yet'}</strong>
+        <span>{m.bankedGold>0?'Press BUY below to spend it':'Kill guards, bring gold here, press SAVE GOLD'}</span>
+       </div>
+      )}
+     </div>
+
      <div className="stash-shop" aria-label="Shop">
       <div className="stash-shop-head">
        <h3>SHOP</h3>
-       <b className="stash-shop-gold">Gold: {fmtShopMoney(m.bankedGold)}</b>
+       <b className="stash-shop-gold">Gold: {fmtShopGold(m.bankedGold)}</b>
       </div>
       <div className="stash-shop-list">
        {offers.map(offer=>{
         const owned=offer.blocked==='Owned (max)'||offer.blocked==='Already owned';
         const title=owned
          ?`${offer.name}: ${offer.blocked}`
-         :`${offer.name}: ${fmtShopMoney(offer.price)}`;
+         :`${offer.name}: ${fmtShopGold(offer.price)}`;
         const short=Math.max(0,offer.price-m.bankedGold);
         const almost=!offer.canBuy&&!owned&&offer.price>0&&isAlmostShort(short,offer.price);
         return <div key={offer.id} className={`stash-shop-item${offer.canBuy?' afford':''}${almost?' almost':''}`}>
@@ -321,8 +336,8 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
   {confirm&&<div className="stash-confirm" role="alertdialog" aria-label="Confirm purchase">
    <div className="stash-confirm-card">
     <h4>Buy {confirm.name}?</h4>
-    <p>Price: <strong>{fmtShopMoney(confirm.price)}</strong></p>
-    <p className="stash-confirm-balance">Your gold: {fmtShopMoney(m.bankedGold)}</p>
+    <p>Price: <strong>{fmtShopGold(confirm.price)}</strong></p>
+    <p className="stash-confirm-balance">Your gold: {fmtShopGold(m.bankedGold)}</p>
     <div className="stash-confirm-actions">
      <button type="button" className="stash-confirm-cancel" onClick={()=>setConfirm(null)}>Cancel</button>
      <button type="button" className="stash-confirm-ok" onClick={()=>{

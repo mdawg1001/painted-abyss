@@ -11,9 +11,9 @@ import {UPGRADE} from '../src/gold';
 
 const CX=breathFootprint().cx;
 
-test('first-dive tip teaches hatch money + BUY + GET GUN in plain words',()=>{
+test('first-dive tip teaches hatch Save Gold + BUY + GET GUN in plain words',()=>{
  assert.match(SKINNER_FIRST_TIP,/hatch/i);
- assert.match(SKINNER_FIRST_TIP,/money/i);
+ assert.match(SKINNER_FIRST_TIP,/Save Gold/i);
  assert.match(SKINNER_FIRST_TIP,/BUY/i);
  assert.match(SKINNER_FIRST_TIP,/GET GUN/);
  assert.doesNotMatch(SKINNER_FIRST_TIP,/\bBank\b/);
@@ -83,7 +83,7 @@ test('first gold pickup tells you to walk to the hatch and press E',()=>{
  assert.doesNotMatch(m.notice,/\bbank\b/i);
 });
 
-test('skinnerGoal BUY still beats relic chase when money is almost enough',()=>{
+test('skinnerGoal BUY still beats relic chase when gold is almost enough',()=>{
  const m=new Mission(true);isolateGuards(m,-1);m.breathWaterY=FLOOR_Y-.1;
  m.gold=0;m.pickups=[];
  m.inventory=['gun',null,null,null,null];
