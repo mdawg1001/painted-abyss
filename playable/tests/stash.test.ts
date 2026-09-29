@@ -31,7 +31,7 @@ test('stash sits in the hatch alcove, clear of the relic and corridor centerline
  assert.equal(STASH_CAPACITY,5);
 });
 
-test('open does not auto-bank gold; drag bankPocketGold moves haul to vault',()=>{
+test('open auto-banks pocket gold into shop money',()=>{
  mockStorage();
  writeStash(emptyStash());
  writeBankedGold(0);
@@ -40,12 +40,27 @@ test('open does not auto-bank gold; drag bankPocketGold moves haul to vault',()=
  m.gold=2600;m.bankedGold=0;
  m.interact();
  assert.equal(m.stashOpen,true);
- assert.equal(m.gold,2600,'gold stays in pockets until dragged');
- assert.equal(m.bankedGold,0);
- assert.ok(m.bankPocketGold());
  assert.equal(m.gold,0);
  assert.equal(m.bankedGold,2600);
  assert.equal(m.goldEvent?.kind,'bank');
+});
+
+test('shop buys a rifle and an upgrade with banked gold',()=>{
+ mockStorage();
+ writeStash(emptyStash());
+ writeBankedGold(0);
+ const m=new Mission(true);
+ atStash(m);
+ m.gold=0;m.bankedGold=5000;
+ m.inventory=[null,null,null,null,null];
+ m.interact();
+ assert.ok(m.buyShopRifle());
+ assert.equal(m.inventory[0],'gun');
+ assert.ok(m.bankedGold<5000);
+ const afterRifle=m.bankedGold;
+ assert.ok(m.buyUpgrade('barrel'));
+ assert.ok(m.bankedGold<afterRifle);
+ assert.equal(m.gunMods.barrel,1);
 });
 
 test('drag bag item into chest and take it back out',()=>{
@@ -98,20 +113,6 @@ test('deposit gun and ammo, die empty-handed — stash still holds them after wa
  assert.deepEqual(m.inventory,['knife',null,null,null,null],'wake with knife only; gun stays in stash');
  assert.deepEqual(m.stash,before);
  assert.equal(m.stashOpen,false);
-});
-
-test('withdraw vault gold back into pockets',()=>{
- mockStorage();
- writeStash(emptyStash());
- writeBankedGold(0);
- const m=new Mission(true);
- atStash(m);
- m.gold=500;m.bankedGold=0;
- m.interact();
- assert.ok(m.bankPocketGold());
- assert.ok(m.withdrawVaultGold());
- assert.equal(m.gold,500);
- assert.equal(m.bankedGold,0);
 });
 
 test('E toggles open/close; Esc path uses closeStash',()=>{

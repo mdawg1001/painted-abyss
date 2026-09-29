@@ -2204,7 +2204,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
     if(this.mission.pending!==null){this.mission.pending=null;this.publish();}else this.pause();
    }
    // Inventory keys bind on window (not the canvas), so select/use/drop work without canvas focus.
-   // Workbench: with the stash open, 7 / 8 / 9 buy Barrel / Action / Magazine for the rifle in hand.
+   // Shop: with the stash open, 7 / 8 / 9 buy Harder hits / Fewer jams / Bigger mag.
    if(this.mission.stashOpen&&/^Digit[789]$/.test(e.code)){
     const track=(['barrel','action','mag'] as const)[Number(e.code.slice(-1))-7];
     this.mission.buyUpgrade(track);this.publish();return;

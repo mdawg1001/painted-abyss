@@ -79,19 +79,26 @@ export function goldStaminaFactor(grams: number) {
 }
 
 export const fmtGold = (grams: number) => grams >= 1000 ? `${(grams / 1000).toFixed(grams >= 10000 ? 0 : 1)} kg` : `${Math.round(grams)} g`;
+/** Shop price tag — grams of banked gold shown as dollars. */
+export const fmtShopMoney = (grams: number) => `$${Math.max(0, Math.round(grams))}`;
 
-// ── Upgrades ──────────────────────────────────────────────────────────────────────────
+// ── Upgrades / shop catalog ───────────────────────────────────────────────────────────
 
 export type RifleMods = { barrel: number; action: number; mag: number };
 export type ModTrack = keyof RifleMods;
 export const MOD_TRACKS: ModTrack[] = ['barrel', 'action', 'mag'];
 export const noMods = (): RifleMods => ({ barrel: 0, action: 0, mag: 0 });
 
+/** Buy an AK-74U from the hatch shop when you don't already carry one. */
+export const SHOP_RIFLE_PRICE = 1200;
+
 export const UPGRADE = {
  maxLevel: 3,
  /** Grams of banked gold for each level (1, 2, 3) of any track. */
  cost: [400, 900, 1800] as [number, number, number],
  names: { barrel: 'Barrel', action: 'Action', mag: 'Magazine' } as Record<ModTrack, string>,
+ /** Plain shop labels (not gunsmith jargon). */
+ shopNames: { barrel: 'Harder hits', action: 'Fewer jams', mag: 'Bigger magazine' } as Record<ModTrack, string>,
  blurbs: {
   barrel: ['Lapped bore: +8% damage, tighter groups', 'Chrome-lined: +16% damage', 'Match barrel: +24% damage, half the scatter'],
   action: ['Polished feed ramp: half the jams', 'Tuned gas block: faster cycling', 'Hand-fitted action: jams nearly gone, fastest cycling'],

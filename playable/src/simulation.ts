@@ -1,5 +1,5 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
-import { GOLD, UPGRADE, fmtGold, goldStaminaFactor, goldWalkFactor, noMods, modLevel, modTag, modValue, magBonus, damageMult, spreadMult, jamMult, cycleMult, upgradeCost, readBankedGold, writeBankedGold, type RifleMods, type ModTrack } from './gold';
+import { GOLD, UPGRADE, SHOP_RIFLE_PRICE, fmtGold, goldStaminaFactor, goldWalkFactor, noMods, modLevel, modTag, modValue, magBonus, damageMult, spreadMult, jamMult, cycleMult, upgradeCost, readBankedGold, writeBankedGold, type RifleMods, type ModTrack } from './gold';
 import { RIFLE, lootStream, jamChance, spreadSigma, scatter, rollDropRounds, rifleIsPrize, rifleName } from './rifleCondition';
 import { rollKillLoot, killLootCueFor, isEmptyKillLoot, killLootFeedback, type KillLootCue } from './killLoot';
 export type { KillLootCue } from './killLoot';
@@ -1486,7 +1486,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  gunMods:RifleMods=noMods();
  /** Gold you are carrying (grams): heavy, and lost where you die. */
  gold=0;
- /** Gold banked in the stash (grams): safe for good, spent at the workbench. */
+ /** Gold saved at the stash (grams): safe for good, spent in the shop. */
  bankedGold=readBankedGold();
  /**
   * Last auto-bank / stash payday haul (grams). Win screen and dive-again use this so
@@ -1932,19 +1932,38 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  }
  /** Walk speed share left under the gold you carry. */
  loadWalkFactor(){return goldWalkFactor(this.gold);}
- /** Workbench: spend banked gold on the rifle in your hands. Needs the stash open. */
+ /** Shop: spend saved gold on the rifle in your bag. Needs the stash open. */
  buyUpgrade(track:ModTrack){
   if(this.outcome!=='playing'||!this.stashOpen){this.pulse('blocked');return false;}
-  if(!this.inventory.includes('gun')){this.say('Hold a rifle to fit an upgrade.','blocked');return false;}
+  if(!this.inventory.includes('gun')){this.say('Put a rifle in your bag first.','blocked');return false;}
   const level=this.gunMods[track],cost=upgradeCost(level);
-  if(level>=UPGRADE.maxLevel){this.say(`${UPGRADE.names[track]} is maxed on this rifle.`,'blocked');return false;}
-  if(this.bankedGold<cost){this.say(`${UPGRADE.names[track]} ${level+1} needs ${fmtGold(cost)}. Vault: ${fmtGold(this.bankedGold)}.`,'blocked');return false;}
+  const label=UPGRADE.shopNames[track];
+  if(level>=UPGRADE.maxLevel){this.say(`${label} is already maxed.`,'blocked');return false;}
+  if(this.bankedGold<cost){this.say(`Need $${Math.round(cost)}. You have $${Math.round(this.bankedGold)}.`,'blocked');return false;}
   this.bankedGold-=cost;writeBankedGold(this.bankedGold);
   const mods={...this.gunMods,[track]:level+1};
   this.equipRifle(this.gunCond,mods);
   this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'upgrade',grams:cost,at:this.elapsed,track,level:level+1};
   this.stashCue='deposit';
-  this.say(`${UPGRADE.blurbs[track][level]}. This rifle is now ${rifleName(this.gunCond)}${modTag(mods)}. Lose it, lose this.`,'ok');
+  this.say(`Bought ${label} for $${Math.round(cost)}.`,'ok');
+  return true;
+ }
+ /** Shop: buy an AK-74U into an empty bag slot. */
+ buyShopRifle(){
+  if(this.outcome!=='playing'||!this.stashOpen){this.pulse('blocked');return false;}
+  if(this.inventory.includes('gun')){this.say('You already have a rifle.','blocked');return false;}
+  const empty=this.inventory.findIndex(x=>x===null);
+  if(empty<0){this.say('Bag is full — free a slot first.','blocked');return false;}
+  const cost=SHOP_RIFLE_PRICE;
+  if(this.bankedGold<cost){this.say(`Need $${cost}. You have $${Math.round(this.bankedGold)}.`,'blocked');return false;}
+  this.bankedGold-=cost;writeBankedGold(this.bankedGold);
+  this.inventory[empty]='gun';
+  this.selected=empty;
+  this.equipRifle(RIFLE.kitCond,noMods());
+  this.pistol.mag=Math.min(this.pistol.maxMag,30);
+  this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'upgrade',grams:cost,at:this.elapsed};
+  this.stashCue='deposit';
+  this.say(`Bought AK-74U for $${cost}.`,'ok');
   return true;
  }
  /**
@@ -2128,12 +2147,15 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    return;
   }
   // Hatch stash — fixed bank near spawn; separate from map-scrap crates.
-  // Open toggles the drag UI. Gold stays in pockets until you drag it to the vault.
+  // Opening banks pocket gold into shop money (no drag). Gear still drags bag↔chest.
   if(this.nearStash()){
    if(!this.stashOpen){
     this.stashOpen=true;
     this.stashCue='open';
-    this.say('Stash open. Drag gear and gold. Esc closes.','ok');
+    const g=this.bankCarriedGold();
+    this.say(g>0
+     ?`Stash open. Gold: $${Math.round(this.bankedGold)}. Esc closes.`
+     :'Stash open. Drag gear. Buy in the Shop. Esc closes.','ok');
     return;
    }
    this.closeStash();
