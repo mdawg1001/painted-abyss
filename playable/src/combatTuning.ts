@@ -24,8 +24,8 @@
  * | Style decay       | stillDrain                       | 72 pts/s     | Speed currency without aim-freeze panic |
  * | Style decay       | graceSeconds                     | 2.8 s        | Slightly longer fight breath |
  * | Callouts          | COMBAT_OUTCOME.calloutSeconds    | 0.60 s       | Less centre-screen linger |
- * | Streak ammo       | STREAK.ammoInterval              | 6 s          | Slower drip (was 5) |
- * | Streak ammo       | ammoRounds B/A/S/SS/SSS          | 1/1/1/2/2    | S no longer double-drips |
+ * | Streak ammo       | STREAK.ammoInterval              | 6 s          | Interval kept; drip disabled |
+ * | Streak ammo       | ammoRounds B/A/S/SS/SSS          | 0/0/0/0/0    | No free ammo — strip corpses |
  * | Streak director   | delay B→SSS                      | 0.45…1.30 s  | Softer than 0.55…1.60 |
  * | Streak loot       | pickupRadiusBonus                | 0.22 m       | Modest (was 0.28) |
  * | Streak break      | shake / hitstop                  | 1.15 / 70 ms | Loud but fair, less nauseating |
@@ -71,7 +71,7 @@ export const COMBAT_POLISH = {
   calloutSeconds: 0.6,
   streak: {
     ammoInterval: 6,
-    ammoRounds: { B: 1, A: 1, S: 1, SS: 2, SSS: 2 },
+    ammoRounds: { B: 0, A: 0, S: 0, SS: 0, SSS: 0 },
     directorDelay: { B: 0.45, A: 0.7, S: 1.0, SS: 1.15, SSS: 1.3 },
     pickupRadiusBonus: 0.22,
     breakShake: { intensity: 1.15, duration: 0.28 },

@@ -3313,11 +3313,11 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   const contact=live.some(g=>g.state==='chase'||g.state==='alert');
   const changed=D.advance(now,contact,this.hasRelic);
   if(changed==='lull'){
-   // Breathing room: restock a couple of caches away from you.
-   const empty=this.caches.filter(c=>!c.stocked&&Math.hypot(c.x-this.position.x,c.z-this.position.z)>=SURVIVAL.supplies.restockMinDistance);
+   // Breathing room: restock med/smoke away from you — never free ammo (strip corpses).
+   const empty=this.caches.filter(c=>!c.stocked&&c.kind!=='ammo'&&Math.hypot(c.x-this.position.x,c.z-this.position.z)>=SURVIVAL.supplies.restockMinDistance);
    for(let k=0;k<SURVIVAL.supplies.restockPerLull&&empty.length;k++)empty.splice(Math.floor(this.rand()*empty.length),1)[0].stocked=true;
    D.cues.push({kind:'lull',x:this.position.x,z:this.position.z,at:now,label:'Lull'});
-   this.say('They are regrouping. Reload, patch up, move — supplies have been dropped.','ok');
+   this.say('They are regrouping. Strip the dead for rounds — medkits may have dropped.','ok');
   }else if(changed==='final'){
    D.cues.push({kind:'final',x:EXIT.x,z:EXIT.z,at:now,label:'Final push'});
    this.say('Relic booby trap sprung! Water is rising and the garrison is coming. Reach extraction!','blocked');
