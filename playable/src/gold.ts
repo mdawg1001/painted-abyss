@@ -125,6 +125,75 @@ export function parseMods(raw: unknown): RifleMods | undefined {
  return modLevel(m) > 0 ? m : undefined;
 }
 
+/**
+ * "Almost afford" band — unfinished upgrade contingency.
+ * Shortfall counts as almost when ≤ 35% of the next cost OR ≤ 250 g.
+ * Ready = shortfall 0. That unfinished buy is the meta Skinner pull.
+ */
+export const ALMOST_UPGRADE = {
+ frac: 0.35,
+ grams: 250,
+} as const;
+
+export type UpgradeTarget = {
+ track: ModTrack;
+ /** Level after purchase (1..maxLevel). */
+ nextLevel: number;
+ cost: number;
+ have: number;
+ short: number;
+ ready: boolean;
+ almost: boolean;
+};
+
+/** True when shortfall is in the almost band (not yet ready). */
+export function isAlmostShort(short: number, cost: number): boolean {
+ if (!(short > 0) || !(cost > 0) || !Number.isFinite(cost)) return false;
+ return short <= ALMOST_UPGRADE.grams || short <= cost * ALMOST_UPGRADE.frac;
+}
+
+/**
+ * Cheapest next upgrade on the rifle in hand. Null when no gun or every track is maxed.
+ * Ties break in MOD_TRACKS order (barrel → action → mag).
+ */
+export function nextUpgradeTarget(mods: RifleMods, banked: number, hasGun: boolean): UpgradeTarget | null {
+ if (!hasGun) return null;
+ const have = Math.max(0, Math.floor(banked));
+ let best: UpgradeTarget | null = null;
+ for (const track of MOD_TRACKS) {
+  const level = mods[track];
+  if (level >= UPGRADE.maxLevel) continue;
+  const cost = upgradeCost(level);
+  if (!Number.isFinite(cost)) continue;
+  const short = Math.max(0, cost - have);
+  const ready = short === 0;
+  const almost = !ready && isAlmostShort(short, cost);
+  const cand: UpgradeTarget = { track, nextLevel: level + 1, cost, have, short, ready, almost };
+  if (!best || cand.cost < best.cost || (cand.cost === best.cost && cand.short < best.short)) best = cand;
+ }
+ return best;
+}
+
+/** HUD / bank / dive-end copy for the next unfinished buy. */
+export function almostUpgradeLine(mods: RifleMods, banked: number, hasGun: boolean): string | null {
+ const t = nextUpgradeTarget(mods, banked, hasGun);
+ if (!t) return null;
+ const name = UPGRADE.shopNames[t.track];
+ if (t.ready) return `${name} ready — BUY in the shop.`;
+ if (t.almost) return `${fmtShopMoney(t.short)} short of ${name}.`;
+ return null;
+}
+
+/** Bank-pop suffix: " · $140 TO HARDER HITS" / " · BUY HARDER HITS NOW". */
+export function bankAlmostSuffix(mods: RifleMods, banked: number, hasGun: boolean): string {
+ const t = nextUpgradeTarget(mods, banked, hasGun);
+ if (!t) return '';
+ const name = UPGRADE.shopNames[t.track].toUpperCase();
+ if (t.ready) return ` · BUY ${name} NOW`;
+ if (t.almost) return ` · ${fmtShopMoney(t.short)} TO ${name}`;
+ return '';
+}
+
 // ── Banked gold (persists with the stash) ─────────────────────────────────────────────
 
 export const GOLD_STORAGE_KEY = 'painted-abyss.gold';

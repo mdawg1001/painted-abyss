@@ -88,7 +88,29 @@ export const KILL_LOOT = {
   pityShiftPer: 10,
   /** Cap on shifted weight so a rare dry can still happen. */
   pityMaxShift: 40,
+  /** HUD classical flash lifetime (s). Dry still flashes — empty ≠ silent. */
+  hudFlashSeconds: 0.55,
 } as const;
+
+/** Centre HUD label per classical cue. Short, plain — dry must still shout. */
+export const KILL_LOOT_HUD_LABEL: Record<KillLootCue, string> = {
+  dry: 'EMPTY',
+  ammo: 'ROUNDS',
+  scrap: 'COINS',
+  near_miss: 'ALMOST',
+  field: 'PURSE',
+  prize: 'KEEPER',
+  jackpot: 'JACKPOT',
+};
+
+/** FeedbackKind for inventory pulse: dry feels blocked; everything else is a hit. */
+export function killLootFeedback(kind: KillLootCue): 'ok' | 'blocked' {
+  return kind === 'dry' ? 'blocked' : 'ok';
+}
+
+export function killLootHudLabel(kind: KillLootCue): string {
+  return KILL_LOOT_HUD_LABEL[kind];
+}
 
 /** Empty schedule payout: nothing worth taking (no gold, no keep-worthy gun). */
 export function isEmptyKillLoot(bucket: KillLootBucket): boolean {
