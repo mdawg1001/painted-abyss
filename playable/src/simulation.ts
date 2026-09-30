@@ -196,9 +196,9 @@ export const SKIN_OF_TEETH={
  fullBiasSpeed:WALK_SPEED,
  /**
   * Extra land-chance cut at full bias, on top of `guardHitChance`'s moving penalty.
-  * 0.24 ≈ obvious strafe GRAZEs (was Phase 4's subtle 0.08); standing still unchanged.
+  * 0.28 keeps readable strafe GRAZEs after role accuracy ×1.5 (cap 0.95); standing unchanged.
   */
- maxGrazeBias:.24,
+ maxGrazeBias:.28,
  /** Floor so a moving player is never unhittable. */
  minChance:.05,
 } as const;

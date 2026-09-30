@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.22.35
+# Painted Abyss — First Dive · 0.22.36
+
+## Sharper guard aim (0.22.36)
+
+Armed survival roles land shots ~**1.5×** more often via role `accuracy` ×1.5 (cap **0.95** so they are not aimbots). Skin-of-teeth graze bias nudged **0.24→0.28** so standing/slow is deadly while strafing still earns GRAZE room. Cadence, HP, corpse persistence, director, magnetism, and Ego Savior unchanged.
 
 ## More aggressive corridor guards (0.22.35)
 
