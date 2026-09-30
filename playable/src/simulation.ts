@@ -173,14 +173,15 @@ export const GUARD_AIM_TOLERANCE=10*Math.PI/180;
  * Damage still gates through `enemyRayHitsPlayerCore` / `PLAYER_CORE` (roll picks aim class).
  */
 export function guardHitChance(distance:number,targetSpeed:number,firstShot:boolean,shooterSpeed=0){
- const base=Math.max(.3,Math.min(.95,.98-.03*Math.max(0,distance-2)));
+ // Cap 0.98 (was 0.95) so role accuracy ×1.25 (0.22.37) can still raise land rate.
+ const base=Math.max(.3,Math.min(.98,.98-.03*Math.max(0,distance-2)));
  const moving=targetSpeed>2.4?.28:targetSpeed>.6?.12:0;
  // Firing on the move costs him accuracy too (a steady shuffle, not a sprint).
  const shuffle=GUARD_MOVING_FIRE_PENALTY*Math.min(1.5,Math.max(0,shooterSpeed));
- return Math.max(.08,Math.min(.95,base-moving-shuffle-(firstShot?.10:0)));
+ return Math.max(.08,Math.min(.98,base-moving-shuffle-(firstShot?.075:0)));
 }
-/** Hit-chance lost per m/s of his own footwork while firing. */
-export const GUARD_MOVING_FIRE_PENALTY=.09;
+/** Hit-chance lost per m/s of his own footwork while firing. −25% vs pre-0.22.37. */
+export const GUARD_MOVING_FIRE_PENALTY=.0675;
 /**
  * Enemy→player skin-of-teeth. Standing still stays lethal; moving bleeds land chance into
  * readable GRAZE misses with whip-by tracers. Hardened curve (not god mode — minChance floor).
@@ -196,9 +197,9 @@ export const SKIN_OF_TEETH={
  fullBiasSpeed:WALK_SPEED,
  /**
   * Extra land-chance cut at full bias, on top of `guardHitChance`'s moving penalty.
-  * 0.28 keeps readable strafe GRAZEs after role accuracy ×1.5 (cap 0.95); standing unchanged.
+  * 0.30 keeps readable strafe GRAZEs after aim ×1.25 (cap 0.98); standing unchanged.
   */
- maxGrazeBias:.28,
+ maxGrazeBias:.30,
  /** Floor so a moving player is never unhittable. */
  minChance:.05,
 } as const;
@@ -407,7 +408,7 @@ export const GUARD_HORDE={
  fireInterval:.36,
  aimTolerance:24*Math.PI/180,
  /** Multiplier on hit chance for spray fire on the run. */
- accuracy:.5,
+ accuracy:.625,
  /** Stagger from your hit (s): a flinch, not a stop. */
  flinch:.15,
  /** Draw from spotting you to first shot (s). */

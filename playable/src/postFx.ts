@@ -15,7 +15,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { PERF } from './perf';
 
 /** Cap device pixel ratio when the bloom stack is live (Retina + UnrealBloomPass hitch). */
-/** Highest render density; the resolution governor steps down from here (resolutionGovernor.ts). */
+/** Highest render density; mirrors PERF.dprCap (playability floor). */
 export const POST_FX_DPR_CAP = PERF.dprCap;
 
 /** Soft bloom: high threshold, modest strength — neon / muzzle / pickups only. */

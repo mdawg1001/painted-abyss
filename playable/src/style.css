@@ -832,44 +832,6 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .gold-carry span{font-size:10px;letter-spacing:.06em;color:#e8c98a;opacity:.85}
 .gold-vault{font-size:11px;letter-spacing:.12em;color:#c9ab6c}
 .gold-vault strong{margin-left:6px;color:#f2d38a}
-.gold-hud.almost .gold-vault strong{color:#ffe08a}
-.gold-buy{display:flex;flex-direction:column;align-items:flex-end;gap:2px;margin-top:2px;font:600 10px/1.2 var(--mono,monospace);letter-spacing:.1em;color:#e8c98a}
-.gold-buy.ready{color:#ffe08a}
-.gold-buy strong{font-size:13px;color:#ffd46a}
-.gold-buy-meter{width:110px;height:4px;background:rgba(255,255,255,.12);border-radius:1px;overflow:hidden}
-.gold-buy-meter i{display:block;height:100%;background:linear-gradient(90deg,#c4923a,#ffd46a);box-shadow:0 0 8px rgba(255,190,60,.55)}
-/* Rat-cage unfinished-buy pull: scream the shortfall; haunt the edge with UPGRADE NOW. */
-.skinner-pull{
-  position:fixed;left:50%;top:18%;transform:translateX(-50%);z-index:42;pointer-events:none;
-  max-width:min(920px,92vw);padding:0 12px;text-align:center;
-  font:900 clamp(22px,4.2vw,48px)/1.05 'Barlow Condensed',Impact,sans-serif;
-  letter-spacing:.06em;color:#ffe08a;
-  text-shadow:0 0 24px rgba(255,180,40,.85),0 2px 0 #1a1204,0 0 2px #fff;
-  animation:skinner-pull-pulse 1.1s ease-in-out infinite;
-}
-.skinner-pull.ready{color:#fff1c2;animation-duration:.85s}
-.skinner-side{
-  position:fixed;right:10px;top:42%;transform:translateY(-50%);z-index:42;pointer-events:none;
-  display:flex;flex-direction:column;align-items:flex-end;gap:4px;
-  padding:12px 14px;border:2px solid rgba(255,200,80,.75);
-  background:rgba(12,10,4,.72);
-  animation:skinner-side-nudge 1.4s ease-in-out infinite;
-}
-.skinner-side strong{
-  font:900 28px/1 'Barlow Condensed',Impact,sans-serif;letter-spacing:.14em;color:#ffe08a;
-  text-shadow:0 0 14px rgba(255,180,40,.7);
-}
-.skinner-side.ready strong{color:#fff1c2}
-.skinner-side span{font:700 12px/1 var(--mono,monospace);letter-spacing:.1em;color:#e8c98a}
-.skinner-side em{font:600 11px/1 var(--mono,monospace);font-style:normal;color:#ffd46a}
-@keyframes skinner-pull-pulse{
-  0%,100%{opacity:.92;transform:translateX(-50%) scale(1)}
-  50%{opacity:1;transform:translateX(-50%) scale(1.04)}
-}
-@keyframes skinner-side-nudge{
-  0%,100%{transform:translateY(-50%) translateX(0)}
-  50%{transform:translateY(-50%) translateX(-4px)}
-}
 .gold-pop.almost{font-size:28px;color:#ffe08a}
 @keyframes gold-bump{0%{transform:scale(1.25)}100%{transform:scale(1)}}
 /* Above .stash-screen (z-index 80) — Save Gold is a jackpot beat, not a buried tip. */

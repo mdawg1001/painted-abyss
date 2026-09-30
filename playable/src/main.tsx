@@ -253,6 +253,11 @@ function App(){
      </div>
     </>;
    })()}
+   {m.goldEvent&&m.elapsed-m.goldEvent.at<2.2&&<div key={`g${m.goldEvent.seq}`} className={`gold-pop ${m.goldEvent.kind}${m.goldEvent.kind==='bank'&&bankAlmostSuffix(m.gunMods,m.bankedGold,m.inventory.includes('gun'))?' almost':''}`} aria-hidden="true">
+    {m.goldEvent.kind==='take'?`+${fmtGold(m.goldEvent.grams)}`:
+    m.goldEvent.kind==='bank'?`SAVED ${fmtGold(m.goldEvent.grams)}${bankAlmostSuffix(m.gunMods,m.bankedGold,m.inventory.includes('gun'))}`:
+    m.goldEvent.kind==='upgrade'?(m.goldEvent.track?`${UPGRADE.shopNames[m.goldEvent.track].toUpperCase()} ${'I'.repeat(m.goldEvent.level!)}`:'BOUGHT'):
+    m.goldEvent.kind==='ditch'?`DITCHED ${fmtGold(m.goldEvent.grams)}`:`${fmtGold(m.goldEvent.grams)} LEFT ON YOUR BODY`}</div>}
    <StashScreen
     open={!!m.stashOpen}
     mission={m}

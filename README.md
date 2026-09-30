@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.22.37
+# Painted Abyss — First Dive · 0.22.38
+
+## Smooth frames + kill hatch spam (0.22.37)
+
+Restores the playability render floor after #191's Retina 2× + 4× MSAA governor left Safari/laptops stuttering frame-by-frame (governor started at the top and took seconds of cooldown steps to drop). Caps DPR at **1×**, MSAA **off**, fewer motes / slower light scans, inventory swaps no longer full-scene shader-walk. Removes the persistent gold center/side “HARDER HITS READY — BUY AT THE HATCH” overlays (hatch shop UI stays).
 
 ## Sharper guard aim (0.22.36)
 

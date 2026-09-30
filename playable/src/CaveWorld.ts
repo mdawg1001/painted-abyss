@@ -2726,19 +2726,22 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   * materials the GPU has never compiled; drawing them straight away stalls the frame while the
   * driver compiles. After a load, any visible mesh whose material has no program yet is held
   * off-screen while the driver compiles it in the background (KHR_parallel_shader_compile),
-  * then shown. Costs one scene walk per finished load.
+  * then shown. Costs one scene walk per finished load — pass `roots` to limit the walk
+  * (inventory switches only scan the held camera props, not the whole bunker).
   */
- guardNewShaders(){
-  if(!this.shaderGuardDirty)return;
-  this.shaderGuardDirty=false;
+ guardNewShaders(roots?: THREE.Object3D[]){
+  if(!this.shaderGuardDirty&&!roots)return;
+  if(!roots)this.shaderGuardDirty=false;
   const props=(this.renderer as unknown as {properties:{get(m:THREE.Material):{currentProgram?:unknown}}}).properties;
   const fresh:THREE.Object3D[]=[];
-  this.scene.traverseVisible(o=>{
+  const visit=(o:THREE.Object3D)=>{
    if(o===this.camera)return;
    const mat=(o as THREE.Mesh).material as THREE.Material|THREE.Material[]|undefined;
    if(!mat||!((o as THREE.Mesh).isMesh||(o as THREE.Sprite).isSprite))return;
    for(const m of Array.isArray(mat)?mat:[mat])if(m&&!props.get(m).currentProgram){fresh.push(o);return;}
-  });
+  };
+  if(roots){for(const r of roots)r.traverseVisible(visit);}
+  else this.scene.traverseVisible(visit);
   for(const o of fresh){
    o.userData.shaderGuard=true;
    let done:Promise<unknown>=Promise.resolve();
@@ -3223,10 +3226,13 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   if(this.time-this.lastSent>.05){this.lastSent=this.time;this.publish();}
   this.updatePointCull();
   this.applyPortalOcclusion();
-  // Switching items shows a viewmodel that may never have been drawn: check it before this frame.
-  if(this.mission.selected!==this._guardSelected){this._guardSelected=this.mission.selected;this.shaderGuardDirty=true;}
-  // Also sweep once a second, for anything that arrives outside prop streaming (held items).
-  if(Math.floor(this.time)!==this._guardSweep){this._guardSweep=Math.floor(this.time);this.shaderGuardDirty=true;}
+  // Inventory 1–5: only scan held camera props — a full scene.traverseVisible here hitch'd every swap.
+  if(this.mission.selected!==this._guardSelected){
+   this._guardSelected=this.mission.selected;
+   this.guardNewShaders([this.camera]);
+  }
+  // Slow sweep for streamed props that appear outside propStreaming.onLoaded.
+  if(Math.floor(this.time*0.5)!==this._guardSweep){this._guardSweep=Math.floor(this.time*0.5);this.shaderGuardDirty=true;}
   this.guardNewShaders();
   this.composer.render();
  }

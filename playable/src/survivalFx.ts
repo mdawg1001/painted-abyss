@@ -16,11 +16,14 @@ import { GUARD_KEY_INTENSITY, GUARD_RIM_INTENSITY, type SovietGuardVisual } from
 import { createCardboardCoverVisual, upgradeCardboardCover } from './cardboardBoxAsset';
 import { createDeskCoverVisual, upgradeDeskCover } from './metalDeskAsset';
 
-const LIGHT_SLOTS=4;
+const LIGHT_SLOTS=3;
 /** Puff cards per smoke cloud. Each is a big transparent quad: inside a cloud every one covers
  * the screen, so this is the fill-rate bill. 9 (was 14) with a touch more opacity each. */
 const CLOUD_SPRITES=9;
-const PARTICLES=96;
+const PARTICLES=64;
+const _camScratch=new THREE.Vector3();
+const _keyScratch=new THREE.Vector3();
+const _rimScratch=new THREE.Vector3();
 
 function canvasTex(w:number,h:number,draw:(g:CanvasRenderingContext2D)=>void){
  const c=document.createElement('canvas');c.width=w;c.height=h;draw(c.getContext('2d')!);
@@ -266,14 +269,14 @@ export class SurvivalFx{
   * Per frame: light pool follows the nearest guards, doors, smoke, grenades, particles.
   */
  update(dt:number,time:number,elapsed:number,camera:THREE.Camera,visuals:SovietGuardVisual[],guards:Guard[],clouds:SmokeCloud[],grenades:SmokeGrenade[]){
-  // Light pool.
-  const cam=camera.getWorldPosition(new THREE.Vector3());
+  // Light pool — reuse scratch vectors (was allocating per frame + per slot).
+  const cam=camera.getWorldPosition(_camScratch);
   const order=visuals.map((v,i)=>({v,i,d:guards[i]?.active?v.root.position.distanceToSquared(cam):Infinity})).sort((a,b)=>a.d-b.d);
   for(let s=0;s<LIGHT_SLOTS;s++){
    const o=order[s];const key=this.keyLights[s],rim=this.rimLights[s];
    if(!o||o.d>40*40){key.intensity=0;rim.intensity=0;continue;}
-   key.position.copy(o.v.root.localToWorld(new THREE.Vector3(.25,1.75,.9)));
-   rim.position.copy(o.v.root.localToWorld(new THREE.Vector3(-.3,2.1,-.7)));
+   key.position.copy(o.v.root.localToWorld(_keyScratch.set(.25,1.75,.9)));
+   rim.position.copy(o.v.root.localToWorld(_rimScratch.set(-.3,2.1,-.7)));
    key.intensity=GUARD_KEY_INTENSITY*GUARD_KEY_GRADE;rim.intensity=GUARD_RIM_INTENSITY*GUARD_RIM_GRADE;
   }
   // Doors.
