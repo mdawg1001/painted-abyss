@@ -720,7 +720,7 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
  wood:{name:'Driftwood',short:'Wood',description:'Salvage only — cannot use. Safe to swap for the relic.',hint:'Salvage · G drop · swap for relic'},
  flare:{name:'Signal flare',short:'Flare',description:'R · Deploy a 12-second distraction at your position.',hint:'R use · consumed'},
  air:{name:'Pony bottle',short:'Pony',description:`R · Arm a separate bailout cylinder (~${AIR_BAILOUT_LITRES} L). Drains after the main tank.`,hint:'R arm bailout · consumed'},
- bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 suit integrity (consumed).',hint:'R use · consumed'},
+ bandage:{name:'Sealant kit',short:'Sealant',description:'R · Repair 45 health (consumed).',hint:'R use · consumed'},
  relic:{name:'Ammonite relic',short:'Relic',description:'Cannot use here — carry to the extraction pool.',hint:'Carry to extract · do not drop'},
  gold:{name:'Gold',short:'Gold',description:'Real gold: 19 times denser than water. It slows you on foot and drags you down in the flood. Walk it to the hatch (E) and Save Gold to spend it in the Shop.',hint:'E take · B ditch · hatch E to Save Gold'},
  gun:{name:'AK-74U',short:'AK-74U',description:'Compact 5.45 mm carbine with FPS arms viewmodel. Click fires one round at the centre of the screen; R changes the magazine. Three body hits or one to the head drop a guard, and every shot brings nearby guards running. Take spare rounds off the guards you drop. If a corridor guard kills you, he takes it.',hint:'Click fire · R reload'},
@@ -3402,7 +3402,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    }else if(c.kind==='medkit'){
     if(this.health>=100)continue;
     this.health=Math.min(100,this.health+S.medkit);
-    this.say(`Field dressing: +${S.medkit} suit.`,'ok');
+    this.say(`Field dressing: +${S.medkit} health.`,'ok');
    }else{
     if(this.smokes>=SURVIVAL.smoke.max)continue;
     this.smokes=Math.min(SURVIVAL.smoke.max,this.smokes+S.smoke);
@@ -3571,7 +3571,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(p.state==='chase'&&!safe&&canSee&&distance(p.position,this.position)<BITE_RANGE&&p.bite<=0){
    p.bite=1.7;
    this.hurtPlayer(25,p.position,'The guardian caught you. Break sight around the central pillar; the narrow exit passage is safe.',null);
-   this.say('Suit breached! Sprint to cover or deploy a flare.');
+   this.say('Health critical! Sprint to cover or deploy a flare.');
   }
  }
 }

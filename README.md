@@ -1,8 +1,12 @@
-# Painted Abyss — First Dive · 0.22.39
+# Painted Abyss — First Dive · 0.22.40
+
+## Health label (was Suit) (0.22.40)
+
+Player-facing HUD and copy rename the vital from **SUIT** to **HEALTH** (prompts, sealant description, say-strings). Internal ids (`health`, `CRITICAL_SUIT_REGEN`, CSS `.meter.suit`) unchanged.
 
 ## Critical suit self-regen (0.22.39)
 
-When suit HP drops to **≤5** (including after an Ego Savior clamp to 1–3), the suit slowly recovers toward a **soft cap of 30** while undamaged (~2 HP/s). Any new `hurtPlayer` hit pauses regen for **1.2 s**; live Ego Savior i-frames also block ticks so recovery starts after the scare. Medkits and kill-leech still matter for getting back toward full. No new UI — the suit bar rising is the read.
+When health drops to **≤5** (including after an Ego Savior clamp to 1–3), it slowly recovers toward a **soft cap of 30** while undamaged (~2 HP/s). Any new `hurtPlayer` hit pauses regen for **1.2 s**; live Ego Savior i-frames also block ticks so recovery starts after the scare. Medkits and kill-leech still matter for getting back toward full. No new UI — the Health bar rising is the read.
 
 ## Smooth frames + kill hatch spam (0.22.37)
 
@@ -26,11 +30,11 @@ Lethal overflow still clamps to **1–3** with i-frames and critical theater, bu
 
 ## Near-death Ego Savior Phase 2 — critical theater (0.22.16)
 
-When suit is ≤ ~15% or Ego Savior i-frames are live, the screen goes hard red with a heartbeat pulse, audio muffles (low-pass) with panic breath, and the lethal save itself gets a micro hitstop plus a brief snappier knife/gun clear — still no INVULNERABLE / CLUTCH text. Reduced-motion softens the pulse but keeps the critical read. P1 save math unchanged.
+When health is ≤ ~15% or Ego Savior i-frames are live, the screen goes hard red with a heartbeat pulse, audio muffles (low-pass) with panic breath, and the lethal save itself gets a micro hitstop plus a brief snappier knife/gun clear — still no INVULNERABLE / CLUTCH text. Reduced-motion softens the pulse but keeps the critical read. P1 save math unchanged.
 
 ## Near-death Ego Savior Phase 1 (0.22.15)
 
-The hit that would kill you can silently clamp suit HP to **1–3** once per life, with **0.4–0.7 s** true i-frames and a short enemy shoot-cadence desync (longer burst gaps / delayed next shot). No INVULNERABLE banner — GRAZE tracers keep whipping past. After the window you are glass; the save recharges on hatch respawn.
+The hit that would kill you can silently clamp health to **1–3** once per life, with **0.4–0.7 s** true i-frames and a short enemy shoot-cadence desync (longer burst gaps / delayed next shot). No INVULNERABLE banner — GRAZE tracers keep whipping past. After the window you are glass; the save recharges on hatch respawn.
 
 ## Sharp image: full Retina resolution and edge smoothing (0.22.14)
 
@@ -340,9 +344,9 @@ Pointer lock is requested by Begin / Resume. If the browser refuses it, moving t
 - Driftwood is spare salvage; replacing it keeps your useful supplies. Press **1** then **click** to stab the guardian at close range — wounds make it rage harder; at ~85% damage taken it breaks off slow and limping; killing it sinks the corpse with soft floating blood sprites in the water (optional — extract still only needs the relic). Press **1–5** to select a slot, then **R** to use consumables — air, sealant, and flares are consumed. A one-time tip appears on the first dive only; later dives rely on the selected-slot chrome. Selecting the knife draws it into a gloved diver's hand — a real-scale first-person viewmodel with the fist low in the bottom-right, forearm running out of frame and the blade angled up toward the crosshair; clicking plays a wind-up, thrust and recover stab; other slots return the mounted torch as the held FPS object.
 - Carry the relic east, enter the narrow fissure, then follow it north to the extraction pool. Press **E** near the light to win. You must still be carrying the relic; dropping it removes eligibility to extract.
 - **Five Soviet guards patrol the bunker.** Same behaviour, five kit colours (olive, khaki, steel-blue, brown, field-teal). Each walks an overlapping beat of the outer perimeter (~25% shared with the next man so they meet in doorways), about 1.3 m off the walls, stopping at corners and every ~16 m along long walls to look around. At each stop he surveys the open floor, turns (through the room, not across the wall) to face the longest view, sweeps it, and where the space opens two ways checks the other way too. He sees what is in front of him (≈65° either side; a lit torch from 16 m, dark from 9 m), hears you running within 11 m, and senses anyone within 2.5 m. Each respawn he starts from a different stop on his beat, at least 30 m from the hatch when that beat allows it. When he loses you he searches, then rejoins his own beat at the nearest stop. They cannot swim, so once the leak passes the walk line they hold their ground.
-- **Each guard shoots on sight.** He carries the TT-33 as his own sidearm. The moment he spots you he stops, raises the pistol (about 0.35 s) and fires aimed shots roughly every 0.75 s from a standing stance, reloading for 2.2 s after each 8-round magazine. Hits cost 30 suit (less with the coat); misses crack past with a ricochet. Close, steady targets are almost always hit; long shots in the dark, running targets and his rushed first shot often miss, so breaking his line of sight or sprinting for cover is how you survive. A soft key and rim light keep his face and uniform readable in the dark.
+- **Each guard shoots on sight.** He carries the TT-33 as his own sidearm. The moment he spots you he stops, raises the pistol (about 0.35 s) and fires aimed shots roughly every 0.75 s from a standing stance, reloading for 2.2 s after each 8-round magazine. Hits cost 30 health (less with the coat); misses crack past with a ricochet. Close, steady targets are almost always hit; long shots in the dark, running targets and his rushed first shot often miss, so breaking his line of sight or sprinting for cover is how you survive. A soft key and rim light keep his face and uniform readable in the dark.
 - Rock blocks the guardian's sight. Its states are patrol, alert, chase, search, damaged, and dead. Use the pillar, briefly sprint away, switch off the torch, deploy a flare, or fight with the knife. It cannot enter the narrow exit passage.
-- Air is a free-gas tank shown in **litres** on the HUD (**100 L** main ≈ 5.6 min surface cruise at 18 L/min SAC, plus a **9 L** pony). Burn scales with depth (ATA) and sprint/panic effort (R arms the pony). Space/Q fill a **BCD trim** (−1..+1); **[ ]** lock an idle bias and **X** clears it; look-pitch finning only adds a little vertical thrust. Sealant repairs 45 suit integrity. A flare distracts for 12 seconds unless you remain very close to the guardian. Dying or running out of air brings up Restart.
+- Air is a free-gas tank shown in **litres** on the HUD (**100 L** main ≈ 5.6 min surface cruise at 18 L/min SAC, plus a **9 L** pony). Burn scales with depth (ATA) and sprint/panic effort (R arms the pony). Space/Q fill a **BCD trim** (−1..+1); **[ ]** lock an idle bias and **X** clears it; look-pitch finning only adds a little vertical thrust. Sealant repairs 45 health. A flare distracts for 12 seconds unless you remain very close to the guardian. Dying or running out of air brings up Restart.
 - **Out of scope for First Dive:** cave currents / surge, a weight-belt inventory model, and real decompression stops or NDL tracking. The short mission stays shallow and theatrical; those systems are deferred.
 
 ## Edit and rebuild
