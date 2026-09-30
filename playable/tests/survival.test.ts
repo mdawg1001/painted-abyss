@@ -25,20 +25,20 @@ const aimAt=(m:Mission,g:Guard,y:number)=>({x:g.position.x-m.position.x,y:y-m.po
 const wait=(m:Mission,s:number,fn?:()=>void)=>{for(let i=0;i<Math.round(s*60);i++){fn?.();m.update(1/60,false);}};
 
 // ── 1. Damage and durability ─────────────────────────────────────────────────────
-test('standard guard: two head shots up close, three at 20 m; heads are worth it; heavies are tougher',()=>{
+test('standard guard: three head shots up close, four at 20 m; heads are worth it; heavies are tougher',()=>{
  const hp=SURVIVAL.roles.assault.hp;
  const shotsToKill=(d:number,head:boolean,mult=1,h:number=hp)=>Math.ceil(h/pistolDamage(d,head,mult));
- assert.equal(shotsToKill(6,true),2,'6 m: two head shots');
- assert.equal(shotsToKill(9,true),2,'9 m: two head shots');
- assert.equal(shotsToKill(20,true),3,'20 m: three head shots');
- assert.ok(shotsToKill(8,false)>=5,'body shots take far more');
- assert.ok(shotsToKill(8,true,SURVIVAL.roles.heavy.headMult,SURVIVAL.roles.heavy.hp)>=5,'a heavy soaks a magazine');
+ assert.equal(shotsToKill(6,true),3,'6 m: three head shots');
+ assert.equal(shotsToKill(9,true),3,'9 m: three head shots');
+ assert.equal(shotsToKill(20,true),4,'20 m: four head shots');
+ assert.ok(shotsToKill(8,false)>=8,'body shots take a full magazine');
+ assert.ok(shotsToKill(8,true,SURVIVAL.roles.heavy.headMult,SURVIVAL.roles.heavy.hp)>=8,'a heavy soaks more than a magazine');
  // In the game: fire at a real guard 8 m away and 19 m away.
- for(const [dz,want] of [[8,2],[19,3]] as const){
+ for(const [dz,want] of [[8,3],[19,4]] as const){
   const {m,g}=one('assault',{x:0,z:-10},{x:0,z:-10+dz});
   g.state='patrol';g.pause=99;g.pauseTotal=99;g.heading=Math.PI;
   let n=0;
-  while(g.hp>0&&n<6){m.pistol.cool=0;m.pistol.mag=8;m.firePistol({...m.position},aimAt(m,g,FLOOR_Y+1.64));n++;}
+  while(g.hp>0&&n<8){m.pistol.cool=0;m.pistol.mag=8;m.firePistol({...m.position},aimAt(m,g,FLOOR_Y+1.64));n++;}
   assert.equal(n,want,`${dz} m: ${want} head shots`);
  }
 });
@@ -54,12 +54,12 @@ test('one bullet is one damage event on one guard, even through a line of them',
  assert.ok(g.hp>=hpNow-0,'no damage ticks on while he stands where the bullet was');
 });
 
-test('knife: three stabs drop a guard facing you; a stab in an unaware back kills',()=>{
+test('knife: five stabs drop a guard facing you; a stab in an unaware back kills',()=>{
  const {m,g}=one('assault',{x:0,z:-10},{x:0,z:-8.5});
  m.selected=1;g.heading=0; // facing you
  let n=0;
- while(g.hp>0&&n<6){m.predator.stabCool=0;assert.equal(m.stab({x:0,y:0,z:-1}),'hit');n++;}
- assert.equal(n,3);
+ while(g.hp>0&&n<8){m.predator.stabCool=0;assert.equal(m.stab({x:0,y:0,z:-1}),'hit');n++;}
+ assert.equal(n,5);
  const b=one('assault',{x:0,z:-10},{x:0,z:-8.5});
  b.m.selected=1;b.g.heading=Math.PI;b.g.state='patrol'; // back to you
  b.m.stab({x:0,y:0,z:-1});
@@ -392,8 +392,8 @@ function playMission(seed:number){
  const m=new Mission(true);m.rand=rnd;m.lootRand=lootStream(seed*9973+42);m.spawnGuards();m.air=1e6;
  // Rat cage: no free floor ammo. Probe starts with an earned-stash mag dump and
  // strips corpse frames when dry — same pressure the player feels.
- // Lean VR loot = fewer corpse strips; probe carries an earned-stash dump.
- m.pistol.reserve=Math.max(m.pistol.reserve,80);
+ // Lean VR loot = fewer corpse strips; +50% guard HP needs a deeper reserve and steadier aim.
+ m.pistol.reserve=Math.max(m.pistol.reserve,100);
  const route:(readonly [number,number]|'relic'|'exit')[]=[[0,-8],[0,-44],[20,-58],[-20,-48],[-20,-70],[-12,-96],[-4,-104],[0,-110],'relic',[-4,-104],[0,-96],[12,-92],[24,-92],[28,-84],[32,-80],[32,-12],'exit'];
  let wi=0,t=0,maxLive=0,worstTick=0,ticks=0,total=0;const phases=new Set<string>();
  while(m.outcome==='playing'&&t<400&&wi<route.length){
@@ -412,8 +412,10 @@ function playMission(seed:number){
    .sort((a,b)=>distance(m.position,a.position)-distance(m.position,b.position));
   const tg=vis[0];let move=true;
   if(tg){
-   const e={...m.position};const err=(rnd()-.5)*.06*distance(e,tg.position);
-   const dir={x:tg.position.x+err-e.x,y:FLOOR_Y+1.64+(rnd()-.5)*.4-e.y,z:tg.position.z-e.z};
+   const e={...m.position};
+   // Slightly tighter than the old probe so tougher guards still die to heads, not a laser.
+   const err=(rnd()-.5)*.05*distance(e,tg.position);
+   const dir={x:tg.position.x+err-e.x,y:FLOOR_Y+1.64+(rnd()-.5)*.3-e.y,z:tg.position.z-e.z};
    m.facing=Math.atan2(dir.x,dir.z);
    if(m.pistol.cool<=0&&m.pistol.reload<=0)m.firePistol(e,dir);
    if(m.pistol.mag===0)m.reloadPistol();

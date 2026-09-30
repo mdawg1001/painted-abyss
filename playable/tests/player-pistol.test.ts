@@ -63,6 +63,8 @@ test('takeDamage: generic health rule, no overkill, dead stay dead',()=>{
 
 function armed(){
  const m=new Mission(true);isolateGuards(m,0);m.breathWaterY=FLOOR_Y-.1;m.rand=()=>.99;
+ // Ammo band every roll — gun drops, no gold pile stealing the E press. This test is about the strip.
+ m.lootRand=()=>.87;
  m.inventory=['gun','knife','flare',null,null];m.selected=0;
  const g=m.guard;g.position={...CORRIDOR};g.heading=Math.PI;g.state='patrol';g.pause=99;
  m.position={x:CORRIDOR.x,y:WALK_EYE_Y,z:CORRIDOR.z+8};
@@ -70,7 +72,7 @@ function armed(){
 }
 const at=(m:Mission,y:number)=>{const e={...m.position};return{eye:e,dir:{x:m.guard.position.x-e.x,y:y-e.y,z:m.guard.position.z-e.z}};};
 
-test('standard guard: two close head shots or five body hits; every hit staggers and alerts him',()=>{
+test('standard guard: three close head shots or eight body hits; every hit staggers and alerts him',()=>{
  const m=armed();const g=m.guard;
  assert.equal(g.role,'assault');assert.equal(g.maxHp,SURVIVAL.roles.assault.hp);
  const wait=()=>{for(let i=0;i<12;i++)m.update(1/60,false);}; // > one fire interval
@@ -81,22 +83,25 @@ test('standard guard: two close head shots or five body hits; every hit staggers
  assert.ok(g.flinch>0&&g.shootCool>=SURVIVAL.hitFlinch,'staggered');
  assert.equal(m.firePistol(eye,dir),'cooldown','semi-auto');
  let bodyHits=1;
- while(g.hp>0&&bodyHits<10){wait();const a=at(m,FLOOR_Y+1.0);m.firePistol(a.eye,a.dir);bodyHits++;}
- assert.equal(bodyHits,5,'five body hits at close range');
+ while(g.hp>0&&bodyHits<12){wait();const a=at(m,FLOOR_Y+1.0);m.firePistol(a.eye,a.dir);bodyHits++;}
+ assert.equal(bodyHits,8,'eight body hits at close range');
  assert.equal(m.combatCue,'pistol-kill');
  const shotsBefore=g.shots;
  for(let i=0;i<120;i++)m.update(1/60,false);
  assert.equal(g.shots,shotsBefore,'a downed guard never fires');
 });
 
-test('two head shots drop him up close; his pistol drops and E strips its rounds',()=>{
+test('three head shots drop him up close; his pistol drops and E strips its rounds',()=>{
  const m=armed();const g=m.guard;
  const ammoLeft=g.ammo;
  let a=at(m,FLOOR_Y+1.64);m.firePistol(a.eye,a.dir);
  assert.ok(g.hp>0,'one head shot is not enough');assert.equal(m.lastPistolHit?.headshot,true);
  for(let i=0;i<12;i++)m.update(1/60,false);
  a=at(m,FLOOR_Y+1.64);m.firePistol(a.eye,a.dir);
- assert.equal(g.hp,0,'the second one is');
+ assert.ok(g.hp>0,'two head shots leave him standing');
+ for(let i=0;i<12;i++)m.update(1/60,false);
+ a=at(m,FLOOR_Y+1.64);m.firePistol(a.eye,a.dir);
+ assert.equal(g.hp,0,'the third one drops him');
  assert.equal(g.gun,false,'the gun left his hand');
  const dropped=m.pickups.find(p=>p.item==='gun'&&p.rounds!==undefined);
  assert.ok(dropped,'his pistol lies on the floor');
@@ -112,12 +117,15 @@ test('two head shots drop him up close; his pistol drops and E strips its rounds
 
 test('E picks up at once: a free slot first, otherwise it swaps with the item in your hand',()=>{
  const m=new Mission(true);isolateGuards(m,-1);
+ // Rat cage: no free floor guns — place one for the interact strip.
+ m.pickups.push({id:m.nextId++,item:'gun',rounds:5,cond:.5,position:{x:0,y:FLOOR_Y,z:-6}});
  const gun=m.pickups.find(p=>p.item==='gun')!;
  m.position={x:gun.position.x+.5,y:WALK_EYE_Y,z:gun.position.z};
  m.inventory=['knife',null,'flare',null,null];m.selected=0;
  m.interact();
  assert.deepEqual(m.inventory,['knife','gun','flare',null,null]);assert.equal(m.selected,1,'the new item is in your hand');
  // Full: one press swaps with the selected slot and drops the old item at your feet.
+ m.pickups.push({id:m.nextId++,item:'bottle',position:{x:4,y:FLOOR_Y,z:-6}});
  const bottle=m.pickups.find(p=>p.item==='bottle')!;
  m.position={x:bottle.position.x+.5,y:WALK_EYE_Y,z:bottle.position.z};
  m.inventory=['knife','gun','flare','air','bandage'];m.selected=2;
