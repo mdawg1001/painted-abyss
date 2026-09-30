@@ -1,9 +1,10 @@
 /**
  * Frame-time watchdog for render resolution and anti-aliasing.
  *
- * The game renders at the display's full pixel density (Retina 2×) with 4× MSAA when the machine
- * keeps up, and steps down a rung whenever frames start missing the budget. It can only ever fall
- * to the old playability profile (1× pixels, no MSAA), so no machine is slower than before.
+ * Defaults follow the playability profile in perf.ts (1× pixels, no MSAA). If a
+ * future build raises PERF.dprCap / PERF.msaa, the governor starts on the
+ * cheapest rung and only probes up — so a failed or slow drop never leaves
+ * Retina+MSAA stuck on and crushing Safari/laptop frames.
  *
  * Browsers pace requestAnimationFrame to the display, so a frame that finishes early still reports
  * a full refresh interval: spare headroom is invisible. The governor therefore *probes*: after a
@@ -35,15 +36,15 @@ export const RESOLUTION = {
  probeWatch: 2.5,
  /** Never change more often than this (s): each change reallocates the render targets. */
  cooldown: 1.2,
- /** Pixel-ratio rungs as fractions of the display's density (capped at 2×). */
+ /** Pixel-ratio rungs as fractions of the display's density (capped by PERF.dprCap). */
  scales: [1, .875, .75, .625, .5],
- /** Floor: never render below the old profile's one pixel per CSS pixel. */
+ /** Floor: never render below the playability profile's one pixel per CSS pixel. */
  minPixelRatio: 1,
  msaa: PERF.msaa,
  maxPixelRatio: PERF.dprCap,
 } as const;
 
-/** Rungs from best to cheapest for a display density, ending on the old profile (1×, no MSAA). */
+/** Rungs from best to cheapest for a display density, ending on 1× / no-MSAA. */
 export function resolutionLadder(devicePixelRatio: number, cfg: ResolutionConfig = RESOLUTION): ResolutionRung[] {
  const top = Math.max(1, Math.min(cfg.maxPixelRatio, devicePixelRatio || 1));
  const out: ResolutionRung[] = [];
@@ -55,7 +56,21 @@ export function resolutionLadder(devicePixelRatio: number, cfg: ResolutionConfig
  return out;
 }
 
-export type ResolutionConfig = Omit<typeof RESOLUTION, 'scales'> & { scales: readonly number[] };
+export type ResolutionConfig = {
+ budgetMs: number;
+ hitchMs: number;
+ window: number;
+ dropShare: number;
+ probeFailShare: number;
+ probeAfter: number;
+ probeAfterMax: number;
+ probeWatch: number;
+ cooldown: number;
+ scales: readonly number[];
+ minPixelRatio: number;
+ msaa: number;
+ maxPixelRatio: number;
+};
 export type GovernorEvent = { from: number; to: number; rung: ResolutionRung; reason: 'drop' | 'probe' | 'revert' };
 
 export class ResolutionGovernor {
@@ -70,9 +85,14 @@ export class ResolutionGovernor {
  private probing: { at: number; from: number } | null = null;
  private probeFrames: boolean[] = [];
 
- constructor(devicePixelRatio: number, readonly cfg: ResolutionConfig = RESOLUTION, start = 0) {
+ /**
+  * `start` defaults to the cheapest rung so a cold dive is always playable. Pass 0 only when
+  * intentionally beginning at the top quality (tests / known-fast GPUs).
+  */
+ constructor(devicePixelRatio: number, readonly cfg: ResolutionConfig = RESOLUTION, start?: number) {
   this.ladder = resolutionLadder(devicePixelRatio, cfg);
-  this.level = Math.min(Math.max(0, start), this.ladder.length - 1);
+  const floor = this.ladder.length - 1;
+  this.level = Math.min(Math.max(0, start ?? floor), floor);
   this.probeAfter = cfg.probeAfter;
  }
 
