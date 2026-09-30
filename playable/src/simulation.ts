@@ -245,14 +245,14 @@ export const CRITICAL_SUIT_REGEN={
  /** Arm regen when suit HP is at or below this (user ~5; ego clamp is 1–3). */
  enterHp:5,
  /** Soft ceiling — recovery from critical, not infinite sustain. */
- softCap:30,
- /** Suit HP restored per second while regenerating. */
- ratePerSec:2,
+ softCap:40,
+ /** Suit HP restored per second while regenerating (clutch-readable, not tanky). */
+ ratePerSec:5,
  /**
   * Seconds after a `hurtPlayer` hit before regen ticks.
   * Also waits out live Ego Savior i-frames (start after the scare window).
   */
- damageDelay:1.2,
+ damageDelay:.75,
 } as const;
 /**
  * Player hurt-volume: thick visual shell vs microscopic damage core.
@@ -1400,6 +1400,8 @@ export type Guard={
  hitAt:number;strikeAt:number;
  /** Damage the player has dealt him this life (fresh-blood heal is a share of it). */
  dealtByPlayer?:number;
+ /** Fresh-blood HP already returned from non-lethal hits this life (subtracted from kill payout). */
+ leechPaid?:number;
  /** A rifle he took off your corpse (drops back, upgrades intact, when he dies). */
  loot?:{cond:number;mods?:RifleMods};
  /** Gold he took off your corpse (grams). */
@@ -2522,9 +2524,10 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   // Shooting one of them brings the rest of the squad in, whether or not he survives it.
   this.squadAlert(g,'shot');
   if(killed){
-   this.leechOnKill(g.position,g.dealtByPlayer??amount);
+   this.leechOnKill(g.position,g.dealtByPlayer??amount,g.leechPaid??0);
    this.rechargeEgoMercy();
    g.dealtByPlayer=0;
+   g.leechPaid=0;
    g.speed=0;g.vx=0;g.vz=0;g.turnRate=0;g.flinch=0;g.windup=0;g.downFor=0;
    g.fireToken=false;g.meleeToken=false;
    // Variable-ratio kill loot (killLoot.ts): category + magnitude. Dry kills pay nothing.
@@ -2620,6 +2623,12 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    }
    return true;
   }
+  // Critical clutch: non-lethal hits still return a slice of damage as heal.
+  // Kill path uses leechOnKill (full share minus hit advances) so payouts do not double-count.
+  if(dealt>0){
+   const paid=this.leechOnHit(g.position,dealt);
+   if(paid>0)g.leechPaid=(g.leechPaid??0)+paid;
+  }
   g.flinch=SURVIVAL.hitFlinch;
   if(g.windup>0){g.windup=0;g.meleeCool=Math.max(g.meleeCool,.9);g.meleeToken=false;}
   g.shootCool=Math.max(g.shootCool,SURVIVAL.hitFlinch+.15);
@@ -2628,18 +2637,46 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   if(g.state!=='chase'){g.state='chase';g.timer=0;g.lost=0;g.firstShot=true;}
   return false;
  }
+ /** True while the suit is in Ego Savior critical theater (≤~15% HP). */
+ private criticallyHurt(){return this.health<=EGO_SAVIOR.criticalHp;}
  /**
-  * Fresh blood: a kill close enough to be showered by it heals a share of the damage
-  * you dealt that enemy, instantly — only if you are hurt, never past full.
+  * Apply a fresh-blood heal and flash. Never soft-caps — medkits / leech may climb past
+  * CRITICAL_SUIT_REGEN.softCap; passive regen alone stops there.
   */
- leechOnKill(at:Point,dealt:number){
+ private applyLeechHeal(at:Point,heal:number){
+  if(heal<=0)return 0;
+  this.health=Math.min(100,this.health+heal);
+  this.leech={seq:(this.leech?.seq??0)+1,at:this.elapsed,amount:heal,point:{...at}};
+  // Leech past the soft cap clears passive regen so the tick never fights the burst heal.
+  if(this.health>=CRITICAL_SUIT_REGEN.softCap)this.suitRegenArmed=false;
+  return heal;
+ }
+ /**
+  * Fresh blood (kill): a kill close enough to be showered by it heals a share of the
+  * damage you dealt that enemy, instantly — only if you are hurt, never past full.
+  * Critically hurt: wider radius + higher fraction so kiting at glass HP still pays.
+  * `alreadyPaid` is HP returned from critical on-hit advances this life (not double-counted).
+  */
+ leechOnKill(at:Point,dealt:number,alreadyPaid=0){
   const L=SURVIVAL.leech;
   if(this.outcome!=='playing'||this.health>=100||dealt<=0)return 0;
-  if(Math.hypot(at.x-this.position.x,at.z-this.position.z)>L.radius)return 0;
-  const heal=Math.min(100-this.health,dealt*L.fraction);
-  this.health+=heal;
-  this.leech={seq:(this.leech?.seq??0)+1,at:this.elapsed,amount:heal,point:{...at}};
-  return heal;
+  const critical=this.criticallyHurt();
+  const radius=critical?L.criticalRadius:L.radius;
+  const fraction=critical?L.criticalFraction:L.fraction;
+  if(Math.hypot(at.x-this.position.x,at.z-this.position.z)>radius)return 0;
+  const raw=Math.max(0,dealt*fraction-alreadyPaid);
+  return this.applyLeechHeal(at,Math.min(100-this.health,raw));
+ }
+ /**
+  * Fresh blood (hit): while critically hurt, each non-lethal hit returns a small share
+  * of damage dealt. Restores the “shooting feeds the bar when glass” loop; no-op above
+  * critical HP so mid-fight plinking is not free sustain.
+  */
+ leechOnHit(at:Point,dealt:number){
+  const L=SURVIVAL.leech;
+  if(this.outcome!=='playing'||!this.criticallyHurt()||dealt<=0)return 0;
+  if(Math.hypot(at.x-this.position.x,at.z-this.position.z)>L.criticalRadius)return 0;
+  return this.applyLeechHeal(at,Math.min(100-this.health,dealt*L.criticalHitFraction));
  }
  /** Last fresh-blood heal, for the screen flash (seq changes on every heal). */
  leech:{seq:number;at:number;amount:number;point:Point}|null=null;
@@ -3276,7 +3313,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   const life=g.life+1;
   Object.assign(g,makeGuard(g.outfit));
   const cfg=SURVIVAL.roles[role];
-  g.life=life;g.active=true;g.role=role;g.hp=g.maxHp=cfg.hp;g.dealtByPlayer=0;g.gun=cfg.armed;g.ammo=SURVIVAL.guardMagazine;
+  g.life=life;g.active=true;g.role=role;g.hp=g.maxHp=cfg.hp;g.dealtByPlayer=0;g.leechPaid=0;g.gun=cfg.armed;g.ammo=SURVIVAL.guardMagazine;
   g.position={x:at.x,y:WALK_EYE_Y,z:at.z};g.lastKnown={...g.position};g.heading=heading;
   g.progressPos={x:at.x,z:at.z};g.progressAt=this.elapsed;
   g.slot=0;g.slotDrift=(this.rand()<.5?-1:1)*(.07+.08*this.rand());g.slotFlipAt=3+this.rand()*3;

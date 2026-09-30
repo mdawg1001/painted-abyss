@@ -26,8 +26,21 @@ export const SURVIVAL={
   * Fresh blood: finish an enemy within `radius` metres while hurt and you instantly
   * heal `fraction` of the damage you dealt him this life. Pushes you into the fight
   * when low instead of behind cover. Knife kills are always inside the radius.
+  * While critically hurt (≤ Ego Savior criticalHp ~15), kill leech uses the wider
+  * `criticalRadius` / `criticalFraction`, and non-lethal hits also return a small
+  * `criticalHitFraction` of damage dealt — so clutch shooting still feeds the bar.
   */
- leech:{radius:5,fraction:.35,flashSeconds:.45},
+ leech:{
+  radius:5,
+  fraction:.35,
+  flashSeconds:.45,
+  /** Kill-leech reach while critically hurt (kiting at glass HP). */
+  criticalRadius:9,
+  /** Kill-leech share while critically hurt. */
+  criticalFraction:.45,
+  /** On-hit share while critically hurt (non-lethal hits only). */
+  criticalHitFraction:.15,
+ },
  /**
   * Knife on guards: a panic tool at arm's length. Stabbing an unaware back is lethal on
   * infantry (assault / flanker / rusher) — multiplier kept high enough after the durability bump.

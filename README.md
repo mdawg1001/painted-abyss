@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.22.42
+# Painted Abyss — First Dive · 0.22.43
+
+## Critical heal clutch (0.22.43)
+
+Critical self-regen is stronger: **5 HP/s** toward a soft cap of **40** (was 2/s → 30), with a **0.75 s** post-hit delay. Fresh-blood leech still pays on kills; while health is ≤ ~15%, kill leech uses a **9 m** radius and **45%** share, and non-lethal hits return **15%** of damage dealt so shooting a guard at glass HP still feeds the bar. Passive soft cap never clamps combat heals.
 
 ## Faster guards (0.22.42)
 
@@ -14,7 +18,7 @@ Player-facing HUD and copy rename the vital from **SUIT** to **HEALTH** (prompts
 
 ## Critical suit self-regen (0.22.39)
 
-When health drops to **≤5** (including after an Ego Savior clamp to 1–3), it slowly recovers toward a **soft cap of 30** while undamaged (~2 HP/s). Any new `hurtPlayer` hit pauses regen for **1.2 s**; live Ego Savior i-frames also block ticks so recovery starts after the scare. Medkits and kill-leech still matter for getting back toward full. No new UI — the Health bar rising is the read.
+When health drops to **≤5** (including after an Ego Savior clamp to 1–3), it slowly recovers toward a soft cap while undamaged. Tuned further in **0.22.43** (see above). Medkits and kill-leech still matter for getting back toward full. No new UI — the Health bar rising is the read.
 
 ## Smooth frames + kill hatch spam (0.22.37)
 
