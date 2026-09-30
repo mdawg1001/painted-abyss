@@ -36,13 +36,13 @@ test('a maintained rifle never jams or scatters; worn rifles do both, worse the 
 });
 
 test('a paying kill drops a worn rifle with a partial magazine; officer prize rolls are called out',()=>{
- // Field bucket for assault (unit ~0.965); prize bucket for officer (unit ~0.985).
+ // Field bucket for assault (unit ~0.965); prize bucket for officer (unit ~0.980).
  let an=0;const a=setup('assault');a.m.lootRand=()=>{an+=1;return an===1?.965:.5;};
  kill(a.m,a.g);
  const gun=a.m.pickups.find(p=>p.item==='gun')!;
  assert.ok(gun.cond!==undefined&&gun.cond<RIFLE.keepCond);
  assert.equal(a.m.prizeDrop,null);
- let on=0;const o=setup('officer');o.m.lootRand=()=>{on+=1;return on===1?.985:.5;};
+ let on=0;const o=setup('officer');o.m.lootRand=()=>{on+=1;return on===1?.980:.5;};
  kill(o.m,o.g);
  const prize=o.m.pickups.find(p=>p.item==='gun')!;
  assert.ok(rifleIsPrize(prize.cond!));

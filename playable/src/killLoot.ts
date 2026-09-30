@@ -6,15 +6,18 @@
  * one might pay, and nothing teaches "it never pays now" (no pity telegraph).
  * Near-miss / LDW is stage-two theater on scrap, not a payout guarantee.
  *
+ * Ultra-rare `mega` (~0.5%): lottery slime-burst theater — fat gold scatter,
+ * kit rifle + a free mod pip. Opaque; no pity telegraph.
+ *
  * Outside the schedule (always):
  *  - the Soviet key on the main officer
  *  - rifle / gold a guard stole off your corpse
  */
 import type { GuardRole } from './survivalConfig';
 import { RIFLE, rollDropCondition } from './rifleCondition';
-import { GOLD } from './gold';
+import { GOLD, MOD_TRACKS, noMods, type RifleMods } from './gold';
 
-export type KillLootBucket = 'dry' | 'ammo' | 'scrap' | 'field' | 'prize' | 'jackpot';
+export type KillLootBucket = 'dry' | 'ammo' | 'scrap' | 'field' | 'prize' | 'jackpot' | 'mega';
 
 /**
  * Classical cue kind for audio / notice / glow. `near_miss` is a scrap payout that
@@ -27,7 +30,8 @@ export type KillLootCue =
   | 'near_miss'
   | 'field'
   | 'prize'
-  | 'jackpot';
+  | 'jackpot'
+  | 'mega';
 
 /** Bucket order used when walking the weight table (stable, low → high payoff). */
 export const KILL_LOOT_BUCKETS: readonly KillLootBucket[] = [
@@ -37,21 +41,23 @@ export const KILL_LOOT_BUCKETS: readonly KillLootBucket[] = [
   'field',
   'prize',
   'jackpot',
+  'mega',
 ] as const;
 
 export const KILL_LOOT = {
   /**
    * Relative weights (sum 100). Opaque VR table — not a UI %.
    * Real pellets (scrap→jackpot) ≈ 10% → ~VR10. Ammo strips ≈ 5% lean theater.
-   * Dry ≈ 85%. Next kill might still pay; no fixed cadence.
+   * Mega lottery ≈ 0.5%. Dry ≈ 84.5%. Next kill might still pay; no fixed cadence.
    */
   weights: {
-    dry: 85,
+    dry: 84.5,
     ammo: 5,
     scrap: 6,
     field: 2,
     prize: 1,
     jackpot: 1,
+    mega: 0.5,
   } as Record<KillLootBucket, number>,
   /** Ammo-only mag fill: lean strip, never a keep-worthy rifle. */
   ammoRoundsShare: [0.08, 0.20] as [number, number],
@@ -60,6 +66,8 @@ export const KILL_LOOT = {
    * are not a second free ammo channel — strip, don't restock.
    */
   payRoundsShare: [0.10, 0.28] as [number, number],
+  /** Mega lottery mag fill — fat strip, still not infinite free feed. */
+  megaRoundsShare: [0.55, 0.95] as [number, number],
   /** Ammo-only condition cap — scrap-tier frame you strip and leave. */
   ammoCondCap: 0.42,
   /** Scrap gold (grams). */
@@ -73,6 +81,10 @@ export const KILL_LOOT = {
    * [min, max] bar count → grams = bars * GOLD.barGrams.
    */
   jackpotBars: [1, 2] as [number, number],
+  /** Mega lottery kilobar scatter (need E). */
+  megaBars: [4, 6] as [number, number],
+  /** Mega lottery scoopable coin spray (grams). */
+  megaCoins: [200, 500] as [number, number],
   /** Scrap condition never reaches a prize keep. */
   scrapCondCap: 0.48,
   /** Share of scrap kills that stage a near-miss frame (almost keepCond). */
@@ -94,6 +106,8 @@ export const KILL_LOOT = {
   pityMaxShift: 0,
   /** HUD classical flash lifetime (s). Dry still flashes — empty ≠ silent. */
   hudFlashSeconds: 0.55,
+  /** Mega lottery HUD flash — longer jackpot theater. */
+  megaHudFlashSeconds: 1.6,
 } as const;
 
 /** Centre HUD label per classical cue. Short, plain — dry must still shout. */
@@ -105,6 +119,7 @@ export const KILL_LOOT_HUD_LABEL: Record<KillLootCue, string> = {
   field: 'PURSE',
   prize: 'KEEPER',
   jackpot: 'JACKPOT',
+  mega: 'MEGA JACKPOT',
 };
 
 /** FeedbackKind for inventory pulse: dry feels blocked; everything else is a hit. */
@@ -129,10 +144,16 @@ export type KillLootRoll = {
   cond: number;
   /** Magazine rounds before streak bias when `dropGun`. */
   rounds: number;
-  /** Pocket coins when `dropGold` (stolen corpse gold is added by the caller). */
+  /** Total gold grams (bars + coins) for HUD / audio. */
   goldGrams: number;
   /** Scrap staged as almost-prize (never a real keep). */
   nearMiss: boolean;
+  /** Whole kilobars to scatter as separate E pickups (mega). */
+  barCount: number;
+  /** Scoopable coin spray grams (mega). */
+  coinGrams: number;
+  /** Upgrades fitted to the dropped rifle (mega free mod pip). */
+  mods?: RifleMods;
 };
 
 const weightTotalOf = (weights: Record<KillLootBucket, number>) =>
@@ -171,7 +192,7 @@ export function selectKillLootBucket(unit: number, emptyStreak = 0): KillLootBuc
     t -= weights[b];
     if (t < 0) return b;
   }
-  return 'jackpot';
+  return 'mega';
 }
 
 const lerp = (band: readonly [number, number], unit: number) =>
@@ -210,10 +231,15 @@ function rollRounds(magazine: number, share: readonly [number, number], rand: ()
   return Math.max(1, Math.round(magazine * lerp(share, rand())));
 }
 
+/** Inclusive bar count in a [lo, hi] band. */
+function rollBarCount(band: readonly [number, number], rand: () => number) {
+  const [lo, hi] = band;
+  return lo + Math.floor(rand() * (hi - lo + 1));
+}
+
 /** Inclusive bar count in `KILL_LOOT.jackpotBars`. */
 function rollJackpotBars(rand: () => number) {
-  const [lo, hi] = KILL_LOOT.jackpotBars;
-  return lo + Math.floor(rand() * (hi - lo + 1));
+  return rollBarCount(KILL_LOOT.jackpotBars, rand);
 }
 
 /** Gram band for a kill jackpot (whole kilobars). */
@@ -221,6 +247,20 @@ export const killJackpotGoldBand = (): [number, number] => [
   KILL_LOOT.jackpotBars[0] * GOLD.barGrams,
   KILL_LOOT.jackpotBars[1] * GOLD.barGrams,
 ];
+
+/** Gram band for a mega lottery (bars + coins). */
+export const killMegaGoldBand = (): [number, number] => [
+  KILL_LOOT.megaBars[0] * GOLD.barGrams + KILL_LOOT.megaCoins[0],
+  KILL_LOOT.megaBars[1] * GOLD.barGrams + KILL_LOOT.megaCoins[1],
+];
+
+/** One free mod pip on a random track — mega lottery upgrade pellet. */
+function rollMegaMods(rand: () => number): RifleMods {
+  const mods = noMods();
+  const track = MOD_TRACKS[Math.floor(rand() * MOD_TRACKS.length)]!;
+  mods[track] = 1;
+  return mods;
+}
 
 /** Map a schedule roll to the classical cue the renderer / audio should play. */
 export function killLootCueFor(roll: KillLootRoll): KillLootCue {
@@ -247,6 +287,8 @@ export function rollKillLoot(
     rounds: 0,
     goldGrams: 0,
     nearMiss: false,
+    barCount: 0,
+    coinGrams: 0,
   };
 
   switch (bucket) {
@@ -261,6 +303,8 @@ export function rollKillLoot(
         rounds: rollRounds(magazine, KILL_LOOT.ammoRoundsShare, rand),
         goldGrams: 0,
         nearMiss: false,
+        barCount: 0,
+        coinGrams: 0,
       };
     case 'scrap': {
       // Near-miss theater: scrap purse + a frame that almost clears keepCond.
@@ -276,6 +320,8 @@ export function rollKillLoot(
         rounds: rollRounds(magazine, KILL_LOOT.payRoundsShare, rand),
         goldGrams: Math.round(lerp(KILL_LOOT.scrapGold, rand())),
         nearMiss,
+        barCount: 0,
+        coinGrams: 0,
       };
     }
     case 'field':
@@ -287,6 +333,8 @@ export function rollKillLoot(
         rounds: rollRounds(magazine, KILL_LOOT.payRoundsShare, rand),
         goldGrams: Math.round(lerp(KILL_LOOT.fieldGold, rand())),
         nearMiss: false,
+        barCount: 0,
+        coinGrams: 0,
       };
     case 'prize':
       return {
@@ -297,17 +345,38 @@ export function rollKillLoot(
         rounds: rollRounds(magazine, KILL_LOOT.payRoundsShare, rand),
         goldGrams: Math.round(lerp(KILL_LOOT.prizeGold, rand())),
         nearMiss: false,
+        barCount: 0,
+        coinGrams: 0,
       };
-    case 'jackpot':
+    case 'jackpot': {
+      const bars = rollJackpotBars(rand);
       return {
         bucket,
         dropGun: true,
         dropGold: true,
         cond: rollJackpotCond(role, rand),
         rounds: rollRounds(magazine, KILL_LOOT.payRoundsShare, rand),
-        // Whole kilobars — needs E; the big kill score that replaced free floor bars.
-        goldGrams: rollJackpotBars(rand) * GOLD.barGrams,
+        goldGrams: bars * GOLD.barGrams,
         nearMiss: false,
+        barCount: 0,
+        coinGrams: 0,
       };
+    }
+    case 'mega': {
+      const bars = rollBarCount(KILL_LOOT.megaBars, rand);
+      const coins = Math.round(lerp(KILL_LOOT.megaCoins, rand()));
+      return {
+        bucket,
+        dropGun: true,
+        dropGold: true,
+        cond: RIFLE.kitCond,
+        rounds: rollRounds(magazine, KILL_LOOT.megaRoundsShare, rand),
+        goldGrams: bars * GOLD.barGrams + coins,
+        nearMiss: false,
+        barCount: bars,
+        coinGrams: coins,
+        mods: rollMegaMods(rand),
+      };
+    }
   }
 }

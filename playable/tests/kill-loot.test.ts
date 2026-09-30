@@ -1,15 +1,16 @@
 /**
  * Kill loot VR schedule: lean variable-ratio pellets, near-miss theater, no pity telegraph.
+ * Ultra-rare mega lottery (~0.5%) — slime-burst theater + fat gold scatter.
  */
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {Mission,isolateGuards,FLOOR_Y,WALK_EYE_Y,breathFootprint,isMainGuard} from '../src/simulation';
 import {
  KILL_LOOT,KILL_LOOT_BUCKETS,KILL_LOOT_HUD_LABEL,selectKillLootBucket,rollKillLoot,killLootCueFor,
- killLootWeights,isEmptyKillLoot,killJackpotGoldBand,killLootHudLabel,killLootFeedback,
+ killLootWeights,isEmptyKillLoot,killJackpotGoldBand,killMegaGoldBand,killLootHudLabel,killLootFeedback,
  type KillLootBucket,type KillLootCue,
 } from '../src/killLoot';
-import {GOLD} from '../src/gold';
+import {GOLD,modLevel} from '../src/gold';
 import {RIFLE,lootStream,rifleIsPrize} from '../src/rifleCondition';
 import {PISTOL} from '../src/playerPistol';
 
@@ -31,22 +32,24 @@ function setup(role:'assault'|'officer'|'rusher'|'heavy'='assault',lootRand:()=>
 }
 const kill=(m:Mission,g:Mission['guards'][number])=>{while(g.hp>0)m.guardTakeDamage(g,50);};
 
-test('bucket weights sum to 100 and cover the full unit interval (lean VR)',()=>{
+test('bucket weights sum to 100 and cover the full unit interval (lean VR + mega)',()=>{
  const sum=KILL_LOOT_BUCKETS.reduce((s,b)=>s+KILL_LOOT.weights[b],0);
  assert.equal(sum,100);
- // dry 85 · ammo 5 · scrap 6 · field 2 · prize 1 · jackpot 1
+ // dry 84.5 · ammo 5 · scrap 6 · field 2 · prize 1 · jackpot 1 · mega 0.5
  assert.equal(selectKillLootBucket(0),'dry');
- assert.equal(selectKillLootBucket(0.849),'dry');
- assert.equal(selectKillLootBucket(0.851),'ammo');
- assert.equal(selectKillLootBucket(0.899),'ammo');
- assert.equal(selectKillLootBucket(0.901),'scrap');
- assert.equal(selectKillLootBucket(0.961),'field');
- assert.equal(selectKillLootBucket(0.981),'prize');
- assert.equal(selectKillLootBucket(0.991),'jackpot');
- assert.equal(selectKillLootBucket(0.999),'jackpot');
+ assert.equal(selectKillLootBucket(0.844),'dry');
+ assert.equal(selectKillLootBucket(0.846),'ammo');
+ assert.equal(selectKillLootBucket(0.894),'ammo');
+ assert.equal(selectKillLootBucket(0.896),'scrap');
+ assert.equal(selectKillLootBucket(0.956),'field');
+ assert.equal(selectKillLootBucket(0.976),'prize');
+ assert.equal(selectKillLootBucket(0.986),'jackpot');
+ assert.equal(selectKillLootBucket(0.996),'mega');
+ assert.equal(selectKillLootBucket(0.999),'mega');
  const real=
   KILL_LOOT.weights.scrap+KILL_LOOT.weights.field+KILL_LOOT.weights.prize+KILL_LOOT.weights.jackpot;
  assert.equal(real,10,'~VR10 on real pellets');
+ assert.equal(KILL_LOOT.weights.mega,0.5,'ultra-rare lottery');
 });
 
 test('rollKillLoot: dry pays nothing; ammo is gun-only; jackpot is fat gold + gun',()=>{
@@ -62,7 +65,7 @@ test('rollKillLoot: dry pays nothing; ammo is gun-only; jackpot is fat gold + gu
  assert.ok(ammo.cond<=KILL_LOOT.ammoCondCap);
  assert.ok(ammo.rounds>=1&&ammo.rounds<PISTOL.magazine);
 
- const jack=rollKillLoot('assault',PISTOL.magazine,scriptedLoot(0.995));
+ const jack=rollKillLoot('assault',PISTOL.magazine,scriptedLoot(0.990));
  assert.equal(jack.bucket,'jackpot');
  assert.equal(jack.dropGun,true);
  assert.equal(jack.dropGold,true);
@@ -72,14 +75,47 @@ test('rollKillLoot: dry pays nothing; ammo is gun-only; jackpot is fat gold + gu
  assert.ok(jack.cond<RIFLE.kitCond);
 });
 
+test('mega lottery: kit rifle + mod pip + bar scatter + coin spray',()=>{
+ const mega=rollKillLoot('assault',PISTOL.magazine,scriptedLoot(0.997));
+ assert.equal(mega.bucket,'mega');
+ assert.equal(mega.dropGun,true);
+ assert.equal(mega.dropGold,true);
+ assert.equal(mega.cond,RIFLE.kitCond);
+ assert.ok(mega.barCount>=KILL_LOOT.megaBars[0]&&mega.barCount<=KILL_LOOT.megaBars[1]);
+ assert.ok(mega.coinGrams>=KILL_LOOT.megaCoins[0]&&mega.coinGrams<=KILL_LOOT.megaCoins[1]);
+ assert.equal(mega.goldGrams,mega.barCount*GOLD.barGrams+mega.coinGrams);
+ assert.ok(mega.mods);
+ assert.equal(modLevel(mega.mods),1,'one free upgrade pip');
+ assert.equal(killLootCueFor(mega),'mega');
+ assert.equal(killLootHudLabel('mega'),'MEGA JACKPOT');
+ const [lo,hi]=killMegaGoldBand();
+ assert.ok(mega.goldGrams>=lo&&mega.goldGrams<=hi);
+
+ const {m,g}=setup('assault',scriptedLoot(0.997));
+ kill(m,g);
+ const bars=m.pickups.filter(p=>p.item==='gold'&&p.amount===GOLD.barGrams);
+ const coins=m.pickups.filter(p=>p.item==='gold'&&(p.amount??0)<GOLD.barGrams);
+ const gun=m.pickups.find(p=>p.item==='gun')!;
+ assert.ok(bars.length>=KILL_LOOT.megaBars[0]);
+ assert.ok(coins.length>=1,'coin spray on the floor');
+ assert.equal(gun.cond,RIFLE.kitCond);
+ assert.equal(modLevel(gun.mods),1);
+ assert.equal(m.killLootEvent?.kind,'mega');
+ assert.ok(m.killLootEvent?.x!==undefined&&m.killLootEvent?.z!==undefined,'FX needs corpse position');
+ assert.match(m.notice,/MEGA JACKPOT/i);
+ assert.ok(KILL_LOOT.megaHudFlashSeconds>KILL_LOOT.hudFlashSeconds);
+});
+
 test('long-run bucket frequencies track the weight table',()=>{
  const r=lootStream(42);
- const counts:Record<KillLootBucket,number>={dry:0,ammo:0,scrap:0,field:0,prize:0,jackpot:0};
- const N=20_000;
+ const counts:Record<KillLootBucket,number>={dry:0,ammo:0,scrap:0,field:0,prize:0,jackpot:0,mega:0};
+ const N=40_000;
  for(let i=0;i<N;i++)counts[selectKillLootBucket(r())]++;
  for(const b of KILL_LOOT_BUCKETS){
   const got=counts[b]/N,want=KILL_LOOT.weights[b]/100;
-  assert.ok(Math.abs(got-want)<0.015,`${b}: got ${got.toFixed(3)} want ${want}`);
+  // Mega is rare — allow a slightly wider absolute band.
+  const tol=b==='mega'?0.01:0.015;
+  assert.ok(Math.abs(got-want)<tol,`${b}: got ${got.toFixed(3)} want ${want}`);
  }
 });
 
@@ -105,7 +141,7 @@ test('HUD flash fires on every kill result including empty',()=>{
  assert.equal(killLootHudLabel('dry'),'EMPTY');
  assert.equal(killLootFeedback('dry'),'blocked');
  assert.ok(KILL_LOOT.hudFlashSeconds>0&&KILL_LOOT.hudFlashSeconds<=1);
- const kinds:KillLootCue[]=['dry','ammo','scrap','near_miss','field','prize','jackpot'];
+ const kinds:KillLootCue[]=['dry','ammo','scrap','near_miss','field','prize','jackpot','mega'];
  for(const k of kinds){
   assert.ok(KILL_LOOT_HUD_LABEL[k].length>=4,`${k} has a readable HUD label`);
   assert.equal(killLootHudLabel(k),KILL_LOOT_HUD_LABEL[k]);
@@ -124,7 +160,7 @@ test('HUD flash fires on every kill result including empty',()=>{
  assert.equal(ammo.m.killLootEvent?.kind,'ammo');
  assert.equal(ammo.m.feedbackKind,'ok','paying cue pulses ok');
 
- const jack=setup('assault',scriptedLoot(0.995));
+ const jack=setup('assault',scriptedLoot(0.990));
  kill(jack.m,jack.g);
  assert.equal(jack.m.killLootEvent?.kind,'jackpot');
  assert.equal(jack.m.feedbackKind,'ok');
@@ -149,14 +185,14 @@ test('field / prize / jackpot kills pay gun + gold in their bands',()=>{
  assert.ok(fg.cond!<RIFLE.keepCond,'field is not a keep prize');
  assert.ok(fcoin.amount!>=KILL_LOOT.fieldGold[0]&&fcoin.amount!<=KILL_LOOT.fieldGold[1]);
 
- const prize=setup('officer',scriptedLoot(0.985));
+ const prize=setup('officer',scriptedLoot(0.980));
  kill(prize.m,prize.g);
  const pg=prize.m.pickups.find(p=>p.item==='gun')!;
  assert.ok(rifleIsPrize(pg.cond!));
  assert.equal(prize.m.prizeDrop?.id,pg.id);
  assert.ok(prize.m.pickups.some(p=>p.item==='sovietKey'));
 
- const jack=setup('assault',scriptedLoot(0.995));
+ const jack=setup('assault',scriptedLoot(0.990));
  kill(jack.m,jack.g);
  const jcoin=jack.m.pickups.find(p=>p.item==='gold')!;
  assert.ok(jcoin.amount!>=killJackpotGoldBand()[0]);
@@ -216,13 +252,17 @@ test('paying buckets emit matching classical cues; dry ≠ prize',()=>{
  kill(field.m,field.g);
  assert.equal(field.m.killLootEvent?.kind,'field');
 
- const prize=setup('officer',scriptedLoot(0.985));
+ const prize=setup('officer',scriptedLoot(0.980));
  kill(prize.m,prize.g);
  assert.equal(prize.m.killLootEvent?.kind,'prize');
 
- const jack=setup('assault',scriptedLoot(0.995));
+ const jack=setup('assault',scriptedLoot(0.990));
  kill(jack.m,jack.g);
  assert.equal(jack.m.killLootEvent?.kind,'jackpot');
+
+ const mega=setup('assault',scriptedLoot(0.997));
+ kill(mega.m,mega.g);
+ assert.equal(mega.m.killLootEvent?.kind,'mega');
 });
 
 test('no pity telegraph: empty streak never shifts the VR table',()=>{
