@@ -1,5 +1,5 @@
 /**
- * Kill loot VR schedule: category + magnitude, near-miss cues, soft pity.
+ * Kill loot VR schedule: lean variable-ratio pellets, near-miss theater, no pity telegraph.
  */
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -31,18 +31,22 @@ function setup(role:'assault'|'officer'|'rusher'|'heavy'='assault',lootRand:()=>
 }
 const kill=(m:Mission,g:Mission['guards'][number])=>{while(g.hp>0)m.guardTakeDamage(g,50);};
 
-test('bucket weights sum to 100 and cover the full unit interval',()=>{
+test('bucket weights sum to 100 and cover the full unit interval (lean VR)',()=>{
  const sum=KILL_LOOT_BUCKETS.reduce((s,b)=>s+KILL_LOOT.weights[b],0);
  assert.equal(sum,100);
+ // dry 85 · ammo 5 · scrap 6 · field 2 · prize 1 · jackpot 1
  assert.equal(selectKillLootBucket(0),'dry');
- assert.equal(selectKillLootBucket(0.199),'dry');
- assert.equal(selectKillLootBucket(0.20),'ammo');
- assert.equal(selectKillLootBucket(0.45),'ammo');
- assert.equal(selectKillLootBucket(0.46),'scrap');
- assert.equal(selectKillLootBucket(0.70),'field');
- assert.equal(selectKillLootBucket(0.88),'prize');
- assert.equal(selectKillLootBucket(0.96),'jackpot');
+ assert.equal(selectKillLootBucket(0.849),'dry');
+ assert.equal(selectKillLootBucket(0.851),'ammo');
+ assert.equal(selectKillLootBucket(0.899),'ammo');
+ assert.equal(selectKillLootBucket(0.901),'scrap');
+ assert.equal(selectKillLootBucket(0.961),'field');
+ assert.equal(selectKillLootBucket(0.981),'prize');
+ assert.equal(selectKillLootBucket(0.991),'jackpot');
  assert.equal(selectKillLootBucket(0.999),'jackpot');
+ const real=
+  KILL_LOOT.weights.scrap+KILL_LOOT.weights.field+KILL_LOOT.weights.prize+KILL_LOOT.weights.jackpot;
+ assert.equal(real,10,'~VR10 on real pellets');
 });
 
 test('rollKillLoot: dry pays nothing; ammo is gun-only; jackpot is fat gold + gun',()=>{
@@ -51,14 +55,14 @@ test('rollKillLoot: dry pays nothing; ammo is gun-only; jackpot is fat gold + gu
  assert.equal(dry.dropGun,false);
  assert.equal(dry.dropGold,false);
 
- const ammo=rollKillLoot('assault',PISTOL.magazine,scriptedLoot(0.25));
+ const ammo=rollKillLoot('assault',PISTOL.magazine,scriptedLoot(0.87));
  assert.equal(ammo.bucket,'ammo');
  assert.equal(ammo.dropGun,true);
  assert.equal(ammo.dropGold,false);
  assert.ok(ammo.cond<=KILL_LOOT.ammoCondCap);
  assert.ok(ammo.rounds>=1&&ammo.rounds<PISTOL.magazine);
 
- const jack=rollKillLoot('assault',PISTOL.magazine,scriptedLoot(0.99));
+ const jack=rollKillLoot('assault',PISTOL.magazine,scriptedLoot(0.995));
  assert.equal(jack.bucket,'jackpot');
  assert.equal(jack.dropGun,true);
  assert.equal(jack.dropGold,true);
@@ -75,7 +79,7 @@ test('long-run bucket frequencies track the weight table',()=>{
  for(let i=0;i<N;i++)counts[selectKillLootBucket(r())]++;
  for(const b of KILL_LOOT_BUCKETS){
   const got=counts[b]/N,want=KILL_LOOT.weights[b]/100;
-  assert.ok(Math.abs(got-want)<0.02,`${b}: got ${got.toFixed(3)} want ${want}`);
+  assert.ok(Math.abs(got-want)<0.015,`${b}: got ${got.toFixed(3)} want ${want}`);
  }
 });
 
@@ -98,7 +102,6 @@ test('dry assault kill pulses blocked — no win juice on empty pockets',()=>{
 });
 
 test('HUD flash fires on every kill result including empty',()=>{
- // Labels + feedback cover the classical cue set; Mission stamps seq/at for the HUD.
  assert.equal(killLootHudLabel('dry'),'EMPTY');
  assert.equal(killLootFeedback('dry'),'blocked');
  assert.ok(KILL_LOOT.hudFlashSeconds>0&&KILL_LOOT.hudFlashSeconds<=1);
@@ -116,19 +119,19 @@ test('HUD flash fires on every kill result including empty',()=>{
  assert.ok(dry.m.feedbackPulse>pulse0,'dry still bumps the HUD pulse');
  assert.equal(dry.m.feedbackKind,'blocked');
 
- const ammo=setup('assault',scriptedLoot(0.25));
+ const ammo=setup('assault',scriptedLoot(0.87));
  kill(ammo.m,ammo.g);
  assert.equal(ammo.m.killLootEvent?.kind,'ammo');
  assert.equal(ammo.m.feedbackKind,'ok','paying cue pulses ok');
 
- const jack=setup('assault',scriptedLoot(0.99));
+ const jack=setup('assault',scriptedLoot(0.995));
  kill(jack.m,jack.g);
  assert.equal(jack.m.killLootEvent?.kind,'jackpot');
  assert.equal(jack.m.feedbackKind,'ok');
 });
 
 test('ammo kill drops a strip-frame with rounds and no gold',()=>{
- const {m,g}=setup('assault',scriptedLoot(0.25));
+ const {m,g}=setup('assault',scriptedLoot(0.87));
  kill(m,g);
  const gun=m.pickups.find(p=>p.item==='gun');
  assert.ok(gun);
@@ -138,7 +141,7 @@ test('ammo kill drops a strip-frame with rounds and no gold',()=>{
 });
 
 test('field / prize / jackpot kills pay gun + gold in their bands',()=>{
- const field=setup('assault',scriptedLoot(0.75));
+ const field=setup('assault',scriptedLoot(0.965));
  kill(field.m,field.g);
  const fg=field.m.pickups.find(p=>p.item==='gun')!;
  const fcoin=field.m.pickups.find(p=>p.item==='gold')!;
@@ -146,14 +149,14 @@ test('field / prize / jackpot kills pay gun + gold in their bands',()=>{
  assert.ok(fg.cond!<RIFLE.keepCond,'field is not a keep prize');
  assert.ok(fcoin.amount!>=KILL_LOOT.fieldGold[0]&&fcoin.amount!<=KILL_LOOT.fieldGold[1]);
 
- const prize=setup('officer',scriptedLoot(0.90));
+ const prize=setup('officer',scriptedLoot(0.985));
  kill(prize.m,prize.g);
  const pg=prize.m.pickups.find(p=>p.item==='gun')!;
  assert.ok(rifleIsPrize(pg.cond!));
  assert.equal(prize.m.prizeDrop?.id,pg.id);
  assert.ok(prize.m.pickups.some(p=>p.item==='sovietKey'));
 
- const jack=setup('assault',scriptedLoot(0.99));
+ const jack=setup('assault',scriptedLoot(0.995));
  kill(jack.m,jack.g);
  const jcoin=jack.m.pickups.find(p=>p.item==='gold')!;
  assert.ok(jcoin.amount!>=killJackpotGoldBand()[0]);
@@ -173,11 +176,11 @@ test('stolen corpse rifle and gold always return even on a dry roll',()=>{
 });
 
 test('near-miss scrap: almost-prize cond, scrap gold, near_miss cue (never a keep)',()=>{
- // Scrap bucket (0.50), then force near-miss (0.10 < 0.35), then magnitude fills.
+ // Scrap bucket (0.92), then force near-miss (0.10 < 0.35), then magnitude fills.
  let n=0;
  const rand=()=>{
   n+=1;
-  if(n===1)return 0.50; // scrap
+  if(n===1)return 0.92; // scrap
   if(n===2)return 0.10; // nearMissChance hit
   return 0.5;
  };
@@ -192,7 +195,7 @@ test('near-miss scrap: almost-prize cond, scrap gold, near_miss cue (never a kee
  n=0;
  const {m,g}=setup('assault',()=>{
   n+=1;
-  if(n===1)return 0.50;
+  if(n===1)return 0.92;
   if(n===2)return 0.10;
   return 0.5;
  });
@@ -205,64 +208,55 @@ test('near-miss scrap: almost-prize cond, scrap gold, near_miss cue (never a kee
 });
 
 test('paying buckets emit matching classical cues; dry ≠ prize',()=>{
- const ammo=setup('assault',scriptedLoot(0.25));
+ const ammo=setup('assault',scriptedLoot(0.87));
  kill(ammo.m,ammo.g);
  assert.equal(ammo.m.killLootEvent?.kind,'ammo');
 
- const field=setup('assault',scriptedLoot(0.75));
+ const field=setup('assault',scriptedLoot(0.965));
  kill(field.m,field.g);
  assert.equal(field.m.killLootEvent?.kind,'field');
 
- const prize=setup('officer',scriptedLoot(0.90));
+ const prize=setup('officer',scriptedLoot(0.985));
  kill(prize.m,prize.g);
  assert.equal(prize.m.killLootEvent?.kind,'prize');
 
- const jack=setup('assault',scriptedLoot(0.99));
+ const jack=setup('assault',scriptedLoot(0.995));
  kill(jack.m,jack.g);
  assert.equal(jack.m.killLootEvent?.kind,'jackpot');
 });
 
-test('soft pity: empty streak peels dry/ammo weight into scrap/field',()=>{
+test('no pity telegraph: empty streak never shifts the VR table',()=>{
  const base=killLootWeights(0);
  assert.deepEqual(base,KILL_LOOT.weights);
+ assert.equal(KILL_LOOT.pityMaxShift,0,'pity shift disabled');
+ assert.deepEqual(killLootWeights(3),base);
+ assert.deepEqual(killLootWeights(20),base);
+ assert.deepEqual(killLootWeights(999),base);
  assert.equal(isEmptyKillLoot('dry'),true);
  assert.equal(isEmptyKillLoot('ammo'),true);
  assert.equal(isEmptyKillLoot('scrap'),false);
-
- const armed=killLootWeights(KILL_LOOT.pityAfter);
- assert.ok(armed.dry<base.dry,'dry gets rarer');
- assert.ok(armed.scrap+armed.field>base.scrap+base.field,'paying buckets grow');
- assert.equal(
-  KILL_LOOT_BUCKETS.reduce((s,b)=>s+armed[b],0),
-  100,
-  'weights still sum to 100',
- );
-
- const maxed=killLootWeights(KILL_LOOT.pityAfter+10);
- assert.equal(maxed.dry,0,'dry can be squeezed out at the cap');
- assert.ok(maxed.ammo<base.ammo);
- // Same unit that was dry with no pity lands on a paying bucket when maxed.
+ // Same unit stays dry forever — no drought→payday teach.
  assert.equal(selectKillLootBucket(0.10,0),'dry');
- assert.ok(!isEmptyKillLoot(selectKillLootBucket(0.10,KILL_LOOT.pityAfter+10)));
+ assert.equal(selectKillLootBucket(0.10,99),'dry');
 });
 
 test('Mission counts empty kills and clears the drought on a real drop',()=>{
  const m=setup('assault',scriptedLoot(0.0)).m;
- // Reuse one mission: kill several guards dry, then one field.
- for(let i=0;i<KILL_LOOT.pityAfter;i++){
+ // Telemetry streak still tracks empties; it must not change the schedule.
+ for(let i=0;i<6;i++){
   const g=m.guards[i]??m.guards[0];
   if(!g.active)m.activateGuard(g,{x:CX,z:PLAYER.z-2-i},0,'assault');
   g.hp=g.maxHp;g.gun=true;g.loot=undefined;g.gold=0;
   m.lootRand=scriptedLoot(0.0);
   kill(m,g);
  }
- assert.equal(m.killLootEmptyStreak,KILL_LOOT.pityAfter);
+ assert.equal(m.killLootEmptyStreak,6);
 
- const payer=m.guards[KILL_LOOT.pityAfter]??m.guards[0];
+ const payer=m.guards[6]??m.guards[0];
  if(!payer.active)m.activateGuard(payer,{x:CX,z:PLAYER.z-8},0,'assault');
  payer.hp=payer.maxHp;payer.gun=true;payer.loot=undefined;payer.gold=0;
- m.lootRand=scriptedLoot(0.75);
+ m.lootRand=scriptedLoot(0.965);
  kill(m,payer);
- assert.equal(m.killLootEmptyStreak,0,'paying kill clears the drought');
+ assert.equal(m.killLootEmptyStreak,0,'paying kill clears the drought counter');
  assert.equal(m.killLootEvent?.kind,'field');
 });

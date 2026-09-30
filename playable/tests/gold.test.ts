@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {Mission,isolateGuards,FLOOR_Y,WALK_EYE_Y,breathFootprint,emptyStash,readStash,EXIT,skinnerGoal,type Pickup} from '../src/simulation';
-import {GOLD,UPGRADE,goldBcdShare,goldSinkAccel,goldWalkFactor,goldThrustFactor,goldNetWeightN,BCD_LIFT_KG,GOLD_DENSITY,readBankedGold,writeBankedGold,modLevel,nextUpgradeTarget,isAlmostShort,almostUpgradeLine,bankAlmostSuffix,ALMOST_UPGRADE,noMods} from '../src/gold';
+import {GOLD,UPGRADE,goldBcdShare,goldSinkAccel,goldWalkFactor,goldThrustFactor,goldNetWeightN,BCD_LIFT_KG,GOLD_DENSITY,readBankedGold,writeBankedGold,modLevel,nextUpgradeTarget,isAlmostShort,almostUpgradeLine,bankAlmostSuffix,skinnerPullCopy,ALMOST_UPGRADE,noMods} from '../src/gold';
 import {PISTOL} from '../src/playerPistol';
 import {GRAVITY,WATER_DENSITY,itemFloats} from '../src/propPhysics';
 
@@ -36,8 +36,8 @@ test('no free kilobars on the floor — gold comes from kills and extract',()=>{
 
 test('a paying kill drops coins that you scoop by walking over; bars need E',()=>{
  const m=setup();
- // Force a field bucket (unit 0.75) so the kill is on the paying side of the VR schedule.
- let n=0;m.lootRand=()=>{n+=1;return n===1?.75:.5;};
+ // Force a field bucket (unit 0.965) so the kill is on the paying side of the VR schedule.
+ let n=0;m.lootRand=()=>{n+=1;return n===1?.965:.5;};
  const g=m.guards[0];m.activateGuard(g,{x:CX,z:PLAYER.z-2},0,'assault');
  while(g.hp>0)m.guardTakeDamage(g,50);
  const coins=m.pickups.find(p=>p.item==='gold')!;
@@ -179,6 +179,15 @@ test('almost-upgrade band: short ≤35% of cost or ≤250 g; ready at 0',()=>{
  assert.match(bankAlmostSuffix(mods,UPGRADE.cost[0],true),/BUY .* NOW/);
  assert.equal(nextUpgradeTarget(mods,1e9,false),null);
  assert.ok(ALMOST_UPGRADE.frac===.35&&ALMOST_UPGRADE.grams===250);
+ const shout=skinnerPullCopy(mods,UPGRADE.cost[0]-50,true)!;
+ assert.equal(shout.kind,'almost');
+ assert.match(shout.center,/ONLY .* MORE UNTIL UPGRADE/i);
+ assert.equal(shout.side,'UPGRADE NOW');
+ const readyShout=skinnerPullCopy(mods,UPGRADE.cost[0],true)!;
+ assert.equal(readyShout.kind,'ready');
+ assert.match(readyShout.center,/READY/i);
+ assert.equal(readyShout.side,'UPGRADE NOW');
+ assert.equal(skinnerPullCopy(mods,0,true),null);
 });
 
 test('skinnerGoal points BUY when vault is almost or ready for an upgrade',()=>{
