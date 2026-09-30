@@ -206,7 +206,8 @@ function App(){
    {/* Kill-loot classical flash: every schedule kill including EMPTY. Keyed on seq so dry still replays. */}
    {(()=>{
     const e=m.killLootEvent;if(!e)return null;
-    const age=m.elapsed-e.at;if(age<0||age>=KILL_LOOT.hudFlashSeconds)return null;
+    const flashSec=e.kind==='mega'?KILL_LOOT.megaHudFlashSeconds:KILL_LOOT.hudFlashSeconds;
+    const age=m.elapsed-e.at;if(age<0||age>=flashSec)return null;
     const kindClass=e.kind.replace('_','-');
     return <div key={`kl-${e.seq}`} className={`kill-loot-flash kind-${kindClass}`} aria-hidden="true">
      <span>{killLootHudLabel(e.kind)}</span>

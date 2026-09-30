@@ -1523,7 +1523,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   * Stage-two kill-loot theater: classical cue per kill (dry ≠ win juice).
   * CaveWorld consumes `seq` changes for audio; notices are set alongside.
   */
- killLootEvent:{seq:number;kind:KillLootCue;at:number;cond?:number;goldGrams?:number}|null=null;
+ killLootEvent:{seq:number;kind:KillLootCue;at:number;cond?:number;goldGrams?:number;x?:number;y?:number;z?:number}|null=null;
  /**
   * Consecutive empty schedule kills (dry / ammo-only). Telemetry only — pity does
   * not shift the VR table (a drought must not teach "payday is due"). Reset on pay.
@@ -2516,10 +2516,14 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     const rounds=(stolen?rollDropRounds(PISTOL.magazine,this.lootRand):loot.rounds)+streakLootRoundsBonus(this.streak.tier);
     const drop:Pickup={id,item:'gun',cond,rounds,position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}};
     if(stolen?.mods)drop.mods=stolen.mods;
+    else if(loot.mods)drop.mods=loot.mods;
     if(!stolen&&loot.nearMiss)drop.nearMiss=true;
     this.pickups.push(drop);
     if(stolen){this.prizeDrop={id,cond,at:this.elapsed};this.say(`He had your ${rifleName(cond)}${modTag(stolen.mods)}. Take it back.`,'ok');}
-    else if(rifleIsPrize(cond)){
+    else if(loot.bucket==='mega'){
+     this.prizeDrop={id,cond,at:this.elapsed};
+     this.say(`MEGA JACKPOT — kit rifle${modTag(loot.mods)} and gold everywhere.`,'ok');
+    }else if(rifleIsPrize(cond)){
      this.prizeDrop={id,cond,at:this.elapsed};
      this.say(`${rifleName(cond)} on the floor. Pick it up, or stash it in the hatch chest.`,'ok');
     }else if(loot.nearMiss&&this.noticeUntil<=this.elapsed){
@@ -2529,10 +2533,34 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    }
    if(g.gun)g.gun=false;
    // Schedule gold, plus anything he took off your body (always returned).
-   const grams=(loot.dropGold?loot.goldGrams:0)+stolenGold;
-   if(grams>0){
-    const side={x:Math.sin(g.heading)*.35,z:Math.cos(g.heading)*.35};
-    this.pickups.push({id:this.nextId++,item:'gold',amount:grams,position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}});
+   // Mega: scatter kilobars + coin spray so the lottery reads as a floor shower.
+   if(loot.barCount>0){
+    for(let i=0;i<loot.barCount;i++){
+     const ang=(i/loot.barCount)*Math.PI*2+this.lootRand()*0.7;
+     const rad=.45+this.lootRand()*.95;
+     this.pickups.push({
+      id:this.nextId++,item:'gold',amount:GOLD.barGrams,
+      position:{x:g.position.x+Math.cos(ang)*rad,y:FLOOR_Y,z:g.position.z+Math.sin(ang)*rad},
+     });
+    }
+    if(loot.coinGrams>0){
+     this.pickups.push({
+      id:this.nextId++,item:'gold',amount:loot.coinGrams,
+      position:{x:g.position.x+Math.sin(g.heading)*.25,y:FLOOR_Y,z:g.position.z+Math.cos(g.heading)*.25},
+     });
+    }
+    if(stolenGold>0){
+     this.pickups.push({
+      id:this.nextId++,item:'gold',amount:stolenGold,
+      position:{x:g.position.x-Math.sin(g.heading)*.35,y:FLOOR_Y,z:g.position.z-Math.cos(g.heading)*.35},
+     });
+    }
+   }else{
+    const grams=(loot.dropGold?loot.goldGrams:0)+stolenGold;
+    if(grams>0){
+     const side={x:Math.sin(g.heading)*.35,z:Math.cos(g.heading)*.35};
+     this.pickups.push({id:this.nextId++,item:'gold',amount:grams,position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}});
+    }
    }
    // Classical cue every kill (incl. dry): HUD flash + inventory pulse. Stolen recovery skips theater.
    if(!stolen){
@@ -2543,10 +2571,16 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
      at:this.elapsed,
      cond:loot.dropGun?loot.cond:undefined,
      goldGrams:loot.dropGold?loot.goldGrams:undefined,
+     x:g.position.x,y:g.position.y,z:g.position.z,
     };
     // Dry still flashes — empty pockets get blocked juice, never silence.
     this.pulse(killLootFeedback(kind));
-    if(kind==='jackpot'&&this.noticeUntil<=this.elapsed){
+    if(kind==='mega'){
+     // Notice already set with the kit rifle line above when a gun dropped.
+     if(!dropGun&&this.noticeUntil<=this.elapsed){
+      this.say(`MEGA JACKPOT — ${fmtGold(loot.goldGrams)} all over the floor.`,'ok');
+     }
+    }else if(kind==='jackpot'&&this.noticeUntil<=this.elapsed){
      this.say(`Fat purse — ${fmtGold(loot.goldGrams)} on the floor.`,'ok');
     }
    }

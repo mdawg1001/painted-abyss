@@ -809,22 +809,32 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   this.bloodLayers[1].uniforms.uMap.value=maps.plume;
   this.bloodLayers[2].uniforms.uMap.value=maps.glow;
  }
- /** Floating blood near the guardian — `hit` is a small puff; `kill` a lingering cloud. */
- spawnBlood(at:THREE.Vector3|{x:number;y:number;z:number},kind:'hit'|'kill'='kill'){
+ /**
+  * Soft particle burst near a body.
+  * `hit` = small puff · `kill` = lingering blood · `slime` = mega-lottery colour explosion.
+  */
+ spawnBlood(at:THREE.Vector3|{x:number;y:number;z:number},kind:'hit'|'kill'|'slime'='kill'){
   if(!this.bloodGroup||!this.bloodLayers.length)return;
-  const spread=kind==='kill'?.85:.35;
-  const up=kind==='kill'?.28:.14;
-  const life=kind==='kill'?16:4.5;
-  const opac=kind==='kill'?.88:.7;
-  const sizeMul=kind==='kill'?1:.55;
-  const drift=kind==='kill'?.42:.22;
-  for(const layer of this.bloodLayers){
+  const slime=kind==='slime';
+  const big=kind==='kill'||slime;
+  const spread=slime?1.7:big?.85:.35;
+  const up=slime?.55:big?.28:.14;
+  const life=slime?22:big?16:4.5;
+  const opac=slime?.95:big?.88:.7;
+  const sizeMul=slime?1.55:big?1:.55;
+  const drift=slime?.9:big?.42:.22;
+  const colors=slime?[0x39f0c8,0xff4ad8,0xffd46a]:[0x7a1218,0x5c0e14,0x9a1e28];
+  for(let li=0;li<this.bloodLayers.length;li++){
+   const layer=this.bloodLayers[li];
    const pos=layer.points.geometry.attributes.position as THREE.BufferAttribute;
+   layer.uniforms.uColor.value.setHex(colors[li]??colors[0]!);
+   const mat=layer.points.material as THREE.ShaderMaterial;
+   mat.blending=slime?THREE.AdditiveBlending:THREE.NormalBlending;
    for(let i=0;i<pos.count;i++){
     pos.setXYZ(
      i,
      at.x+(Math.random()-.5)*spread,
-     at.y+(Math.random()-.5)*spread*.55,
+     at.y+(Math.random()-.5)*spread*.55+(slime?0.2:0),
      at.z+(Math.random()-.5)*spread,
     );
     layer.vel[i*3]=(Math.random()-.5)*drift;
@@ -1406,9 +1416,16 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   }
   if(m.killLootEvent&&m.killLootEvent.seq!==this.killLootSeqHeard){
    this.killLootSeqHeard=m.killLootEvent.seq;
+   const evt=m.killLootEvent;
    const ctx3=this.audioContext,master3=this.master;
    if(this.sound&&ctx3&&master3&&ctx3.state==='running'){
-    playKillLoot(ctx3,master3,m.killLootEvent.kind,m.killLootEvent.goldGrams??0);
+    playKillLoot(ctx3,master3,evt.kind,evt.goldGrams??0);
+   }
+   // Mega lottery: colourful slime burst at the corpse + a hard screen shake.
+   if(evt.kind==='mega'&&evt.x!==undefined&&evt.z!==undefined){
+    this.spawnBlood({x:evt.x,y:(evt.y??FLOOR_Y)+1.1,z:evt.z},'slime');
+    this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.gunFireHeavy.intensity*1.8,COMBAT_FEEDBACK.gunFireHeavy.duration*1.4);
+    this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopKill);
    }
   }
   const stashCue=m.stashCue;
