@@ -35,19 +35,19 @@ export const SURVIVAL={
  knife:{guardDamage:55,backstabMultiplier:5,backstabArc:100*Math.PI/180},
 
  // ── Guard durability by role (standard guard = assault) ────────────────────────
- // Aggression (0.22.35): faster reaction, tighter burst/rest gaps, slight accuracy +
- // engagement range, snappier combat speeds. HP unchanged from the 0.22.34 durability bump.
+ // Aim (0.22.36): role accuracy ×1.5 toward land rate ~1.5× (cap 0.95 — not aimbot).
+ // Aggression (0.22.35) cadence/range/speed + durability (0.22.34) HP unchanged.
  roles:{
-  assault:{hp:225,headMult:1,speed:2.32,combatSpeed:1.58,range:10.5,burst:[3,3] as [number,number],burstGap:.11,restMin:.65,restMax:1.15,accuracy:.68,damage:12,reaction:[.28,.48] as [number,number],armed:true},
-  flanker:{hp:195,headMult:1,speed:3.05,combatSpeed:2.0,range:8.5,burst:[2,3] as [number,number],burstGap:.10,restMin:.55,restMax:1.05,accuracy:.64,damage:12,reaction:[.24,.42] as [number,number],armed:true},
+  assault:{hp:225,headMult:1,speed:2.32,combatSpeed:1.58,range:10.5,burst:[3,3] as [number,number],burstGap:.11,restMin:.65,restMax:1.15,accuracy:.95,damage:12,reaction:[.28,.48] as [number,number],armed:true},
+  flanker:{hp:195,headMult:1,speed:3.05,combatSpeed:2.0,range:8.5,burst:[2,3] as [number,number],burstGap:.10,restMin:.55,restMax:1.05,accuracy:.95,damage:12,reaction:[.24,.42] as [number,number],armed:true},
   rusher:{hp:165,headMult:1,speed:3.9,combatSpeed:3.9,range:0,burst:[0,0] as [number,number],burstGap:1,restMin:1,restMax:1,accuracy:0,damage:0,reaction:[.10,.22] as [number,number],armed:false},
   /** Heavy: helmet and flak — headshots do 60 %; long suppressive bursts, slow walk. */
-  heavy:{hp:420,headMult:.6,speed:1.6,combatSpeed:1.35,range:12.5,burst:[5,7] as [number,number],burstGap:.09,restMin:.95,restMax:1.55,accuracy:.56,damage:18,reaction:[.38,.62] as [number,number],armed:true},
+  heavy:{hp:420,headMult:.6,speed:1.6,combatSpeed:1.35,range:12.5,burst:[5,7] as [number,number],burstGap:.09,restMin:.95,restMax:1.55,accuracy:.84,damage:18,reaction:[.38,.62] as [number,number],armed:true},
   /**
    * Main officer: the only guard who carries the Soviet relic key.
    * Same combat AI as the rest; tougher kit, peaking-cap silhouette. Never reinforced.
    */
-  officer:{hp:360,headMult:.7,speed:1.98,combatSpeed:1.48,range:11.5,burst:[4,6] as [number,number],burstGap:.10,restMin:.75,restMax:1.25,accuracy:.70,damage:16,reaction:[.30,.52] as [number,number],armed:true},
+  officer:{hp:360,headMult:.7,speed:1.98,combatSpeed:1.48,range:11.5,burst:[4,6] as [number,number],burstGap:.10,restMin:.75,restMax:1.25,accuracy:.95,damage:16,reaction:[.30,.52] as [number,number],armed:true},
  },
 
  // ── Guard fire discipline (why a crowd stays survivable) ───────────────────────
