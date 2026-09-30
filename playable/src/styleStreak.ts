@@ -29,8 +29,8 @@ export const STREAK = {
   directorDelay: { B: 0.45, A: 0.7, S: 1.0, SS: 1.15, SSS: 1.3 } as Record<StreakRewardRank, number>,
   /** Hunting-target relief at S+ only (never below 1 live hunter when pressure is on). */
   directorTargetSoft: { B: 0, A: 0, S: 1, SS: 1, SSS: 1 } as Record<StreakRewardRank, number>,
-  /** Flat extra rounds on a downed guard's dropped mag while streaking. */
-  lootRoundsBonus: { B: 1, A: 1, S: 2, SS: 2, SSS: 2 } as Record<StreakRewardRank, number>,
+  /** Flat extra rounds on a downed guard's dropped mag while streaking — off (Skinner: no free feed). */
+  lootRoundsBonus: { B: 0, A: 0, S: 0, SS: 0, SSS: 0 } as Record<StreakRewardRank, number>,
   /** Extra walk-over pickup radius (m) for ammo / stripped mags while streaking. */
   pickupRadiusBonus: 0.22,
   /** Any real HP damage at or above this breaks a live streak (core hit). */

@@ -4,7 +4,7 @@ import type {CaveWorld as CaveWorldType,Snapshot} from './CaveWorld';
 import {smokeAt} from './survival';
 import {SURVIVAL} from './survivalConfig';
 import {rifleName} from './rifleCondition';
-import {fmtGold,fmtShopGold,goldWalkFactor,goldBcdShare,modTag,modLevel,UPGRADE,nextUpgradeTarget,bankAlmostSuffix} from './gold';
+import {fmtGold,fmtShopGold,goldWalkFactor,goldBcdShare,modTag,modLevel,UPGRADE,nextUpgradeTarget,bankAlmostSuffix,skinnerPullCopy} from './gold';
 import {ITEMS,EXIT,RELIC,distance,effectiveDepth,floodFraction,AIR_MAIN_LITRES,AIR_BAILOUT_LITRES,chestInteractPrompt,stashInteractPrompt,pickupInteractPrompt,isMainGuard,MAP_FRAGMENT_ORDER,COMBAT_OUTCOME,STREAK,EGO_SAVIOR,skinnerGoal,KILL_LOOT,killLootHudLabel,type Item} from './simulation';
 import {combatCalloutAllowed} from './combatCalm';
 import {DiveMap} from './DiveMap';
@@ -206,7 +206,8 @@ function App(){
    {/* Kill-loot classical flash: every schedule kill including EMPTY. Keyed on seq so dry still replays. */}
    {(()=>{
     const e=m.killLootEvent;if(!e)return null;
-    const age=m.elapsed-e.at;if(age<0||age>=KILL_LOOT.hudFlashSeconds)return null;
+    const flashSec=e.kind==='mega'?KILL_LOOT.megaHudFlashSeconds:KILL_LOOT.hudFlashSeconds;
+    const age=m.elapsed-e.at;if(age<0||age>=flashSec)return null;
     const kindClass=e.kind.replace('_','-');
     return <div key={`kl-${e.seq}`} className={`kill-loot-flash kind-${kindClass}`} aria-hidden="true">
      <span>{killLootHudLabel(e.kind)}</span>
@@ -227,18 +228,30 @@ function App(){
    {!m.stashOpen&&<div className="inventory" aria-label="Inventory">
     <div className="slots">{m.inventory.map((item,i)=>{const selected=i===m.selected;const pulse=selected&&m.feedbackKind?m.feedbackKind:'';return <div className={`slot ${selected?'selected':''} ${item==='relic'?'relic':''} ${item==='flare'?'flare':''} ${item==='knife'?'knife':''} ${item==='gun'?'gun':''} ${item==='bottle'?'bottle':''} ${item==='coat'?'coat':''} ${item==='sovietKey'?'sovietKey':''} ${pulse?`pulse-${pulse}`:''}`} key={selected?`${i}-p${m.feedbackPulse}`:i}><kbd>{i+1}</kbd><Icon item={item}/>{selected&&<em className="slot-mark" aria-hidden="true">●</em>}</div>;})}</div>
    </div>}
-   {!m.stashOpen&&(m.gold>0||m.bankedGold>0)&&(()=>{
+   {!m.stashOpen&&(()=>{
     const buy=nextUpgradeTarget(m.gunMods,m.bankedGold,m.inventory.includes('gun'));
-    const pull=!!buy&&(buy.ready||buy.almost);
-    return <div className={`gold-hud${m.gold>0?' carrying':''}${pull?' almost':''}`} aria-label={`Gold carried ${fmtGold(m.gold)}, banked ${fmtGold(m.bankedGold)}`}>
-     {m.gold>0&&<div className="gold-carry" key={`c${m.goldEvent?.kind==='take'?m.goldEvent.seq:0}`}><strong>{fmtGold(m.gold)}</strong><span>walk −{Math.round((1-goldWalkFactor(m.gold))*100)}% · sinks {Math.round(goldBcdShare(m.gold)*100)}% BCD · B ditch</span></div>}
-     <div className="gold-vault"><span>GOLD</span><strong>{fmtShopGold(m.bankedGold)}</strong></div>
-     {pull&&buy&&<div className={`gold-buy${buy.ready?' ready':' near'}`}>
-      <span>BUY {UPGRADE.shopNames[buy.track].toUpperCase()}</span>
-      <strong>{fmtShopGold(buy.have)}/{fmtShopGold(buy.cost)}</strong>
-      <div className="gold-buy-meter" aria-hidden="true"><i style={{width:`${Math.min(100,buy.have/buy.cost*100)}%`}}/></div>
-     </div>}
-    </div>;
+    const pullCopy=skinnerPullCopy(m.gunMods,m.bankedGold,m.inventory.includes('gun'));
+    const pull=!!pullCopy;
+    if(!(m.gold>0||m.bankedGold>0||pull))return null;
+    return <>
+     {pullCopy&&!m.mapOpen&&<>
+      <div className={`skinner-pull ${pullCopy.kind}`} role="status" aria-live="polite">{pullCopy.center}</div>
+      <div className={`skinner-side ${pullCopy.kind}`} aria-hidden="true">
+       <strong>{pullCopy.side}</strong>
+       <span>{UPGRADE.shopNames[pullCopy.track]}</span>
+       <em>{fmtShopGold(pullCopy.have)}/{fmtShopGold(pullCopy.cost)}</em>
+      </div>
+     </>}
+     <div className={`gold-hud${m.gold>0?' carrying':''}${pull?' almost':''}`} aria-label={`Gold carried ${fmtGold(m.gold)}, banked ${fmtGold(m.bankedGold)}`}>
+      {m.gold>0&&<div className="gold-carry" key={`c${m.goldEvent?.kind==='take'?m.goldEvent.seq:0}`}><strong>{fmtGold(m.gold)}</strong><span>walk −{Math.round((1-goldWalkFactor(m.gold))*100)}% · sinks {Math.round(goldBcdShare(m.gold)*100)}% BCD · B ditch</span></div>}
+      <div className="gold-vault"><span>GOLD</span><strong>{fmtShopGold(m.bankedGold)}</strong></div>
+      {pull&&buy&&<div className={`gold-buy${buy.ready?' ready':' near'}`}>
+       <span>BUY {UPGRADE.shopNames[buy.track].toUpperCase()}</span>
+       <strong>{fmtShopGold(buy.have)}/{fmtShopGold(buy.cost)}</strong>
+       <div className="gold-buy-meter" aria-hidden="true"><i style={{width:`${Math.min(100,buy.have/buy.cost*100)}%`}}/></div>
+      </div>}
+     </div>
+    </>;
    })()}
    <StashScreen
     open={!!m.stashOpen}

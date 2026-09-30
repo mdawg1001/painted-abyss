@@ -748,7 +748,7 @@ export function playStashWithdraw(ctx: AudioContext, out: AudioNode) {
 export function playKillLoot(
   ctx: AudioContext,
   out: AudioNode,
-  kind: 'dry' | 'ammo' | 'scrap' | 'near_miss' | 'field' | 'prize' | 'jackpot',
+  kind: 'dry' | 'ammo' | 'scrap' | 'near_miss' | 'field' | 'prize' | 'jackpot' | 'mega',
   goldGrams = 0,
 ) {
   const t0 = ctx.currentTime + .01;
@@ -806,6 +806,18 @@ export function playKillLoot(
     tone(t0, 980, .16, .1);
     tone(t0 + .06, 1470, .18, .12);
     tone(t0 + .14, 1960, .14, .14);
+    return;
+  }
+  if (kind === 'mega') {
+    // Lottery fanfare: rising cascade + wet slime noise + long top sparkle.
+    noise(t0, .12, 480, .35);
+    noise(t0 + .04, .1, 1400, .28);
+    const n = Math.min(14, Math.max(8, Math.round(goldGrams / 350)));
+    for (let i = 0; i < n; i++) {
+      tone(t0 + i * .035, 720 + i * 140, .14 + i * .008, .12);
+    }
+    tone(t0 + n * .035 + .02, 2400, .22, .28);
+    tone(t0 + n * .035 + .08, 3200, .12, .2, 'triangle');
     return;
   }
   // jackpot

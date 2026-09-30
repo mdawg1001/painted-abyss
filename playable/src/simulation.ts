@@ -155,15 +155,15 @@ export const GUARD_MELEE_DAMAGE=22;
 /** When the guard wears the stolen coat, his strike damage is multiplied by this. */
 export const GUARD_COAT_DAMAGE_MULT=.55;
 /** TT-33 engagement range in the bunker murk (m). */
-export const GUARD_GUN_RANGE=22;
+export const GUARD_GUN_RANGE=25;
 export const GUARD_GUN_DAMAGE=30;
 /** Aimed semi-automatic cadence (s between shots, before jitter). */
 export const GUARD_GUN_COOLDOWN=.75;
 /** TT-33 box magazine and a practised reload. */
 export const GUARD_MAGAZINE=8;
 export const GUARD_RELOAD_SECONDS=2.2;
-/** Time from spotting you to the first shot: turn, raise, aim (s). Human visual reaction ≈ 0.25–0.35 s. */
-export const GUARD_DRAW_SECONDS=.35;
+/** Time from spotting you to chase engage: turn, raise (s). Aggression: snappier than human draw. */
+export const GUARD_DRAW_SECONDS=.18;
 /** He only fires once the muzzle is within this of you (radians, ~10°). */
 export const GUARD_AIM_TOLERANCE=10*Math.PI/180;
 /**
@@ -177,7 +177,7 @@ export function guardHitChance(distance:number,targetSpeed:number,firstShot:bool
  const moving=targetSpeed>2.4?.28:targetSpeed>.6?.12:0;
  // Firing on the move costs him accuracy too (a steady shuffle, not a sprint).
  const shuffle=GUARD_MOVING_FIRE_PENALTY*Math.min(1.5,Math.max(0,shooterSpeed));
- return Math.max(.08,Math.min(.95,base-moving-shuffle-(firstShot?.15:0)));
+ return Math.max(.08,Math.min(.95,base-moving-shuffle-(firstShot?.10:0)));
 }
 /** Hit-chance lost per m/s of his own footwork while firing. */
 export const GUARD_MOVING_FIRE_PENALTY=.09;
@@ -196,9 +196,9 @@ export const SKIN_OF_TEETH={
  fullBiasSpeed:WALK_SPEED,
  /**
   * Extra land-chance cut at full bias, on top of `guardHitChance`'s moving penalty.
-  * 0.24 ≈ obvious strafe GRAZEs (was Phase 4's subtle 0.08); standing still unchanged.
+  * 0.28 keeps readable strafe GRAZEs after role accuracy ×1.5 (cap 0.95); standing unchanged.
   */
- maxGrazeBias:.24,
+ maxGrazeBias:.28,
  /** Floor so a moving player is never unhittable. */
  minChance:.05,
 } as const;
@@ -375,19 +375,19 @@ export const GUNSHOT_HEARING=20;
  */
 export const GUARD_SQUAD_RADIUS=25;
 /** How long the sights must rest on a guard before he (and his squad) react (s). */
-export const GUARD_TARGETED_DWELL=.4;
+export const GUARD_TARGETED_DWELL=.28;
 /** A squad keeps hunting this long after the last time any of them saw you (s). */
 export const GUARD_TEAM_MEMORY=14;
 /** Squad members who already have a line on you fire within this long of the call, staggered (s). */
-export const GUARD_SQUAD_FIRST_SHOT=.15;
-export const GUARD_SQUAD_STAGGER=.2;
+export const GUARD_SQUAD_FIRST_SHOT=.08;
+export const GUARD_SQUAD_STAGGER=.12;
 /** How far round you a flanker aims to come in from (m, and angle off his straight approach). */
 export const GUARD_FLANK_DISTANCE=4;
 export const GUARD_FLANK_ANGLE=65*Math.PI/180;
 export const GUARD_MELEE_COOLDOWN=1.55;
 /** Bottle fuel the guard drinks as “his air” while chasing. */
 export const GUARD_BOTTLE_AIR=SPARE_BOTTLE_LITRES;
-export const GUARD_SPEED={patrol:1.38,alert:.75,chase:2.47,chaseTired:1.44,search:1.67} as const;
+export const GUARD_SPEED={patrol:1.38,alert:1.05,chase:2.72,chaseTired:1.58,search:1.9} as const;
 /**
  * Horde mode: once a guard has you he is a zombie with a pistol. No cover, no strafing,
  * no retreat, no giving up. He comes straight at you at full pace and empties his
@@ -428,8 +428,8 @@ export const GUARD_SCAN_ARC=.9;
 /** How many Soviet guards walk the bunker at once. */
 /** Guard pool size (active + waiting behind the doors). */
 export const GUARD_COUNT=SURVIVAL.maxGuards;
-/** In a burst he fires once the muzzle is within this of you (hip-fire, ~20°). */
-export const GUARD_BURST_TOLERANCE=20*Math.PI/180;
+/** In a burst he fires once the muzzle is within this of you (hip-fire, ~24°). */
+export const GUARD_BURST_TOLERANCE=24*Math.PI/180;
 /** What you carry into the first dive: the diving knife and the TT-33. */
 export const SURVIVAL_KIT:Item[]=['knife','gun'];
 /** Always-on tool — every wake (and first spawn if somehow missing) keeps this. */
@@ -517,7 +517,7 @@ export function skinnerGoal(m:{
 
 /** First-dive tip — plain steps, no "bank" jargon. */
 export const SKINNER_FIRST_TIP=
- 'Kill guards for gold. Walk to the hatch and press E to Save Gold. Open Shop and press BUY. If you die, follow GET GUN back to your rifle. Relic extract is a bonus payday. WASD · Shift run · 1–5 select.';
+ 'Kill guards for gold — most kills are empty; the next one might pay. Walk to the hatch and press E to Save Gold. Open Shop and press BUY. If you die, follow GET GUN back to your rifle. Relic extract is a small bonus. WASD · Shift run · 1–5 select.';
 
 /** World / HUD prompt for a floor pickup (relic gate + key wording). */
 export function pickupInteractPrompt(m:{
@@ -716,14 +716,12 @@ export const ITEMS:Record<Item,{name:string;short:string;description:string;hint
 export function occupiesFpsHand(item:Item|null):boolean{
  return item==='knife'||item==='gun'||item==='sovietKey';
 }
-/** Corridor floor gear. Not on the hatch. */
+/**
+ * Corridor floor gear. Rat cage: empty — no free gun / bottle / coat on the
+ * floor. Earn the rifle from a kill, the stash, or the shop.
+ */
 export function corridorGearPickups():Pickup[]{
- const spots:{item:Item;x:number;z:number}[]=[
-  {item:'gun',x:-3.2,z:22},
-  {item:'bottle',x:-.5,z:14},
-  {item:'coat',x:-2.6,z:8},
- ];
- return spots.map((s,i)=>({id:3+i,item:s.item,position:{x:s.x,y:FLOOR_Y,z:s.z}}));
+ return [];
 }
 /** True when the selected slot should show the dive torch (and may shine). */
 export function holdingTorchItem(item:Item|null):boolean{
@@ -973,8 +971,8 @@ export function guardLookout(p:{x:number;z:number}){
  let alt=-1;for(let i=0;i<n;i++){const sep=Math.min(Math.abs(i-best),n-Math.abs(i-best));if(sep>=n/4&&smooth[i]>=Math.max(6,.5*smooth[best])&&(alt<0||smooth[i]>smooth[alt]))alt=i;}
  return{yaw:wrapAngle(centre/n*Math.PI*2),arc:(lo+hi)/2/n*Math.PI*2,view:dist[best],alt:alt<0?null:wrapAngle(alt/n*Math.PI*2)};
 }
-/** Half-angle of the guard's field of view (radians, ~65°). */
-export const GUARD_FOV_HALF=65*Math.PI/180;
+/** Half-angle of the guard's field of view (radians, ~72°). */
+export const GUARD_FOV_HALF=72*Math.PI/180;
 let guardRouteCache:GuardWaypoint[]|null=null;
 /**
  * Perimeter patrol for the whole bunker: the outer boundary of every open cell
@@ -1452,7 +1450,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  /** Elevated gas effort until this mission elapsed time (bite / panic). */
  gasPanicUntil=0;
  inventory:(Item|null)[]=[...SURVIVAL_KIT,'flare','bandage','air'];selected=1;
- pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC,y:FLOOR_Y+RELIC_PLINTH.height}},...corridorGearPickups()];nextId=6;
+ pickups:Pickup[]=[{id:1,item:'relic',position:{...RELIC,y:FLOOR_Y+RELIC_PLINTH.height}},...corridorGearPickups()];nextId=2;
  chests:Chest[]=createDiveChests();
  /**
   * Persistent hatch stash (localStorage). Survives death, extract, dive-again, and reload.
@@ -1525,10 +1523,10 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   * Stage-two kill-loot theater: classical cue per kill (dry ≠ win juice).
   * CaveWorld consumes `seq` changes for audio; notices are set alongside.
   */
- killLootEvent:{seq:number;kind:KillLootCue;at:number;cond?:number;goldGrams?:number}|null=null;
+ killLootEvent:{seq:number;kind:KillLootCue;at:number;cond?:number;goldGrams?:number;x?:number;y?:number;z?:number}|null=null;
  /**
-  * Consecutive empty schedule kills (dry / ammo-only). Soft pity in killLoot.ts
-  * shifts odds after `KILL_LOOT.pityAfter`. Reset on any paying bucket. Opaque.
+  * Consecutive empty schedule kills (dry / ammo-only). Telemetry only — pity does
+  * not shift the VR table (a drought must not teach "payday is due"). Reset on pay.
   */
  killLootEmptyStreak=0;
  /** Pacing director for the firefight (reinforcements, lulls, final push). */
@@ -2518,10 +2516,14 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     const rounds=(stolen?rollDropRounds(PISTOL.magazine,this.lootRand):loot.rounds)+streakLootRoundsBonus(this.streak.tier);
     const drop:Pickup={id,item:'gun',cond,rounds,position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}};
     if(stolen?.mods)drop.mods=stolen.mods;
+    else if(loot.mods)drop.mods=loot.mods;
     if(!stolen&&loot.nearMiss)drop.nearMiss=true;
     this.pickups.push(drop);
     if(stolen){this.prizeDrop={id,cond,at:this.elapsed};this.say(`He had your ${rifleName(cond)}${modTag(stolen.mods)}. Take it back.`,'ok');}
-    else if(rifleIsPrize(cond)){
+    else if(loot.bucket==='mega'){
+     this.prizeDrop={id,cond,at:this.elapsed};
+     this.say(`MEGA JACKPOT — kit rifle${modTag(loot.mods)} and gold everywhere.`,'ok');
+    }else if(rifleIsPrize(cond)){
      this.prizeDrop={id,cond,at:this.elapsed};
      this.say(`${rifleName(cond)} on the floor. Pick it up, or stash it in the hatch chest.`,'ok');
     }else if(loot.nearMiss&&this.noticeUntil<=this.elapsed){
@@ -2531,10 +2533,34 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    }
    if(g.gun)g.gun=false;
    // Schedule gold, plus anything he took off your body (always returned).
-   const grams=(loot.dropGold?loot.goldGrams:0)+stolenGold;
-   if(grams>0){
-    const side={x:Math.sin(g.heading)*.35,z:Math.cos(g.heading)*.35};
-    this.pickups.push({id:this.nextId++,item:'gold',amount:grams,position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}});
+   // Mega: scatter kilobars + coin spray so the lottery reads as a floor shower.
+   if(loot.barCount>0){
+    for(let i=0;i<loot.barCount;i++){
+     const ang=(i/loot.barCount)*Math.PI*2+this.lootRand()*0.7;
+     const rad=.45+this.lootRand()*.95;
+     this.pickups.push({
+      id:this.nextId++,item:'gold',amount:GOLD.barGrams,
+      position:{x:g.position.x+Math.cos(ang)*rad,y:FLOOR_Y,z:g.position.z+Math.sin(ang)*rad},
+     });
+    }
+    if(loot.coinGrams>0){
+     this.pickups.push({
+      id:this.nextId++,item:'gold',amount:loot.coinGrams,
+      position:{x:g.position.x+Math.sin(g.heading)*.25,y:FLOOR_Y,z:g.position.z+Math.cos(g.heading)*.25},
+     });
+    }
+    if(stolenGold>0){
+     this.pickups.push({
+      id:this.nextId++,item:'gold',amount:stolenGold,
+      position:{x:g.position.x-Math.sin(g.heading)*.35,y:FLOOR_Y,z:g.position.z-Math.cos(g.heading)*.35},
+     });
+    }
+   }else{
+    const grams=(loot.dropGold?loot.goldGrams:0)+stolenGold;
+    if(grams>0){
+     const side={x:Math.sin(g.heading)*.35,z:Math.cos(g.heading)*.35};
+     this.pickups.push({id:this.nextId++,item:'gold',amount:grams,position:{x:g.position.x+side.x,y:FLOOR_Y,z:g.position.z+side.z}});
+    }
    }
    // Classical cue every kill (incl. dry): HUD flash + inventory pulse. Stolen recovery skips theater.
    if(!stolen){
@@ -2545,10 +2571,16 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
      at:this.elapsed,
      cond:loot.dropGun?loot.cond:undefined,
      goldGrams:loot.dropGold?loot.goldGrams:undefined,
+     x:g.position.x,y:g.position.y,z:g.position.z,
     };
     // Dry still flashes — empty pockets get blocked juice, never silence.
     this.pulse(killLootFeedback(kind));
-    if(kind==='jackpot'&&this.noticeUntil<=this.elapsed){
+    if(kind==='mega'){
+     // Notice already set with the kit rifle line above when a gun dropped.
+     if(!dropGun&&this.noticeUntil<=this.elapsed){
+      this.say(`MEGA JACKPOT — ${fmtGold(loot.goldGrams)} all over the floor.`,'ok');
+     }
+    }else if(kind==='jackpot'&&this.noticeUntil<=this.elapsed){
      this.say(`Fat purse — ${fmtGold(loot.goldGrams)} on the floor.`,'ok');
     }
    }
@@ -2847,7 +2879,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   const inView=Math.abs(wrapAngle(toward-g.heading))<=GUARD_FOV_HALF;
   // Crouched you are a smaller, lower shape: every pick-up distance shrinks (Hitman-style sneak).
   const k=stealthSightFactor(this.crouching);
-  const sense=canSee&&(d<2.5*k||(inView&&d<(this.torch?16:9)*k)||(sprinting&&!this.crouching&&d<11));
+  const sense=canSee&&(d<2.5*k||(inView&&d<(this.torch?18:10)*k)||(sprinting&&!this.crouching&&d<13));
   const tracking=canSee&&d<GUARD_GUN_RANGE+8;
   // A guard who has lost you has to find you again: crouching counts against that too.
   const reacquire=canSee&&d<(GUARD_GUN_RANGE+8)*k;
@@ -2873,9 +2905,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    }
   }
   this.steerGuard(dt,g);
-  // Pistol comes up while engaged, down otherwise (~0.3 s either way).
+  // Pistol comes up while engaged, down otherwise (~0.22 s either way — snappier pressure).
   const up=(g.state==='chase'||g.state==='alert')&&g.gun;
-  g.aim=Math.max(0,Math.min(1,g.aim+(up?1:-1)*dt/.3));
+  g.aim=Math.max(0,Math.min(1,g.aim+(up?1:-1)*dt/.22));
   if(g.reload>0){g.reload=Math.max(0,g.reload-dt);if(g.reload===0)g.ammo=SURVIVAL.guardMagazine;}
   // Close-range attack: a readable wind-up, then one strike that must still reach you.
   const mcfg=g.role==='rusher'?SURVIVAL.melee.rusher:SURVIVAL.melee.other;
@@ -3363,7 +3395,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    const empty=this.caches.filter(c=>!c.stocked&&c.kind!=='ammo'&&Math.hypot(c.x-this.position.x,c.z-this.position.z)>=SURVIVAL.supplies.restockMinDistance);
    for(let k=0;k<SURVIVAL.supplies.restockPerLull&&empty.length;k++)empty.splice(Math.floor(this.rand()*empty.length),1)[0].stocked=true;
    D.cues.push({kind:'lull',x:this.position.x,z:this.position.z,at:now,label:'Lull'});
-   this.say('They are regrouping. Strip the dead for rounds — medkits may have dropped.','ok');
+   this.say('They are regrouping. Strip the dead — nothing free on the floor.','ok');
   }else if(changed==='final'){
    D.cues.push({kind:'final',x:EXIT.x,z:EXIT.z,at:now,label:'Final push'});
    this.say('Relic booby trap sprung! Water is rising and the garrison is coming. Reach extraction!','blocked');

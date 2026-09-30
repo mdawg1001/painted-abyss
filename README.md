@@ -1,4 +1,16 @@
-# Painted Abyss — First Dive · 0.22.17
+# Painted Abyss — First Dive · 0.22.37
+
+## Sharper guard aim (0.22.36)
+
+Armed survival roles land shots ~**1.5×** more often via role `accuracy` ×1.5 (cap **0.95** so they are not aimbots). Skin-of-teeth graze bias nudged **0.24→0.28** so standing/slow is deadly while strafing still earns GRAZE room. Cadence, HP, corpse persistence, director, magnetism, and Ego Savior unchanged.
+
+## More aggressive corridor guards (0.22.35)
+
+Guards pressure harder without extra HP: faster reaction / shorter draw-to-chase, tighter burst gaps and shorter rests, slightly better accuracy and engagement range, snappier chase speeds, rushers more eager to melee. Squad call-outs stay sharp. Corpse persistence, director reinforces, player magnetism, and Ego Savior are unchanged.
+
+## Tougher corridor guards (0.22.34)
+
+Every survival role is **+50% HP** (assault 150→225, flanker 130→195, rusher 110→165, officer 240→360, heavy 280→420). Assault takes a full magazine of body shots or three close headshots; headshots stay clearly better than body dumps. Knife backstab multiplier raised so silent kills still drop infantry.
 
 ## Near-death Ego Savior Phase 3 — mercy per engagement (0.22.17)
 
@@ -239,7 +251,7 @@ Original rock, wall, floor and moss maps are preserved. The picture around them 
 
 The bunker is held by a garrison that escalates as you push for the relic: a quiet start, first contact in the entrance chamber, waves through steel bulkheads (red lamp + clank + shout before anyone steps through), a short lull to reload and resupply, harder waves, then a final push from the moment you lift the relic until you reach the extraction pool.
 
-- Guards: assault (advance + bursts), rusher (sprints in, telegraphed knife stab), flanker (comes round your side), heavy (helmet + long bursts). Standard guards take two head shots up close, three at range, about five body hits.
+- Guards: assault (advance + bursts), rusher (sprints in, telegraphed knife stab), flanker (comes round your side), heavy (helmet + long bursts). Standard guards take three head shots up close, four at range, about eight body hits (a full magazine).
 - Controls: click fires the TT-33 (or stabs with the knife), R reloads, **T throws smoke**, E interacts, 1–5 select.
 - Smoke blocks sight for guards and for you. Walk over ammo boxes, field dressings and smoke tins to take them; a downed guard's pistol gives up its rounds when you walk over it.
 - Every balancing number (enemy counts, health, damage, accuracy, timings, supplies, smoke) lives in `playable/src/survivalConfig.ts`.

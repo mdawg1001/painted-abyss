@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {Mission,isolateGuards,FLOOR_Y,WALK_EYE_Y,breathFootprint,emptyStash,readStash,EXIT,skinnerGoal,type Pickup} from '../src/simulation';
-import {GOLD,UPGRADE,goldBcdShare,goldSinkAccel,goldWalkFactor,goldThrustFactor,goldNetWeightN,BCD_LIFT_KG,GOLD_DENSITY,readBankedGold,writeBankedGold,modLevel,nextUpgradeTarget,isAlmostShort,almostUpgradeLine,bankAlmostSuffix,ALMOST_UPGRADE,noMods} from '../src/gold';
+import {GOLD,UPGRADE,goldBcdShare,goldSinkAccel,goldWalkFactor,goldThrustFactor,goldNetWeightN,BCD_LIFT_KG,GOLD_DENSITY,readBankedGold,writeBankedGold,modLevel,nextUpgradeTarget,isAlmostShort,almostUpgradeLine,bankAlmostSuffix,skinnerPullCopy,ALMOST_UPGRADE,noMods} from '../src/gold';
 import {PISTOL} from '../src/playerPistol';
 import {GRAVITY,WATER_DENSITY,itemFloats} from '../src/propPhysics';
 
@@ -26,18 +26,19 @@ test('gold physics: 19.3× water, sinks, and a BCD’s worth of gold cancels the
  assert.ok(goldThrustFactor(10000)<1);
 });
 
-test('no free kilobars on the floor — gold comes from kills and extract',()=>{
+test('no free kilobars on the floor — gold comes from kills and lean extract',()=>{
  assert.equal(GOLD.barsPerDive,0);
  assert.equal(GOLD.hoardBars,0);
- assert.ok(GOLD.extractBars[0]>=1);
+ assert.equal(GOLD.extractBars[0],0,'extract can pay nothing');
+ assert.equal(GOLD.extractBars[1],1,'extract never multi-kilo free-feeds');
  const m=new Mission(true);
  assert.equal(m.pickups.filter(p=>p.item==='gold').length,0,'scatterGold plants nothing');
 });
 
 test('a paying kill drops coins that you scoop by walking over; bars need E',()=>{
  const m=setup();
- // Force a field bucket (unit 0.75) so the kill is on the paying side of the VR schedule.
- let n=0;m.lootRand=()=>{n+=1;return n===1?.75:.5;};
+ // Force a field bucket (unit 0.965) so the kill is on the paying side of the VR schedule.
+ let n=0;m.lootRand=()=>{n+=1;return n===1?.965:.5;};
  const g=m.guards[0];m.activateGuard(g,{x:CX,z:PLAYER.z-2},0,'assault');
  while(g.hp>0)m.guardTakeDamage(g,50);
  const coins=m.pickups.find(p=>p.item==='gold')!;
@@ -66,24 +67,36 @@ test('opening the stash saves pocket gold into the shop balance (no drag)',()=>{
  if(globalThis.localStorage)assert.equal(readBankedGold(),2600);
 });
 
-test('extract with the relic auto-banks pocket gold and pays the extract bar jackpot',()=>{
+test('extract with the relic auto-banks pocket gold; extract bar bonus is lean VR',()=>{
  writeBankedGold(0);
- const m=setup();
- m.gold=1800;m.bankedGold=200;
- // Deterministic extract bar roll: first lootRand call → 2 bars (lo + floor(0*(hi-lo+1))).
- m.lootRand=()=>0;
- m.inventory=['relic',null,null,null,null];m.selected=0;
- m.position={x:EXIT.x,y:WALK_EYE_Y,z:EXIT.z};
- m.interact();
- assert.equal(m.outcome,'won');
- assert.equal(m.gold,0,'pockets cleared on extract');
- assert.equal(m.lastHaulBanked,1800);
- assert.equal(m.lastExtractBars,GOLD.extractBars[0]);
- assert.equal(m.bankedGold,200+1800+GOLD.extractBars[0]*GOLD.barGrams);
- assert.match(m.reason,/Saved/i);
- assert.match(m.reason,/Extract bonus/i);
- assert.match(m.reason,/Gold:/i);
- if(globalThis.localStorage)assert.equal(readBankedGold(),m.bankedGold);
+ // lootRand → 0 ⇒ 0 bars (lo). Pocket haul still banks.
+ const dry=setup();
+ dry.gold=1800;dry.bankedGold=200;
+ dry.lootRand=()=>0;
+ dry.inventory=['relic',null,null,null,null];dry.selected=0;
+ dry.position={x:EXIT.x,y:WALK_EYE_Y,z:EXIT.z};
+ dry.interact();
+ assert.equal(dry.outcome,'won');
+ assert.equal(dry.gold,0,'pockets cleared on extract');
+ assert.equal(dry.lastHaulBanked,1800);
+ assert.equal(dry.lastExtractBars,0);
+ assert.equal(dry.bankedGold,200+1800);
+ assert.match(dry.reason,/Saved/i);
+ assert.doesNotMatch(dry.reason,/Extract bonus/i);
+ assert.match(dry.reason,/Gold:/i);
+
+ // lootRand → 0.99 ⇒ 1 bar (hi).
+ writeBankedGold(0);
+ const pay=setup();
+ pay.gold=500;pay.bankedGold=100;
+ pay.lootRand=()=>0.99;
+ pay.inventory=['relic',null,null,null,null];pay.selected=0;
+ pay.position={x:EXIT.x,y:WALK_EYE_Y,z:EXIT.z};
+ pay.interact();
+ assert.equal(pay.lastExtractBars,1);
+ assert.equal(pay.bankedGold,100+500+GOLD.barGrams);
+ assert.match(pay.reason,/Extract bonus/i);
+ if(globalThis.localStorage)assert.equal(readBankedGold(),pay.bankedGold);
 });
 
 test('dive-again banks leftover pocket gold before a fresh mission',()=>{
@@ -179,6 +192,15 @@ test('almost-upgrade band: short ≤35% of cost or ≤250 g; ready at 0',()=>{
  assert.match(bankAlmostSuffix(mods,UPGRADE.cost[0],true),/BUY .* NOW/);
  assert.equal(nextUpgradeTarget(mods,1e9,false),null);
  assert.ok(ALMOST_UPGRADE.frac===.35&&ALMOST_UPGRADE.grams===250);
+ const shout=skinnerPullCopy(mods,UPGRADE.cost[0]-50,true)!;
+ assert.equal(shout.kind,'almost');
+ assert.match(shout.center,/ONLY .* MORE UNTIL UPGRADE/i);
+ assert.equal(shout.side,'UPGRADE NOW');
+ const readyShout=skinnerPullCopy(mods,UPGRADE.cost[0],true)!;
+ assert.equal(readyShout.kind,'ready');
+ assert.match(readyShout.center,/READY/i);
+ assert.equal(readyShout.side,'UPGRADE NOW');
+ assert.equal(skinnerPullCopy(mods,0,true),null);
 });
 
 test('skinnerGoal points BUY when vault is almost or ready for an upgrade',()=>{

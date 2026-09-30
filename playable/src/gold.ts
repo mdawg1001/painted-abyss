@@ -31,10 +31,10 @@ export const GOLD = {
  /** Free bars around the relic plinth — zero; extract payday replaces the hoard. */
  hoardBars: 0,
  /**
-  * Extract jackpot: kilobars poured straight into the vault when you leave with
-  * the relic. [min, max] bar count, rolled per extract.
+  * Extract bonus: rare, lean kilobar pour when you leave with the relic.
+  * [0, 1] — sometimes nothing, never a multi-kilo free feed. Kill VR stays the lever.
   */
- extractBars: [2, 4] as [number, number],
+ extractBars: [0, 1] as [number, number],
  /** Coins within this radius are scooped up as you walk over them (bars need E). */
  scoopRadius: 1.4,
 } as const;
@@ -192,6 +192,47 @@ export function bankAlmostSuffix(mods: RifleMods, banked: number, hasGun: boolea
  if (t.ready) return ` · BUY ${name} NOW`;
  if (t.almost) return ` · ${fmtShopGold(t.short)} TO ${name}`;
  return '';
+}
+
+/** Loud Skinner pull copy for the unfinished buy (center banner + side shout). */
+export type SkinnerPullCopy = {
+ kind: 'ready' | 'almost';
+ /** Huge center-screen line. */
+ center: string;
+ /** Persistent edge shout. */
+ side: string;
+ track: ModTrack;
+ short: number;
+ cost: number;
+ have: number;
+};
+
+export function skinnerPullCopy(mods: RifleMods, banked: number, hasGun: boolean): SkinnerPullCopy | null {
+ const t = nextUpgradeTarget(mods, banked, hasGun);
+ if (!t) return null;
+ if (t.ready) {
+  return {
+   kind: 'ready',
+   center: `${UPGRADE.shopNames[t.track].toUpperCase()} READY — BUY AT THE HATCH!`,
+   side: 'UPGRADE NOW',
+   track: t.track,
+   short: 0,
+   cost: t.cost,
+   have: t.have,
+  };
+ }
+ if (t.almost) {
+  return {
+   kind: 'almost',
+   center: `ONLY ${fmtShopGold(t.short)} MORE UNTIL UPGRADE!`,
+   side: 'UPGRADE NOW',
+   track: t.track,
+   short: t.short,
+   cost: t.cost,
+   have: t.have,
+  };
+ }
+ return null;
 }
 
 // ── Banked gold (persists with the stash) ─────────────────────────────────────────────

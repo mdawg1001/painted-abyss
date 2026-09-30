@@ -15,7 +15,7 @@
  * | Magnetism         | HITBOX_ASSIST.movingScatterDamp  | 25%          | Tighter wear spread while sprinting |
  * | Magnetism         | HITBOX_ASSIST.sprintSpeed        | 3.4 m/s      | = WALK_SPRINT |
  * | Graze bias        | SKIN_OF_TEETH.stillSpeed         | 0.40 m/s     | Aligned with style/graze still |
- * | Graze bias        | SKIN_OF_TEETH.maxGrazeBias       | 0.24         | Hardened land-chance cut (was 0.08) |
+ * | Graze bias        | SKIN_OF_TEETH.maxGrazeBias       | 0.28         | Strafe GRAZE room after aim ×1.5 |
  * | Graze bias        | SKIN_OF_TEETH.fullBiasSpeed      | WALK_SPEED   | Full bias at brisk walk |
  * | Player core       | PLAYER_CORE.visualRadius         | 0.55 m       | Thick visual / camera skim shell |
  * | Player core       | PLAYER_CORE.coreShrink           | 0.40         | Core = visual × shrink ∈ [0.30,0.50] |
@@ -26,6 +26,7 @@
  * | Callouts          | COMBAT_OUTCOME.calloutSeconds    | 0.60 s       | Less centre-screen linger |
  * | Streak ammo       | STREAK.ammoInterval              | 6 s          | Interval kept; drip disabled |
  * | Streak ammo       | ammoRounds B/A/S/SS/SSS          | 0/0/0/0/0    | No free ammo — strip corpses |
+ * | Streak loot bonus | lootRoundsBonus B→SSS            | 0/0/0/0/0    | No free rounds on kill strips |
  * | Streak director   | delay B→SSS                      | 0.45…1.30 s  | Softer than 0.55…1.60 |
  * | Streak loot       | pickupRadiusBonus                | 0.22 m       | Modest (was 0.28) |
  * | Streak break      | shake / hitstop                  | 1.15 / 70 ms | Loud but fair, less nauseating |
@@ -65,7 +66,7 @@ export const COMBAT_POLISH = {
     angleHardCapDeg: 2.5,
     movingScatterDamp: 0.25,
   },
-  graze: { stillSpeed: 0.4, maxGrazeBias: 0.24, minChance: 0.05 },
+  graze: { stillSpeed: 0.4, maxGrazeBias: 0.28, minChance: 0.05 },
   core: { visualRadius: 0.55, coreShrink: 0.40, radius: 0.22, grazeShell: 0.28 },
   style: { scrape: 70, graze: 80, clean: 60, stillDrain: 72, stillSpeed: 0.4, graceSeconds: 2.8 },
   calloutSeconds: 0.6,
