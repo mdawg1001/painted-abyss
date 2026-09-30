@@ -25,7 +25,9 @@ test('reward gates: D/C off; B/A/S+ on with director / loot tables; ammo drip ze
  assert.ok(streakDirectorDelay(4)>streakDirectorDelay(2));
  assert.equal(streakDirectorTargetSoft(2),0);
  assert.equal(streakDirectorTargetSoft(4),1);
- assert.ok(streakLootRoundsBonus(4)>=streakLootRoundsBonus(2));
+ assert.equal(streakLootRoundsBonus(2),0,'no free corpse rounds on streak');
+ assert.equal(streakLootRoundsBonus(5),0);
+ assert.ok(Object.values(STREAK.lootRoundsBonus).every(n=>n===0));
  assert.equal(streakPickupRadiusBonus(1),0);
  assert.equal(streakPickupRadiusBonus(2),STREAK.pickupRadiusBonus);
 });

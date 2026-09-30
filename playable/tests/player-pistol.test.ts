@@ -91,6 +91,8 @@ test('standard guard: two close head shots or five body hits; every hit staggers
 
 test('two head shots drop him up close; his pistol drops and E strips its rounds',()=>{
  const m=armed();const g=m.guard;
+ // Force ammo bucket (~0.87) — lean VR means most kills are dry and drop nothing.
+ let n=0;m.lootRand=()=>{n+=1;return n===1?.87:.5;};
  const ammoLeft=g.ammo;
  let a=at(m,FLOOR_Y+1.64);m.firePistol(a.eye,a.dir);
  assert.ok(g.hp>0,'one head shot is not enough');assert.equal(m.lastPistolHit?.headshot,true);
@@ -112,13 +114,15 @@ test('two head shots drop him up close; his pistol drops and E strips its rounds
 
 test('E picks up at once: a free slot first, otherwise it swaps with the item in your hand',()=>{
  const m=new Mission(true);isolateGuards(m,-1);
- const gun=m.pickups.find(p=>p.item==='gun')!;
+ // Corridor floor is empty (rat cage) — plant gear to exercise pickup / swap.
+ const gun={id:900,item:'gun' as const,cond:.7,rounds:12,position:{x:CORRIDOR.x,y:FLOOR_Y,z:CORRIDOR.z}};
+ const bottle={id:901,item:'bottle' as const,position:{x:CORRIDOR.x+2,y:FLOOR_Y,z:CORRIDOR.z}};
+ m.pickups=[gun,bottle];
  m.position={x:gun.position.x+.5,y:WALK_EYE_Y,z:gun.position.z};
  m.inventory=['knife',null,'flare',null,null];m.selected=0;
  m.interact();
  assert.deepEqual(m.inventory,['knife','gun','flare',null,null]);assert.equal(m.selected,1,'the new item is in your hand');
  // Full: one press swaps with the selected slot and drops the old item at your feet.
- const bottle=m.pickups.find(p=>p.item==='bottle')!;
  m.position={x:bottle.position.x+.5,y:WALK_EYE_Y,z:bottle.position.z};
  m.inventory=['knife','gun','flare','air','bandage'];m.selected=2;
  m.interact();

@@ -517,7 +517,7 @@ export function skinnerGoal(m:{
 
 /** First-dive tip — plain steps, no "bank" jargon. */
 export const SKINNER_FIRST_TIP=
- 'Kill guards for gold. Walk to the hatch and press E to Save Gold. Open Shop and press BUY. If you die, follow GET GUN back to your rifle. Relic extract is a bonus payday. WASD · Shift run · 1–5 select.';
+ 'Kill guards for gold — most kills are empty; the next one might pay. Walk to the hatch and press E to Save Gold. Open Shop and press BUY. If you die, follow GET GUN back to your rifle. Relic extract is a small bonus. WASD · Shift run · 1–5 select.';
 
 /** World / HUD prompt for a floor pickup (relic gate + key wording). */
 export function pickupInteractPrompt(m:{

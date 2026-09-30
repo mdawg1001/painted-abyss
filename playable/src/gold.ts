@@ -31,10 +31,10 @@ export const GOLD = {
  /** Free bars around the relic plinth — zero; extract payday replaces the hoard. */
  hoardBars: 0,
  /**
-  * Extract jackpot: kilobars poured straight into the vault when you leave with
-  * the relic. [min, max] bar count, rolled per extract.
+  * Extract bonus: rare, lean kilobar pour when you leave with the relic.
+  * [0, 1] — sometimes nothing, never a multi-kilo free feed. Kill VR stays the lever.
   */
- extractBars: [2, 4] as [number, number],
+ extractBars: [0, 1] as [number, number],
  /** Coins within this radius are scooped up as you walk over them (bars need E). */
  scoopRadius: 1.4,
 } as const;

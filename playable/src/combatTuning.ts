@@ -26,6 +26,7 @@
  * | Callouts          | COMBAT_OUTCOME.calloutSeconds    | 0.60 s       | Less centre-screen linger |
  * | Streak ammo       | STREAK.ammoInterval              | 6 s          | Interval kept; drip disabled |
  * | Streak ammo       | ammoRounds B/A/S/SS/SSS          | 0/0/0/0/0    | No free ammo — strip corpses |
+ * | Streak loot bonus | lootRoundsBonus B→SSS            | 0/0/0/0/0    | No free rounds on kill strips |
  * | Streak director   | delay B→SSS                      | 0.45…1.30 s  | Softer than 0.55…1.60 |
  * | Streak loot       | pickupRadiusBonus                | 0.22 m       | Modest (was 0.28) |
  * | Streak break      | shake / hitstop                  | 1.15 / 70 ms | Loud but fair, less nauseating |
