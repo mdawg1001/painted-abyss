@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.22.41
+# Painted Abyss — First Dive · 0.22.42
+
+## Faster guards (0.22.42)
+
+Corridor guards walk and chase about **25%** faster. Role `speed` / `combatSpeed`, `GUARD_SPEED` patrol/alert/chase/chaseTired/search, and the walk→run gait blend move with them. Authored foot-slide clip speeds are unchanged so the planted foot still locks to the floor. Aim / accuracy / HP / cadence unchanged.
 
 ## Sharper guard aim again (0.22.41)
 

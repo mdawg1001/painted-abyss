@@ -407,7 +407,7 @@ export const GUARD_FLANK_ANGLE=65*Math.PI/180;
 export const GUARD_MELEE_COOLDOWN=1.55;
 /** Bottle fuel the guard drinks as “his air” while chasing. */
 export const GUARD_BOTTLE_AIR=SPARE_BOTTLE_LITRES;
-export const GUARD_SPEED={patrol:1.38,alert:1.05,chase:2.72,chaseTired:1.58,search:1.9} as const;
+export const GUARD_SPEED={patrol:1.73,alert:1.31,chase:3.4,chaseTired:1.98,search:2.38} as const;
 /**
  * Horde mode: once a guard has you he is a zombie with a pistol. No cover, no strafing,
  * no retreat, no giving up. He comes straight at you at full pace and empties his
