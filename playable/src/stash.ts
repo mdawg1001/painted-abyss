@@ -1,0 +1,158 @@
+/**
+ * Persistent bunker stash chest — small bank near the hatch.
+ * Contents survive death, extract, dive-again, and full page reload via localStorage.
+ *
+ * Keep this module free of value imports from simulation.ts (Mission loads stash).
+ */
+import { SURVIVAL } from './survivalConfig';
+import { RIFLE, rifleName } from './rifleCondition';
+import { modTag, parseMods, type RifleMods } from './gold';
+
+/** Visible capacity — not an infinite backpack. */
+export const STASH_CAPACITY = 5;
+
+export const STASH_STORAGE_KEY = 'painted-abyss.stash';
+
+/**
+ * Fixed dry alcove against the west hatch bulkhead.
+ * Off the corridor gear centerline (x≈−2) and far from the relic / guard rooms.
+ * y matches FLOOR_Y (0.65) in simulation.ts.
+ */
+export const STASH_POSITION = { x: -4.85, y: 0.65, z: 31.55 } as const;
+/** Face east into the hatch corridor. */
+export const STASH_YAW = Math.PI / 2;
+/** Reach for open / store (m) — a step from the hatch spawn. */
+export const STASH_REACH = 3.6;
+
+/** Spare rounds moved in one Store-ammo press (matches a floor ammo box). */
+export const STASH_AMMO_PACK = SURVIVAL.supplies.ammo;
+
+/** Anything that can sit in a chest / bag slot (gold is a separate pocket / vault). */
+export type StashItem =
+ | 'stone'
+ | 'wood'
+ | 'flare'
+ | 'air'
+ | 'bandage'
+ | 'knife'
+ | 'gun'
+ | 'bottle'
+ | 'coat'
+ | 'sovietKey'
+ | 'relic';
+
+export type Item = StashItem | 'gold';
+
+/** One chest slot: gear, or a spare-ammo pack (not inventoriable elsewhere). */
+export type StashSlot =
+ | { kind: 'item'; item: StashItem; rounds?: number; cond?: number; mods?: RifleMods }
+ | { kind: 'ammo'; amount: number }
+ | null;
+
+export type StashCue = '' | 'open' | 'close' | 'deposit' | 'withdraw';
+
+export function emptyStash(): StashSlot[] {
+ return Array.from({ length: STASH_CAPACITY }, () => null);
+}
+
+export function isStashItem(item: Item): item is StashItem {
+ return item !== 'gold';
+}
+
+export function stashSlotLabel(slot: StashSlot): string {
+ if (!slot) return 'empty';
+ if (slot.kind === 'ammo') return `${slot.amount} rounds`;
+ if (slot.item === 'gun') return `${rifleName(slot.cond ?? RIFLE.kitCond)}${modTag(slot.mods)}${slot.rounds ? ` (+${slot.rounds})` : ''}`;
+ const names: Record<StashItem, string> = {
+  knife: 'Diving knife',
+  stone: 'Limestone',
+  wood: 'Driftwood',
+  flare: 'Signal flare',
+  air: 'Pony bottle',
+  bandage: 'Sealant kit',
+  gun: 'AK-74U',
+  bottle: 'Spare air bottle',
+  coat: 'Coat',
+  sovietKey: 'Soviet key',
+  relic: 'Ammonite relic',
+ };
+ return names[slot.item];
+}
+
+function parseSlot(raw: unknown): StashSlot {
+ if (!raw || typeof raw !== 'object') return null;
+ const o = raw as Record<string, unknown>;
+ if (o.kind === 'ammo' && typeof o.amount === 'number' && o.amount > 0) {
+  return { kind: 'ammo', amount: Math.floor(o.amount) };
+ }
+ if (o.kind === 'item' && typeof o.item === 'string' && o.item !== 'gold') {
+  const item = o.item as StashItem;
+  const rounds = typeof o.rounds === 'number' && o.rounds > 0 ? Math.floor(o.rounds) : undefined;
+  const cond = typeof o.cond === 'number' && o.cond > 0 && o.cond <= 1 ? o.cond : undefined;
+  const slot: StashSlot = { kind: 'item', item };
+  if (rounds !== undefined) slot.rounds = rounds;
+  if (cond !== undefined && item === 'gun') slot.cond = cond;
+  const mods = item === 'gun' ? parseMods(o.mods) : undefined;
+  if (mods) slot.mods = mods;
+  return slot;
+ }
+ // Legacy flat shape { item, rounds? }
+ if (typeof o.item === 'string' && o.item !== 'gold' && o.kind !== 'ammo') {
+  const item = o.item as StashItem;
+  const rounds = typeof o.rounds === 'number' && o.rounds > 0 ? Math.floor(o.rounds) : undefined;
+  const cond = typeof o.cond === 'number' && o.cond > 0 && o.cond <= 1 ? o.cond : undefined;
+  const slot: StashSlot = { kind: 'item', item };
+  if (rounds !== undefined) slot.rounds = rounds;
+  if (cond !== undefined && item === 'gun') slot.cond = cond;
+  const mods = item === 'gun' ? parseMods(o.mods) : undefined;
+  if (mods) slot.mods = mods;
+  return slot;
+ }
+ return null;
+}
+
+/** Load stash slots from localStorage (or empty if missing / corrupt). */
+export function readStash(): StashSlot[] {
+ const slots = emptyStash();
+ try {
+  const raw = globalThis.localStorage?.getItem(STASH_STORAGE_KEY);
+  if (!raw) return slots;
+  const data = JSON.parse(raw) as unknown;
+  if (!Array.isArray(data)) return slots;
+  for (let i = 0; i < STASH_CAPACITY; i++) slots[i] = parseSlot(data[i]);
+ } catch {
+  /* private mode / bad JSON */
+ }
+ return slots;
+}
+
+/** Persist stash slots. No-op when storage is unavailable. */
+export function writeStash(slots: StashSlot[]) {
+ try {
+  const payload = slots.slice(0, STASH_CAPACITY).map((s) => {
+   if (!s) return null;
+   if (s.kind === 'ammo') return { kind: 'ammo', amount: s.amount };
+   const out: Record<string, unknown> = { kind: 'item', item: s.item };
+   if (s.rounds !== undefined) out.rounds = s.rounds;
+   if (s.cond !== undefined) out.cond = s.cond;
+   if (s.mods) out.mods = s.mods;
+   return out;
+  });
+  while (payload.length < STASH_CAPACITY) payload.push(null);
+  globalThis.localStorage?.setItem(STASH_STORAGE_KEY, JSON.stringify(payload));
+ } catch {
+  /* private mode */
+ }
+}
+
+export function stashHasContents(slots: StashSlot[]) {
+ return slots.some((s) => s !== null);
+}
+
+export function firstEmptyStashSlot(slots: StashSlot[]) {
+ return slots.findIndex((s) => s === null);
+}
+
+export function firstFilledStashSlot(slots: StashSlot[]) {
+ return slots.findIndex((s) => s !== null);
+}

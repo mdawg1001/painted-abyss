@@ -1,11 +1,122 @@
-/** Dive audio probe wiring. Background ambience comes from the supplied music. */
-export function buildDiveAudio(ctx: AudioContext, master: GainNode) {
+/** Dive audio probe wiring + near-death critical theater bus. Background ambience comes from the supplied music. */
+export type DiveAudioBus = {
+  probe: AnalyserNode;
+  /**
+   * Drive critical theater (0 = clear, 1 = full near-death).
+   * Slight master low-pass + panic breath / heartbeat thumps. Idle stays silent.
+   */
+  setCritical(level: number): void;
+  dispose(): void;
+};
+
+export function buildDiveAudio(ctx: AudioContext, master: GainNode): DiveAudioBus {
   // Probe after the master gain so mute can be verified as silence.
-  // Breathing/regulator loop removed — dive bed is music only.
+  // Breathing/regulator cruise loop stays removed — only critical panic is scheduled.
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 18000;
+  filter.Q.value = 0.65;
+
   const probe = ctx.createAnalyser();
   probe.fftSize = 2048;
-  master.connect(probe).connect(ctx.destination);
-  return probe;
+  master.connect(filter).connect(probe).connect(ctx.destination);
+
+  const panicGain = ctx.createGain();
+  panicGain.gain.value = 0;
+  panicGain.connect(filter);
+
+  let disposed = false;
+  let level = 0;
+  let nextPulseAt = 0;
+  let pulseTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearPulse = () => {
+    if (pulseTimer != null) {
+      clearTimeout(pulseTimer);
+      pulseTimer = null;
+    }
+  };
+
+  const schedulePulse = () => {
+    clearPulse();
+    if (disposed || level < 0.05 || ctx.state === 'closed') return;
+    const now = ctx.currentTime;
+    if (now < nextPulseAt) {
+      pulseTimer = setTimeout(schedulePulse, Math.max(16, (nextPulseAt - now) * 1000));
+      return;
+    }
+    // Lub-dub heartbeat + short inhale scrape — only while critical.
+    const t = now + 0.01;
+    const thump = (at: number, freq: number, gain: number, dur: number) => {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(freq, at);
+      o.frequency.exponentialRampToValueAtTime(freq * 0.55, at + dur);
+      const e = ctx.createGain();
+      e.gain.setValueAtTime(0, at);
+      e.gain.linearRampToValueAtTime(gain * level, at + 0.012);
+      e.gain.exponentialRampToValueAtTime(0.001, at + dur);
+      o.connect(e).connect(panicGain);
+      o.start(at);
+      o.stop(at + dur + 0.02);
+      o.onended = () => { o.disconnect(); e.disconnect(); };
+    };
+    thump(t, 62, 0.42, 0.11);
+    thump(t + 0.16, 48, 0.28, 0.1);
+    // Breath scrape (noise) — panic, not the old cruise regulator loop.
+    const dur = 0.22;
+    const buf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * dur)), ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 780;
+    bp.Q.value = 0.9;
+    const ne = ctx.createGain();
+    ne.gain.setValueAtTime(0, t + 0.04);
+    ne.gain.linearRampToValueAtTime(0.16 * level, t + 0.1);
+    ne.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    noise.connect(bp).connect(ne).connect(panicGain);
+    noise.start(t + 0.04);
+    noise.stop(t + 0.3);
+    noise.onended = () => { noise.disconnect(); bp.disconnect(); ne.disconnect(); };
+
+    // ~70 BPM at full critical; slower when softer.
+    const period = 0.72 + (1 - level) * 0.35;
+    nextPulseAt = t + period;
+    pulseTimer = setTimeout(schedulePulse, period * 1000);
+  };
+
+  return {
+    probe,
+    setCritical(next: number) {
+      if (disposed || ctx.state === 'closed') return;
+      const v = Math.max(0, Math.min(1, next));
+      level = v;
+      const now = ctx.currentTime;
+      // Transparent ~18 kHz → muffled ~1.1 kHz at full critical.
+      const freq = 18000 - v * (18000 - 1100);
+      filter.frequency.setTargetAtTime(freq, now, 0.12);
+      panicGain.gain.setTargetAtTime(v > 0.04 ? 0.55 + 0.45 * v : 0, now, 0.1);
+      if (v < 0.05) {
+        clearPulse();
+        nextPulseAt = 0;
+      } else if (!pulseTimer) {
+        schedulePulse();
+      }
+    },
+    dispose() {
+      disposed = true;
+      clearPulse();
+      try {
+        panicGain.disconnect();
+        filter.disconnect();
+        probe.disconnect();
+      } catch { /* already torn down */ }
+    },
+  };
 }
 
 export function playDiveChime(ctx: AudioContext, master: GainNode) {
@@ -128,4 +239,608 @@ export function playInventoryClick(ctx: AudioContext, master: GainNode) {
   snap.start(start);
   snap.stop(start + .022);
   snap.onended = () => { snap.disconnect(); snapEnv.disconnect(); };
+}
+
+/**
+ * One footfall: booted heel strike, then the forefoot rolling down (walking),
+ * or a single forefoot strike (running). Wading swaps grit for a splash.
+ * Every step is slightly different so the cadence never sounds machine-made.
+ */
+export function playFootstep(
+  ctx: AudioContext,
+  master: GainNode,
+  opts: { speed: number; run: number; waterDepth: number; foot: 'left' | 'right' },
+) {
+  const start = ctx.currentTime + .005;
+  const jitter = (k: number) => 1 + (Math.random() * 2 - 1) * k;
+  const intensity = Math.min(1.25, .45 + .22 * opts.speed) * jitter(.14) * (opts.foot === 'left' ? 1 : .94);
+  const wet = Math.min(1, Math.max(0, opts.waterDepth / .45));
+  const dry = 1 - Math.min(1, opts.waterDepth / .12);
+  const nodes: AudioNode[] = [];
+  const done = () => nodes.forEach(n => n.disconnect());
+
+  const noiseBurst = (at: number, dur: number, freq: number, q: number, gain: number) => {
+    const buf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * dur)), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq * jitter(.1); bp.Q.value = q;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, at);
+    env.gain.linearRampToValueAtTime(gain, at + .003);
+    env.gain.exponentialRampToValueAtTime(.0008, at + dur);
+    src.connect(bp).connect(env).connect(master);
+    nodes.push(src, bp, env);
+    src.start(at); src.stop(at + dur + .01);
+    return src;
+  };
+  const thump = (at: number, freq: number, dur: number, gain: number) => {
+    const osc = ctx.createOscillator(); osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq * jitter(.08), at);
+    osc.frequency.exponentialRampToValueAtTime(freq * .55, at + dur);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, at);
+    env.gain.linearRampToValueAtTime(gain, at + .004);
+    env.gain.exponentialRampToValueAtTime(.0008, at + dur);
+    osc.connect(env).connect(master);
+    nodes.push(osc, env);
+    osc.start(at); osc.stop(at + dur + .01);
+    return osc;
+  };
+
+  let last: AudioScheduledSourceNode;
+  if (opts.run < .5) {
+    // Walking: heel contact, then the forefoot slaps down ~10 % of the cycle later.
+    const flat = .06 / Math.max(.6, opts.speed / 1.4);
+    thump(start, 120, .07, .22 * intensity * (dry * .9 + .1));
+    noiseBurst(start, .045, 2600, 1.4, .12 * intensity * dry);
+    last = noiseBurst(start + flat, .05, 1500, 1.1, .08 * intensity * dry);
+  } else {
+    // Running: single, heavier forefoot/midfoot strike plus a scuff at push-off.
+    thump(start, 105, .09, .32 * intensity * (dry * .9 + .1));
+    noiseBurst(start, .06, 2200, 1.2, .16 * intensity * dry);
+    last = noiseBurst(start + .09, .04, 3400, 1.6, .05 * intensity * dry);
+  }
+  if (wet > 0.01) {
+    // Water: broad splash that gets bigger and longer as the water deepens.
+    last = noiseBurst(start + .01, .16 + .22 * wet, 1100, .7, (.1 + .22 * wet) * intensity);
+    noiseBurst(start + .05, .12 + .1 * wet, 3200, .9, .06 * wet * intensity);
+  }
+  last.onended = done;
+}
+
+/**
+ * TT-33 report in a concrete-and-rock bunker: a hard supersonic crack, a short
+ * chest thump, then a long dark tail as the sound rolls round the chambers.
+ * `distance` (m) softens and darkens it; the tail stays so far shots still carry.
+ */
+export function playGunshot(ctx: AudioContext, master: GainNode, distance: number) {
+  const start = ctx.currentTime + .004;
+  const near = 1 / (1 + Math.max(0, distance) / 7);
+  const nodes: AudioNode[] = [];
+  const noise = (dur: number) => {
+    const buf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * dur)), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource(); src.buffer = buf; nodes.push(src); return src;
+  };
+  // Crack: broadband, very fast, brighter up close.
+  const crack = noise(.09);
+  const crackHp = ctx.createBiquadFilter(); crackHp.type = 'highpass'; crackHp.frequency.value = 900 + 2200 * near;
+  const crackEnv = ctx.createGain();
+  crackEnv.gain.setValueAtTime(0, start);
+  crackEnv.gain.linearRampToValueAtTime(.9 * near + .08, start + .002);
+  crackEnv.gain.exponentialRampToValueAtTime(.001, start + .09);
+  crack.connect(crackHp).connect(crackEnv).connect(master); nodes.push(crackHp, crackEnv);
+  crack.start(start); crack.stop(start + .1);
+  // Thump: the muzzle blast body.
+  const thump = ctx.createOscillator(); thump.type = 'sine';
+  thump.frequency.setValueAtTime(95, start); thump.frequency.exponentialRampToValueAtTime(42, start + .16);
+  const thumpEnv = ctx.createGain();
+  thumpEnv.gain.setValueAtTime(0, start);
+  thumpEnv.gain.linearRampToValueAtTime(.6 * near + .05, start + .004);
+  thumpEnv.gain.exponentialRampToValueAtTime(.001, start + .18);
+  thump.connect(thumpEnv).connect(master); nodes.push(thump, thumpEnv);
+  thump.start(start); thump.stop(start + .2);
+  // Tail: low-passed noise decaying over ~1.4 s (the bunker ringing).
+  const tail = noise(1.5);
+  const tailLp = ctx.createBiquadFilter(); tailLp.type = 'lowpass'; tailLp.frequency.value = 700 + 500 * near; tailLp.Q.value = .4;
+  const tailEnv = ctx.createGain();
+  tailEnv.gain.setValueAtTime(0, start + .02);
+  tailEnv.gain.linearRampToValueAtTime(.18 + .12 * near, start + .05);
+  tailEnv.gain.exponentialRampToValueAtTime(.001, start + 1.45);
+  tail.connect(tailLp).connect(tailEnv).connect(master); nodes.push(tailLp, tailEnv);
+  tail.start(start + .02); tail.stop(start + 1.5);
+  tail.onended = () => nodes.forEach(n => n.disconnect());
+}
+
+/** A round passing close and striking rock: a whine that drops in pitch, then a chip. */
+export function playRicochet(ctx: AudioContext, master: GainNode) {
+  const start = ctx.currentTime + .03;
+  const whine = ctx.createOscillator(); whine.type = 'sine';
+  const f0 = 2600 + Math.random() * 900;
+  whine.frequency.setValueAtTime(f0, start); whine.frequency.exponentialRampToValueAtTime(f0 * .45, start + .28);
+  const wEnv = ctx.createGain();
+  wEnv.gain.setValueAtTime(0, start);
+  wEnv.gain.linearRampToValueAtTime(.09, start + .01);
+  wEnv.gain.exponentialRampToValueAtTime(.001, start + .3);
+  whine.connect(wEnv).connect(master);
+  whine.start(start); whine.stop(start + .32);
+  const buf = ctx.createBuffer(1, Math.round(ctx.sampleRate * .05), ctx.sampleRate);
+  const d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const chip = ctx.createBufferSource(); chip.buffer = buf;
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 3800; bp.Q.value = 1.3;
+  const cEnv = ctx.createGain();
+  cEnv.gain.setValueAtTime(0, start - .02);
+  cEnv.gain.linearRampToValueAtTime(.22, start - .018);
+  cEnv.gain.exponentialRampToValueAtTime(.001, start + .03);
+  chip.connect(bp).connect(cEnv).connect(master);
+  chip.start(start - .02); chip.stop(start + .04);
+  whine.onended = () => { whine.disconnect(); wEnv.disconnect(); chip.disconnect(); bp.disconnect(); cEnv.disconnect(); };
+}
+
+/**
+ * One drive stroke on the leak valve: the stem grinding through its packing
+ * (band-passed noise swept with the wheel's speed) over a low metal groan.
+ * `strain` 0..1 raises the groan and grit for the stuck first turn and the seat.
+ */
+export function playValveStroke(ctx: AudioContext, master: GainNode, duration: number, strain: number) {
+  const start = ctx.currentTime;
+  const len = Math.max(.1, duration);
+  const buf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * len)), ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  // Stick-slip grit: noise gated by a jittery ~40 Hz chatter.
+  let phase = 0;
+  for (let i = 0; i < data.length; i++) {
+    phase += (38 + Math.random() * 18) / ctx.sampleRate;
+    const chatter = .45 + .55 * Math.max(0, Math.sin(phase * Math.PI * 2));
+    data[i] = (Math.random() * 2 - 1) * chatter;
+  }
+  const noise = ctx.createBufferSource();
+  noise.buffer = buf;
+  const band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.Q.value = 2.2;
+  // Speed of the wheel follows the smootherstep drive: pitch rises then falls.
+  band.frequency.setValueAtTime(260, start);
+  band.frequency.linearRampToValueAtTime(520 + 260 * strain, start + len * .5);
+  band.frequency.linearRampToValueAtTime(300, start + len);
+  const grit = ctx.createGain();
+  grit.gain.setValueAtTime(0, start);
+  grit.gain.linearRampToValueAtTime(.08 + .06 * strain, start + len * .2);
+  grit.gain.linearRampToValueAtTime(.05 + .05 * strain, start + len * .8);
+  grit.gain.linearRampToValueAtTime(0, start + len);
+  noise.connect(band).connect(grit).connect(master);
+  const groan = ctx.createOscillator();
+  groan.type = 'sawtooth';
+  groan.frequency.setValueAtTime(58 + 30 * strain, start);
+  groan.frequency.linearRampToValueAtTime(72 + 40 * strain, start + len * .5);
+  groan.frequency.linearRampToValueAtTime(55 + 25 * strain, start + len);
+  const low = ctx.createBiquadFilter();
+  low.type = 'lowpass';
+  low.frequency.value = 420;
+  const groanGain = ctx.createGain();
+  groanGain.gain.setValueAtTime(0, start);
+  groanGain.gain.linearRampToValueAtTime(.035 + .05 * strain, start + len * .3);
+  groanGain.gain.linearRampToValueAtTime(0, start + len);
+  groan.connect(low).connect(groanGain).connect(master);
+  noise.start(start); noise.stop(start + len);
+  groan.start(start); groan.stop(start + len);
+  groan.onended = () => { noise.disconnect(); band.disconnect(); grit.disconnect(); groan.disconnect(); low.disconnect(); groanGain.disconnect(); };
+}
+
+/** The gate hitting its seat: a dull, heavy metal clunk that rings briefly through the riser. */
+export function playValveSeat(ctx: AudioContext, master: GainNode) {
+  const start = ctx.currentTime;
+  for (const [f, g, d] of [[92, .22, .5], [233, .08, .35], [611, .03, .22]] as const) {
+    const o = ctx.createOscillator();
+    const e = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(f * 1.08, start);
+    o.frequency.exponentialRampToValueAtTime(f, start + .06);
+    e.gain.setValueAtTime(0, start);
+    e.gain.linearRampToValueAtTime(g, start + .006);
+    e.gain.exponentialRampToValueAtTime(.0008, start + d);
+    o.connect(e).connect(master);
+    o.start(start); o.stop(start + d + .02);
+    o.onended = () => { o.disconnect(); e.disconnect(); };
+  }
+}
+
+/**
+ * Hit confirmation, AAA style: a short bright tick on a hit, a lower double tick on a
+ * head shot or kill. Plays on top of the gunshot, so it is quiet and very short.
+ */
+export function playHitMarker(ctx: AudioContext, master: GainNode, kind: 'hit' | 'head' | 'kill' | 'scrape' | 'graze' | 'multi') {
+  const start = ctx.currentTime + .03;
+  const ticks =
+    kind === 'scrape' ? [{ f: 2800, t: 0 }, { f: 2100, t: .04 }] :
+    kind === 'graze' ? [{ f: 1600, t: 0 }, { f: 2400, t: .05 }] :
+    kind === 'multi' ? [{ f: 2100, t: 0 }, { f: 2600, t: .04 }, { f: 1700, t: .09 }] :
+    kind === 'hit' ? [{ f: 2300, t: 0 }] :
+    [{ f: 1900, t: 0 }, { f: 1400, t: .055 }];
+  const gain = kind === 'scrape' || kind === 'graze' ? .12 : .16;
+  for (const { f, t } of ticks) {
+    const osc = ctx.createOscillator(); osc.type = 'triangle';
+    osc.frequency.setValueAtTime(f, start + t);
+    osc.frequency.exponentialRampToValueAtTime(f * .7, start + t + .05);
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, start + t);
+    env.gain.linearRampToValueAtTime(gain, start + t + .002);
+    env.gain.exponentialRampToValueAtTime(.001, start + t + .06);
+    osc.connect(env).connect(master);
+    osc.start(start + t); osc.stop(start + t + .07);
+    osc.onended = () => { osc.disconnect(); env.disconnect(); };
+  }
+}
+
+/**
+ * Streak break sting — lower and longer than a hit marker so a core hit that ends
+ * B+ payoffs reads as loud-but-fair without stealing the damage hit sound.
+ */
+export function playStreakBreak(ctx: AudioContext, master: GainNode) {
+  const start = ctx.currentTime + .02;
+  const ticks = [
+    { f: 420, t: 0, len: .12 },
+    { f: 280, t: .07, len: .14 },
+    { f: 180, t: .14, len: .16 },
+  ];
+  for (const { f, t, len } of ticks) {
+    const osc = ctx.createOscillator(); osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(f, start + t);
+    osc.frequency.exponentialRampToValueAtTime(f * .55, start + t + len);
+    const bp = ctx.createBiquadFilter(); bp.type = 'lowpass'; bp.frequency.value = 900;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, start + t);
+    env.gain.linearRampToValueAtTime(.14, start + t + .008);
+    env.gain.exponentialRampToValueAtTime(.001, start + t + len);
+    osc.connect(bp).connect(env).connect(master);
+    osc.start(start + t); osc.stop(start + t + len + .02);
+    osc.onended = () => { osc.disconnect(); bp.disconnect(); env.disconnect(); };
+  }
+}
+
+/** Dry trigger / magazine click: a tiny metallic tick. `seat` is the heavier mag-home snap. */
+export function playPistolClick(ctx: AudioContext, master: GainNode, seat = false) {
+  const start = ctx.currentTime + .002;
+  const len = seat ? .05 : .025;
+  const buf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * len)), ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3);
+  const src = ctx.createBufferSource(); src.buffer = buf;
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = seat ? 1800 : 3600; bp.Q.value = 2.5;
+  const g = ctx.createGain(); g.gain.value = seat ? .5 : .35;
+  src.connect(bp).connect(g).connect(master);
+  src.start(start);
+  src.onended = () => { src.disconnect(); bp.disconnect(); g.disconnect(); };
+}
+
+/**
+ * Squad call-out: a guard shouting to the others. A short burst of band-limited noise
+ * (the radio / echo in concrete) under two rough voiced barks, pitched down with distance.
+ */
+export function playSquadCall(ctx: AudioContext, master: GainNode, distance: number) {
+  const start = ctx.currentTime + .02;
+  const near = 1 / (1 + Math.max(0, distance) / 9);
+  const out = ctx.createGain(); out.gain.value = .22 + .38 * near; out.connect(master);
+  const nodes: AudioNode[] = [out];
+  // Squelch.
+  const len = .12;
+  const buf = ctx.createBuffer(1, Math.round(ctx.sampleRate * len), ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+  const sq = ctx.createBufferSource(); sq.buffer = buf;
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1500; bp.Q.value = 1.4;
+  const sqg = ctx.createGain(); sqg.gain.value = .35;
+  sq.connect(bp).connect(sqg).connect(out); sq.start(start); nodes.push(sq, bp, sqg);
+  // Two barks: a sawtooth voice through a vowel-ish formant, falling in pitch.
+  for (const [t, f0] of [[.1, 190], [.34, 165]] as const) {
+    const v = ctx.createOscillator(); v.type = 'sawtooth';
+    v.frequency.setValueAtTime(f0, start + t); v.frequency.exponentialRampToValueAtTime(f0 * .72, start + t + .2);
+    const formant = ctx.createBiquadFilter(); formant.type = 'bandpass'; formant.frequency.value = 750; formant.Q.value = 3;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, start + t);
+    env.gain.linearRampToValueAtTime(.9, start + t + .025);
+    env.gain.exponentialRampToValueAtTime(.001, start + t + .22);
+    v.connect(formant).connect(env).connect(out); v.start(start + t); v.stop(start + t + .24);
+    nodes.push(v, formant, env);
+    if (f0 === 165) v.onended = () => nodes.forEach(n => n.disconnect());
+  }
+}
+
+// ── Survival firefight cues ─────────────────────────────────────────────────────
+/** One white-noise buffer per context, reused by the short cues below. */
+const noiseCache = new WeakMap<BaseAudioContext, AudioBuffer>();
+function noiseBuffer(ctx: AudioContext) {
+  let b = noiseCache.get(ctx);
+  if (!b) {
+    b = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const d = b.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    noiseCache.set(ctx, b);
+  }
+  return b;
+}
+function noiseSrc(ctx: AudioContext) { const s = ctx.createBufferSource(); s.buffer = noiseBuffer(ctx); return s; }
+/**
+ * A short-lived stereo bus: sounds routed through it come from `pan` (−1 left … +1 right)
+ * at `gain`. It disconnects itself after `life` seconds.
+ */
+export function pannedBus(ctx: AudioContext, master: AudioNode, pan: number, gain = 1, life = 3): GainNode {
+  const g = ctx.createGain(); g.gain.value = gain;
+  const p = ctx.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, pan));
+  g.connect(p).connect(master);
+  setTimeout(() => { try { g.disconnect(); p.disconnect(); } catch { /* already gone */ } }, life * 1000);
+  return g;
+}
+/** Steel bulkhead door slammed open: a clank with ringing partials. */
+export function playDoorBang(ctx: AudioContext, out: AudioNode) {
+  const t = ctx.currentTime + .01;
+  const n = noiseSrc(ctx);
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 520; bp.Q.value = 1.2;
+  const ne = ctx.createGain(); ne.gain.setValueAtTime(.9, t); ne.gain.exponentialRampToValueAtTime(.001, t + .18);
+  n.connect(bp).connect(ne).connect(out); n.start(t, Math.random()); n.stop(t + .2);
+  for (const [f, a, d] of [[176, .35, .9], [311, .25, .7], [527, .18, .5], [843, .1, .35]] as const) {
+    const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = f * (.97 + Math.random() * .06);
+    const e = ctx.createGain(); e.gain.setValueAtTime(a, t); e.gain.exponentialRampToValueAtTime(.001, t + d);
+    o.connect(e).connect(out); o.start(t); o.stop(t + d + .05);
+  }
+}
+/** Smoke grenade: a pop, then a hiss that thins out. */
+export function playSmokePop(ctx: AudioContext, out: AudioNode) {
+  const t = ctx.currentTime + .005;
+  const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(160, t); o.frequency.exponentialRampToValueAtTime(60, t + .12);
+  const oe = ctx.createGain(); oe.gain.setValueAtTime(.5, t); oe.gain.exponentialRampToValueAtTime(.001, t + .15);
+  o.connect(oe).connect(out); o.start(t); o.stop(t + .2);
+  const n = noiseSrc(ctx);
+  const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 2400;
+  const ne = ctx.createGain(); ne.gain.setValueAtTime(0, t); ne.gain.linearRampToValueAtTime(.22, t + .1); ne.gain.exponentialRampToValueAtTime(.001, t + 1.9);
+  n.connect(hp).connect(ne).connect(out); n.start(t); n.stop(t + 2);
+}
+/** A guard's effort grunt as he winds up a blow. */
+export function playGrunt(ctx: AudioContext, out: AudioNode) {
+  const t = ctx.currentTime + .005;
+  const v = ctx.createOscillator(); v.type = 'sawtooth';
+  v.frequency.setValueAtTime(150, t); v.frequency.exponentialRampToValueAtTime(105, t + .22);
+  const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 620; f.Q.value = 2.5;
+  const e = ctx.createGain(); e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(.6, t + .03); e.gain.exponentialRampToValueAtTime(.001, t + .25);
+  v.connect(f).connect(e).connect(out); v.start(t); v.stop(t + .3);
+}
+/** The blow itself: a body thud when it lands, a swish of air when it misses. */
+export function playMeleeHit(ctx: AudioContext, out: AudioNode, landed: boolean) {
+  const t = ctx.currentTime + .005;
+  const n = noiseSrc(ctx);
+  const f = ctx.createBiquadFilter();
+  const e = ctx.createGain();
+  if (landed) {
+    f.type = 'lowpass'; f.frequency.value = 900;
+    e.gain.setValueAtTime(.9, t); e.gain.exponentialRampToValueAtTime(.001, t + .16);
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(45, t + .15);
+    const oe = ctx.createGain(); oe.gain.setValueAtTime(.8, t); oe.gain.exponentialRampToValueAtTime(.001, t + .18);
+    o.connect(oe).connect(out); o.start(t); o.stop(t + .2);
+  } else {
+    f.type = 'bandpass'; f.Q.value = 1.4; f.frequency.setValueAtTime(700, t); f.frequency.exponentialRampToValueAtTime(2600, t + .18);
+    e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(.35, t + .06); e.gain.exponentialRampToValueAtTime(.001, t + .22);
+  }
+  n.connect(f).connect(e).connect(out); n.start(t, Math.random()); n.stop(t + .25);
+}
+/** Your round striking a guard: a wet thwack; on a helmet, a sharp ping. */
+export function playFleshHit(ctx: AudioContext, out: AudioNode, helmet: boolean) {
+  const t = ctx.currentTime + .02;
+  const n = noiseSrc(ctx);
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1400;
+  const e = ctx.createGain(); e.gain.setValueAtTime(.55, t); e.gain.exponentialRampToValueAtTime(.001, t + .09);
+  n.connect(f).connect(e).connect(out); n.start(t, Math.random()); n.stop(t + .1);
+  if (helmet) {
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = 2900;
+    const oe = ctx.createGain(); oe.gain.setValueAtTime(.2, t); oe.gain.exponentialRampToValueAtTime(.001, t + .25);
+    o.connect(oe).connect(out); o.start(t); o.stop(t + .3);
+  }
+}
+/** Taking a supply: ammo clacks, dressings rustle, smoke tins clink. */
+export function playSupply(ctx: AudioContext, out: AudioNode, kind: 'ammo' | 'medkit' | 'smoke') {
+  const t = ctx.currentTime + .005;
+  const hits = kind === 'ammo' ? [0, .07, .13] : kind === 'smoke' ? [0, .1] : [0];
+  for (const dt of hits) {
+    const o = ctx.createOscillator(); o.type = kind === 'medkit' ? 'sine' : 'square';
+    o.frequency.value = kind === 'medkit' ? 520 : kind === 'smoke' ? 1500 : 900 + dt * 900;
+    const e = ctx.createGain(); e.gain.setValueAtTime(kind === 'medkit' ? .18 : .07, t + dt); e.gain.exponentialRampToValueAtTime(.001, t + dt + (kind === 'medkit' ? .35 : .06));
+    o.connect(e).connect(out); o.start(t + dt); o.stop(t + dt + .4);
+  }
+}
+
+/** Hatch stash lid / hinge: wooden scrape + soft latch. */
+export function playStashOpen(ctx: AudioContext, out: AudioNode) {
+  const t = ctx.currentTime;
+  const nBuf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * .12)), ctx.sampleRate);
+  const samples = nBuf.getChannelData(0);
+  for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+  const noise = ctx.createBufferSource();
+  noise.buffer = nBuf;
+  const band = ctx.createBiquadFilter();
+  band.type = 'bandpass';
+  band.frequency.value = 420;
+  band.Q.value = .8;
+  const nEnv = ctx.createGain();
+  nEnv.gain.setValueAtTime(.35, t);
+  nEnv.gain.exponentialRampToValueAtTime(.001, t + .14);
+  noise.connect(band).connect(nEnv).connect(out);
+  noise.start(t);
+  noise.stop(t + .15);
+  const o = ctx.createOscillator();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(180, t);
+  o.frequency.exponentialRampToValueAtTime(90, t + .18);
+  const e = ctx.createGain();
+  e.gain.setValueAtTime(.22, t);
+  e.gain.exponentialRampToValueAtTime(.001, t + .2);
+  o.connect(e).connect(out);
+  o.start(t);
+  o.stop(t + .22);
+}
+
+/** Hatch stash lid settling shut. */
+export function playStashClose(ctx: AudioContext, out: AudioNode) {
+  const t = ctx.currentTime;
+  const o = ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(140, t);
+  o.frequency.exponentialRampToValueAtTime(70, t + .1);
+  const e = ctx.createGain();
+  e.gain.setValueAtTime(.28, t);
+  e.gain.exponentialRampToValueAtTime(.001, t + .12);
+  o.connect(e).connect(out);
+  o.start(t);
+  o.stop(t + .14);
+  const tick = ctx.createOscillator();
+  tick.type = 'square';
+  tick.frequency.value = 1100;
+  const te = ctx.createGain();
+  te.gain.setValueAtTime(.12, t + .04);
+  te.gain.exponentialRampToValueAtTime(.001, t + .07);
+  tick.connect(te).connect(out);
+  tick.start(t + .04);
+  tick.stop(t + .08);
+}
+
+/** Item settling into a stash slot. */
+export function playStashDeposit(ctx: AudioContext, out: AudioNode) {
+  const t = ctx.currentTime;
+  for (const [dt, freq, gain] of [[0, 520, .16], [.045, 380, .12]] as const) {
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.value = freq;
+    const e = ctx.createGain();
+    e.gain.setValueAtTime(gain, t + dt);
+    e.gain.exponentialRampToValueAtTime(.001, t + dt + .08);
+    o.connect(e).connect(out);
+    o.start(t + dt);
+    o.stop(t + dt + .1);
+  }
+}
+
+/** Item pulled from a stash slot. */
+export function playStashWithdraw(ctx: AudioContext, out: AudioNode) {
+  const t = ctx.currentTime;
+  for (const [dt, freq, gain] of [[0, 640, .14], [.05, 880, .1]] as const) {
+    const o = ctx.createOscillator();
+    o.type = 'square';
+    o.frequency.value = freq;
+    const e = ctx.createGain();
+    e.gain.setValueAtTime(gain, t + dt);
+    e.gain.exponentialRampToValueAtTime(.001, t + dt + .06);
+    o.connect(e).connect(out);
+    o.start(t + dt);
+    o.stop(t + dt + .08);
+  }
+}
+
+/**
+ * Gold. Metal-on-metal: a few bright inharmonic partials (struck gold rings low for its
+ * size because it is soft and dense) with a fast decay. `kind` shapes the moment:
+ * take = one clink per bar, bank = a cascading pour that rises, upgrade = a machined
+ * clack then a two-note lift, lost/ditch = a dull falling clunk.
+ */
+/**
+ * Stage-two kill-loot theater. Dry is a dull empty thud (never a win chime).
+ * Near-miss rises like a prize then falls short (LDW). Prize / jackpot are bright.
+ */
+export function playKillLoot(
+  ctx: AudioContext,
+  out: AudioNode,
+  kind: 'dry' | 'ammo' | 'scrap' | 'near_miss' | 'field' | 'prize' | 'jackpot',
+  goldGrams = 0,
+) {
+  const t0 = ctx.currentTime + .01;
+  const tone = (at: number, f: number, gain: number, len: number, type: OscillatorType = 'sine') => {
+    const o = ctx.createOscillator(); o.type = type; o.frequency.value = f;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, at);
+    g.gain.linearRampToValueAtTime(gain, at + .004);
+    g.gain.exponentialRampToValueAtTime(1e-4, at + len);
+    o.connect(g).connect(out); o.start(at); o.stop(at + len + .02);
+    o.onended = () => { o.disconnect(); g.disconnect(); };
+  };
+  const noise = (at: number, len: number, freq: number, gain: number) => {
+    const buf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * len)), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = 1.8;
+    const g = ctx.createGain(); g.gain.value = gain;
+    src.connect(bp).connect(g).connect(out); src.start(at);
+    src.onended = () => { src.disconnect(); bp.disconnect(); g.disconnect(); };
+  };
+  if (kind === 'dry') {
+    // Empty pockets: low thud, no sparkle.
+    noise(t0, .06, 220, .22);
+    tone(t0, 140, .1, .1, 'triangle');
+    return;
+  }
+  if (kind === 'ammo') {
+    noise(t0, .03, 3200, .28);
+    tone(t0 + .015, 1800, .08, .05, 'triangle');
+    return;
+  }
+  if (kind === 'scrap') {
+    tone(t0, 520, .1, .08);
+    if (goldGrams > 0) tone(t0 + .05, 900, .07, .07);
+    return;
+  }
+  if (kind === 'near_miss') {
+    // Rise like a prize… then sag. Small scrap gold still clinks (LDW).
+    tone(t0, 880, .14, .1);
+    tone(t0 + .07, 1320, .16, .1);
+    tone(t0 + .16, 700, .1, .12, 'triangle');
+    if (goldGrams > 0) tone(t0 + .1, 1100, .08, .06);
+    return;
+  }
+  if (kind === 'field') {
+    tone(t0, 1000, .12, .08);
+    tone(t0 + .05, 1400, .1, .08);
+    const n = Math.min(3, Math.max(1, Math.round(goldGrams / 120)));
+    for (let i = 0; i < n; i++) tone(t0 + .08 + i * .04, 1200 + i * 80, .09, .07);
+    return;
+  }
+  if (kind === 'prize') {
+    tone(t0, 980, .16, .1);
+    tone(t0 + .06, 1470, .18, .12);
+    tone(t0 + .14, 1960, .14, .14);
+    return;
+  }
+  // jackpot
+  const n = Math.min(8, Math.max(3, Math.round(goldGrams / 200)));
+  for (let i = 0; i < n; i++) tone(t0 + i * .04, 900 + i * 110, .12 + i * .01, .1);
+  tone(t0 + n * .04 + .04, 2100, .2, .16);
+}
+
+export function playGold(ctx: AudioContext, out: AudioNode, kind: 'take' | 'bank' | 'upgrade' | 'ditch' | 'lost', grams = 1000, almost = false) {
+  const t0 = ctx.currentTime + .005;
+  const clink = (at: number, base: number, gain: number) => {
+    for (const [ratio, amp, dec] of [[1, 1, .18], [2.76, .5, .09], [5.4, .25, .05]] as const) {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = base * ratio;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(gain * amp, at + .003);
+      g.gain.exponentialRampToValueAtTime(1e-4, at + dec);
+      o.connect(g).connect(out); o.start(at); o.stop(at + dec + .02);
+      o.onended = () => { o.disconnect(); g.disconnect(); };
+    }
+  };
+  if (kind === 'take') {
+    const n = Math.min(6, Math.max(1, Math.round(grams / 400)));
+    for (let i = 0; i < n; i++) clink(t0 + i * .045, 1250 + Math.random() * 180, .14);
+  } else if (kind === 'bank') {
+    const n = Math.min(24, Math.max(4, Math.round(grams / 250)));
+    for (let i = 0; i < n; i++) clink(t0 + i * .038, 900 + i * 45 + Math.random() * 120, .12);
+    clink(t0 + n * .038 + .05, 2100, .22);
+    // Rising almost-afford tease when the vault lands in the unfinished buy band.
+    if (almost) {
+      const a0 = t0 + n * .038 + .12;
+      clink(a0, 880, .16); clink(a0 + .07, 1175, .18); clink(a0 + .14, 1560, .22);
+    }
+  } else if (kind === 'upgrade') {
+    clink(t0, 520, .3); clink(t0 + .09, 1040, .22); clink(t0 + .2, 1560, .26);
+  } else {
+    clink(t0, 330, .25); clink(t0 + .06, 260, .2);
+  }
 }

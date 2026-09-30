@@ -1,0 +1,18 @@
+# Copper Pipe Section
+
+Sketchfab “Copper Pipe Section” by pixol3d (https://sketchfab.com/pixol3d)
+https://sketchfab.com/3d-models/copper-pipe-section-91807ce330af449bbd3c59b5ede8ce67
+
+License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/
+(Author must be credited. Commercial use is allowed.)
+
+This work is based on "Copper Pipe Section" (https://sketchfab.com/3d-models/copper-pipe-section-91807ce330af449bbd3c59b5ede8ce67) by pixol3d (https://sketchfab.com/pixol3d) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+First Dive ships:
+- `copper_pipe.glb` — the official Sketchfab glTF download (48,634 triangles). Mesh and textures are unchanged.
+
+Wired in `src/copperPipeAsset.ts`. The same glTF is repeated, larger, along the full blind south wall of the far south-west cavern so it joins the hand-wheel pipe already on that wall (not interactable).
+
+- `copper_pipe_far.glb` — derived distance LOD: simplified geometry and 256px textures, 10,258 triangles per rendered section. Created from the credited original; CC BY 4.0 attribution above applies. Original fitting bounds are retained in scene metadata. Rebuild using `scripts/build-copper-lod.mjs`.
+
+Each section uses the original within 8 m, with a 1 m hysteresis band. The original is fetched once on approach; both levels share geometry and textures across their eight copies.

@@ -12,14 +12,69 @@
 - Plastic Crate 02 — https://polyhaven.com/a/plastic_crate_02 — Fabi_G — CC0 1.0
 - Vintage Suitcase — https://polyhaven.com/a/vintage_suitcase — Maximilian Schuster — CC0 1.0
 - Files: `public/assets/chests/<kind>/` (1k glTF + textures) with notes under `src/assets/chests/`
-- Floor props in the cavern; press E to open — a chart scrap scroll rests inside; E again takes it for the Tab chart.
+- Floor props in the cavern. Military crate and suitcase: E opens the lid, E again takes the chart scrap. The plastic crate has no lid — the scrap is visible on approach and E grabs it.
+
+## Cardboard Box 01 (Poly Haven)
+- Source: https://polyhaven.com/a/cardboard_box_01
+- Author: Rahul Chaudhary
+- License: CC0 1.0 Universal (public domain dedication)
+- Files: `public/assets/cardboard_box_01/` (1k glTF + textures) with notes under `src/assets/cardboard_box_01/`
+- Stacked as shootout cover on the bunker floor (blocks movement and sight via `SURVIVAL_COVER`).
+  Each cover footprint is a barricade of 3–4 carton stacks side-by-side.
+
+## Metal Office Desk (Poly Haven)
+- Source: https://polyhaven.com/a/metal_office_desk
+- Author: Ulan Cabanilla
+- License: CC0 1.0 Universal (public domain dedication)
+- Files: `public/assets/metal_office_desk/` (1k glTF + textures) with notes under `src/assets/metal_office_desk/`
+- Placed as shootout cover in the entrance chamber (blocks movement and sight via `SURVIVAL_COVER`).
 
 ## Map scrap scroll (Sketchfab)
 - Source: https://sketchfab.com/3d-models/scroll-game-ready-asset-c1503d2292c74faebf83a5937646c1c7
 - Author: Aparicio Silva 3D (@apariciosilva3D)
 - License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
 - Files: `public/assets/scroll/scroll.gltf` (authored mesh, 7,444 triangles) and `textures/` (albedo, normal, roughness, metallic, AO, emissive)
-- Nested in each open crate until the scrap is taken.
+- Visible in the open-top plastic crate immediately, and inside the military crate or suitcase after that lid is opened, until the scrap is taken.
+
+## Corridor guard — Quaternius Soldier_Male (CC0)
+- Source: https://quaternius.com/packs/ultimateanimatedcharacter.html (Ultimate Animated Character Pack)
+- Author: Quaternius
+- License: CC0 1.0 — https://creativecommons.org/publicdomain/zero/1.0/
+- Files: `public/assets/soviet-uniform/quaternius_soldier_male.glb` — Soldier_Male + authored **idle / walk / run** skeletal clips
+- Phase 3 breath-corridor guards (runtime mesh height ≈ 1.90 m). Five sentries, same cut dyed olive / khaki / steel / brown / teal; TT-33 parents to `FistR`.
+- AnimationMixer crossfades from AI (idle at water/stop, walk patrol/search, run chase); stride `timeScale` matched to move speed.
+
+### Prior mesh / Mixamo (not shipped)
+- Sketchfab “WW2 Soviet Uniform” by tnnv (CC BY 4.0) was the first Phase 3 body:
+  https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99
+- **Mixamo autorig** of that mesh could not be completed here (Adobe login / Mixamo API 401; no credentials).
+- Quaternius UAL / Mixamo Soldier **retarget** onto its Unreal-style bones failed (rest-pose axes); see `scripts/retarget-guard-locomotion.mjs`.
+- Procedural bone-bake (#90) was playtest-rejected — not an acceptable substitute for real clips.
+
+## Poster from Soviet Union (Sketchfab)
+- Source: https://sketchfab.com/3d-models/poster-from-soviet-union-49a80251d7e543289b1deb656b15017a
+- Author: PotatoWit (@PotatoWit)
+- License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
+- Files: `public/assets/soviet-poster/textures/poster_literacy_albedo.png`, `poster_silence_albedo.png` — the two weathered propaganda sheets from the model’s public preview (downloadable glTF requires Sketchfab auth; wall planes use the preview artwork)
+- Hung as a pair on one cave wall face (not interactable).
+
+## Soviet pistol TT-33 (Sketchfab)
+- Source: https://sketchfab.com/3d-models/soviet-pistol-tt-33-0e2876969dff4d0ea86e9dbf3cb0dce9
+- Author: Stupid Mad Polygon (@stupidmadpolygon)
+- License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
+- Files: `public/assets/tt33/tt33.glb` (official Sketchfab glTF, 5,306 triangles)
+- The glTF asset extras also name Simon Volt (https://sketchfab.com/tursunovabduseit).
+- Mesh in the Soviet guard's hand. The diver's inventory gun is the AK74U FPS viewmodel below.
+
+## AK74U | FREE ANIMATION (Sketchfab)
+- Source: https://sketchfab.com/3d-models/ak74u-free-animation-2ab66220c48b465e9501067667965569
+- Author: BURNER (@Alexander_Ovelar)
+- License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
+- Files: `public/assets/ak74u/ak74u.glb` — the author's official glTF download (mesh, PBR textures, KHR_materials_specular), textures re-encoded to 2048² WebP and clips resampled with glTF-Transform; seven viewmodel clips (`DRAW`, `IDLE`, `INSPEC`, `OLSER`, `RELOAD1`, `RELOAD2`, `SHOOT`)
+- Credit line (from the download's license.txt): This work is based on "AK74U | FREE ANIMATION." (https://sketchfab.com/3d-models/ak74u-free-animation-2ab66220c48b465e9501067667965569) by BURNER (https://sketchfab.com/Alexander_Ovelar) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- Upstream credits (per Sketchfab description): gun mesh from [Krinkov AKS-74U](https://sketchfab.com/3d-models/krinkov-aks-74u-9f88c016b5524e36850e1961a249dbf1); arms from [Free Arms and Hands Rig](https://sketchfab.com/3d-models/free-arms-and-hands-rig-b7b5691030b44a74ad11ac191771ac02)
+- Diver inventory gun: animated FPS arms+gun viewmodel and corridor floor pickup (gun meshes). Fire mode unchanged; guards still use the TT-33.
+
 
 ## Lifebuoy (Poly Haven)
 - Source: https://polyhaven.com/a/lifebuoy
@@ -47,3 +102,49 @@
 - License: CC0 1.0 Universal (public domain dedication)
 - File: `public/assets/caustics/caustics_atlas.png` — 1024² RGBA, 16 frames in a 4×4 grid
 - Used as soft additive floor pools under ceiling light shafts (extraction + cavern).
+
+## Copper Pipe Section (Sketchfab)
+- Source: https://sketchfab.com/3d-models/copper-pipe-section-91807ce330af449bbd3c59b5ede8ce67
+- Author: pixol3d (https://sketchfab.com/pixol3d)
+- License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
+- Files: `public/assets/copper-pipe/copper_pipe.glb` — official Sketchfab glTF (48,634 triangles), unchanged
+- This work is based on "Copper Pipe Section" (https://sketchfab.com/3d-models/copper-pipe-section-91807ce330af449bbd3c59b5ede8ce67) by pixol3d (https://sketchfab.com/pixol3d) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- Repeated along the full blind south wall of the far south-west cavern and joined to the hand-wheel riser on that wall (not interactable). The glTF is unchanged; the run is copies of that one section.
+
+## Vintage Cast Iron Radiator (Sketchfab)
+- Source: https://sketchfab.com/3d-models/vintage-cast-iron-radiator-3d-model-7d4d8077bc524dbeb11a28ca09badf57
+- Author: Ati (https://sketchfab.com/azripxd)
+- License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
+- Files: `public/assets/vintage-radiator/vintage_radiator.glb` — official Sketchfab glTF (10,000 triangles), unchanged
+- This work is based on "Vintage Cast Iron Radiator 3D Model" (https://sketchfab.com/3d-models/vintage-cast-iron-radiator-3d-model-7d4d8077bc524dbeb11a28ca09badf57) by Ati (https://sketchfab.com/azripxd) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+- Four room-scale wall-mounted copies (~1.35 m) on memorable Soviet breath-corridor and entrance-lab walls (installed heating; not interactable).
+
+## 04_DOOM_pipe (detail) (Sketchfab)
+- Source: https://sketchfab.com/3d-models/04-doom-pipe-detail-41063ef623eb41f5a981fff8997e54b9
+- Author: gleb_tihon (@gleb_tihon)
+- License: CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/ (credit required; commercial use allowed)
+- Files: `public/assets/doom-pipe/doom_pipe.glb` — official glTF (793,868 triangles) with the hand-wheel split into its own node, decimated to ~67k triangles and meshopt-compressed (`scripts/build-doom-pipe.mjs`); geometry otherwise unaltered
+- Leak-valve riser on the blind south wall of the far south-west cavern corner. Hold E at the wheel to turn the gate valve shut and stop the bunker leak.
+
+The copper-pipe distance LOD (`public/assets/copper-pipe/copper_pipe_far.glb`) is a modified version of pixol3d's CC BY 4.0 Copper Pipe Section credited above: mesh simplification and 256px texture resizing. The original file is retained unchanged.
+
+## War FX (Unity Asset Store)
+
+- Source: https://assetstore.unity.com/packages/vfx/particles/war-fx-5669
+- Author: Jean Moreno (JMO Assets)
+- License: Unity Asset Store standard EULA (third-party publisher; not the Unity Companion License)
+- Used: muzzle-flash star and spark cards, concrete bullet holes, smoke puff and glow circle textures only (the Unity particle prefabs are not used), converted by `scripts/import-war-fx.py` into `public/assets/war_fx/`.
+
+## Crosshairs (Unity Asset Store)
+
+- Source: https://assetstore.unity.com/packages/2d/gui/icons/crosshairs-216732
+- Author: OccaSoftware
+- License: Unity Asset Store standard EULA (third-party publisher)
+- Used: crosshair 03 (aim) and 27 (hit marker), downscaled to 128 px in `public/assets/crosshairs/`.
+
+## Human Melee Animations FREE (Unity Asset Store)
+
+- Source: https://assetstore.unity.com/packages/3d/animations/human-melee-animations-free-165785
+- Author: Kevin Iglesias
+- License: Unity Asset Store standard EULA (third-party publisher)
+- Used: Death01, CombatDamage01 and Attack1H01_R, retargeted onto the Quaternius guard rig by `scripts/retarget-kevin-iglesias.mjs` (FBX converted with FBX2glTF, world-space retarget) into `public/assets/soviet-uniform/guard-actions.json`. Guards crumple with the death clip, flinch (upper body) when hit, and knife rushers thrust with the one-handed attack.

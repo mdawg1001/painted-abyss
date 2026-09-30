@@ -3,25 +3,25 @@ PAINTED ABYSS — FIRST DIVE
 Unzip the entire folder. With Node.js 22.13+ installed, open a terminal
 in this folder and run:
 
-    cd playable
-    npm ci                 (one-time: install dependencies)
-    node refresh.mjs       (pulls latest, builds, and serves)
+    node playable/refresh.mjs
 
-(Or, if already up to date: node serve.mjs)
+(Or, if already up to date: node playable/serve.mjs)
 
 Open http://127.0.0.1:5173 in a desktop browser and click Begin dive.
-Confirm the on-screen label says BUILD v0.3.4 · <git-sha>
+Confirm the on-screen label says BUILD v0.22.34 · <git-sha>
 (menu and during the dive). After another agent merges, run refresh.mjs again.
-The production build (playable/dist) is generated on demand — serve.mjs and
-refresh.mjs build it for you, so it is not committed to git.
+First rebuild needs `cd playable && npm ci` once; serve/refresh then bake dist locally.
 
-WASD swim · Space/Q up/down · Shift sprint · mouse/trackpad look
+WASD walk (dry corridor) / swim · Shift run/sprint · Space/Q buoyancy (swim) · mouse/trackpad look
 F torch · E collect/extract · 1–5 select · click stab (knife) · R use · G drop · Esc pause
 
-Recover the relic by following turquoise markers. Slot 1 starts with a diving
+Recover the relic from the bone alcove beyond the central pillar. Slot 1 starts with a diving
 knife — select 1 and click near the guardian to stab. If inventory is full,
-press E, choose a slot with 1–5, then E again to swap. Follow amber
-markers through the narrow exit passage and press E at the lit pool.
+press E, choose a slot with 1–5, then E again to swap. Head east
+through the narrow exit passage and press E at the lit pool.
+The bunker is flooding: find the hidden leak valve in the far south-west
+corner of the cavern and hold E to turn its wheel shut. Once shut, the
+water drains away; hold E again to reopen it and the flood returns.
 
 README.md has complete controls and editing instructions.
 The root index.html is the original artwork gallery, not the game.

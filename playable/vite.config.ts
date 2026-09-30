@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import { execSync } from 'node:child_process';
 import { writeFileSync, readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -13,11 +13,13 @@ function gitSha(){
 const sha=gitSha();
 const builtAt=new Date().toISOString();
 
-function buildInfoPlugin(){
+function buildInfoPlugin():Plugin{
  return {
   name:'painted-abyss-build-info',
-  closeBundle(){
-   const info={version:pkg.version,sha,builtAt};
+  writeBundle(_options,bundle){
+   // Public files are copied separately; only Vite-emitted hashed assets are immutable.
+   const immutableAssets=Object.keys(bundle).filter(name=>/^assets\/[^/]+-[A-Za-z0-9_-]{8}\.[^/]+$/.test(name));
+   const info={version:pkg.version,sha,builtAt,immutableAssets};
    writeFileSync(resolve(root,'dist/build-info.json'),JSON.stringify(info,null,2)+'\n');
   },
   transformIndexHtml(html){
@@ -30,7 +32,16 @@ function buildInfoPlugin(){
 
 export default defineConfig({
  base:'./',
- build:{chunkSizeWarningLimit:800},
+ build:{
+  chunkSizeWarningLimit:800,
+  rollupOptions:{
+   output:{
+    manualChunks(id){
+     if(id.includes('node_modules/three'))return 'three';
+    },
+   },
+  },
+ },
  define:{
   __APP_VERSION__:JSON.stringify(pkg.version),
   __APP_BUILD_SHA__:JSON.stringify(sha),

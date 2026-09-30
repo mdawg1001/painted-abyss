@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {access,readFile} from 'node:fs/promises';
 import {join,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {SCROLL_AUTHOR,SCROLL_CAVITY,SCROLL_LICENSE,SCROLL_SOURCE,createScrollVisual,scrollFit,syncScrollPresent} from '../src/scrollAsset';
+import {SCROLL_AUTHOR,SCROLL_CAVITY,SCROLL_LICENSE,SCROLL_SOURCE,createScrollVisual,scrollFit,scrollShouldShow,syncScrollPresent} from '../src/scrollAsset';
 
 const root=join(dirname(fileURLToPath(import.meta.url)),'..','public','assets','scroll');
 
@@ -52,4 +52,14 @@ test('scroll rests inside each crate and stays within the cavity',()=>{
  const visual=createScrollVisual();
  syncScrollPresent(visual,false,1,'military');
  assert.ok(visual.present<.2);
+});
+
+test('plastic scrap is visible while the crate is closed; lidded scraps wait for open',()=>{
+ assert.equal(scrollShouldShow('plastic',false,false),true);
+ assert.equal(scrollShouldShow('plastic',false,true),false);
+ assert.equal(scrollShouldShow('military',false,false),false);
+ assert.equal(scrollShouldShow('military',true,false),true);
+ assert.equal(scrollShouldShow('suitcase',false,false),false);
+ assert.equal(scrollShouldShow('suitcase',true,false),true);
+ assert.equal(scrollShouldShow('suitcase',true,true),false);
 });

@@ -4,6 +4,7 @@ import { type PbrMaps, triplanarGlsl } from '../rockMaps';
 
 type Hooks = { onReady:()=>void; onPause:()=>void; onStatus:(d:number,z:string)=>void; onToggleUI:()=>void; onGlide:(v:boolean)=>void; onError:(s:string)=>void };
 type Creature = { group:THREE.Group; fins:THREE.Group[]; tail:THREE.Group; center:THREE.Vector3; radius:number; speed:number; phase:number; kind:string; scale:number };
+export type OceanWorldOptions={deferStart?:boolean;antialias?:boolean;dprCap?:number;particleCount?:number};
 const TAU=Math.PI*2;
 let seed=91623;
 const rnd=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296;};
@@ -30,12 +31,16 @@ export class OceanWorld {
   particles!:THREE.Points; kelpMaterials:THREE.MeshStandardMaterial[]=[]; colliders:{pos:THREE.Vector3;radius:number;height:number}[]=[];
   dummy=new THREE.Object3D(); statusAt=0; time=0; pausedTime=0; audioContext:AudioContext|null=null; master:GainNode|null=null;
   observer!:ResizeObserver; reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  constructor(host:HTMLDivElement,hooks:Hooks,options:{deferStart?:boolean}={}){
+  /** Suspended mote count (playability profile may lower this). */
+  particleCount=1800;
+  constructor(host:HTMLDivElement,hooks:Hooks,options:OceanWorldOptions={}){
     this.host=host;this.hooks=hooks;
+    if(options.particleCount!=null)this.particleCount=options.particleCount;
     this.camera=new THREE.PerspectiveCamera(67,host.clientWidth/host.clientHeight,.12,600);
     this.camera.position.copy(this.position);this.camera.rotation.order='YXZ';this.camera.rotation.set(this.pitch,this.yaw,0);
-    this.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,powerPreference:'high-performance'});
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));this.renderer.setSize(host.clientWidth,host.clientHeight);
+    this.renderer=new THREE.WebGLRenderer({antialias:options.antialias??true,alpha:false,powerPreference:'high-performance'});
+    const dprCap=options.dprCap??1.25;
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,dprCap));this.renderer.setSize(host.clientWidth,host.clientHeight);
     this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.18;
     this.renderer.setClearColor(0x0a5365);host.appendChild(this.renderer.domElement);
     this.scene.background=new THREE.Color(0x0b5363);this.scene.fog=new THREE.FogExp2(0x0b5363,.014);
@@ -84,7 +89,7 @@ export class OceanWorld {
       shader.fragmentShader=fragHead+shader.fragmentShader;
       let detailCode='';
       if(usePbr){
-        // Sample triplanar maps once. Later chunks reuse g* so the picture matches with fewer taps.
+        // Photographic albedo, then blood only where the splatter mask opens.
         detailCode=`{
           gWn=normalize(vOceanWNormal);
           gB=triBlend(gWn);
@@ -92,6 +97,7 @@ export class OceanWorld {
           gRockArm=triArm(uPbrArm,vOceanWorld,gB,uPbrScale);
           gMossArm=vec3(0.);
           gMoss=0.;
+          gBlood=0.;
           float wet=${detail==='sand'?'0.5':'0.62'};
           gAlb*=mix(1.,.62,wet);
           ${useMoss?`
@@ -105,6 +111,13 @@ export class OceanWorld {
           `:`
           diffuseColor.rgb*=gAlb*mix(.62,1.,gRockArm.r);
           `}
+          vec2 buv=abs(gWn.y)>0.65?vOceanWorld.xz:(abs(gWn.x)>abs(gWn.z)?vOceanWorld.zy:vOceanWorld.xy);
+          float blob=smoothstep(0.58,0.74,valueNoise(buv*0.45+vec2(8.0,3.0)));
+          float speck=smoothstep(0.70,0.84,valueNoise(buv*1.7+vec2(0.4,4.8)));
+          float crack=smoothstep(0.50,0.12,gRockArm.r);
+          float gate=smoothstep(0.42,0.62,valueNoise(buv*0.28+vec2(1.7,6.4)));
+          gBlood=clamp((max(blob*0.95,speck*0.8)+crack*gate*0.85)*0.40,0.0,0.352);
+          diffuseColor.rgb=mix(diffuseColor.rgb,vec3(0.45,0.02,0.015),gBlood);
         }`;
       }else{
         if(detail==='sand')detailCode=`float grain=valueNoise(vOceanWorld.xz*15.);float ripple=sin(vOceanWorld.x*.7+vOceanWorld.z*3.+valueNoise(vOceanWorld.xz*.11)*5.);diffuseColor.rgb*=.82+grain*.22+ripple*.07;`;
@@ -112,7 +125,7 @@ export class OceanWorld {
       }
       if(detail==='skin')detailCode=`float blot=valueNoise(vOceanLocal.xz*5.+vOceanLocal.y*2.);float fine=valueNoise(vOceanLocal.xy*48.);float bands=sin(vOceanLocal.x*5.5+vOceanLocal.z*3.+blot*4.);diffuseColor.rgb*=.6+blot*.5+fine*.15;diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*.42,smoothstep(.5,.9,bands)*.45);diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.54,.62,.49),(1.-smoothstep(-.75,.0,vOceanLocal.y))*.65);`;
       if(usePbr){
-        shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`vec3 gWn;vec3 gB;vec3 gAlb;vec3 gRockArm;vec3 gMossArm;float gMoss;\n#include <color_fragment>\n${detailCode}`);
+        shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`vec3 gWn;vec3 gB;vec3 gAlb;vec3 gRockArm;vec3 gMossArm;float gMoss;float gBlood;\n#include <color_fragment>\n${detailCode}`);
         const wet=detail==='sand'?'0.5':'0.62';
         shader.fragmentShader=shader.fragmentShader.replace('#include <roughnessmap_fragment>',`#include <roughnessmap_fragment>
           {
@@ -124,6 +137,7 @@ export class OceanWorld {
             `:`
             roughnessFactor=clamp(mix(arm.g*roughnessFactor,arm.g*roughnessFactor*.35,wet),.06,.95);
             `}
+            roughnessFactor=mix(roughnessFactor,min(roughnessFactor,0.35),gBlood);
           }`);
         shader.fragmentShader=shader.fragmentShader.replace('#include <metalnessmap_fragment>',`#include <metalnessmap_fragment>
           {
@@ -144,14 +158,13 @@ export class OceanWorld {
       }else shader.fragmentShader=shader.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>\n${detailCode}`);
       if(gain>0){
         if(usePbr){
-          // Soft caustics only — strong procedural caustics fight photographic albedo
           shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.012*gain).toFixed(4)};\n#include <opaque_fragment>`);
         }else{
           shader.fragmentShader=shader.fragmentShader.replace('#include <opaque_fragment>',`float ca=caustic(vOceanWorld.xz*.55+vOceanWorld.y*.12,uTime);float sunward=pow(max(0.,dot(normalize(normal),vec3(.15,.92,.28))),1.35);outgoingLight+=vec3(.55,.9,.88)*ca*sunward*${(0.055*gain).toFixed(4)};\n#include <opaque_fragment>`);
         }
       }
     };
-    m.customProgramCacheKey=()=>`${detail}:${gain.toFixed(2)}:pbr${usePbr?maps!.key:'0'}:moss${useMoss?mossMaps!.key+':35pct':'0'}`;
+    m.customProgramCacheKey=()=>`${detail}:${gain.toFixed(2)}:pbr${usePbr?maps!.key:'0'}:moss${useMoss?mossMaps!.key+':35pct':'0'}${usePbr?':blood':''}`;
     return m;
   }
 
@@ -359,7 +372,7 @@ export class OceanWorld {
   }
 
   suspendedParticles(){
-    const count=1800,pos=new Float32Array(count*3);for(let i=0;i<count;i++){pos[i*3]=rand(-110,110);pos[i*3+1]=rand(-16,26);pos[i*3+2]=rand(-110,110);}
+    const count=this.particleCount,pos=new Float32Array(count*3);for(let i=0;i<count;i++){pos[i*3]=rand(-110,110);pos[i*3+1]=rand(-16,26);pos[i*3+2]=rand(-110,110);}
     const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));
     const mat=new THREE.ShaderMaterial({uniforms:{uTime:this.uniforms.uTime,uPixelRatio:{value:this.renderer.getPixelRatio()}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
       vertexShader:`uniform float uTime;uniform float uPixelRatio;varying float a;void main(){vec3 p=position;p.x+=sin(uTime*.14+position.z)*.22;p.y+=sin(uTime*.18+position.x)*.25;vec4 mv=modelViewMatrix*vec4(p,1.);gl_PointSize=clamp(38./-mv.z,1.,3.5)*uPixelRatio;gl_Position=projectionMatrix*mv;a=clamp(1.-length(mv.xyz)/95.,0.,1.)*.33;}`,
@@ -410,7 +423,7 @@ export class OceanWorld {
       const bass=ctx.createOscillator(),bassGain=ctx.createGain();bass.type='sine';bass.frequency.value=47;bassGain.gain.value=.055;bass.connect(bassGain);bassGain.connect(this.master);bass.start();
     }catch{/* Ocean remains fully playable when audio is unavailable. */}
   }
-  resize(){if(!this.alive)return;const w=this.host.clientWidth,h=this.host.clientHeight;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));this.renderer.setSize(w,h);}
+  resize(){if(!this.alive)return;const w=this.host.clientWidth,h=this.host.clientHeight;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.25));this.renderer.setSize(w,h);}
 
   animate=()=>{
     if(!this.alive)return;this.frame=requestAnimationFrame(this.animate);const dt=Math.min(this.clock.getDelta(),.05);

@@ -18,7 +18,7 @@ const GLTF='/assets/scroll/scroll.gltf';
 
 export type ScrollVisual={
  root:THREE.Group;
- /** 0 hidden → 1 fully presented on an open crate. */
+ /** 0 hidden → 1 fully seated in the crate. */
  present:number;
  ready:boolean;
 };
@@ -120,20 +120,25 @@ function loadScrollObject(){
  return loadPromise;
 }
 
-export function createScrollVisual():ScrollVisual{
+export function createScrollVisual(deferLoad=false):ScrollVisual{
  const root=new THREE.Group();
  root.name='scrollVisual';
  root.visible=false;
  root.add(buildScrollStub());
  const visual:ScrollVisual={root,present:0,ready:false};
- if(typeof document==='undefined')return visual;
- loadScrollObject().then(src=>{
+ if(!deferLoad&&typeof document!=='undefined')void upgradeScrollVisual(visual);
+ return visual;
+}
+
+export async function upgradeScrollVisual(visual:ScrollVisual){
+ if(visual.ready)return true;
+ const root=visual.root;
+ const src=await loadScrollObject();
   const mesh=src.clone(true);
   while(root.children.length)root.remove(root.children[0]);
   root.add(mesh);
   visual.ready=true;
- });
- return visual;
+ return true;
 }
 
 type ScrollKind='military'|'plastic'|'suitcase';
@@ -163,8 +168,16 @@ export function scrollFit(kind:ScrollKind){
 }
 
 /**
+ * Plastic crates have no lid, so the scrap is visible before any interact.
+ * Lidded crates show it only after they are opened. Taken scraps stay hidden.
+ */
+export function scrollShouldShow(kind:ScrollKind,open:boolean,taken:boolean){
+ return !taken&&(kind==='plastic'||open);
+}
+
+/**
  * Rest the scroll on the crate floor (crate-local — parent it to the chest pivot).
- * `want` true while the crate is open and the scrap has not been taken.
+ * `want` true while the scrap is still sitting in the crate.
  */
 export function syncScrollPresent(
  visual:ScrollVisual,

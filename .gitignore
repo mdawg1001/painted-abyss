@@ -11,3 +11,7 @@ docs/verification/physics-reality.json
 .dev.vars
 *.log
 .wrangler/
+
+# Generated build / test stamps — never commit (avoids merge conflicts on sha/builtAt/generatedAt)
+playable/dist/
+docs/verification/physics-reality.json

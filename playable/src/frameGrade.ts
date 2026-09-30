@@ -1,0 +1,225 @@
+import { PALETTE } from './artPalette';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { Vector2 } from 'three';
+import {
+ CRUNCH_PIXEL,
+ IMPACT_CHROMA_MAX,
+ IMPACT_VIGNETTE_MAX,
+} from './postFx';
+
+/**
+ * Overtide frame around the photographic cave.
+ * Three fields only. They are assigned, never fog-lerped.
+ * Rock / floor / moss maps are not part of this grade.
+ */
+
+export type FrameGrade = 'dry' | 'water' | 'slam';
+
+/** Dark cold bunker air (fog + background). */
+export const DRY_FIELD = 0x18211f;
+/** Cold fluorescent tube white: the bunker's main light. */
+export const FLUORESCENT = 0xcfe8f0;
+/** Hemisphere 'sky' in the dry bunker: cold concrete bounce from the ceiling. */
+export const BUNKER_SKY = 0x5f7c86;
+/** Warm caged-bulb sconce orange: the accent against the cold. */
+export const BULB_ORANGE = 0xff9a48;
+/** One flat blue-green. Not a depth ramp into navy. */
+export const WATER_FIELD = 0x178f86;
+/** Hard relic-trap red. */
+export const SLAM_FIELD = 0xe30812;
+
+export const DRY_DENSITY = 0.017;
+export const WATER_DENSITY = 0.016;
+export const SLAM_DENSITY = 0.05;
+
+/** How long the trap holds full red before the cut back. No fade. */
+export const SLAM_HOLD = 2.8;
+
+/**
+ * HDR from the cave lights is large. This exposure brings midtones up,
+ * then the grade clips the shoulder instead of filming it off.
+ */
+export const GRADE_EXPOSURE = 1;
+export const GRADE_CONTRAST = 1.34;
+/** Low toe. Highlights clip; photographic shadows are not crushed to black. */
+export const GRADE_PIVOT = 0.04;
+
+/**
+ * Stylized colour: Overtide-bright, painted, readable at a glance.
+ * Runs on the finished frame, so the 2K photographic rock, wall and stone maps keep
+ * every detail — only their colour is pushed. Luma-preserving saturation plus vibrance
+ * (dull colours pushed harder than already-vivid ones, so skin and lamps do not burn).
+ */
+export const GRADE_SATURATION = 0.9;
+export const GRADE_VIBRANCE = 0.45;
+/** Midtone lift (gamma on linear light; < 1 brightens the mids, keeps black and white). */
+export const GRADE_GAMMA = 0.9;
+/** Split tone (multiplicative, so black stays black): cool shadows, warm sun highlights. */
+export const GRADE_SHADOW_TINT = [0.84, 1.0, 1.06] as const;
+export const GRADE_HIGHLIGHT_TINT = [1.0, 1.0, 1.0] as const;
+/** Black level: shadows sit in a cold teal murk, not pure black (linear light, tiny). */
+export const GRADE_LIFT = [0.0012, 0.0042, 0.0048] as const;
+
+/** Dim the guard lamps so the kits read as dark shapes. Outfits are not re-dyed. */
+export const GUARD_KEY_GRADE = 0.45;
+export const GUARD_RIM_GRADE = 0.22;
+
+export const GRADE_LIGHTS = {
+ dry: { sky: BUNKER_SKY, ground: 0x3c4846, hemi: 0.85, ambient: 0x52666a, ambientI: 0.5, sun: FLUORESCENT, sunI: 0.55 },
+ water: { sky: WATER_FIELD, ground: 0x0b2e2b, hemi: 0.62, ambient: 0x1d7468, ambientI: 0.22, sun: WATER_FIELD, sunI: 0.6 },
+ slam: { sky: SLAM_FIELD, ground: 0x3a0808, hemi: 0.48, ambient: SLAM_FIELD, ambientI: 0.22, sun: SLAM_FIELD, sunI: 0.9 },
+} as const;
+
+export type GradeClock = { slamLeft: number; floodSeen: boolean };
+
+export function createGradeClock(): GradeClock {
+ return { slamLeft: 0, floodSeen: false };
+}
+
+export function resetGradeClock(clock: GradeClock) {
+ clock.slamLeft = 0;
+ clock.floodSeen = false;
+}
+
+/**
+ * The relic flood's rising edge latches a hard red hold.
+ * The hold wins over dry and water. When it hits zero the next
+ * sample is fully one of the other two — there is no in-between field.
+ */
+export function stepFrameGrade(clock: GradeClock, floodTriggered: boolean, freeAir: boolean, dt: number): FrameGrade {
+ if (floodTriggered && !clock.floodSeen) clock.slamLeft = SLAM_HOLD;
+ clock.floodSeen = floodTriggered;
+ const grade: FrameGrade = clock.slamLeft > 0 ? 'slam' : freeAir ? 'dry' : 'water';
+ if (clock.slamLeft > 0) clock.slamLeft = Math.max(0, clock.slamLeft - dt);
+ return grade;
+}
+
+export function gradeField(grade: FrameGrade): number {
+ if (grade === 'slam') return SLAM_FIELD;
+ if (grade === 'water') return WATER_FIELD;
+ return DRY_FIELD;
+}
+
+export function gradeDensity(grade: FrameGrade): number {
+ if (grade === 'slam') return SLAM_DENSITY;
+ if (grade === 'water') return WATER_DENSITY;
+ return DRY_DENSITY;
+}
+
+/** 0 or 1. The slam pass must not sit on a partial mix. */
+export function gradeSlam(grade: FrameGrade): 0 | 1 {
+ return grade === 'slam' ? 1 : 0;
+}
+
+/** The water sheet is the blue-green field, or the same hard red while the trap holds. */
+export function waterSheet(grade: FrameGrade): number {
+ return grade === 'slam' ? SLAM_FIELD : WATER_FIELD;
+}
+
+/** Corridor veil. Thin in the water field so the photo rocks stay; hard red on the slam. */
+export function waterVeilOpacity(grade: FrameGrade): number {
+ return grade === 'slam' ? 0.55 : 0.1;
+}
+
+export function practicalColor(grade: FrameGrade): number {
+ return grade === 'slam' ? SLAM_FIELD : PALETTE.amber;
+}
+
+export function practicalGlow(grade: FrameGrade): number {
+ return grade === 'slam' ? SLAM_FIELD : PALETTE.amberGlow;
+}
+
+const CLIP_GRADE_SHADER = {
+ uniforms: {
+  tDiffuse: { value: null },
+  uExposure: { value: GRADE_EXPOSURE },
+  uContrast: { value: GRADE_CONTRAST },
+  uPivot: { value: GRADE_PIVOT },
+  uSlam: { value: 0 },
+  uSaturation: { value: GRADE_SATURATION },
+  uVibrance: { value: GRADE_VIBRANCE },
+  uGamma: { value: GRADE_GAMMA },
+  uShadowTint: { value: [...GRADE_SHADOW_TINT] },
+  uHighlightTint: { value: [...GRADE_HIGHLIGHT_TINT] },
+  uLift: { value: [...GRADE_LIFT] },
+  // Impact / crunch fused here so the composer skips a full-screen blit.
+  uIntensity: { value: 0 },
+  uChroma: { value: IMPACT_CHROMA_MAX },
+  uVignette: { value: IMPACT_VIGNETTE_MAX },
+  uCrunch: { value: CRUNCH_PIXEL },
+  uResolution: { value: new Vector2(1, 1) },
+  // Speed lens peripheral stretch (speedFov.ts), 0 when still.
+  uWarp: { value: 0 },
+ },
+ vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+ fragmentShader: `uniform sampler2D tDiffuse;uniform float uExposure;uniform float uContrast;uniform float uPivot;uniform float uSlam;
+uniform float uSaturation;uniform float uVibrance;uniform float uGamma;uniform vec3 uShadowTint;uniform vec3 uHighlightTint;uniform vec3 uLift;
+uniform float uIntensity;uniform float uChroma;uniform float uVignette;uniform float uCrunch;uniform vec2 uResolution;uniform float uWarp;varying vec2 vUv;
+void main(){
+  vec2 uv=vUv;
+  // Speed lens: sample toward the centre in proportion to r², so the periphery is stretched
+  // out to the frame edges while the middle stays true. Aspect-corrected radius.
+  if(uWarp>1e-4){
+    vec2 d=uv-.5;vec2 a=vec2(d.x*uResolution.x/uResolution.y,d.y);
+    float r2=dot(a,a)/(.25+.25*(uResolution.x*uResolution.x)/(uResolution.y*uResolution.y));
+    uv=.5+d*(1.0-uWarp*r2);
+  }
+  if(uCrunch>1.01){
+    vec2 grid=max(uResolution/uCrunch,vec2(1.0));
+    uv=(floor(uv*grid)+.5)/grid;
+  }
+  float i=clamp(uIntensity,0.0,1.0);
+  float aber=uChroma*i;
+  vec2 fromCentre=uv-.5;
+  float radial=length(fromCentre);
+  vec2 dir=radial>1e-4?fromCentre/radial:vec2(1.0,0.0);
+  vec2 off=dir*aber*(.35+radial);
+  float r=texture2D(tDiffuse,uv+off).r;
+  float g=texture2D(tDiffuse,uv).g;
+  float b=texture2D(tDiffuse,uv-off).b;
+  vec3 c=max(vec3(r,g,b)*uExposure,vec3(0.0));
+  float vig=smoothstep(.35,1.15,radial);
+  c*=1.0-vig*(uVignette*(.12+.88*i));
+  // Vibrance + saturation around luma: the picture gets louder, the texture detail stays.
+  float l=dot(c,vec3(0.2126,0.7152,0.0722));
+  float mx=max(c.r,max(c.g,c.b)),mn=min(c.r,min(c.g,c.b));
+  float satRel=(mx-mn)/max(mx,1e-4);
+  // Near-greys (steel, concrete) stay neutral: vibrance ramps in only once a colour is really there.
+  float vib=uVibrance*smoothstep(0.06,0.22,satRel)*(1.0-satRel);
+  c=max(mix(vec3(l),c,uSaturation*(1.0+vib)),vec3(0.0));
+  // Lift the mids so the cave reads bright and painted instead of murky.
+  c=pow(c,vec3(uGamma));
+  // Split tone: teal shadows, warm highlights.
+  float t=smoothstep(0.0,0.7,dot(c,vec3(0.2126,0.7152,0.0722)));
+  c*=mix(uShadowTint,uHighlightTint,t);
+  c+=uLift*(1.0-t);
+  c=(c-vec3(uPivot))*uContrast+vec3(uPivot);
+  c=clamp(c,0.0,1.0);
+  // uSlam is 0 or 1. Multiply crushes the frame to hard red; it is not a tint mix.
+  vec3 red=c*vec3(1.0,0.04,0.03);
+  c=mix(c,red,step(0.5,uSlam));
+  gl_FragColor=vec4(c,1.0);
+}`,
+};
+
+export type ClipGradePass = ShaderPass & {
+ setIntensity(v: number): void;
+ /** Peripheral speed stretch, 0 (none) to ~0.1. */
+ setWarp(v: number): void;
+ setSize(w: number, h: number): void;
+};
+
+/** Contrast clip + damage/dash impact in one pass (saves a composer blit). */
+export function createClipGradePass(): ClipGradePass {
+ const pass = new ShaderPass(CLIP_GRADE_SHADER) as ClipGradePass;
+ pass.setIntensity = (v: number) => {
+  pass.uniforms.uIntensity.value = Math.max(0, Math.min(1, v));
+ };
+ pass.setWarp = (v: number) => {
+  pass.uniforms.uWarp.value = Math.max(0, Math.min(.2, v));
+ };
+ pass.setSize = (w: number, h: number) => {
+  pass.uniforms.uResolution.value.set(Math.max(1, w), Math.max(1, h));
+ };
+ return pass;
+}

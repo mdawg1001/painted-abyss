@@ -145,7 +145,7 @@ export function DiveMap({fragments,complete,player,open,onClose}:DiveMapProps){
     <p className="dive-map-hint">
      {complete
       ?'Chart fitted. Amber exit is marked — extraction pool through the east fissure.'
-      :'Open crates in the cavern for scraps. Exits stay unmarked until all three fit.'}
+      :'Chart scraps sit in the cavern crates. The plastic crate shows its scrap. Exits stay unmarked until all three fit.'}
     </p>
    </div>
   </div>
