@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.22.40
+# Painted Abyss — First Dive · 0.22.41
+
+## Sharper guard aim again (0.22.41)
+
+Armed survival roles land shots ~**1.25×** more often on top of 0.22.37: role `accuracy` raised toward cap **0.995**, lighter burst climb / moving-fire / first-shot penalties, and horde spray accuracy ×1.25. Skin-of-teeth graze bias **0.30→0.32** so standing stays lethal while strafing still earns GRAZE room. Damage, HP, cadence, director, magnetism, and Ego Savior unchanged.
 
 ## Health label (was Suit) (0.22.40)
 
