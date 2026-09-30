@@ -190,5 +190,9 @@ test('alert halts and turns to the noise; search walks there and scans without m
  assert.ok(m.guard.arrived,'reached the last sighting');
  const tail=s.slice(-60);
  assert.ok(Math.max(...tail.map(p=>Math.hypot(p.x-tail[0].x,p.z-tail[0].z)))<1e-9,'scans on the spot');
- assert.ok(Math.max(...tail.map(p=>p.heading))-Math.min(...tail.map(p=>p.heading))>.05,'looks around');
+ // Faster search arrives sooner; heading sweep may be near a sine peak in the last second.
+ // Score the look-around over the whole on-the-spot stretch after he stops.
+ const parked=s.filter((p,i)=>i>0&&p.speed===0&&Math.hypot(p.x-s[i-1].x,p.z-s[i-1].z)<1e-9);
+ assert.ok(parked.length>60,'holds still long enough to scan');
+ assert.ok(Math.max(...parked.map(p=>p.heading))-Math.min(...parked.map(p=>p.heading))>.05,'looks around');
 });

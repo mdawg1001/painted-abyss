@@ -10,8 +10,9 @@ import {
  SOVIET_GUARD_GLB,SOVIET_GUARD_HEIGHT,GUARD_LOCO_PROCEDURAL,
  boneWorldBox,meshWorldBox,normalizeHumanoid,
  attachGuardLocomotion,updateGuardLocomotion,mountGuardGunOnHand,
+ GUARD_GAIT_BLEND_END,
 } from '../src/sovietGuardAsset';
-import {FLOOR_Y,WALK_EYE_Y} from '../src/simulation';
+import {FLOOR_Y,WALK_EYE_Y,GUARD_SPEED} from '../src/simulation';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 
@@ -112,7 +113,9 @@ test('authored Quaternius idle/walk/run clips drive the skeleton (not procedural
  const walkBox=boneWorldBox(instance);
  assert.ok(Math.abs(walkBox.min.y)<0.15,`planted feet minY=${walkBox.min.y}`);
 
- updateGuardLocomotion(loco!,.05,{moving:true,speed:2.15,state:'chase'});
+ // Chase pace (and anything past the walk→run blend end) must select the run clip.
+ assert.ok(GUARD_SPEED.chase>GUARD_GAIT_BLEND_END,'chase pace is pure run');
+ updateGuardLocomotion(loco!,.05,{moving:true,speed:GUARD_SPEED.chase,state:'chase'});
  assert.equal(loco!.current,'run');
 
  updateGuardLocomotion(loco!,.05,{moving:false,speed:0,state:'chase'});
