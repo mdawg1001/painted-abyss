@@ -35,17 +35,19 @@ export const SURVIVAL={
  knife:{guardDamage:55,backstabMultiplier:5,backstabArc:100*Math.PI/180},
 
  // ── Guard durability by role (standard guard = assault) ────────────────────────
+ // Aggression (0.22.35): faster reaction, tighter burst/rest gaps, slight accuracy +
+ // engagement range, snappier combat speeds. HP unchanged from the 0.22.34 durability bump.
  roles:{
-  assault:{hp:225,headMult:1,speed:2.19,combatSpeed:1.44,range:9,burst:[3,3] as [number,number],burstGap:.16,restMin:1.0,restMax:1.7,accuracy:.6,damage:12,reaction:[.5,.85] as [number,number],armed:true},
-  flanker:{hp:195,headMult:1,speed:2.88,combatSpeed:1.84,range:7,burst:[2,3] as [number,number],burstGap:.15,restMin:.9,restMax:1.5,accuracy:.56,damage:12,reaction:[.45,.8] as [number,number],armed:true},
-  rusher:{hp:165,headMult:1,speed:3.62,combatSpeed:3.62,range:0,burst:[0,0] as [number,number],burstGap:1,restMin:1,restMax:1,accuracy:0,damage:0,reaction:[.2,.35] as [number,number],armed:false},
+  assault:{hp:225,headMult:1,speed:2.32,combatSpeed:1.58,range:10.5,burst:[3,3] as [number,number],burstGap:.11,restMin:.65,restMax:1.15,accuracy:.68,damage:12,reaction:[.28,.48] as [number,number],armed:true},
+  flanker:{hp:195,headMult:1,speed:3.05,combatSpeed:2.0,range:8.5,burst:[2,3] as [number,number],burstGap:.10,restMin:.55,restMax:1.05,accuracy:.64,damage:12,reaction:[.24,.42] as [number,number],armed:true},
+  rusher:{hp:165,headMult:1,speed:3.9,combatSpeed:3.9,range:0,burst:[0,0] as [number,number],burstGap:1,restMin:1,restMax:1,accuracy:0,damage:0,reaction:[.10,.22] as [number,number],armed:false},
   /** Heavy: helmet and flak — headshots do 60 %; long suppressive bursts, slow walk. */
-  heavy:{hp:420,headMult:.6,speed:1.5,combatSpeed:1.21,range:11,burst:[5,7] as [number,number],burstGap:.13,restMin:1.4,restMax:2.2,accuracy:.5,damage:18,reaction:[.7,1.05] as [number,number],armed:true},
+  heavy:{hp:420,headMult:.6,speed:1.6,combatSpeed:1.35,range:12.5,burst:[5,7] as [number,number],burstGap:.09,restMin:.95,restMax:1.55,accuracy:.56,damage:18,reaction:[.38,.62] as [number,number],armed:true},
   /**
    * Main officer: the only guard who carries the Soviet relic key.
    * Same combat AI as the rest; tougher kit, peaking-cap silhouette. Never reinforced.
    */
-  officer:{hp:360,headMult:.7,speed:1.85,combatSpeed:1.35,range:10,burst:[4,6] as [number,number],burstGap:.14,restMin:1.2,restMax:1.9,accuracy:.62,damage:16,reaction:[.55,.9] as [number,number],armed:true},
+  officer:{hp:360,headMult:.7,speed:1.98,combatSpeed:1.48,range:11.5,burst:[4,6] as [number,number],burstGap:.10,restMin:.75,restMax:1.25,accuracy:.70,damage:16,reaction:[.30,.52] as [number,number],armed:true},
  },
 
  // ── Guard fire discipline (why a crowd stays survivable) ───────────────────────
@@ -61,14 +63,14 @@ export const SURVIVAL={
  // ── Close-range attacks (every guard can strike; rushers stab) ─────────────────
  melee:{
   /** Simultaneous close-range attackers allowed. Others circle and wait. */
-  maxAttackers:2,
+  maxAttackers:3,
   /** Wind-up (readable), reach at the moment of the strike, frontal arc, damage, cooldown. */
-  rusher:{windup:.55,reach:1.6,arc:70*Math.PI/180,damage:26,cooldown:1.5,lunge:1.4},
-  other:{windup:.6,reach:1.6,arc:60*Math.PI/180,damage:18,cooldown:1.8,lunge:0},
+  rusher:{windup:.40,reach:1.7,arc:70*Math.PI/180,damage:26,cooldown:1.1,lunge:1.7},
+  other:{windup:.48,reach:1.6,arc:60*Math.PI/180,damage:18,cooldown:1.4,lunge:0},
   /** Start the wind-up from this far (rushers lunge the last bit). */
-  startRange:2.3,
+  startRange:2.65,
   /** Rushers without an attack slot circle at this distance. */
-  waitRadius:4.6,
+  waitRadius:3.6,
  },
  /** A hit staggers a guard: cancels a melee wind-up and delays his trigger. */
  hitFlinch:.28,
@@ -118,8 +120,8 @@ export const SURVIVAL={
   */
  stealth:{sightFactor:.65,speedFactor:.5,eyeDrop:.62,blendSeconds:.22},
  /** Sight lost this long → he goes to where he last saw you and searches. */
- loseSightSeconds:2.2,
- searchSeconds:7,
+ loseSightSeconds:2.8,
+ searchSeconds:5.5,
  /** While the bunker is on alert, searchers sweep toward your area with this much error (m). */
  huntError:7,
 

@@ -155,15 +155,15 @@ export const GUARD_MELEE_DAMAGE=22;
 /** When the guard wears the stolen coat, his strike damage is multiplied by this. */
 export const GUARD_COAT_DAMAGE_MULT=.55;
 /** TT-33 engagement range in the bunker murk (m). */
-export const GUARD_GUN_RANGE=22;
+export const GUARD_GUN_RANGE=25;
 export const GUARD_GUN_DAMAGE=30;
 /** Aimed semi-automatic cadence (s between shots, before jitter). */
 export const GUARD_GUN_COOLDOWN=.75;
 /** TT-33 box magazine and a practised reload. */
 export const GUARD_MAGAZINE=8;
 export const GUARD_RELOAD_SECONDS=2.2;
-/** Time from spotting you to the first shot: turn, raise, aim (s). Human visual reaction ≈ 0.25–0.35 s. */
-export const GUARD_DRAW_SECONDS=.35;
+/** Time from spotting you to chase engage: turn, raise (s). Aggression: snappier than human draw. */
+export const GUARD_DRAW_SECONDS=.18;
 /** He only fires once the muzzle is within this of you (radians, ~10°). */
 export const GUARD_AIM_TOLERANCE=10*Math.PI/180;
 /**
@@ -177,7 +177,7 @@ export function guardHitChance(distance:number,targetSpeed:number,firstShot:bool
  const moving=targetSpeed>2.4?.28:targetSpeed>.6?.12:0;
  // Firing on the move costs him accuracy too (a steady shuffle, not a sprint).
  const shuffle=GUARD_MOVING_FIRE_PENALTY*Math.min(1.5,Math.max(0,shooterSpeed));
- return Math.max(.08,Math.min(.95,base-moving-shuffle-(firstShot?.15:0)));
+ return Math.max(.08,Math.min(.95,base-moving-shuffle-(firstShot?.10:0)));
 }
 /** Hit-chance lost per m/s of his own footwork while firing. */
 export const GUARD_MOVING_FIRE_PENALTY=.09;
@@ -375,19 +375,19 @@ export const GUNSHOT_HEARING=20;
  */
 export const GUARD_SQUAD_RADIUS=25;
 /** How long the sights must rest on a guard before he (and his squad) react (s). */
-export const GUARD_TARGETED_DWELL=.4;
+export const GUARD_TARGETED_DWELL=.28;
 /** A squad keeps hunting this long after the last time any of them saw you (s). */
 export const GUARD_TEAM_MEMORY=14;
 /** Squad members who already have a line on you fire within this long of the call, staggered (s). */
-export const GUARD_SQUAD_FIRST_SHOT=.15;
-export const GUARD_SQUAD_STAGGER=.2;
+export const GUARD_SQUAD_FIRST_SHOT=.08;
+export const GUARD_SQUAD_STAGGER=.12;
 /** How far round you a flanker aims to come in from (m, and angle off his straight approach). */
 export const GUARD_FLANK_DISTANCE=4;
 export const GUARD_FLANK_ANGLE=65*Math.PI/180;
 export const GUARD_MELEE_COOLDOWN=1.55;
 /** Bottle fuel the guard drinks as “his air” while chasing. */
 export const GUARD_BOTTLE_AIR=SPARE_BOTTLE_LITRES;
-export const GUARD_SPEED={patrol:1.38,alert:.75,chase:2.47,chaseTired:1.44,search:1.67} as const;
+export const GUARD_SPEED={patrol:1.38,alert:1.05,chase:2.72,chaseTired:1.58,search:1.9} as const;
 /**
  * Horde mode: once a guard has you he is a zombie with a pistol. No cover, no strafing,
  * no retreat, no giving up. He comes straight at you at full pace and empties his
@@ -428,8 +428,8 @@ export const GUARD_SCAN_ARC=.9;
 /** How many Soviet guards walk the bunker at once. */
 /** Guard pool size (active + waiting behind the doors). */
 export const GUARD_COUNT=SURVIVAL.maxGuards;
-/** In a burst he fires once the muzzle is within this of you (hip-fire, ~20°). */
-export const GUARD_BURST_TOLERANCE=20*Math.PI/180;
+/** In a burst he fires once the muzzle is within this of you (hip-fire, ~24°). */
+export const GUARD_BURST_TOLERANCE=24*Math.PI/180;
 /** What you carry into the first dive: the diving knife and the TT-33. */
 export const SURVIVAL_KIT:Item[]=['knife','gun'];
 /** Always-on tool — every wake (and first spawn if somehow missing) keeps this. */
@@ -971,8 +971,8 @@ export function guardLookout(p:{x:number;z:number}){
  let alt=-1;for(let i=0;i<n;i++){const sep=Math.min(Math.abs(i-best),n-Math.abs(i-best));if(sep>=n/4&&smooth[i]>=Math.max(6,.5*smooth[best])&&(alt<0||smooth[i]>smooth[alt]))alt=i;}
  return{yaw:wrapAngle(centre/n*Math.PI*2),arc:(lo+hi)/2/n*Math.PI*2,view:dist[best],alt:alt<0?null:wrapAngle(alt/n*Math.PI*2)};
 }
-/** Half-angle of the guard's field of view (radians, ~65°). */
-export const GUARD_FOV_HALF=65*Math.PI/180;
+/** Half-angle of the guard's field of view (radians, ~72°). */
+export const GUARD_FOV_HALF=72*Math.PI/180;
 let guardRouteCache:GuardWaypoint[]|null=null;
 /**
  * Perimeter patrol for the whole bunker: the outer boundary of every open cell
@@ -2845,7 +2845,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   const inView=Math.abs(wrapAngle(toward-g.heading))<=GUARD_FOV_HALF;
   // Crouched you are a smaller, lower shape: every pick-up distance shrinks (Hitman-style sneak).
   const k=stealthSightFactor(this.crouching);
-  const sense=canSee&&(d<2.5*k||(inView&&d<(this.torch?16:9)*k)||(sprinting&&!this.crouching&&d<11));
+  const sense=canSee&&(d<2.5*k||(inView&&d<(this.torch?18:10)*k)||(sprinting&&!this.crouching&&d<13));
   const tracking=canSee&&d<GUARD_GUN_RANGE+8;
   // A guard who has lost you has to find you again: crouching counts against that too.
   const reacquire=canSee&&d<(GUARD_GUN_RANGE+8)*k;
@@ -2871,9 +2871,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    }
   }
   this.steerGuard(dt,g);
-  // Pistol comes up while engaged, down otherwise (~0.3 s either way).
+  // Pistol comes up while engaged, down otherwise (~0.22 s either way — snappier pressure).
   const up=(g.state==='chase'||g.state==='alert')&&g.gun;
-  g.aim=Math.max(0,Math.min(1,g.aim+(up?1:-1)*dt/.3));
+  g.aim=Math.max(0,Math.min(1,g.aim+(up?1:-1)*dt/.22));
   if(g.reload>0){g.reload=Math.max(0,g.reload-dt);if(g.reload===0)g.ammo=SURVIVAL.guardMagazine;}
   // Close-range attack: a readable wind-up, then one strike that must still reach you.
   const mcfg=g.role==='rusher'?SURVIVAL.melee.rusher:SURVIVAL.melee.other;
