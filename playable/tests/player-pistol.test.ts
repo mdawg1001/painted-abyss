@@ -93,6 +93,8 @@ test('standard guard: three close head shots or eight body hits; every hit stagg
 
 test('three head shots drop him up close; his pistol drops and E strips its rounds',()=>{
  const m=armed();const g=m.guard;
+ // Force ammo bucket (~0.87) — lean VR means most kills are dry and drop nothing.
+ let n=0;m.lootRand=()=>{n+=1;return n===1?.87:.5;};
  const ammoLeft=g.ammo;
  let a=at(m,FLOOR_Y+1.64);m.firePistol(a.eye,a.dir);
  assert.ok(g.hp>0,'one head shot is not enough');assert.equal(m.lastPistolHit?.headshot,true);
@@ -117,7 +119,7 @@ test('three head shots drop him up close; his pistol drops and E strips its roun
 
 test('E picks up at once: a free slot first, otherwise it swaps with the item in your hand',()=>{
  const m=new Mission(true);isolateGuards(m,-1);
- // Rat cage: no free floor guns — place one for the interact strip.
+ // Rat cage: no free floor guns — plant gear for the interact strip / swap.
  m.pickups.push({id:m.nextId++,item:'gun',rounds:5,cond:.5,position:{x:0,y:FLOOR_Y,z:-6}});
  const gun=m.pickups.find(p=>p.item==='gun')!;
  m.position={x:gun.position.x+.5,y:WALK_EYE_Y,z:gun.position.z};

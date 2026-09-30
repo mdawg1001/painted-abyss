@@ -53,8 +53,13 @@ export const KILL_LOOT = {
     prize: 1,
     jackpot: 1,
   } as Record<KillLootBucket, number>,
-  /** Ammo-only mag fill: short strip, never a keep-worthy rifle. */
-  ammoRoundsShare: [0.12, 0.35] as [number, number],
+  /** Ammo-only mag fill: lean strip, never a keep-worthy rifle. */
+  ammoRoundsShare: [0.08, 0.20] as [number, number],
+  /**
+   * Mag fill on paying kills (scrap→jackpot). Leaner than a half-mag so corpses
+   * are not a second free ammo channel — strip, don't restock.
+   */
+  payRoundsShare: [0.10, 0.28] as [number, number],
   /** Ammo-only condition cap — scrap-tier frame you strip and leave. */
   ammoCondCap: 0.42,
   /** Scrap gold (grams). */
@@ -268,7 +273,7 @@ export function rollKillLoot(
         dropGun: true,
         dropGold: true,
         cond,
-        rounds: rollRounds(magazine, RIFLE.dropMagShare, rand),
+        rounds: rollRounds(magazine, KILL_LOOT.payRoundsShare, rand),
         goldGrams: Math.round(lerp(KILL_LOOT.scrapGold, rand())),
         nearMiss,
       };
@@ -279,7 +284,7 @@ export function rollKillLoot(
         dropGun: true,
         dropGold: true,
         cond: rollFieldCond(role, rand),
-        rounds: rollRounds(magazine, RIFLE.dropMagShare, rand),
+        rounds: rollRounds(magazine, KILL_LOOT.payRoundsShare, rand),
         goldGrams: Math.round(lerp(KILL_LOOT.fieldGold, rand())),
         nearMiss: false,
       };
@@ -289,7 +294,7 @@ export function rollKillLoot(
         dropGun: true,
         dropGold: true,
         cond: rollPrizeCond(role, rand),
-        rounds: rollRounds(magazine, RIFLE.dropMagShare, rand),
+        rounds: rollRounds(magazine, KILL_LOOT.payRoundsShare, rand),
         goldGrams: Math.round(lerp(KILL_LOOT.prizeGold, rand())),
         nearMiss: false,
       };
@@ -299,7 +304,7 @@ export function rollKillLoot(
         dropGun: true,
         dropGold: true,
         cond: rollJackpotCond(role, rand),
-        rounds: rollRounds(magazine, RIFLE.dropMagShare, rand),
+        rounds: rollRounds(magazine, KILL_LOOT.payRoundsShare, rand),
         // Whole kilobars — needs E; the big kill score that replaced free floor bars.
         goldGrams: rollJackpotBars(rand) * GOLD.barGrams,
         nearMiss: false,

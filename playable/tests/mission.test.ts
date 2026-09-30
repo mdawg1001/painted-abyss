@@ -139,7 +139,9 @@ test('five slots full: unlocking the relic consumes the key into a free slot wit
  m.inventory[m.inventory.indexOf(null)]='sovietKey';
  m.interact();
  assert.ok(m.hasRelic);
- assert.equal(m.pickups.filter(p=>p.item==='gun'||p.item==='bottle'||p.item==='coat').length,3);
+ // Corridor floor stays empty — no free gun / bottle / coat pellets (rat cage).
+ assert.equal(m.pickups.filter(p=>p.item==='gun'||p.item==='bottle'||p.item==='coat').length,0);
+ assert.equal(m.inventory.includes('relic'),true);
 });
 test('extraction requires currently carried objective, dropping it revokes win',()=>{const m=new Mission();m.position={...EXIT};m.interact();assert.equal(m.outcome,'playing');m.position={...RELIC};m.inventory[2]='sovietKey';m.interact();assert.ok(m.hasRelic);m.position={...EXIT};m.interact();assert.equal(m.outcome,'won');const elapsed=m.elapsed;m.update(.05);assert.equal(m.elapsed,elapsed);});
 test('out of range E cannot remotely collect the objective',()=>{const m=new Mission();m.position={...START};m.interact();assert.equal(m.pending,null);assert.equal(m.hasRelic,false);});
