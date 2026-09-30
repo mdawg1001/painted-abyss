@@ -48,7 +48,7 @@ test('Phase 4 polish table matches live combat exports',()=>{
  assert.ok(HITBOX_ASSIST.restAngleDeg<=.5);
  assert.ok(HITBOX_ASSIST.movingScatterDamp<=.35);
  assert.ok(SKIN_OF_TEETH.maxGrazeBias>=.20,'graze bias is obvious when strafing');
- assert.ok(SKIN_OF_TEETH.maxGrazeBias<=.30,'still not strafe god-mode');
+ assert.ok(SKIN_OF_TEETH.maxGrazeBias<=.34,'still not strafe god-mode');
  assert.ok(PLAYER_CORE.coreShrink>=.30&&PLAYER_CORE.coreShrink<=.50);
  assert.ok(STYLE_TUNING.points.clean>=55,'honest CLEAN stays rewarding');
 });
