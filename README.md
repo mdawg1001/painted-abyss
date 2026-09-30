@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.22.38
+# Painted Abyss — First Dive · 0.22.39
+
+## Critical suit self-regen (0.22.39)
+
+When suit HP drops to **≤5** (including after an Ego Savior clamp to 1–3), the suit slowly recovers toward a **soft cap of 30** while undamaged (~2 HP/s). Any new `hurtPlayer` hit pauses regen for **1.2 s**; live Ego Savior i-frames also block ticks so recovery starts after the scare. Medkits and kill-leech still matter for getting back toward full. No new UI — the suit bar rising is the read.
 
 ## Smooth frames + kill hatch spam (0.22.37)
 

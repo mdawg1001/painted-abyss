@@ -236,6 +236,25 @@ export const EGO_SAVIOR={
  combatLeaveSeconds:8,
 } as const;
 /**
+ * Critical suit self-regen: after near-death (≤enterHp, including Ego Savior clamp),
+ * the suit slowly recovers toward a soft cap while undamaged. Medkits / leech still
+ * matter for full recovery. No UI spam — the suit bar rising is the feedback.
+ * Live Ego Savior i-frames block ticks so regen starts after the scare, not during it.
+ */
+export const CRITICAL_SUIT_REGEN={
+ /** Arm regen when suit HP is at or below this (user ~5; ego clamp is 1–3). */
+ enterHp:5,
+ /** Soft ceiling — recovery from critical, not infinite sustain. */
+ softCap:30,
+ /** Suit HP restored per second while regenerating. */
+ ratePerSec:2,
+ /**
+  * Seconds after a `hurtPlayer` hit before regen ticks.
+  * Also waits out live Ego Savior i-frames (start after the scare window).
+  */
+ damageDelay:1.2,
+} as const;
+/**
  * Player hurt-volume: thick visual shell vs microscopic damage core.
  * `projectileCoreRadius = visualRadius * coreShrink` with shrink ∈ [0.30, 0.50].
  */
@@ -1574,6 +1593,12 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  egoHeroUntil=0;
  egoSaveSeq=0;
  egoLastThreatAt=0;
+ /**
+  * Critical suit regen: armed once HP ≤ enterHp (incl. ego clamp); clears at softCap
+  * or hatch respawn. `suitRegenAfter` is mission elapsed when ticks may resume.
+  */
+ suitRegenArmed=false;
+ suitRegenAfter=0;
  /** Mission time of the previous gun/knife kill (MULTI window). */
  lastKillAt=-1;
  decoy:{position:Point;until:number}|null=null;
@@ -2106,6 +2131,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.egoIframesUntil=0;
   this.egoHeroUntil=0;
   this.egoLastThreatAt=0;
+  this.suitRegenArmed=false;
+  this.suitRegenAfter=0;
   this.resetFirefight();
   this.ensureKnife();
   // Knife-on-respawn + hatch stash unchanged; urge is one line, not a new HUD widget.
@@ -2631,6 +2658,27 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  criticalTheaterActive(){
   return this.health<=EGO_SAVIOR.criticalHp||this.egoIframesActive();
  }
+ /**
+  * Stamp a damage delay and arm regen if the hit left the suit in the critical band
+  * (including Ego Savior clamp to 1–3). Called from every applied `hurtPlayer` path.
+  */
+ private noteCriticalSuitDamage(){
+  this.suitRegenAfter=this.elapsed+CRITICAL_SUIT_REGEN.damageDelay;
+  if(this.health<=CRITICAL_SUIT_REGEN.enterHp)this.suitRegenArmed=true;
+ }
+ /**
+  * Slow passive recover after critical — toward softCap only, while undamaged.
+  * Does not clamp HP downward (medkits / leech may already be above softCap).
+  */
+ private tickCriticalSuitRegen(dt:number){
+  if(this.health<=CRITICAL_SUIT_REGEN.enterHp)this.suitRegenArmed=true;
+  if(!this.suitRegenArmed)return;
+  if(this.health>=CRITICAL_SUIT_REGEN.softCap){this.suitRegenArmed=false;return;}
+  // After the scare: no ticks during Ego Savior i-frames or the post-hit delay.
+  if(this.egoIframesActive()||this.elapsed<this.suitRegenAfter)return;
+  this.health=Math.min(CRITICAL_SUIT_REGEN.softCap,this.health+CRITICAL_SUIT_REGEN.ratePerSec*dt);
+  if(this.health>=CRITICAL_SUIT_REGEN.softCap)this.suitRegenArmed=false;
+ }
  /** Live guard chasing or holding a fire token — still in the engagement. */
  private egoThreatActive(){
   for(const g of this.guards){
@@ -2698,6 +2746,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
    this.damageFrom.push({x:from.x,z:from.z,at:this.elapsed});
    if(this.damageFrom.length>8)this.damageFrom.shift();
    this.noteEgoThreat();
+   this.noteCriticalSuitDamage();
    return;
   }
   // One solid core hit while B+ breaks the streak (loud juice in CaveWorld).
@@ -2708,6 +2757,7 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.damageFrom.push({x:from.x,z:from.z,at:this.elapsed});
   if(this.damageFrom.length>8)this.damageFrom.shift();
   this.noteEgoThreat();
+  this.noteCriticalSuitDamage();
   if(this.health<=0){
    this.killedByGuard=!!g;
    if(g)this.lootGuardIndex=this.guards.indexOf(g);
@@ -2821,6 +2871,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
     :'Your air ran out. Arm the pony earlier or climb and calm your kick.';
    return;
   }
+  // After honest air-death check — critical recover must not nudge HP on the drown tick.
+  this.tickCriticalSuitRegen(dt);
   if(this.pending!==null&&!this.pickups.some(p=>p.id===this.pending&&distance(p.position,this.position)<3.2))this.pending=null;
   // Walk away from the hatch stash → lid closes (contents stay persisted).
   if(this.stashOpen&&!this.nearStash())this.closeStash();
