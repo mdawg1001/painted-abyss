@@ -194,7 +194,7 @@ export function bankAlmostSuffix(mods: RifleMods, banked: number, hasGun: boolea
  return '';
 }
 
-/** Loud Skinner pull copy for the unfinished buy (center banner + side shout). */
+/** Copy helper for unfinished-buy teases (bank pop / hatch say). Dive HUD no longer paints the center/side scream. */
 export type SkinnerPullCopy = {
  kind: 'ready' | 'almost';
  /** Huge center-screen line. */

@@ -5,17 +5,18 @@ import { POST_FX_DPR_CAP, BLOOM_RES_SCALE } from '../src/postFx';
 import { HANGING_LIGHT } from '../src/hangingLightAsset';
 
 test('playability profile targets cheaper frames without gutting the bunker', () => {
- // Full Retina density with MSAA at the top; the frame-time governor guards the floor (resolution-governor.test.ts).
- assert.equal(PERF.dprCap, 2, 'Retina density at the top rung');
- assert.equal(PERF.msaa, 4, 'MSAA on the scene target at the top rungs');
- assert.equal(PERF.antialias, false, 'no canvas MSAA: the composer target carries it');
+ // #191 briefly raised Retina 2× + 4× MSAA; that crushed Safari when the governor lagged.
+ // Cap stays at the 0.21 playability floor so a failed governor cannot leave a heavy rung on.
+ assert.equal(PERF.dprCap, 1, '1× CSS pixels — no Retina framebuffer crush');
+ assert.equal(PERF.msaa, 0, 'MSAA off on the scene target');
+ assert.equal(PERF.antialias, false, 'no canvas MSAA');
  assert.equal(PERF.shadows, false, 'no shadow-map re-draws');
  assert.ok(PERF.bloomResScale <= 0.25, 'bloom at quarter-res or cheaper');
- assert.ok(PERF.particleCount <= 400, 'motes cut ~5× from 1800');
+ assert.ok(PERF.particleCount <= 220, 'motes cut hard from the 1800 baseline');
  assert.ok(PERF.hangingLightPool <= 3, 'fewer active tube spots');
  assert.equal(PERF.hangingShadowed, 0);
  assert.equal(PERF.composerFloat, false, 'LDR composer buffers');
- assert.ok(PERF.lightScanFrames >= 8);
+ assert.ok(PERF.lightScanFrames >= 16, 'PointLight registry rescans slowly');
  assert.ok(PERF.anisotropy <= 4);
 });
 
