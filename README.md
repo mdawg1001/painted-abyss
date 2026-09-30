@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.22.34
+# Painted Abyss — First Dive · 0.22.35
+
+## More aggressive corridor guards (0.22.35)
+
+Guards pressure harder without extra HP: faster reaction / shorter draw-to-chase, tighter burst gaps and shorter rests, slightly better accuracy and engagement range, snappier chase speeds, rushers more eager to melee. Squad call-outs stay sharp. Corpse persistence, director reinforces, player magnetism, and Ego Savior are unchanged.
 
 ## Tougher corridor guards (0.22.34)
 
