@@ -25,10 +25,10 @@ function wait(m:Mission,seconds:number){
  for(let i=0;i<Math.round(seconds*60);i++)m.update(1/60,false);
 }
 
-test('CRITICAL_SUIT_REGEN tunables: enter ~5, soft cap 25–40, slow rate, damage delay',()=>{
+test('CRITICAL_SUIT_REGEN tunables: enter ~5, soft cap 25–40, clutch rate, damage delay',()=>{
  assert.equal(CRITICAL_SUIT_REGEN.enterHp,5);
  assert.ok(CRITICAL_SUIT_REGEN.softCap>=25&&CRITICAL_SUIT_REGEN.softCap<=40);
- assert.ok(CRITICAL_SUIT_REGEN.ratePerSec>0&&CRITICAL_SUIT_REGEN.ratePerSec<=5);
+ assert.ok(CRITICAL_SUIT_REGEN.ratePerSec>=4&&CRITICAL_SUIT_REGEN.ratePerSec<=6,'clutch regen should be readable');
  assert.ok(CRITICAL_SUIT_REGEN.damageDelay>0&&CRITICAL_SUIT_REGEN.damageDelay<=3);
  assert.ok(CRITICAL_SUIT_REGEN.softCap<100,'soft cap leaves room for medkits / leech');
  assert.ok(CRITICAL_SUIT_REGEN.enterHp>=EGO_SAVIOR.clampHpMax,'ego clamp always arms regen');
@@ -68,6 +68,14 @@ test('regen never exceeds soft cap',()=>{
  assert.equal(m.suitRegenArmed,false);
  wait(m,3);
  assert.equal(m.health,CRITICAL_SUIT_REGEN.softCap,'stays at soft cap without further heal sources');
+});
+
+test('at ≤5 + no damage → health rises fast enough to feel the clutch',()=>{
+ const m=mission(CRITICAL_SUIT_REGEN.enterHp);
+ wait(m,2);
+ // ~ratePerSec*2 HP in two undamaged seconds — must be a readable bar climb.
+ assert.ok(m.health>=CRITICAL_SUIT_REGEN.enterHp+CRITICAL_SUIT_REGEN.ratePerSec*1.5,
+  `expected ~${CRITICAL_SUIT_REGEN.ratePerSec*2} HP in 2s, got ${m.health-CRITICAL_SUIT_REGEN.enterHp}`);
 });
 
 test('above enterHp without prior critical → no passive regen',()=>{
