@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.22.37
+# Painted Abyss — First Dive · 0.22.38
 
 ## Smooth frames + kill hatch spam (0.22.37)
 
