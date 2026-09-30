@@ -27,7 +27,11 @@ Players must always know which build they are running. Merging to GitHub does **
 - Terminal must print `Painted Abyss vX.Y.Z · <sha> ready`.
 - UI must show the same `BUILD vX.Y.Z · <sha>`. If a yellow **OUTDATED TAB** banner appears, hard-refresh or re-run `refresh.mjs`.
 
+## Generated stamps
+
+`playable/dist/**` (`build-info.json` `sha` / `builtAt`, `index.html`, hashed bundles) and `docs/verification/physics-reality.json` `generatedAt` are baked on every build/test. They are **gitignored**, so they no longer appear in diffs or cause merge conflicts. Never re-track them, and never hand-edit a `sha`, `builtAt`, or `generatedAt`.
+
 ## Do not
 - Leave a playable PR without bumping the version.
-- Commit `playable/dist/` — it is generated and gitignored; `serve.mjs` / `refresh.mjs` rebuild it on demand.
+- Commit `playable/dist/` or `docs/verification/physics-reality.json` — they are generated and gitignored; `serve.mjs` / `refresh.mjs` rebuild `dist` on demand.
 - Assume the player's already-open Safari tab updates when GitHub updates — it does not.
