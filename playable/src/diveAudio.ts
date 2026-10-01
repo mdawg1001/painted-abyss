@@ -1,11 +1,122 @@
-/** Dive audio probe wiring. Background ambience comes from the supplied music. */
-export function buildDiveAudio(ctx: AudioContext, master: GainNode) {
+/** Dive audio probe wiring + near-death critical theater bus. Background ambience comes from the supplied music. */
+export type DiveAudioBus = {
+  probe: AnalyserNode;
+  /**
+   * Drive critical theater (0 = clear, 1 = full near-death).
+   * Slight master low-pass + panic breath / heartbeat thumps. Idle stays silent.
+   */
+  setCritical(level: number): void;
+  dispose(): void;
+};
+
+export function buildDiveAudio(ctx: AudioContext, master: GainNode): DiveAudioBus {
   // Probe after the master gain so mute can be verified as silence.
-  // Breathing/regulator loop removed — dive bed is music only.
+  // Breathing/regulator cruise loop stays removed — only critical panic is scheduled.
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 18000;
+  filter.Q.value = 0.65;
+
   const probe = ctx.createAnalyser();
   probe.fftSize = 2048;
-  master.connect(probe).connect(ctx.destination);
-  return probe;
+  master.connect(filter).connect(probe).connect(ctx.destination);
+
+  const panicGain = ctx.createGain();
+  panicGain.gain.value = 0;
+  panicGain.connect(filter);
+
+  let disposed = false;
+  let level = 0;
+  let nextPulseAt = 0;
+  let pulseTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearPulse = () => {
+    if (pulseTimer != null) {
+      clearTimeout(pulseTimer);
+      pulseTimer = null;
+    }
+  };
+
+  const schedulePulse = () => {
+    clearPulse();
+    if (disposed || level < 0.05 || ctx.state === 'closed') return;
+    const now = ctx.currentTime;
+    if (now < nextPulseAt) {
+      pulseTimer = setTimeout(schedulePulse, Math.max(16, (nextPulseAt - now) * 1000));
+      return;
+    }
+    // Lub-dub heartbeat + short inhale scrape — only while critical.
+    const t = now + 0.01;
+    const thump = (at: number, freq: number, gain: number, dur: number) => {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(freq, at);
+      o.frequency.exponentialRampToValueAtTime(freq * 0.55, at + dur);
+      const e = ctx.createGain();
+      e.gain.setValueAtTime(0, at);
+      e.gain.linearRampToValueAtTime(gain * level, at + 0.012);
+      e.gain.exponentialRampToValueAtTime(0.001, at + dur);
+      o.connect(e).connect(panicGain);
+      o.start(at);
+      o.stop(at + dur + 0.02);
+      o.onended = () => { o.disconnect(); e.disconnect(); };
+    };
+    thump(t, 62, 0.42, 0.11);
+    thump(t + 0.16, 48, 0.28, 0.1);
+    // Breath scrape (noise) — panic, not the old cruise regulator loop.
+    const dur = 0.22;
+    const buf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * dur)), ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = 780;
+    bp.Q.value = 0.9;
+    const ne = ctx.createGain();
+    ne.gain.setValueAtTime(0, t + 0.04);
+    ne.gain.linearRampToValueAtTime(0.16 * level, t + 0.1);
+    ne.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    noise.connect(bp).connect(ne).connect(panicGain);
+    noise.start(t + 0.04);
+    noise.stop(t + 0.3);
+    noise.onended = () => { noise.disconnect(); bp.disconnect(); ne.disconnect(); };
+
+    // ~70 BPM at full critical; slower when softer.
+    const period = 0.72 + (1 - level) * 0.35;
+    nextPulseAt = t + period;
+    pulseTimer = setTimeout(schedulePulse, period * 1000);
+  };
+
+  return {
+    probe,
+    setCritical(next: number) {
+      if (disposed || ctx.state === 'closed') return;
+      const v = Math.max(0, Math.min(1, next));
+      level = v;
+      const now = ctx.currentTime;
+      // Transparent ~18 kHz → muffled ~1.1 kHz at full critical.
+      const freq = 18000 - v * (18000 - 1100);
+      filter.frequency.setTargetAtTime(freq, now, 0.12);
+      panicGain.gain.setTargetAtTime(v > 0.04 ? 0.55 + 0.45 * v : 0, now, 0.1);
+      if (v < 0.05) {
+        clearPulse();
+        nextPulseAt = 0;
+      } else if (!pulseTimer) {
+        schedulePulse();
+      }
+    },
+    dispose() {
+      disposed = true;
+      clearPulse();
+      try {
+        panicGain.disconnect();
+        filter.disconnect();
+        probe.disconnect();
+      } catch { /* already torn down */ }
+    },
+  };
 }
 
 export function playDiveChime(ctx: AudioContext, master: GainNode) {
@@ -340,20 +451,52 @@ export function playValveSeat(ctx: AudioContext, master: GainNode) {
  * Hit confirmation, AAA style: a short bright tick on a hit, a lower double tick on a
  * head shot or kill. Plays on top of the gunshot, so it is quiet and very short.
  */
-export function playHitMarker(ctx: AudioContext, master: GainNode, kind: 'hit' | 'head' | 'kill') {
+export function playHitMarker(ctx: AudioContext, master: GainNode, kind: 'hit' | 'head' | 'kill' | 'scrape' | 'graze' | 'multi') {
   const start = ctx.currentTime + .03;
-  const ticks = kind === 'hit' ? [{ f: 2300, t: 0 }] : [{ f: 1900, t: 0 }, { f: 1400, t: .055 }];
+  const ticks =
+    kind === 'scrape' ? [{ f: 2800, t: 0 }, { f: 2100, t: .04 }] :
+    kind === 'graze' ? [{ f: 1600, t: 0 }, { f: 2400, t: .05 }] :
+    kind === 'multi' ? [{ f: 2100, t: 0 }, { f: 2600, t: .04 }, { f: 1700, t: .09 }] :
+    kind === 'hit' ? [{ f: 2300, t: 0 }] :
+    [{ f: 1900, t: 0 }, { f: 1400, t: .055 }];
+  const gain = kind === 'scrape' || kind === 'graze' ? .12 : .16;
   for (const { f, t } of ticks) {
     const osc = ctx.createOscillator(); osc.type = 'triangle';
     osc.frequency.setValueAtTime(f, start + t);
     osc.frequency.exponentialRampToValueAtTime(f * .7, start + t + .05);
     const env = ctx.createGain();
     env.gain.setValueAtTime(0, start + t);
-    env.gain.linearRampToValueAtTime(.16, start + t + .002);
+    env.gain.linearRampToValueAtTime(gain, start + t + .002);
     env.gain.exponentialRampToValueAtTime(.001, start + t + .06);
     osc.connect(env).connect(master);
     osc.start(start + t); osc.stop(start + t + .07);
     osc.onended = () => { osc.disconnect(); env.disconnect(); };
+  }
+}
+
+/**
+ * Streak break sting — lower and longer than a hit marker so a core hit that ends
+ * B+ payoffs reads as loud-but-fair without stealing the damage hit sound.
+ */
+export function playStreakBreak(ctx: AudioContext, master: GainNode) {
+  const start = ctx.currentTime + .02;
+  const ticks = [
+    { f: 420, t: 0, len: .12 },
+    { f: 280, t: .07, len: .14 },
+    { f: 180, t: .14, len: .16 },
+  ];
+  for (const { f, t, len } of ticks) {
+    const osc = ctx.createOscillator(); osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(f, start + t);
+    osc.frequency.exponentialRampToValueAtTime(f * .55, start + t + len);
+    const bp = ctx.createBiquadFilter(); bp.type = 'lowpass'; bp.frequency.value = 900;
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, start + t);
+    env.gain.linearRampToValueAtTime(.14, start + t + .008);
+    env.gain.exponentialRampToValueAtTime(.001, start + t + len);
+    osc.connect(bp).connect(env).connect(master);
+    osc.start(start + t); osc.stop(start + t + len + .02);
+    osc.onended = () => { osc.disconnect(); bp.disconnect(); env.disconnect(); };
   }
 }
 
@@ -589,5 +732,127 @@ export function playStashWithdraw(ctx: AudioContext, out: AudioNode) {
     o.connect(e).connect(out);
     o.start(t + dt);
     o.stop(t + dt + .08);
+  }
+}
+
+/**
+ * Gold. Metal-on-metal: a few bright inharmonic partials (struck gold rings low for its
+ * size because it is soft and dense) with a fast decay. `kind` shapes the moment:
+ * take = one clink per bar, bank = a cascading pour that rises, upgrade = a machined
+ * clack then a two-note lift, lost/ditch = a dull falling clunk.
+ */
+/**
+ * Stage-two kill-loot theater. Dry is a dull empty thud (never a win chime).
+ * Near-miss rises like a prize then falls short (LDW). Prize / jackpot are bright.
+ */
+export function playKillLoot(
+  ctx: AudioContext,
+  out: AudioNode,
+  kind: 'dry' | 'ammo' | 'scrap' | 'near_miss' | 'field' | 'prize' | 'jackpot' | 'mega',
+  goldGrams = 0,
+) {
+  const t0 = ctx.currentTime + .01;
+  const tone = (at: number, f: number, gain: number, len: number, type: OscillatorType = 'sine') => {
+    const o = ctx.createOscillator(); o.type = type; o.frequency.value = f;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, at);
+    g.gain.linearRampToValueAtTime(gain, at + .004);
+    g.gain.exponentialRampToValueAtTime(1e-4, at + len);
+    o.connect(g).connect(out); o.start(at); o.stop(at + len + .02);
+    o.onended = () => { o.disconnect(); g.disconnect(); };
+  };
+  const noise = (at: number, len: number, freq: number, gain: number) => {
+    const buf = ctx.createBuffer(1, Math.max(1, Math.round(ctx.sampleRate * len)), ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = freq; bp.Q.value = 1.8;
+    const g = ctx.createGain(); g.gain.value = gain;
+    src.connect(bp).connect(g).connect(out); src.start(at);
+    src.onended = () => { src.disconnect(); bp.disconnect(); g.disconnect(); };
+  };
+  if (kind === 'dry') {
+    // Empty pockets: low thud, no sparkle.
+    noise(t0, .06, 220, .22);
+    tone(t0, 140, .1, .1, 'triangle');
+    return;
+  }
+  if (kind === 'ammo') {
+    noise(t0, .03, 3200, .28);
+    tone(t0 + .015, 1800, .08, .05, 'triangle');
+    return;
+  }
+  if (kind === 'scrap') {
+    tone(t0, 520, .1, .08);
+    if (goldGrams > 0) tone(t0 + .05, 900, .07, .07);
+    return;
+  }
+  if (kind === 'near_miss') {
+    // Rise like a prize… then sag. Small scrap gold still clinks (LDW).
+    tone(t0, 880, .14, .1);
+    tone(t0 + .07, 1320, .16, .1);
+    tone(t0 + .16, 700, .1, .12, 'triangle');
+    if (goldGrams > 0) tone(t0 + .1, 1100, .08, .06);
+    return;
+  }
+  if (kind === 'field') {
+    tone(t0, 1000, .12, .08);
+    tone(t0 + .05, 1400, .1, .08);
+    const n = Math.min(3, Math.max(1, Math.round(goldGrams / 120)));
+    for (let i = 0; i < n; i++) tone(t0 + .08 + i * .04, 1200 + i * 80, .09, .07);
+    return;
+  }
+  if (kind === 'prize') {
+    tone(t0, 980, .16, .1);
+    tone(t0 + .06, 1470, .18, .12);
+    tone(t0 + .14, 1960, .14, .14);
+    return;
+  }
+  if (kind === 'mega') {
+    // Lottery fanfare: rising cascade + wet slime noise + long top sparkle.
+    noise(t0, .12, 480, .35);
+    noise(t0 + .04, .1, 1400, .28);
+    const n = Math.min(14, Math.max(8, Math.round(goldGrams / 350)));
+    for (let i = 0; i < n; i++) {
+      tone(t0 + i * .035, 720 + i * 140, .14 + i * .008, .12);
+    }
+    tone(t0 + n * .035 + .02, 2400, .22, .28);
+    tone(t0 + n * .035 + .08, 3200, .12, .2, 'triangle');
+    return;
+  }
+  // jackpot
+  const n = Math.min(8, Math.max(3, Math.round(goldGrams / 200)));
+  for (let i = 0; i < n; i++) tone(t0 + i * .04, 900 + i * 110, .12 + i * .01, .1);
+  tone(t0 + n * .04 + .04, 2100, .2, .16);
+}
+
+export function playGold(ctx: AudioContext, out: AudioNode, kind: 'take' | 'bank' | 'upgrade' | 'ditch' | 'lost', grams = 1000, almost = false) {
+  const t0 = ctx.currentTime + .005;
+  const clink = (at: number, base: number, gain: number) => {
+    for (const [ratio, amp, dec] of [[1, 1, .18], [2.76, .5, .09], [5.4, .25, .05]] as const) {
+      const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = base * ratio;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(gain * amp, at + .003);
+      g.gain.exponentialRampToValueAtTime(1e-4, at + dec);
+      o.connect(g).connect(out); o.start(at); o.stop(at + dec + .02);
+      o.onended = () => { o.disconnect(); g.disconnect(); };
+    }
+  };
+  if (kind === 'take') {
+    const n = Math.min(6, Math.max(1, Math.round(grams / 400)));
+    for (let i = 0; i < n; i++) clink(t0 + i * .045, 1250 + Math.random() * 180, .14);
+  } else if (kind === 'bank') {
+    const n = Math.min(24, Math.max(4, Math.round(grams / 250)));
+    for (let i = 0; i < n; i++) clink(t0 + i * .038, 900 + i * 45 + Math.random() * 120, .12);
+    clink(t0 + n * .038 + .05, 2100, .22);
+    // Rising almost-afford tease when the vault lands in the unfinished buy band.
+    if (almost) {
+      const a0 = t0 + n * .038 + .12;
+      clink(a0, 880, .16); clink(a0 + .07, 1175, .18); clink(a0 + .14, 1560, .22);
+    }
+  } else if (kind === 'upgrade') {
+    clink(t0, 520, .3); clink(t0 + .09, 1040, .22); clink(t0 + .2, 1560, .26);
+  } else {
+    clink(t0, 330, .25); clink(t0 + .06, 260, .2);
   }
 }

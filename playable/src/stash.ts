@@ -1,11 +1,12 @@
 /**
  * Persistent bunker stash chest — small bank near the hatch.
  * Contents survive death, extract, dive-again, and full page reload via localStorage.
- * The ammonite relic cannot be stored (extract win condition).
  *
  * Keep this module free of value imports from simulation.ts (Mission loads stash).
  */
 import { SURVIVAL } from './survivalConfig';
+import { RIFLE, rifleName } from './rifleCondition';
+import { modTag, parseMods, type RifleMods } from './gold';
 
 /** Visible capacity — not an infinite backpack. */
 export const STASH_CAPACITY = 5;
@@ -26,7 +27,7 @@ export const STASH_REACH = 3.6;
 /** Spare rounds moved in one Store-ammo press (matches a floor ammo box). */
 export const STASH_AMMO_PACK = SURVIVAL.supplies.ammo;
 
-/** Bankable inventory items — never the extract relic. */
+/** Anything that can sit in a chest / bag slot (gold is a separate pocket / vault). */
 export type StashItem =
  | 'stone'
  | 'wood'
@@ -37,13 +38,14 @@ export type StashItem =
  | 'gun'
  | 'bottle'
  | 'coat'
- | 'sovietKey';
+ | 'sovietKey'
+ | 'relic';
 
-export type Item = StashItem | 'relic';
+export type Item = StashItem | 'gold';
 
 /** One chest slot: gear, or a spare-ammo pack (not inventoriable elsewhere). */
 export type StashSlot =
- | { kind: 'item'; item: StashItem; rounds?: number }
+ | { kind: 'item'; item: StashItem; rounds?: number; cond?: number; mods?: RifleMods }
  | { kind: 'ammo'; amount: number }
  | null;
 
@@ -54,13 +56,13 @@ export function emptyStash(): StashSlot[] {
 }
 
 export function isStashItem(item: Item): item is StashItem {
- return item !== 'relic';
+ return item !== 'gold';
 }
 
 export function stashSlotLabel(slot: StashSlot): string {
  if (!slot) return 'empty';
  if (slot.kind === 'ammo') return `${slot.amount} rounds`;
- if (slot.item === 'gun' && slot.rounds) return `AK-74U (+${slot.rounds})`;
+ if (slot.item === 'gun') return `${rifleName(slot.cond ?? RIFLE.kitCond)}${modTag(slot.mods)}${slot.rounds ? ` (+${slot.rounds})` : ''}`;
  const names: Record<StashItem, string> = {
   knife: 'Diving knife',
   stone: 'Limestone',
@@ -72,6 +74,7 @@ export function stashSlotLabel(slot: StashSlot): string {
   bottle: 'Spare air bottle',
   coat: 'Coat',
   sovietKey: 'Soviet key',
+  relic: 'Ammonite relic',
  };
  return names[slot.item];
 }
@@ -82,16 +85,28 @@ function parseSlot(raw: unknown): StashSlot {
  if (o.kind === 'ammo' && typeof o.amount === 'number' && o.amount > 0) {
   return { kind: 'ammo', amount: Math.floor(o.amount) };
  }
- if (o.kind === 'item' && typeof o.item === 'string' && o.item !== 'relic') {
+ if (o.kind === 'item' && typeof o.item === 'string' && o.item !== 'gold') {
   const item = o.item as StashItem;
   const rounds = typeof o.rounds === 'number' && o.rounds > 0 ? Math.floor(o.rounds) : undefined;
-  return rounds !== undefined ? { kind: 'item', item, rounds } : { kind: 'item', item };
+  const cond = typeof o.cond === 'number' && o.cond > 0 && o.cond <= 1 ? o.cond : undefined;
+  const slot: StashSlot = { kind: 'item', item };
+  if (rounds !== undefined) slot.rounds = rounds;
+  if (cond !== undefined && item === 'gun') slot.cond = cond;
+  const mods = item === 'gun' ? parseMods(o.mods) : undefined;
+  if (mods) slot.mods = mods;
+  return slot;
  }
  // Legacy flat shape { item, rounds? }
- if (typeof o.item === 'string' && o.item !== 'relic' && o.kind !== 'ammo') {
+ if (typeof o.item === 'string' && o.item !== 'gold' && o.kind !== 'ammo') {
   const item = o.item as StashItem;
   const rounds = typeof o.rounds === 'number' && o.rounds > 0 ? Math.floor(o.rounds) : undefined;
-  return rounds !== undefined ? { kind: 'item', item, rounds } : { kind: 'item', item };
+  const cond = typeof o.cond === 'number' && o.cond > 0 && o.cond <= 1 ? o.cond : undefined;
+  const slot: StashSlot = { kind: 'item', item };
+  if (rounds !== undefined) slot.rounds = rounds;
+  if (cond !== undefined && item === 'gun') slot.cond = cond;
+  const mods = item === 'gun' ? parseMods(o.mods) : undefined;
+  if (mods) slot.mods = mods;
+  return slot;
  }
  return null;
 }
@@ -117,9 +132,11 @@ export function writeStash(slots: StashSlot[]) {
   const payload = slots.slice(0, STASH_CAPACITY).map((s) => {
    if (!s) return null;
    if (s.kind === 'ammo') return { kind: 'ammo', amount: s.amount };
-   return s.rounds !== undefined
-    ? { kind: 'item', item: s.item, rounds: s.rounds }
-    : { kind: 'item', item: s.item };
+   const out: Record<string, unknown> = { kind: 'item', item: s.item };
+   if (s.rounds !== undefined) out.rounds = s.rounds;
+   if (s.cond !== undefined) out.cond = s.cond;
+   if (s.mods) out.mods = s.mods;
+   return out;
   });
   while (payload.length < STASH_CAPACITY) payload.push(null);
   globalThis.localStorage?.setItem(STASH_STORAGE_KEY, JSON.stringify(payload));

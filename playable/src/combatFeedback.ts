@@ -6,8 +6,12 @@
  * rendering continues, so critical hits and kills feel weighty without a full pause.
  *
  * Pure module (no Three.js) so feel tuning stays unit-testable; CaveWorld samples
- * the offset into camera space each frame.
+ * the offset into camera space each frame. Phase 4: calm combat (`prefers-reduced-motion`)
+ * softens shake / hitstop at the trigger edge so every call site stays allocation-light.
  */
+
+import { CALM_COMBAT, calmHitstopMs, combatCalmActive } from './combatCalm';
+
 export type FeedbackOffset={x:number;y:number;z:number};
 
 export type FeedbackTick={
@@ -35,10 +39,20 @@ export const COMBAT_FEEDBACK={
  meleeHit:{intensity:1.55,duration:.32},
  /** Guardian / predator connected hit. */
  predatorHit:{intensity:1.3,duration:.28},
- /** Headshot hitstop (ms). */
- hitstopHead:90,
- /** Kill hitstop (ms). */
- hitstopKill:150,
+ /**
+  * Headshot / kill hitstop (ms). Kept to a few frames: a punch you feel, never a pause you see.
+  * At 150 ms the kill freeze read as the game locking up.
+  */
+ hitstopHead:35,
+ hitstopKill:55,
+ /** Magnetism scrape — brief readable tick, not a freeze. */
+ scrapeTick:{intensity:.35,duration:.08},
+ hitstopScrape:45,
+ /** Enemy graze / skin-of-teeth miss — light camera kiss. */
+ grazeTick:{intensity:.28,duration:.07},
+ /** Ego Savior lethal save — micro freeze, then hero clear (see EGO_SAVIOR.hitstopMs). */
+ hitstopEgoSave:48,
+ egoSaveShake:{intensity:1.05,duration:.18},
 } as const;
 
 export class CombatFeedbackManager{
@@ -52,8 +66,10 @@ export class CombatFeedbackManager{
   * Overlapping calls keep the stronger remaining envelope.
   */
  triggerScreenShake(intensity:number,duration:number):void{
-  const i=Math.max(0,intensity);
-  const d=Math.max(0,duration);
+  // Inline calm scale — no object alloc on the fire / hurt path.
+  let i=intensity,d=duration;
+  if(combatCalmActive()){i*=CALM_COMBAT.shakeScale;d*=CALM_COMBAT.shakeDurationScale;}
+  i=Math.max(0,i);d=Math.max(0,d);
   if(d<=0||i<=0)return;
   const remain=Math.max(0,this.shakeDuration-this.shakeElapsed);
   const current=remain>0?this.shakeIntensity*(remain/Math.max(this.shakeDuration,1e-6)):0;
@@ -71,7 +87,7 @@ export class CombatFeedbackManager{
   * Stacks by taking the longer remaining freeze.
   */
  triggerHitstop(durationMillis:number):void{
-  const ms=Math.max(0,durationMillis);
+  const ms=Math.max(0,calmHitstopMs(durationMillis));
   if(ms<=0)return;
   this.hitstopRemainingMs=Math.max(this.hitstopRemainingMs,ms);
  }

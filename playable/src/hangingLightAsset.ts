@@ -14,6 +14,7 @@
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { PERF } from './perf';
 import { cells, world } from './simulation';
 
 export const HANGING_LIGHT_SOURCE = 'https://polyhaven.com/a/caged_hanging_light';
@@ -42,8 +43,8 @@ export const HANGING_LIGHT = {
  penumbra: 0.22,
  decay: 1.35,
  /** Spotlights that follow the nearest lamps; the first `shadowed` of them cast shadows. */
- pool: 5,
- shadowed: 1,
+ pool: PERF.hangingLightPool,
+ shadowed: PERF.hangingShadowed,
  shadowMap: 512,
  /** Pendulum (chains): gravity, damping per second, idle draught, kick per gunshot within `kickRadius`. */
  gravity: 9.81,
@@ -62,6 +63,8 @@ export type HangingLamp = {
  fixture: THREE.Group;
  bulb: THREE.MeshBasicMaterial;
  halo: THREE.SpriteMaterial;
+ /** Cached StandardMaterial emissives on the upgraded glTF (avoids per-frame traverse). */
+ emissives: THREE.MeshStandardMaterial[];
  state: LampState;
  phase: number;
  /** Swing angles about x and z (rad) and their angular velocities. */
@@ -185,7 +188,7 @@ export function createHangingLights(mounts = hangingLightMounts()): HangingLight
   fixture.add(glow);
   const state = lampState(i);
   const a0 = (hash(i * 13 + 1) - .5) * .08, b0 = (hash(i * 17 + 5) - .5) * .08;
-  return { x: m.x, z: m.z, pivot, fixture, bulb: stub.bulb, halo, state, phase: hash(i) * Math.PI * 2, ax: a0, az: b0, vx: 0, vz: 0, level: 1, timer: hash(i * 3) * 4, burst: false };
+  return { x: m.x, z: m.z, pivot, fixture, bulb: stub.bulb, halo, emissives: [], state, phase: hash(i) * Math.PI * 2, ax: a0, az: b0, vx: 0, vz: 0, level: 1, timer: hash(i * 3) * 4, burst: false };
  });
  const spots: THREE.SpotLight[] = [];
  for (let k = 0; k < H.pool; k++) {
@@ -228,10 +231,14 @@ export async function upgradeHangingLights(h: HangingLights): Promise<boolean> {
    const stub = l.fixture.getObjectByName('hangingStub');
    const model = proto.clone(true);
    // Per-lamp emissive so each bulb flickers on its own.
+   const emissives: THREE.MeshStandardMaterial[] = [];
    model.traverse(o => {
     if (!(o instanceof THREE.Mesh)) return;
     o.material = (o.material as THREE.Material).clone();
+    const m = o.material as THREE.MeshStandardMaterial;
+    if (m && 'emissiveIntensity' in m) emissives.push(m);
    });
+   l.emissives = emissives;
    model.name = 'hangingModel';
    l.fixture.add(model);
    if (stub) stub.visible = false;
@@ -271,11 +278,12 @@ export function stepHangingLights(h: HangingLights, dt: number, t: number, eye: 
   l.bulb.color.setHex(tint ?? H.color).multiplyScalar(Math.max(.04, Math.min(1.2, l.level)));
   l.halo.color.setHex(tint ?? H.color);
   l.halo.opacity = Math.max(0, Math.min(1, l.level)) * .9;
-  const model = l.fixture.getObjectByName('hangingModel');
-  if (model) model.traverse(o => {
-   const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
-   if (m && 'emissiveIntensity' in m) { m.emissiveIntensity = 2.2 * l.level; if (tint != null) m.emissive.setHex(tint); else m.emissive.setHex(H.color); }
-  });
+  const ei = 2.2 * l.level;
+  const hex = tint ?? H.color;
+  for (const m of l.emissives) {
+   m.emissiveIntensity = ei;
+   m.emissive.setHex(hex);
+  }
  }
  // Nearest lamps get the real lights.
  const order = h.lamps.map((l, i) => ({ i, d: (l.x - eye.x) ** 2 + (l.z - eye.z) ** 2 })).sort((a, b) => a.d - b.d);

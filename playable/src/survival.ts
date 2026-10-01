@@ -150,7 +150,9 @@ export function smokeLanding(from:Point,dirX:number,dirZ:number,range:number=SUR
 export type SupplyKind='ammo'|'medkit'|'smoke';
 export type SupplyCache={id:number;kind:SupplyKind;x:number;z:number;stocked:boolean};
 export function makeCaches():SupplyCache[]{
- return SURVIVAL_CACHES.map((c,i)=>({id:i,kind:c.kind,x:c.x,z:c.z,stocked:true}));
+ // Rat cage: no free floor pellets. Ammo / med / smoke caches exist as props but
+ // start empty — rounds and kits come from corpses, stash, or the shop.
+ return SURVIVAL_CACHES.map((c,i)=>({id:i,kind:c.kind,x:c.x,z:c.z,stocked:false}));
 }
 
 // ── Director ───────────────────────────────────────────────────────────────────

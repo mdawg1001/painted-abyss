@@ -69,13 +69,14 @@ test('killing the main officer drops the Soviet key; pickup unlocks and consumes
  assert.match(m.notice,/Relic unlocked|flood|Booby/i);
 });
 
-test('dying with the key wakes empty; key stays on the corpse',()=>{
+test('dying with the key wakes with knife; key stays on the corpse',()=>{
  const m=new Mission(true);isolateGuards(m);
  const corpse={x:-4,y:WALK_EYE_Y,z:-40};
  m.position={...corpse};
  m.inventory=['sovietKey',null,null,null,null];m.selected=0;
  m.respawnAtHatch();
- assert.deepEqual(m.inventory,[null,null,null,null,null]);
+ assert.deepEqual(m.inventory,['knife',null,null,null,null],'knife restored; key not kept');
+ assert.ok(!m.inventory.includes('sovietKey'));
  const dropped=m.pickups.filter(p=>p.item==='sovietKey');
  assert.equal(dropped.length,1);
  // Corpse loot sits in a ~0.55 m ring around the body.
@@ -100,8 +101,8 @@ test('soviet key can be stored in the hatch chest like other gear',()=>{
  const m=new Mission(true);isolateGuards(m);
  m.position={x:STASH_POSITION.x,y:WALK_EYE_Y,z:STASH_POSITION.z};
  m.inventory=['sovietKey',null,null,null,null];m.selected=0;
- m.interact(); // open
- m.interact(); // store
+ m.interact(); // open drag stash
+ assert.ok(m.moveInvStash(0,0),'drag key into chest');
  assert.equal(m.inventory[0],null);
  assert.ok(m.stash.some(s=>s?.kind==='item'&&s.item==='sovietKey'));
 });

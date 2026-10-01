@@ -22,29 +22,55 @@ export const SURVIVAL={
   startReserve:40,
   reserveMax:64,
  },
- /** Knife on guards: a panic tool at arm's length. Stabbing an unaware back is lethal. */
- knife:{guardDamage:55,backstabMultiplier:3,backstabArc:100*Math.PI/180},
+ /**
+  * Fresh blood: finish an enemy within `radius` metres while hurt and you instantly
+  * heal `fraction` of the damage you dealt him this life. Pushes you into the fight
+  * when low instead of behind cover. Knife kills are always inside the radius.
+  * While critically hurt (≤ Ego Savior criticalHp ~15), kill leech uses the wider
+  * `criticalRadius` / `criticalFraction`, and non-lethal hits also return a small
+  * `criticalHitFraction` of damage dealt — so clutch shooting still feeds the bar.
+  */
+ leech:{
+  radius:5,
+  fraction:.35,
+  flashSeconds:.45,
+  /** Kill-leech reach while critically hurt (kiting at glass HP). */
+  criticalRadius:9,
+  /** Kill-leech share while critically hurt. */
+  criticalFraction:.45,
+  /** On-hit share while critically hurt (non-lethal hits only). */
+  criticalHitFraction:.15,
+ },
+ /**
+  * Knife on guards: a panic tool at arm's length. Stabbing an unaware back is lethal on
+  * infantry (assault / flanker / rusher) — multiplier kept high enough after the durability bump.
+  */
+ knife:{guardDamage:55,backstabMultiplier:5,backstabArc:100*Math.PI/180},
 
  // ── Guard durability by role (standard guard = assault) ────────────────────────
+ // Speed (0.22.42): role speed / combatSpeed ×1.25 so they close distance faster.
+ // Aim (0.22.41): another ×1.25 on role accuracy (cap 0.995) + lighter burst climb /
+ // moving-fire / first-shot penalties. Damage / HP / cadence unchanged from 0.22.37+.
+ // Aim (0.22.37) ×1.25 / Aim (0.22.36) ×1.5 / Aggression (0.22.35) otherwise intact.
  roles:{
-  assault:{hp:150,headMult:1,speed:2.19,combatSpeed:1.44,range:9,burst:[3,3] as [number,number],burstGap:.16,restMin:1.0,restMax:1.7,accuracy:.6,damage:12,reaction:[.5,.85] as [number,number],armed:true},
-  flanker:{hp:130,headMult:1,speed:2.88,combatSpeed:1.84,range:7,burst:[2,3] as [number,number],burstGap:.15,restMin:.9,restMax:1.5,accuracy:.56,damage:12,reaction:[.45,.8] as [number,number],armed:true},
-  rusher:{hp:110,headMult:1,speed:3.62,combatSpeed:3.62,range:0,burst:[0,0] as [number,number],burstGap:1,restMin:1,restMax:1,accuracy:0,damage:0,reaction:[.2,.35] as [number,number],armed:false},
+  assault:{hp:225,headMult:1,speed:2.9,combatSpeed:1.98,range:10.5,burst:[3,3] as [number,number],burstGap:.11,restMin:.65,restMax:1.15,accuracy:.995,damage:14,reaction:[.28,.48] as [number,number],armed:true},
+  flanker:{hp:195,headMult:1,speed:3.81,combatSpeed:2.5,range:8.5,burst:[2,3] as [number,number],burstGap:.10,restMin:.55,restMax:1.05,accuracy:.995,damage:14,reaction:[.24,.42] as [number,number],armed:true},
+  rusher:{hp:165,headMult:1,speed:4.88,combatSpeed:4.88,range:0,burst:[0,0] as [number,number],burstGap:1,restMin:1,restMax:1,accuracy:0,damage:0,reaction:[.10,.22] as [number,number],armed:false},
   /** Heavy: helmet and flak — headshots do 60 %; long suppressive bursts, slow walk. */
-  heavy:{hp:280,headMult:.6,speed:1.5,combatSpeed:1.21,range:11,burst:[5,7] as [number,number],burstGap:.13,restMin:1.4,restMax:2.2,accuracy:.5,damage:18,reaction:[.7,1.05] as [number,number],armed:true},
+  heavy:{hp:420,headMult:.6,speed:2.0,combatSpeed:1.69,range:12.5,burst:[5,7] as [number,number],burstGap:.09,restMin:.95,restMax:1.55,accuracy:.995,damage:21,reaction:[.38,.62] as [number,number],armed:true},
   /**
    * Main officer: the only guard who carries the Soviet relic key.
    * Same combat AI as the rest; tougher kit, peaking-cap silhouette. Never reinforced.
    */
-  officer:{hp:240,headMult:.7,speed:1.85,combatSpeed:1.35,range:10,burst:[4,6] as [number,number],burstGap:.14,restMin:1.2,restMax:1.9,accuracy:.62,damage:16,reaction:[.55,.9] as [number,number],armed:true},
+  officer:{hp:360,headMult:.7,speed:2.48,combatSpeed:1.85,range:11.5,burst:[4,6] as [number,number],burstGap:.10,restMin:.75,restMax:1.25,accuracy:.995,damage:18,reaction:[.30,.52] as [number,number],armed:true},
  },
 
  // ── Guard fire discipline (why a crowd stays survivable) ───────────────────────
  /** At most this many guards may be shooting at you at the same moment. */
  maxShooters:3,
  maxShootersFinal:4,
- /** Accuracy lost per round later in a burst (muzzle climb). */
- burstClimb:.12,
+ /** Accuracy lost per round later in a burst (muzzle climb). −25% vs 0.22.37. */
+ burstClimb:.0675,
  /** Guard pistol magazine and reload; a downed guard's pistol always has at least `dropRounds`. */
  guardMagazine:8,dropRounds:5,
  guardReload:2.2,
@@ -52,14 +78,14 @@ export const SURVIVAL={
  // ── Close-range attacks (every guard can strike; rushers stab) ─────────────────
  melee:{
   /** Simultaneous close-range attackers allowed. Others circle and wait. */
-  maxAttackers:2,
+  maxAttackers:3,
   /** Wind-up (readable), reach at the moment of the strike, frontal arc, damage, cooldown. */
-  rusher:{windup:.55,reach:1.6,arc:70*Math.PI/180,damage:26,cooldown:1.5,lunge:1.4},
-  other:{windup:.6,reach:1.6,arc:60*Math.PI/180,damage:18,cooldown:1.8,lunge:0},
+  rusher:{windup:.40,reach:1.7,arc:70*Math.PI/180,damage:30,cooldown:1.1,lunge:1.7},
+  other:{windup:.48,reach:1.6,arc:60*Math.PI/180,damage:21,cooldown:1.4,lunge:0},
   /** Start the wind-up from this far (rushers lunge the last bit). */
-  startRange:2.3,
+  startRange:2.65,
   /** Rushers without an attack slot circle at this distance. */
-  waitRadius:4.6,
+  waitRadius:3.6,
  },
  /** A hit staggers a guard: cancels a melee wind-up and delays his trigger. */
  hitFlinch:.28,
@@ -90,7 +116,11 @@ export const SURVIVAL={
   /** Role mix for reinforcements (weights), and heavy limits. Officer is never reinforced (exactly one main). */
   roleWeights:{assault:45,rusher:25,flanker:20,heavy:10,officer:0} as Record<GuardRole,number>,
   maxHeavy:1,maxHeavyFinal:2,
-  /** Downed bodies are recycled after this long if you are not looking at them. */
+  /**
+   * When the pool is full, a corpse may be recycled into a reinforcement only
+   * after this long and only if off-screen. Empty `!active` slots are always
+   * preferred first. Hatch wake never wipes bodies.
+   */
   corpseSeconds:18,
  },
 
@@ -105,8 +135,8 @@ export const SURVIVAL={
   */
  stealth:{sightFactor:.65,speedFactor:.5,eyeDrop:.62,blendSeconds:.22},
  /** Sight lost this long → he goes to where he last saw you and searches. */
- loseSightSeconds:2.2,
- searchSeconds:7,
+ loseSightSeconds:2.8,
+ searchSeconds:5.5,
  /** While the bunker is on alert, searchers sweep toward your area with this much error (m). */
  huntError:7,
 
@@ -137,10 +167,11 @@ export const SURVIVAL={
 
  // ── Supplies (walk over to collect) ────────────────────────────────────────────
  supplies:{
-  ammo:20,medkit:40,smoke:1,
+  /** Scarce walk-over pack — not a free mag dump. Kill strips stay the main ammo lever. */
+  ammo:12,medkit:40,smoke:1,
   pickupRadius:1.3,
-  /** At each lull the director restocks this many caches at least `restockMinDistance` away. */
-  restockPerLull:2,restockMinDistance:12,
+  /** Rat cage: lulls never restock floor caches — strip the dead. */
+  restockPerLull:0,restockMinDistance:12,
  },
 
  // ── Player ─────────────────────────────────────────────────────────────────────

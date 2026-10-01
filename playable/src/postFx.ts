@@ -2,8 +2,8 @@
  * Ultrakill-leaning post stack helpers for the dive composer.
  *
  * Pipeline (wired in CaveWorld.buildComposer):
- *   RenderPass → UnrealBloomPass → ImpactPass (chroma + vignette + mild crunch)
- *   → clip grade → OutputPass
+ *   RenderPass → UnrealBloomPass → clip grade (+ fused impact crunch/chroma/vignette)
+ *   → OutputPass
  *
  * Bloom is intentionally thresholded so only emissive / additive practicals
  * (muzzle, neon pickups, shafts) glow — not the whole cave. Impact intensity
@@ -12,16 +12,18 @@
 import * as THREE from 'three';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { PERF } from './perf';
 
 /** Cap device pixel ratio when the bloom stack is live (Retina + UnrealBloomPass hitch). */
-export const POST_FX_DPR_CAP = 1.25;
+/** Highest render density; mirrors PERF.dprCap (playability floor). */
+export const POST_FX_DPR_CAP = PERF.dprCap;
 
 /** Soft bloom: high threshold, modest strength — neon / muzzle / pickups only. */
 export const BLOOM_STRENGTH = 0.28;
 export const BLOOM_RADIUS = 0.42;
 export const BLOOM_THRESHOLD = 0.88;
 /** Bloom render targets run at this fraction of the canvas (perf). */
-export const BLOOM_RES_SCALE = 0.5;
+export const BLOOM_RES_SCALE = PERF.bloomResScale;
 
 /** Chromatic / vignette peaks and decay (seconds to ease back to idle). */
 export const IMPACT_HIT_PEAK = 1;
@@ -79,11 +81,19 @@ const IMPACT_SHADER = {
     uVignette: { value: IMPACT_VIGNETTE_MAX },
     uCrunch: { value: CRUNCH_PIXEL },
     uResolution: { value: new THREE.Vector2(1, 1) },
+    uWarp: { value: 0 },
   },
   vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
-  fragmentShader: `uniform sampler2D tDiffuse;uniform float uIntensity;uniform float uChroma;uniform float uVignette;uniform float uCrunch;uniform vec2 uResolution;varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse;uniform float uIntensity;uniform float uChroma;uniform float uVignette;uniform float uCrunch;uniform vec2 uResolution;uniform float uWarp;varying vec2 vUv;
 void main(){
   vec2 uv=vUv;
+  // Speed lens (speedFov.ts): sample toward the centre in proportion to r², so the periphery is
+  // stretched out to the frame edges while the middle stays true. Aspect-corrected radius.
+  if(uWarp>1e-4){
+    vec2 d=uv-.5;vec2 a=vec2(d.x*uResolution.x/uResolution.y,d.y);
+    float r2=dot(a,a)/(.25+.25*(uResolution.x*uResolution.x)/(uResolution.y*uResolution.y));
+    uv=.5+d*(1.0-uWarp*r2);
+  }
   // Mild always-on pixel crunch — keeps 2K albedo, reads retro at presentation.
   if(uCrunch>1.01){
     vec2 grid=max(uResolution/uCrunch,vec2(1.0));
@@ -109,6 +119,8 @@ void main(){
 
 export type ImpactPass = ShaderPass & {
   setIntensity(v: number): void;
+  /** Peripheral speed stretch, 0 (none) to ~0.1. */
+  setWarp(v: number): void;
   setSize(w: number, h: number): void;
 };
 
@@ -117,16 +129,29 @@ export function createImpactPass(): ImpactPass {
   pass.setIntensity = (v: number) => {
     pass.uniforms.uIntensity.value = Math.max(0, Math.min(1, v));
   };
+  pass.setWarp = (v: number) => {
+    pass.uniforms.uWarp.value = Math.max(0, Math.min(.2, v));
+  };
   pass.setSize = (w: number, h: number) => {
     pass.uniforms.uResolution.value.set(Math.max(1, w), Math.max(1, h));
   };
   return pass;
 }
 
-export function createBloomPass(width: number, height: number): UnrealBloomPass {
+/**
+ * `pixelRatio` is read whenever the composer resizes the pass: the composer hands passes render
+ * pixels, and bloom is a blur, so it stays sized from CSS pixels. A Retina 2× frame costs the
+ * same bloom as a 1× frame, and the glow keeps its size at every rung of the resolution governor.
+ */
+export function createBloomPass(width: number, height: number, pixelRatio: () => number = () => 1): UnrealBloomPass {
   const w = Math.max(1, Math.floor(width * BLOOM_RES_SCALE));
   const h = Math.max(1, Math.floor(height * BLOOM_RES_SCALE));
   const bloom = new UnrealBloomPass(new THREE.Vector2(w, h), BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD);
+  const setSize = bloom.setSize.bind(bloom);
+  bloom.setSize = (rw: number, rh: number) => {
+    const pr = Math.max(1e-3, pixelRatio());
+    setSize(Math.max(1, Math.round(rw / pr)), Math.max(1, Math.round(rh / pr)));
+  };
   return bloom;
 }
 

@@ -84,14 +84,13 @@ test('COMBAT_FEEDBACK presets are positive',()=>{
  assert.ok(COMBAT_FEEDBACK.meleeHit.intensity>COMBAT_FEEDBACK.gunFire.intensity);
 });
 
-test('presets stay readable without the loud crank (intensity ≥ 0.5, hitstop ≥ 80 ms)',()=>{
+test('presets stay readable; hitstop is a few frames, never a visible freeze',()=>{
  assert.ok(COMBAT_FEEDBACK.gunFire.intensity>=.5);
  assert.ok(COMBAT_FEEDBACK.gunFireHeavy.intensity>=.8);
  assert.ok(COMBAT_FEEDBACK.gunFireHeavy.intensity<1.2);
- assert.ok(COMBAT_FEEDBACK.hitstopHead>=80);
- assert.ok(COMBAT_FEEDBACK.hitstopHead<=120);
- assert.ok(COMBAT_FEEDBACK.hitstopKill>=120);
- assert.ok(COMBAT_FEEDBACK.hitstopKill<=180);
+ assert.ok(COMBAT_FEEDBACK.hitstopHead>=30&&COMBAT_FEEDBACK.hitstopHead<=60);
+ assert.ok(COMBAT_FEEDBACK.hitstopKill>=50&&COMBAT_FEEDBACK.hitstopKill<=90);
+ assert.ok(COMBAT_FEEDBACK.hitstopEgoSave>=30&&COMBAT_FEEDBACK.hitstopEgoSave<=60);
  // Peak offset at intensity 1 should clear ~5 cm — felt, not subtle
  const peak=noiseOffset(0.25,1);
  assert.ok(Math.hypot(peak.x,peak.y,peak.z)>0.05);
@@ -107,4 +106,21 @@ test('reset clears shake and hitstop',()=>{
  assert.equal(t.amplitude,0);
  assert.equal(t.simDt,0.016);
  assert.equal(t.hitstopping,false);
+});
+
+test('no light is ever created, removed or hidden mid-dive (each one recompiles every lit shader)',async()=>{
+ const fs=await import('node:fs');
+ const src=fs.readFileSync(new URL('../src/CaveWorld.ts',import.meta.url),'utf8');
+ // Pickups borrow pooled lights instead of bringing their own.
+ const sync=src.slice(src.indexOf(' syncPickups(){'),src.indexOf(' assignPickupGlows(){'));
+ assert.doesNotMatch(sync,/new THREE\.(Point|Spot)Light/);
+ assert.doesNotMatch(src,/torchLight\.visible\s*=/);
+ assert.doesNotMatch(src,/decoyMesh\.add\(new THREE\.PointLight/);
+});
+
+test('held-item switches keep the light count: no light lives inside a viewmodel that hides',async()=>{
+ const fs=await import('node:fs');
+ const src=fs.readFileSync(new URL('../src/CaveWorld.ts',import.meta.url),'utf8');
+ assert.doesNotMatch(src,/gunVisual\.add\([^)]*playerFlash[,)]/);
+ assert.match(src,/this\.camera\.add\(this\.playerFlash\)/);
 });

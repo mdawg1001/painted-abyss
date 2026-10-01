@@ -6,7 +6,7 @@ import {
  guardPerimeterRoute,guardClearLine,guardNavTarget,pickGuardSpawn,fits,cells,breathFootprint,
  guardBeat,beatIndices,beatStep,nearestBeatStop,isolateGuards,
  GUARD_COUNT,GUARD_PATROL_OVERLAP,GUARD_OUTFIT_COLORS,
- GUARD_MAGAZINE,GUARD_RELOAD_SECONDS,GUARD_GUN_COOLDOWN,guardHitChance,guardLookout,clearDistance,
+ GUARD_MAGAZINE,GUARD_RELOAD_SECONDS,GUARD_GUN_COOLDOWN,guardHitChance,skinOfTeethHitChance,guardLookout,clearDistance,
  GUARD_WALL_CLEARANCE,GUARD_INSPECT_SPACING,GUARD_CORNER_PAUSE,GUARD_BODY_RADIUS,GUARD_FOV_HALF,createDiveChests,
  GUARD_MELEE_RANGE,GUARD_MELEE_DAMAGE,GUARD_COAT_DAMAGE_MULT,GUARD_GUN_DAMAGE,
  GUARD_BOTTLE_AIR,GUARD_LOOT_RANGE,SPARE_BOTTLE_LITRES,GUARD_SPEED,GUARD_AIM_TOLERANCE,GUARD_GUN_RANGE,GUARD_HORDE,
@@ -153,5 +153,7 @@ test('no line of sight, no shot; hit chance falls with range and a moving target
  assert.ok(guardHitChance(20,0,false)<guardHitChance(6,0,false));
  assert.ok(guardHitChance(8,3.4,false)<guardHitChance(8,0,false)-.2,'running is hard to hit');
  assert.ok(guardHitChance(8,0,true)<guardHitChance(8,0,false),'the snap shot is rushed');
+ assert.ok(skinOfTeethHitChance(8,3.4,false)<guardHitChance(8,3.4,false),'skin-of-teeth adds graze bias when moving');
+ assert.equal(skinOfTeethHitChance(8,0,false),guardHitChance(8,0,false),'standing still stays dangerous');
 });
 

@@ -3,8 +3,10 @@ import {onAssetSettled} from './assetRedraw';
 import { CombatFeedbackManager, COMBAT_FEEDBACK } from './combatFeedback';
 import { PropStreaming } from './propStreaming';
 import { PALETTE } from './artPalette';
-import { DRY_DENSITY, DRY_FIELD, FLUORESCENT, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type FrameGrade } from './frameGrade';
-import { POST_FX_DPR_CAP, createBloomPass, createImpactFx, createImpactPass, resizeBloomPass, type ImpactFx, type ImpactPass } from './postFx';
+import { DRY_DENSITY, DRY_FIELD, FLUORESCENT, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type ClipGradePass, type FrameGrade } from './frameGrade';
+import { createBloomPass, createImpactFx, resizeBloomPass, type ImpactFx } from './postFx';
+import { PERF } from './perf';
+import { ResolutionGovernor } from './resolutionGovernor';
 import * as THREE from 'three';
 import { applyGuardCombatPose, updateGuardMoveFrame } from './guardCombatPose';
 import { PISTOL } from './playerPistol';
@@ -21,10 +23,14 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { OceanWorld } from './legacy/ocean';
-import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playSquadCall, pannedBus, playDoorBang, playSmokePop, playGrunt, playMeleeHit, playFleshHit, playSupply, playValveStroke, playValveSeat, playStashOpen, playStashClose, playStashDeposit, playStashWithdraw } from './diveAudio';
+import { buildDiveAudio, playDiveChime, playInventoryClick, playStabSound, playGuardianDeath, playFootstep, playGunshot, playRicochet, playHitMarker, playPistolClick, playSquadCall, pannedBus, playDoorBang, playSmokePop, playGrunt, playMeleeHit, playFleshHit, playSupply, playValveStroke, playValveSeat, playStashOpen, playStashClose, playStashDeposit, playStashWithdraw, playGold, playKillLoot, playStreakBreak, type DiveAudioBus } from './diveAudio';
 import { Gait, wadingDrag, runWeight, WALK_CAMERA_MOTION, type GaitEvent } from './gait';
 import { BackgroundMusic } from './backgroundMusic';
 import { loadCaveRockMaps, type CaveRockMaps } from './rockMaps';
+import { BUNKER, buildBunkerLayout } from './bunkerLayout';
+import { bunkerKeepouts } from './bunkerKeepouts';
+import { SHEETS, KIT_VERTICES, bakeBunker, bunkerBucketOf, bunkerSignature, createBunkerLightmaps, createBunkerMaterial, createBunkerTextures, injectLightmap, BUNKER_LIGHT, loadBunkerKit, loadLitBunker, mergeBucket, type BunkerKit, type BunkerTextures, type BakeKey } from './sovietBunker';
+import { createDecalMaterial, createStencilAtlas } from './bunkerDecals';
 import { KNIFE_CLICK_BUFFER, createKnifeVisual, upgradeKnifeVisual, applyKnifeEnvMap, poseKnife, knifeMeshReady, HELD_VIEW_POS, HELD_VIEW_ROT, KNIFE_HOLD_POS, KNIFE_HOLD_ROT, KNIFE_STAB_TIME, KNIFE_EQUIP_TIME, stabOffset, equipOffset } from './knifeAsset';
 import { createSovietKeyHeld, createSovietKeyPickup } from './sovietKeyAsset';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -45,6 +51,16 @@ import { createWallPipe, upgradeWallPipe, setPipeWheel, PIPE_MOUNT, type WallPip
 import { startStroke, stepStroke, handPoses, smootherstep, VALVE_STAND, WHEEL_CENTRE, BREAKAWAY_TIME, REGRIP_TIME, type ValveStroke } from './valve';
 import { createValveHands, poseValveHands, resetValveHands, type ValveHandsRig } from './valveHands';
 import { applyHandEnvMap } from './diverHand';
+import { SpeedFov, SPEED_FOV } from './speedFov';
+import { StyleMeter, type StyleEvent, type StyleModifier, type StyleView } from './styleMeter';
+import { styleActionsForTag, type CombatTag } from './combatOutcomes';
+import { combatCalmActive } from './combatCalm';
+import { STREAK } from './styleStreak';
+/** Shared style-mod arrays — never mutate; reused across score events. */
+const STYLE_MODS_NONE: StyleModifier[] = [];
+const STYLE_MODS_SLIDE: StyleModifier[] = ['slide'];
+const STYLE_MODS_AERIAL: StyleModifier[] = ['aerial'];
+import { makeTech, stepTech, requestJump, requestSlide, techOwnsMovement, STAND_HEIGHT, type TechState } from './movementTech';
 import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion, applyGuardAim,
  type SovietGuardVisual,
@@ -53,15 +69,21 @@ import {
  mountAk74u, prefetchAk74u, updateAk74u, drawAk74u, shootAk74u, reloadAk74u, inspectAk74u, ak74uMuzzle, ak74uAimOffset,
  AK74U_HELD_POS, AK74U_HELD_ROT, AK74U_ADS,
 } from './gunAsset';
-import { Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, GUARD_COUNT, STASH_POSITION, STASH_YAW, type BreathFootprint, type BreathTankMount } from './simulation';
+import { RIFLE, rifleIsPrize } from './rifleCondition';
+import { goldSinkAccel, goldThrustFactor, nextUpgradeTarget } from './gold';
+import { SWIM_BUOYANCY_ACCEL, Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, groundNormal, GUARD_COUNT, STASH_POSITION, STASH_YAW, EGO_SAVIOR, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
  airborne:boolean;
  /** Both hands are on the leak valve wheel. */
- atWheel:boolean};
+ atWheel:boolean;
+ /** Style meter for the HUD (rank letter, bar fill, action feed). */
+ style:StyleView};
 /** Point lights packed per cave chunk. 24 covers every light whose range reaches a chunk; the rest of the set still exists in the scene for spots/shadows. */
 const POINT_CULL_MAX=24;
-type PointCull={box:THREE.Box3;count:{value:number};pos:THREE.Vector3[];col:THREE.Vector3[];dist:Float32Array;decay:Float32Array};
+/** Loot-glow lights shared by the nearest glowing pickups (count fixed for shader stability). */
+const PICKUP_LIGHT_POOL=6;
+type PointCull={box:THREE.Box3;count:{value:number};pos:THREE.Vector3[];col:THREE.Vector3[];dist:Float32Array;decay:Float32Array;still:Float32Array};
 function pointCullLightsChunk(){
   const src=ShaderChunk.lights_fragment_begin;
   const start=src.indexOf('#if ( NUM_POINT_LIGHTS > 0 ) && defined( RE_Direct )');
@@ -76,12 +98,23 @@ function pointCullLightsChunk(){
 		pointLight.distance = uCullDist[ i ];
 		pointLight.decay = uCullDecay[ i ];
 		getPointLightInfo( pointLight, geometryPosition, directLight );
+		#ifdef BK_SHADOW
+		directLight.color *= mix( 1.0, bkShadow, uCullStatic[ i ] );
+		#endif
 		RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
 	}
 #endif
 
 `;
-  return src.slice(0,start)+block+src.slice(end);
+  // Bunker surfaces (BK_SHADOW, bunkerLightmap.ts) take the flat overhead fill through the baked
+  // occlusion: the lightmaps already carry the light that really reaches them.
+  const dir='getDirectionalLightInfo( directionalLight, directLight );';
+  const tail=src.slice(end);
+  if(!tail.includes(dir)) throw new Error('Three.js light chunk layout changed');
+  return src.slice(0,start)+block+tail.replace(dir,`${dir}
+		#ifdef BK_SHADOW
+		directLight.color *= mix( 1.0, bkLmAo * uBkSky, uBkLmOn );
+		#endif`);
 }
 const POINT_CULL_LIGHTS=pointCullLightsChunk();
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
@@ -203,8 +236,10 @@ export class CaveWorld extends OceanWorld {
  lightFrustum=new THREE.Frustum();lightProjection=new THREE.Matrix4();
  /** A single pending frame: continuous during play, demand-driven on menus. */
  requestRender=()=>{if(this.alive&&!document.hidden&&!this.frame)this.frame=requestAnimationFrame(this.animate);};
- audioNotice='';audioProbe:AnalyserNode|null=null;audioTestTimer=0;
+ audioNotice='';audioProbe:DiveAudioBus|null=null;audioTestTimer=0;
  backgroundMusic:BackgroundMusic|null=null;
+ /** Rising-edge tracker for Ego Savior save juice (hitstop + hero clear). */
+ egoSaveSeqSeen=0;
  mission=new Mission(readInventoryTipsSeen());ui:(snapshot:Snapshot)=>void;error='';pointerLocked=false;everLocked=false;lastSent=0;
  fallbackTurn=0;lockDenied=false;lookPointer:{x:number;y:number}|null=null;
  torchLight=new THREE.SpotLight(0xeaf6ff,210,34,.38,.55,1.05);
@@ -212,11 +247,14 @@ export class CaveWorld extends OceanWorld {
  /** Rest pose for the camera-parented lantern (local space). */
  torchRestPos=V(HELD_VIEW_POS.x,HELD_VIEW_POS.y,HELD_VIEW_POS.z);torchRestRot=new THREE.Euler(HELD_VIEW_ROT.x,HELD_VIEW_ROT.y,HELD_VIEW_ROT.z);
  composer!:EffectComposer;
- /** Soft neon bloom (half-res UnrealBloomPass) + damage/dash chroma/vignette. */
- bloom!:UnrealBloomPass;impactPass!:ImpactPass;impactFx:ImpactFx=createImpactFx();
+ /** Soft neon bloom (quarter-res) + fused damage/dash chroma in the clip pass. */
+goldSeqHeard=0;
+/** Last consumed kill-loot theater seq (stage-two classical cues). */
+killLootSeqHeard=0;
+bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
  /** Rising-edge trackers for impact FX (health drop + Shift sprint/run). */
  fxHealthSeen=100;fxBursting=false;
- guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;
+ guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;decoyLight!:THREE.PointLight;
  /** Five Soviet guards (Quaternius soldier, dyed kits). */
  sovietGuards:SovietGuardVisual[]=[];
  get sovietGuard(){return this.sovietGuards[0]??null;}
@@ -238,7 +276,15 @@ export class CaveWorld extends OceanWorld {
  /** Right mouse held (aim down sights) and the 0…1 shoulder blend that follows it. */
  aimHeld=false;aimBlend=0;
  /** Base lens (deg); aiming narrows it to AK74U_ADS.fov. */
- baseFov=64;
+ baseFov=SPEED_FOV.MIN_FOV;
+ /** Speed-driven lens on a spring (speedFov.ts); reads this.velocity, never writes it. */
+ speedFov=new SpeedFov();
+ /** Fixed pool of loot-glow lights (see assignPickupGlows). */
+ pickupLights:THREE.PointLight[]=[];
+ /** Every material compiled once up front (prewarmShaders). */
+ shadersWarm=false;
+ /** Set when something may have brought an uncompiled material into view (see guardNewShaders). */
+ shaderGuardDirty=false;_guardSweep=-1;_guardSelected=-1;warmKeep:THREE.Material[]=[];_glowRank:{g:THREE.Group;score:number}[]=[];
  /** Muzzle on the carbine's barrel bone, measured once the glTF mounts. */
  _muzzleAt=new THREE.Vector3();
  akMuzzle:{bone:THREE.Object3D;local:THREE.Vector3}|null=null;
@@ -270,6 +316,10 @@ export class CaveWorld extends OceanWorld {
  hanging:HangingLights|null=null;
  /** 0 standing → 1 fully crouched (camera only). */
  crouchBlend=0;
+ /** Jump / slide / crouch state machine on foot (movementTech.ts). */
+ tech:TechState=makeTech();
+ /** Headroom probe: upward rays against rendered geometry; lowest ceiling cached ~0.1 s. */
+ _headRay=new THREE.Raycaster();_headAt=-1;_headX=0;_headZ=0;_headCeil=Infinity;
  hangingSeen:{pistol:number;guards:number[];impact:number}={pistol:0,guards:[],impact:-1};
  /** Sketchfab PotatoWit soviet posters hung on one cave wall. */
  wallPosters:WallPosters|null=null;
@@ -296,6 +346,15 @@ export class CaveWorld extends OceanWorld {
  knifeEnvMap:THREE.Texture|null=null;
  /** Timed screen shake + hitstop (critical hits / kills freeze sim, not render). */
  combatFeedback=new CombatFeedbackManager();
+ /**
+  * Style meter (styleMeter.ts). Combat cues feed it below; crossing into a new rank shakes the
+  * screen, harder the higher the letter.
+  */
+ style=(()=>{
+  const meter=new StyleMeter();
+  meter.onRankChange(c=>{if(c.up)this.combatFeedback.triggerScreenShake(.45+.12*c.tier,.16+.025*c.tier);});
+  return meter;
+ })();
  /** Real-time phase clock for shake noise (keeps advancing during hitstop). */
  shakeClock=0;
  /** Last sampled shake offset (camera-local metres) from `combatFeedback.tick`. */
@@ -323,7 +382,13 @@ export class CaveWorld extends OceanWorld {
  pointCullSyncs:(()=>void)[]=[];
  pointCullSaturated=false;
  _cullLights:THREE.PointLight[]=[];
+ /** Cached PointLight list — rebuilt every PERF.lightScanFrames (avoids scene.traverse). */
+ _cullLightCache:THREE.PointLight[]=[];
+ _cullLightScan=0;
  _cullWp:THREE.Vector3[]=[];
+ /** Scratch for muzzle aim without per-frame Vector3 allocs. */
+ _muzzleAim=new THREE.Vector3();
+ _muzzleScratch=new THREE.Vector3();
  /** World box around the held torch / knife. Refreshed every frame. */
  heldLightBox=new THREE.Box3();
  /** World box around the guardian. Refreshed every frame. */
@@ -341,7 +406,7 @@ export class CaveWorld extends OceanWorld {
  _pcx=[0,0,0,0];
  _pcy=[0,0,0,0];
  _adoptTmp=new THREE.Box3();
- propStreaming=new PropStreaming();
+ propStreaming=(()=>{const ps=new PropStreaming();ps.onLoaded=()=>{this.shaderGuardDirty=true;this._cullLightScan=0;this.requestRender();};return ps;})();
  lastPropCheck=0;
  /** Knife / guards / FX maps — started on Begin dive so the menu only pays for rock previews + JS. */
  essentialsBooted=false;
@@ -350,16 +415,33 @@ export class CaveWorld extends OceanWorld {
  gradeHemi!:THREE.HemisphereLight;gradeAmbient!:THREE.AmbientLight;gradeSky!:THREE.DirectionalLight;
  waterMat!:THREE.MeshBasicMaterial;volMat!:THREE.MeshBasicMaterial;
  gradeClock=createGradeClock();frameGrade:FrameGrade='dry';
- clipPass!:ReturnType<typeof createClipGradePass>;
+ clipPass!:ClipGradePass;
  gradeSpots:{light:THREE.Light;rest:number}[]=[];
  /** Soft blood cloud group (droplets + plume); hidden until hit/kill. */
  bloodGroup:THREE.Group|null=null;
  bloodLayers:BloodLayer[]=[];
  bloodLife=0;bloodPeakLife=14;
  rockMaps:CaveRockMaps;
+ bunkerTextures!:BunkerTextures;
+ bunkerLightmaps?:ReturnType<typeof createBunkerLightmaps>;
+ /** 1 once the baked lightmaps are on every bunker surface. */
+ bunkerLmOn={value:0};
+ /** Render resolution and MSAA, stepped by frame time (resolutionGovernor.ts). */
+ resolution=new ResolutionGovernor(typeof window!=='undefined'?window.devicePixelRatio:1);
+ private lastFrameAt=0;
+ /** Baked-lighting uniforms (shared by every bunker material), exposed for tuning. */
+ bunkerLight=BUNKER_LIGHT;
+ _lmTintA=new THREE.Color();_lmTintB=new THREE.Color();_lmTintC=new THREE.Color();
+ /** Settles when the kit meshes have replaced the plain fallback walls. */
+ bunkerReady:Promise<void>=Promise.resolve();
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
-  super(host,{onReady:()=>{},onPause:()=>{},onStatus:()=>{},onToggleUI:()=>{},onGlide:()=>{},onError:()=>{}},{deferStart:true});
-  this.ui=ui;this.listeners.push(onAssetSettled(this.requestRender));this.rockMaps=loadCaveRockMaps(this.renderer,this.requestRender);this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
+  super(host,{onReady:()=>{},onPause:()=>{},onStatus:()=>{},onToggleUI:()=>{},onGlide:()=>{},onError:()=>{}},{
+   deferStart:true,
+   antialias:PERF.antialias,
+   dprCap:PERF.dprCap,
+   particleCount:PERF.particleCount,
+  });
+  this.ui=ui;this.listeners.push(onAssetSettled(()=>{this._cullLightScan=0;this.requestRender();}));this.rockMaps=loadCaveRockMaps(this.renderer,this.requestRender);this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
   // Dirty ivory field. The three grades assign this color; they do not blend it.
   this.scene.background=new THREE.Color(DRY_FIELD);this.scene.fog=new THREE.FogExp2(DRY_FIELD,DRY_DENSITY);
   // Near plane at 3 cm: the carbine's receiver sits ~8 cm from the eye in the hip hold.
@@ -367,8 +449,8 @@ export class CaveWorld extends OceanWorld {
   // No filmic shoulder — the clip pass clamps contrast.
   this.renderer.toneMappingExposure=1;this.renderer.toneMapping=THREE.NoToneMapping;
   this.setPixelRatio();
-  // Modest torch shadows only (no other casters) — 512² map for Safari cost.
-  this.renderer.shadowMap.enabled=true;
+  // Shadow maps re-draw the bunker each frame; playability profile keeps them off.
+  this.renderer.shadowMap.enabled=PERF.shadows;
   this.renderer.shadowMap.type=THREE.PCFShadowMap;
   const dry=GRADE_LIGHTS.dry;
   this.gradeHemi=new THREE.HemisphereLight(dry.sky,dry.ground,dry.hemi);
@@ -426,7 +508,8 @@ export class CaveWorld extends OceanWorld {
    'gl_FragColor=vec4(.78,.92,.96,a*smoothstep(.5,.0,d));'
   );
   this.decoyMesh=new THREE.Mesh(new THREE.IcosahedronGeometry(.18,1),new THREE.MeshBasicMaterial({color:0xff7040}));
-  this.decoyMesh.add(new THREE.PointLight(0xff6831,12,12));this.scene.add(this.decoyMesh);
+  // The flare's light lives in the scene for good and is dimmed, never hidden (see assignPickupGlows).
+  this.decoyLight=new THREE.PointLight(0xff6831,0,12);this.scene.add(this.decoyMesh,this.decoyLight);
   this.buildBlood();
   // Mount knife stub immediately so selecting slot 1 always shows a held prop;
   // Poly Haven glTF upgrades on Begin dive (with RoomEnvironment specular).
@@ -442,7 +525,11 @@ export class CaveWorld extends OceanWorld {
   // Muzzle sits just past the barrel (viewmodel faces −Z).
   this.playerFlash.position.set(0,.05,-.34);this.playerFlashGlow.position.set(0,.05,-.34);
   this.playerFlashStar.position.set(0,.05,-.34);this.playerFlashSparks.position.set(0,.05,-.34);
-  this.gunVisual.add(this.playerFlash,this.playerFlashGlow,this.playerFlashStar,this.playerFlashSparks);
+  this.gunVisual.add(this.playerFlashGlow,this.playerFlashStar,this.playerFlashSparks);
+  // The muzzle light hangs off the camera, not the gun: hiding the gun on an item switch would
+  // take the light out of the scene, change the light count and recompile every lit shader.
+  this.camera.add(this.playerFlash);
+  this.playerFlash.position.set(0,-.03,-.4);
   this.keyVisual=createSovietKeyHeld();
   this.camera.add(this.keyVisual);
   this.keyVisual.visible=false;
@@ -475,6 +562,8 @@ export class CaveWorld extends OceanWorld {
   });
   this.adoptPointCull(this.torchBody,this.heldLightBox,false,false);
   this.adoptPointCull(this.guardian.group,this.guardianLightBox,false,true);
+  // Loot glow pool: created once so the scene's light count never changes mid-dive.
+  for(let i=0;i<PICKUP_LIGHT_POOL;i++){const l=new THREE.PointLight(0xffc050,0,4,2);l.castShadow=false;l.name='pickupGlow';this.scene.add(l);this.pickupLights.push(l);}
   this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.requestRender();this.publish();
  }
  /**
@@ -536,6 +625,7 @@ export class CaveWorld extends OceanWorld {
   const {group,lights}=createWallSconces(mounts);
   this.scene.add(group);
   this.wallSconceLights=lights;
+  for(const s of lights)s.light.userData.bakedShadow=true;
   const anchor=mounts[0]??{x:0,z:0};
   this.propStreaming.add('sconces',anchor,async()=>{
    const ok=await upgradeWallSconces(group,mounts,lights);
@@ -725,22 +815,32 @@ export class CaveWorld extends OceanWorld {
   this.bloodLayers[1].uniforms.uMap.value=maps.plume;
   this.bloodLayers[2].uniforms.uMap.value=maps.glow;
  }
- /** Floating blood near the guardian — `hit` is a small puff; `kill` a lingering cloud. */
- spawnBlood(at:THREE.Vector3|{x:number;y:number;z:number},kind:'hit'|'kill'='kill'){
+ /**
+  * Soft particle burst near a body.
+  * `hit` = small puff · `kill` = lingering blood · `slime` = mega-lottery colour explosion.
+  */
+ spawnBlood(at:THREE.Vector3|{x:number;y:number;z:number},kind:'hit'|'kill'|'slime'='kill'){
   if(!this.bloodGroup||!this.bloodLayers.length)return;
-  const spread=kind==='kill'?.85:.35;
-  const up=kind==='kill'?.28:.14;
-  const life=kind==='kill'?16:4.5;
-  const opac=kind==='kill'?.88:.7;
-  const sizeMul=kind==='kill'?1:.55;
-  const drift=kind==='kill'?.42:.22;
-  for(const layer of this.bloodLayers){
+  const slime=kind==='slime';
+  const big=kind==='kill'||slime;
+  const spread=slime?1.7:big?.85:.35;
+  const up=slime?.55:big?.28:.14;
+  const life=slime?22:big?16:4.5;
+  const opac=slime?.95:big?.88:.7;
+  const sizeMul=slime?1.55:big?1:.55;
+  const drift=slime?.9:big?.42:.22;
+  const colors=slime?[0x39f0c8,0xff4ad8,0xffd46a]:[0x7a1218,0x5c0e14,0x9a1e28];
+  for(let li=0;li<this.bloodLayers.length;li++){
+   const layer=this.bloodLayers[li];
    const pos=layer.points.geometry.attributes.position as THREE.BufferAttribute;
+   layer.uniforms.uColor.value.setHex(colors[li]??colors[0]!);
+   const mat=layer.points.material as THREE.ShaderMaterial;
+   mat.blending=slime?THREE.AdditiveBlending:THREE.NormalBlending;
    for(let i=0;i<pos.count;i++){
     pos.setXYZ(
      i,
      at.x+(Math.random()-.5)*spread,
-     at.y+(Math.random()-.5)*spread*.55,
+     at.y+(Math.random()-.5)*spread*.55+(slime?0.2:0),
      at.z+(Math.random()-.5)*spread,
     );
     layer.vel[i*3]=(Math.random()-.5)*drift;
@@ -786,6 +886,7 @@ export class CaveWorld extends OceanWorld {
   const col=Array.from({length:POINT_CULL_MAX},()=>new THREE.Vector3());
   const dist=new Float32Array(POINT_CULL_MAX);
   const decay=new Float32Array(POINT_CULL_MAX);
+  const still=new Float32Array(POINT_CULL_MAX);
   const prev=mat.onBeforeCompile?.bind(mat);
   const prevKey=mat.customProgramCacheKey.bind(mat);
   mat.onBeforeCompile=(shader,renderer)=>{
@@ -795,12 +896,13 @@ export class CaveWorld extends OceanWorld {
    shader.uniforms.uCullCol={value:col};
    shader.uniforms.uCullDist={value:dist};
    shader.uniforms.uCullDecay={value:decay};
-   shader.fragmentShader=`uniform int uCullCount;uniform vec3 uCullPos[${POINT_CULL_MAX}];uniform vec3 uCullCol[${POINT_CULL_MAX}];uniform float uCullDist[${POINT_CULL_MAX}];uniform float uCullDecay[${POINT_CULL_MAX}];\n`+shader.fragmentShader;
+   shader.uniforms.uCullStatic={value:still};
+   shader.fragmentShader=`uniform int uCullCount;uniform vec3 uCullPos[${POINT_CULL_MAX}];uniform vec3 uCullCol[${POINT_CULL_MAX}];uniform float uCullDist[${POINT_CULL_MAX}];uniform float uCullDecay[${POINT_CULL_MAX}];uniform float uCullStatic[${POINT_CULL_MAX}];\n`+shader.fragmentShader;
    shader.fragmentShader=shader.fragmentShader.replace('#include <lights_fragment_begin>',POINT_CULL_LIGHTS);
   };
   mat.customProgramCacheKey=()=>prevKey()+':pt'+POINT_CULL_MAX;
   mat.userData.pointCulled=true;
-  this.pointCullTargets.push({box,count,pos,col,dist,decay});
+  this.pointCullTargets.push({box,count,pos,col,dist,decay,still});
  }
  /** World AABB of every mesh under root. Lights that miss this box cannot shade it. */
  worldBox(root:THREE.Object3D){
@@ -857,15 +959,24 @@ export class CaveWorld extends OceanWorld {
   for(const sync of this.pointCullSyncs)sync();
   const lights=this._cullLights;lights.length=0;
   const wp=this._cullWp;
-  this.scene.traverse(o=>{
-   const light=o as THREE.PointLight;
-   if(!light.isPointLight||light.intensity<=0)return;
-   for(let p:THREE.Object3D|null=light;p;p=p.parent)if(!p.visible)return;
+  // Full scene.traverse is expensive — refresh the PointLight registry on a cadence.
+  if((this._cullLightScan++%PERF.lightScanFrames)===0||!this._cullLightCache.length){
+   this._cullLightCache.length=0;
+   this.scene.traverse(o=>{
+    const light=o as THREE.PointLight;
+    if(light.isPointLight)this._cullLightCache.push(light);
+   });
+  }
+  for(const light of this._cullLightCache){
+   let hidden=false;
+   for(let p:THREE.Object3D|null=light;p;p=p.parent)if(!p.visible){hidden=true;break;}
+   // Dark pool / flash lights keep their shader slot but take no packed cull slot.
+   if(hidden||light.intensity<=0)continue;
    const i=lights.length;
    lights.push(light);
    const v=wp[i]??(wp[i]=new THREE.Vector3());
    light.getWorldPosition(v);
-  });
+  }
   for(const t of this.pointCullTargets){
    if(!this.lightFrustum.intersectsBox(t.box))continue;
    let n=0;
@@ -881,6 +992,8 @@ export class CaveWorld extends OceanWorld {
     t.col[n].set(light.color.r*light.intensity,light.color.g*light.intensity,light.color.b*light.intensity);
     t.dist[n]=dist;
     t.decay[n]=light.decay;
+    // Fixed lamps are shadowed by the baked mask on bunker surfaces (bunkerLightmap.ts).
+    t.still[n]=light.userData.bakedShadow?1:0;
     n++;
    }
    t.count.value=n;
@@ -938,50 +1051,78 @@ export class CaveWorld extends OceanWorld {
   }
  }
  buildCave(){
-  const {rock:rockMaps,sand:sandMaps,moss:mossMaps}=this.rockMaps;
-  // Same meshes as one merged cave, split on a 2-cell grid so each draw only shades point lights that reach it.
-  type Bucket={floors:THREE.BufferGeometry[];roofs:THREE.BufferGeometry[];walls:THREE.BufferGeometry[];details:THREE.BufferGeometry[];breath:boolean};
+  const {rock:rockMaps,moss:mossMaps}=this.rockMaps;
+  // Soviet bunker art pass on the simulation grid (see bunkerLayout.ts): same cells, same collision.
+  const layout=buildBunkerLayout({keepouts:bunkerKeepouts()});
+  this.bunkerTextures=createBunkerTextures(this.renderer,this.rockMaps.loader,undefined,this.requestRender);
+  const atlas=createStencilAtlas(layout.labels);
+  // Corridor cells stay in their own meshes (bunkerBucketOf): sharing a 16 m chunk with the
+  // entrance cave forced every occluded cave triangle into the hatch view.
+  const bucketOf=bunkerBucketOf;
+  type Bucket={mats:Record<BakeKey,THREE.Material>;box:THREE.Box3;breath:boolean};
   const buckets=new Map<string,Bucket>();
-  const take=(c:number,r:number)=>{
-   // Corridor cells stay in their own meshes. Sharing a 16 m chunk with the
-   // entrance cave forced every occluded cave triangle into the hatch view.
-   const breath=breathZone(c,r)!=='';
-   const key=`${breath?'b':'c'}:${c>>2},${r>>2}`;
-   let b=buckets.get(key);
-   if(!b){b={floors:[],roofs:[],walls:[],details:[],breath};buckets.set(key,b);}
-   return b;
-  };
-  for(const key of cells){const [c,r]=key.split(',').map(Number),p=world(c,r);
-   const b=take(c,r);
-   // The floor surface is the simulation's floor (FLOOR_Y): everything that stands, lies or walks uses that height.
-   const fg=new THREE.PlaneGeometry(CELL,CELL,2,2);fg.rotateX(-Math.PI/2);fg.translate(p.x,FLOOR_Y,p.z);b.floors.push(fg);
-   if(!(c===19&&r===3)){const cg=fg.clone();cg.rotateZ(Math.PI);cg.translate(p.x*2,8+FLOOR_Y,0);b.roofs.push(cg);}
-   for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]])if(!cells.has(`${c+dc},${r+dr}`)){
-    const g=new THREE.BoxGeometry(dc?1:CELL+.05,8.5,dr?1:CELL+.05);g.translate(p.x+dc*2.5,4,p.z-dr*2.5);b.walls.push(g);
-    for(let n=0;n<3;n++){const stone=new THREE.IcosahedronGeometry(1,1);stone.scale(dc?.7:1.7,1.3+(n%2)*.5,dr?.7:1.7);stone.translate(p.x+dc*2.45,1.3+n*2.5,p.z-dr*2.45);b.details.push(stone);}
+  const sheets=this.bunkerTextures.sheets;
+  // Baked lighting: one switch for every lightmapped surface, off until the lightmaps are real.
+  const lightmaps=createBunkerLightmaps(this.rockMaps.loader);this.bunkerLightmaps=lightmaps;
+  const lmOn=this.bunkerLmOn,lmOff={value:0};
+  for(const key of cells){
+   const [c,r]=key.split(',').map(Number),p=world(c,r),k=bucketOf(c,r);
+   let b=buckets.get(k);
+   if(!b){
+    const mats={} as Record<BakeKey,THREE.Material>;
+    for(const s of SHEETS)mats[s]=injectLightmap(createBunkerMaterial(sheets[s],FLOOR_Y),lmOn);
+    // Cables are thin and near black: not worth lightmap space, same program.
+    mats.cable=injectLightmap(createBunkerMaterial(sheets.none,FLOOR_Y),lmOff);
+    mats.decal=injectLightmap(createDecalMaterial(atlas),lmOn);
+    b={mats,box:new THREE.Box3(),breath:k[0]==='b'};buckets.set(k,b);
    }
+   b.box.expandByPoint(new THREE.Vector3(p.x-CELL/2,FLOOR_Y-.3,p.z-CELL/2));
+   b.box.expandByPoint(new THREE.Vector3(p.x+CELL/2,FLOOR_Y+BUNKER.height+.3,p.z+CELL/2));
   }
-  for(const b of buckets.values()){
-   const floor=this.material(PALETTE.floor,'sand',.88,0,sandMaps,mossMaps);
-   const rock=this.material(PALETTE.stone,'rock',.86,1.6,rockMaps,mossMaps);
-   const ceiling=this.material(PALETTE.ceiling,'rock',.9,.6,rockMaps,mossMaps);
-   const box=new THREE.Box3();
-   const add=(geos:THREE.BufferGeometry[],mat:THREE.Material)=>{
-    if(!geos.length)return;
-    const merged=mergeGeometries(geos);if(!merged)return;
-    merged.computeBoundingBox();merged.computeBoundingSphere();
-    if(merged.boundingBox)box.union(merged.boundingBox);
-    const mesh=new THREE.Mesh(merged,mat);mesh.castShadow=true;mesh.receiveShadow=true;
-    mesh.matrixAutoUpdate=false;mesh.updateMatrix();
-    this.scene.add(mesh);
-    const pb=merged.boundingBox?.clone();
-    if(pb)this.portalItems.push({obj:mesh,box:pb,side:b.breath?'breath':'cave',hidden:false});
-    geos.forEach(g=>g.dispose());
-   };
-   add(b.floors,floor);add(b.roofs,ceiling);add(b.walls,rock);add(b.details,rock);
-   box.expandByScalar(.05);
-   this.trackPointCull(floor,box);this.trackPointCull(rock,box);this.trackPointCull(ceiling,box);
-  }
+  for(const b of buckets.values()){b.box.expandByScalar(.6);for(const m of Object.values(b.mats))this.trackPointCull(m,b.box);}
+  const addMesh=(k:string,key:BakeKey,geometry:THREE.BufferGeometry,keep?:THREE.Mesh[])=>{
+   const b=buckets.get(k);if(!b)return;
+   const mesh=new THREE.Mesh(geometry,b.mats[key]);
+   mesh.castShadow=key!=='decal';mesh.receiveShadow=true;
+   mesh.matrixAutoUpdate=false;mesh.updateMatrix();
+   mesh.name=`bunker:${k}:${key}`;
+   this.scene.add(mesh);
+   this.portalItems.push({obj:mesh,box:geometry.boundingBox!.clone(),side:b.breath?'breath':'cave',hidden:false});
+   keep?.push(mesh);
+  };
+  const addBaked=(baked:ReturnType<typeof bakeBunker>,keep?:THREE.Mesh[])=>{
+   for(const [k,bb] of baked)for(const [key,geos] of bb){const merged=mergeBucket(geos);if(merged)addMesh(k,key,merged,keep);}
+  };
+  const removeMeshes=(list:THREE.Mesh[])=>{
+   for(const mesh of list){
+    this.scene.remove(mesh);mesh.geometry.dispose();
+    const i=this.portalItems.findIndex(item=>item.obj===mesh);if(i>=0)this.portalItems.splice(i,1);
+   }
+   list.length=0;
+  };
+  const bake=(kit:BunkerKit|null,kitPieces:boolean)=>bakeBunker(layout.placements,{kit,bucketOf,decalRect:atlas.rect,filter:p=>(p.kind==='kit')===kitPieces});
+  // First frame: procedural dressing plus plain painted planes where the kit goes.
+  const procedural:THREE.Mesh[]=[],fallback:THREE.Mesh[]=[];
+  addBaked(bake(null,false),procedural);
+  addBaked(bake(null,true),fallback);
+  // Then the baked bunker (geometry with lightmap UVs) if it matches this layout; the kit if not.
+  const signature=bunkerSignature(layout,KIT_VERTICES);
+  const kitPath=()=>loadBunkerKit().then(kit=>{
+   if(!this.alive)return;
+   removeMeshes(fallback);
+   addBaked(bake(kit,true));
+   this.shaderGuardDirty=true;this.requestRender();
+  });
+  this.bunkerReady=loadLitBunker().then(lit=>{
+   if(!this.alive)return;
+   if(lit.signature!==signature){console.warn(`Baked bunker is stale (${lit.signature} != ${signature}); rebake with scripts/bunker-bake. Using unbaked kit.`);return kitPath();}
+   removeMeshes(procedural);removeMeshes(fallback);
+   for(const m of lit.meshes)addMesh(m.bucket,m.key as BakeKey,m.geometry);
+   this.shaderGuardDirty=true;this.requestRender();
+   return lightmaps.load(lit.lmScale).then(ok=>{if(ok&&this.alive)lmOn.value=1;});
+  },err=>{console.warn('Baked bunker unavailable; using unbaked kit',err);return kitPath();})
+   .catch(err=>console.warn('Bunker kit unavailable; keeping plain walls',err));
+  void this.bunkerReady.then(this.requestRender);
   const bone=this.material(0xc8c0a8,'rock',.82,1.5,rockMaps,mossMaps);
   const boneBox=new THREE.Box3();
   for(let i=0;i<6;i++)for(const s of [-1,1]){
@@ -1033,24 +1174,8 @@ export class CaveWorld extends OceanWorld {
   this.breathVolume.renderOrder=1;
   this.scene.add(this.breathVolume,this.breathWater);
 
-  const steel=new THREE.MeshStandardMaterial({color:PALETTE.steel,metalness:.72,roughness:.42});
+  // The hatch is a hermetic door in the bunker dressing (bunkerLayout.ts).
   const spawn=breathHatchSpawn();
-  const hatchBox=new THREE.Box3(
-   new THREE.Vector3(spawn.x-2.2,0,spawn.z+1.6),
-   new THREE.Vector3(spawn.x+2.2,3.4,spawn.z+2.8),
-  );
-  this.trackPointCull(steel,hatchBox);
-  const ring=new THREE.MeshBasicMaterial({color:0xf0d48a});
-  const hatch=new THREE.Group();
-  const door=new THREE.Mesh(new THREE.BoxGeometry(3.6,2.6,.22),steel);
-  door.position.y=1.65;
-  const wheel=new THREE.Mesh(new THREE.TorusGeometry(.42,.055,8,18),ring);
-  wheel.position.set(0,1.7,.16);
-  const rim=new THREE.Mesh(new THREE.TorusGeometry(.95,.04,8,24),ring);
-  rim.position.set(0,1.65,.13);
-  hatch.add(door,wheel,rim);
-  hatch.position.set(spawn.x,FLOOR_Y,spawn.z+2.2);
-  this.scene.add(hatch);
 
 
   const tank=new THREE.Group();
@@ -1079,7 +1204,7 @@ export class CaveWorld extends OceanWorld {
   const lamps=[{z:spawn.z-2,d:12},{z:16,d:11},{z:8,d:5}];
   for(const lamp of lamps){
    const light=new THREE.PointLight(PALETTE.amber,14,lamp.d,2);
-   light.position.set(foot.cx,2.4,lamp.z);
+   light.position.set(foot.cx,2.4,lamp.z);light.userData.bakedShadow=true;
    const lens=new THREE.MeshBasicMaterial({color:PALETTE.amberGlow});
    this.alarmFixtures.push({light,lens});this.scene.add(light);
   }
@@ -1125,7 +1250,11 @@ export class CaveWorld extends OceanWorld {
   this.endValve();
   this.mission.respawnAtHatch();
   this.mission.mapOpen=false;
+  // Dying ends the run of style.
+  this.style.reset();this.tech=makeTech();this.speedFov.reset();
   this.resetSurvivalFx();
+  this.egoSaveSeqSeen=this.mission.egoSaveSeq;
+  this.audioProbe?.setCritical(0);
   this.position.copy(this.mission.position);
   this.velocity.set(0,0,0);
   this.yaw=this.targetYaw=0;
@@ -1163,11 +1292,79 @@ export class CaveWorld extends OceanWorld {
   }
   return null;
  }
+ /**
+  * Headroom probe for the capsule (uncrouch safety, jump ceiling): true when nothing solid sits
+  * below `crown` metres above the floor where the diver stands. Five upward rays (centre + four
+  * at 0.22 m, inside the body radius) from just under the current head, against rendered
+  * geometry; only faces pointing down (ceilings, undersides) count. The viewmodel, sprites,
+  * glass and water are ignored. One probe measures the lowest overhead surface up to 1.2 m above
+  * a standing crown (clear of any jump), cached for 0.1 s or until you move 10 cm, so a jump or
+  * a held key costs at most ~10 probes a second.
+  */
+ headroomClear(crown:number){
+  const floor=FLOOR_Y;
+  if(floor+crown>SURFACE_Y-.02)return false;
+  const p=this.mission.position;
+  if(this.time-this._headAt>.1||Math.hypot(p.x-this._headX,p.z-this._headZ)>.1){
+   const from=floor+Math.min(this.tech.air+this.tech.height,STAND_HEIGHT)-.05;
+   const ray=this._headRay;ray.near=0;ray.far=floor+STAND_HEIGHT+1.2-from;ray.camera=this.camera;
+   const scene=this.scene.children.filter(c=>c!==this.camera&&c.visible);
+   const up=new THREE.Vector3(0,1,0),o=new THREE.Vector3(),n=new THREE.Vector3();
+   let ceil=Infinity;
+   for(const [dx,dz] of [[0,0],[.22,0],[-.22,0],[0,.22],[0,-.22]]){
+    ray.set(o.set(p.x+dx,from,p.z+dz),up);
+    for(const h of ray.intersectObjects(scene,true)){
+     if(h.point.y>=ceil)break;
+     const obj=h.object as THREE.Mesh;
+     if(!obj.isMesh||!h.face||obj.name==='bulletHole')continue;
+     let shown=true;for(let a:THREE.Object3D|null=obj;a;a=a.parent)if(!a.visible){shown=false;break;}
+     if(!shown)continue;
+     const mats=Array.isArray(obj.material)?obj.material:[obj.material];
+     if(mats.some(m=>m.transparent))continue;
+     n.copy(h.face.normal).transformDirection(obj.matrixWorld);
+     if(n.y<-.2){ceil=h.point.y;break;}
+    }
+   }
+   this._headAt=this.time;this._headX=p.x;this._headZ=p.z;this._headCeil=ceil;
+  }
+  return floor+crown<this._headCeil;
+ }
+ /** What you were doing when an event landed: mid-slide / airborne score extra. */
+ styleMods():StyleEvent['mods']{
+  // Shared frozen arrays — scoring is bursty; avoid per-event allocations on the fire path.
+  if(!this.onFoot)return STYLE_MODS_NONE;
+  return this.tech.mode==='slide'?STYLE_MODS_SLIDE:this.tech.mode==='air'?STYLE_MODS_AERIAL:STYLE_MODS_NONE;
+ }
+ /** Score a combat action on the style meter with the current movement modifiers. */
+ scoreStyle(action:StyleEvent['action']){this.style.record({action,mods:this.styleMods()});}
+ /** Score Phase 2 tags (SCRAPE / GRAZE / CLEAN / HEAD / MULTI) onto the style meter. */
+ scoreCombatTag(tag:CombatTag,killed=false){
+  for(const action of styleActionsForTag(tag,killed))this.scoreStyle(action);
+ }
+ /** Brief AAA juice for a scored combat beat — camera tick + hitstop, not HUD spam. */
+ juiceCombatTag(tag:CombatTag){
+  // Calm combat: skip scrape/graze camera ticks entirely (scores + SFX still fire).
+  const calm=combatCalmActive();
+  if(tag==='SCRAPE'){
+   if(calm)return;
+   this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.scrapeTick.intensity,COMBAT_FEEDBACK.scrapeTick.duration);
+   this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopScrape);
+  }else if(tag==='GRAZE'){
+   if(calm)return;
+   this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.grazeTick.intensity,COMBAT_FEEDBACK.grazeTick.duration);
+  }else if(tag==='MULTI'){
+   this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.gunFire.intensity*.7,COMBAT_FEEDBACK.gunFire.duration);
+   this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopHead);
+  }else if(tag==='HEAD'){
+   this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopHead);
+  }
+ }
  resetSurvivalFx(){
   this.fx?.reset();
   this.warFx?.clear();
   this.cueSeen=this.mission.elapsed;this.cloudSeen=-1;this.impactSeen=-1;this.hitFxSeen=-1;this.knifeFxSeen=-1;this.supplySeen=-1;
-  this.guardLifeSeen=this.sovietGuards.map(()=>-1);
+  // Do not wipe guardLifeSeen: hatch wake keeps corpses in place, and resetting
+  // life-seen would clear fallen poses (life mismatch → fall=0) for the same body.
  }
  /** Stereo position of a world point relative to where you look: −1 left … +1 right. */
  panFor(p:{x:number;z:number}){
@@ -1219,9 +1416,34 @@ export class CaveWorld extends OceanWorld {
   }
   const sup=m.supplyTaken;
   if(sup&&sup.at!==this.supplySeen){this.supplySeen=sup.at;if(a)playSupply(ctx!,master!,sup.kind);}
+  if(m.goldEvent&&m.goldEvent.seq!==this.goldSeqHeard){
+   this.goldSeqHeard=m.goldEvent.seq;
+   const ctx2=this.audioContext,master2=this.master;
+   if(this.sound&&ctx2&&master2&&ctx2.state==='running'){
+    const buy=m.goldEvent.kind==='bank'?nextUpgradeTarget(m.gunMods,m.bankedGold,m.inventory.includes('gun')):null;
+    const almost=!!buy&&(buy.ready||buy.almost);
+    playGold(ctx2,master2,m.goldEvent.kind,m.goldEvent.grams,almost);
+   }
+  }
+  if(m.killLootEvent&&m.killLootEvent.seq!==this.killLootSeqHeard){
+   this.killLootSeqHeard=m.killLootEvent.seq;
+   const evt=m.killLootEvent;
+   const ctx3=this.audioContext,master3=this.master;
+   if(this.sound&&ctx3&&master3&&ctx3.state==='running'){
+    playKillLoot(ctx3,master3,evt.kind,evt.goldGrams??0);
+   }
+   // Mega lottery: colourful slime burst at the corpse + a hard screen shake.
+   if(evt.kind==='mega'&&evt.x!==undefined&&evt.z!==undefined){
+    this.spawnBlood({x:evt.x,y:(evt.y??FLOOR_Y)+1.1,z:evt.z},'slime');
+    this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.gunFireHeavy.intensity*1.8,COMBAT_FEEDBACK.gunFireHeavy.duration*1.4);
+    this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopKill);
+   }
+  }
   const stashCue=m.stashCue;
   if(stashCue){
    m.stashCue='';
+   if(stashCue==='open'&&document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();
+   if(stashCue==='close'&&this.playing)this.requestLookLock(false);
    if(a&&ctx&&master){
     if(stashCue==='open')playStashOpen(ctx,master);
     else if(stashCue==='close')playStashClose(ctx,master);
@@ -1308,6 +1530,17 @@ export class CaveWorld extends OceanWorld {
       playGunshot(ctx,bus,Math.hypot(g.position.x-this.position.x,g.position.z-this.position.z));
       if(!g.lastShotHit)playRicochet(ctx,master);
      }
+     // Skin-of-teeth miss while moving → GRAZE (scored once from lastCombatOutcome).
+     // Slide / aerial whiffs still keep the legacy close-call beat when not already a graze.
+     if(!g.lastShotHit&&Math.hypot(g.position.x-this.position.x,g.position.z-this.position.z)<20){
+      const outcome=this.mission.lastCombatOutcome;
+      const graze=outcome&&outcome.tag==='GRAZE'&&Math.abs(outcome.at-this.mission.elapsed)<.05;
+      if(graze){
+       this.scoreCombatTag('GRAZE');
+       this.juiceCombatTag('GRAZE');
+       if(this.sound&&ctx&&master&&ctx.state==='running')playHitMarker(ctx,master,'graze');
+      }else if(this.styleMods()!.length)this.scoreStyle('closeCall');
+     }
      this.combatFeedback.triggerScreenShake(
       g.lastShotHit?COMBAT_FEEDBACK.takeDamage.intensity:COMBAT_FEEDBACK.gunFire.intensity*.55,
       g.lastShotHit?COMBAT_FEEDBACK.takeDamage.duration:.1,
@@ -1332,6 +1565,7 @@ export class CaveWorld extends OceanWorld {
     const landed=this.mission.lastStrike?.at===g.strikeAt&&this.mission.lastStrike.landed;
     if(this.audible())playMeleeHit(this.audioContext!,pannedBus(this.audioContext!,this.master!,this.panFor(g.position),1),!!landed);
     if(landed)this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.meleeHit.intensity,COMBAT_FEEDBACK.meleeHit.duration);
+    else if(this.styleMods()!.length)this.scoreStyle('closeCall');
    }
    const strikeAge=this.mission.elapsed-g.strikeAt;
    const clipOwnsBody=!!act&&act.kind==='death'&&actW>.5;
@@ -1351,14 +1585,20 @@ export class CaveWorld extends OceanWorld {
    }
    let muzzle:THREE.Vector3|null=null;
    if(g.gun&&this.guardShotsSeen[i]===g.shots&&flashFrom===i){
-    muzzle=visual.gun.getWorldPosition(new THREE.Vector3());
-    muzzle.addScaledVector(this._aimTarget.clone().sub(muzzle).normalize(),.28);
+    muzzle=visual.gun.getWorldPosition(this._muzzleScratch);
+    this._muzzleAim.copy(this._aimTarget).sub(muzzle).normalize();
+    muzzle.addScaledVector(this._muzzleAim,.28);
    }
    this.fx.syncGuard(i,visual,g,this.mission.elapsed,flashFrom===i,muzzle,dt);
-   if(muzzle)this.warFx.guardShot(muzzle);
+   if(muzzle){
+    this.warFx.guardShot(muzzle);
+    // Whip-by tracer: aim is core centre on hits, graze offset on misses (sim is authority).
+    this.warFx.guardTracer(muzzle,g.lastShotAim,g.lastShotHit,combatCalmActive());
+   }
    if(flashFrom===i||(flashFrom<0&&i===0)){
     visual.gun.getWorldPosition(this._muzzle);
-    this._muzzle.addScaledVector(this._aimTarget.clone().sub(this._muzzle).normalize(),.28);
+    this._muzzleAim.copy(this._aimTarget).sub(this._muzzle).normalize();
+    this._muzzle.addScaledVector(this._muzzleAim,.28);
     this.guardFlash.position.copy(this._muzzle);this.guardFlashGlow.position.copy(this._muzzle);
    }
   }
@@ -1701,7 +1941,9 @@ export class CaveWorld extends OceanWorld {
   const torchHeld=this.holdingTorch();
   const shine=torchShouldShine(this.mission.torch,selected);
   this.setTorchMeshesVisible(torchHeld);
-  this.torchLight.visible=shine;
+  // Dim, never hide: a light leaving the scene recompiles every lit shader (a freeze on F).
+  if(!shine)this.torchLight.intensity=0;
+  this.torchLight.shadow.autoUpdate=shine;
   this.beam.visible=shine;
   this.torchLensMat.emissiveIntensity=shine?1.25:.06;
   this.torchLensMat.emissive.set(shine?0xc8e4ff:0x223038);
@@ -1746,15 +1988,17 @@ export class CaveWorld extends OceanWorld {
   this.torchLight.position.set(0,0,-.45);
   this.torchLight.target.position.set(0,0,-22);
   this.torchBody.add(this.torchLight,this.torchLight.target);
-  // Torch shadows: modest 512² map; lantern mesh itself must not cast (near-field acne).
-  this.torchLight.castShadow=true;
-  this.torchLight.shadow.mapSize.set(512,512);
-  this.torchLight.shadow.bias=-.00035;
-  this.torchLight.shadow.normalBias=.035;
-  this.torchLight.shadow.radius=1.5;
-  this.torchLight.shadow.camera.near=.35;
-  this.torchLight.shadow.camera.far=Math.max(12,torch0.distance);
-  this.torchLight.shadow.camera.updateProjectionMatrix();
+  // Torch shadows: optional (playability profile); lantern mesh itself must not cast.
+  this.torchLight.castShadow=PERF.shadows;
+  if(PERF.shadows){
+   this.torchLight.shadow.mapSize.set(512,512);
+   this.torchLight.shadow.bias=-.00035;
+   this.torchLight.shadow.normalBias=.035;
+   this.torchLight.shadow.radius=1.5;
+   this.torchLight.shadow.camera.near=.35;
+   this.torchLight.shadow.camera.far=Math.max(12,torch0.distance);
+   this.torchLight.shadow.camera.updateProjectionMatrix();
+  }
   this.torchBody.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=false;o.receiveShadow=false;}});
 
   const cone=new THREE.CylinderGeometry(.018,3.2,20,28,1,true);cone.rotateX(Math.PI/2);
@@ -1771,7 +2015,7 @@ export class CaveWorld extends OceanWorld {
   ring.rotation.x=Math.PI/2;exit.add(ring);this.scene.add(exit);
   const sunlight=new THREE.SpotLight(PALETTE.ivory,480,26,.72,.8,1);
   sunlight.position.set(32,12,-12);sunlight.target.position.set(32,0,-12);this.scene.add(sunlight,sunlight.target);
-  const poolFill=new THREE.PointLight(WATER_FIELD,34,16,1.1);poolFill.position.set(32,5,-12);this.scene.add(poolFill);
+  const poolFill=new THREE.PointLight(WATER_FIELD,34,16,1.1);poolFill.position.set(32,5,-12);poolFill.userData.bakedShadow=true;this.scene.add(poolFill);
   this.addShaft(32,5.2,-12,9,.75,2.9,PALETTE.ivory,.3,0,0,{caustic:true,causticR:5.2});
 
   // Cavern ceiling fill + floor caustic. No volumetric column — the only god ray is the exit.
@@ -1792,24 +2036,40 @@ export class CaveWorld extends OceanWorld {
  }
  buildComposer(){
   const w=this.host.clientWidth||1,h=this.host.clientHeight||1;
-  this.composer=new EffectComposer(this.renderer);
+  // UnsignedByte RTs: HalfFloat doubles post bandwidth on Safari for an LDR stack.
+  const rung=this.resolution.rung;
+  // Scene target carries the MSAA: geometry edges are smoothed where they are drawn, and the
+  // post passes read the resolved image. The governor may take it away on slow machines.
+  const rt=PERF.composerFloat?undefined:new THREE.WebGLRenderTarget(
+   Math.max(1,Math.floor(w*rung.pixelRatio)),
+   Math.max(1,Math.floor(h*rung.pixelRatio)),
+   {type:THREE.UnsignedByteType,minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,format:THREE.RGBAFormat,samples:rung.msaa},
+  );
+  this.composer=rt?new EffectComposer(this.renderer,rt):new EffectComposer(this.renderer);
   this.composer.addPass(new RenderPass(this.scene,this.camera));
-  // Soft neon bloom at half-res + capped DPR — avoids the old Retina hitch that dropped this pass.
-  this.bloom=createBloomPass(w,h);
+  // Soft neon bloom at quarter-res + capped DPR.
+  this.bloom=createBloomPass(w,h,()=>this.resolution.rung.pixelRatio);
   this.composer.addPass(this.bloom);
-  this.impactPass=createImpactPass();
-  this.impactPass.setSize(w,h);
-  this.composer.addPass(this.impactPass);
-  // Clip sits in front of output. Tone mapping is off, so this clamp is the grade.
+  // Clip grade + damage/dash impact fused — one fewer full-screen blit.
   this.clipPass=createClipGradePass();
+  this.clipPass.setSize(w,h);
   this.composer.addPass(this.clipPass);
   this.composer.addPass(new OutputPass());
   this.setPixelRatio();
  }
+ /** Apply the governor's rung: pixel density, MSAA, and the point sprites that scale with it. */
  setPixelRatio(){
-  const dpr=Math.min(window.devicePixelRatio||1,POST_FX_DPR_CAP);
-  this.renderer.setPixelRatio(dpr);
-  this.composer?.setPixelRatio(dpr);
+  const {pixelRatio,msaa}=this.resolution.rung;
+  this.renderer.setPixelRatio(pixelRatio);
+  if(this.composer){
+   for(const t of [this.composer.renderTarget1,this.composer.renderTarget2])if(t.samples!==msaa){t.samples=msaa;t.dispose();}
+   this.composer.setPixelRatio(pixelRatio);
+   // The grade's pixel crunch and lens warp are laid out in CSS pixels, not render pixels.
+   this.clipPass?.setSize(this.host.clientWidth||1,this.host.clientHeight||1);
+  }
+  const pm=this.particles?.material as THREE.ShaderMaterial|undefined;
+  if(pm?.uniforms?.uPixelRatio)pm.uniforms.uPixelRatio.value=pixelRatio;
+  for(const layer of this.bloodLayers)layer.uniforms.uPixelRatio.value=pixelRatio;
  }
  resize(){
   if(!this.alive)return;
@@ -1818,43 +2078,125 @@ export class CaveWorld extends OceanWorld {
   this.setPixelRatio();
   this.renderer.setSize(w,h);this.composer?.setSize(w,h);this.requestRender();
   if(this.bloom)resizeBloomPass(this.bloom,w,h);
-  this.impactPass?.setSize(w,h);
+  this.clipPass?.setSize(w,h);
  }
  /** Rising edge of Shift run (on foot) or Shift sprint (swim) — no dedicated dash. */
  noteBurstMovement(bursting:boolean){
   if(bursting&&!this.fxBursting)this.impactFx.pulseDash();
   this.fxBursting=bursting;
  }
- /** Health drop → hit chroma/vignette; decay both channels into the impact pass. */
+ /** Health drop → hit chroma/vignette; streak-break juice when Phase 3 payoffs were live. */
  stepImpactFx(dt:number){
   const hp=this.mission.health;
-  if(hp<this.fxHealthSeen-0.5)this.impactFx.pulseHit();
+  if(hp<this.fxHealthSeen-0.5){
+   this.impactFx.pulseHit();
+   const broke=this.mission.streak.brokenAt>=0
+    && Math.abs(this.mission.streak.brokenAt-this.mission.elapsed)<1e-3;
+   // Core hit while B+: hard demote out of payoff ranks; otherwise the usual hurt slice.
+   if(broke)this.style.breakStreak();
+   else this.style.hurt();
+   if(broke)this.juiceStreakBreak();
+  }
   this.fxHealthSeen=hp;
   this.impactFx.step(dt);
-  this.impactPass?.setIntensity(this.impactFx.intensity);
+  this.clipPass?.setIntensity(this.impactFx.intensity);
  }
+ /** Loud but fair streak-break beat — shake + short hitstop + low sting. */
+ juiceStreakBreak(){
+  this.combatFeedback.triggerScreenShake(STREAK.breakShake.intensity,STREAK.breakShake.duration);
+  this.combatFeedback.triggerHitstop(STREAK.breakHitstopMs);
+  const a=this.audible(),ctx=this.audioContext,master=this.master;
+  if(a&&ctx&&master&&ctx.state==='running')playStreakBreak(ctx,master);
+ }
+ /**
+  * Ego Savior save juice (P2): micro hitstop + shake on the saving hit only.
+  * No INVULNERABLE / CLUTCH text — red vignette + audio carry the tell.
+  */
+ juiceEgoSave(){
+  this.combatFeedback.triggerScreenShake(
+   COMBAT_FEEDBACK.egoSaveShake.intensity,
+   COMBAT_FEEDBACK.egoSaveShake.duration,
+  );
+  this.combatFeedback.triggerHitstop(EGO_SAVIOR.hitstopMs);
+  this.impactFx.pulseHit(1);
+ }
+ /** Drive critical theater audio from suit / ego / gas-panic state. */
+ stepCriticalTheaterAudio(){
+  const bus=this.audioProbe;
+  if(!bus)return;
+  if(!this.playing||!this.sound){bus.setCritical(0);return;}
+  const m=this.mission;
+  let level=0;
+  if(m.criticalTheaterActive()){
+   level=m.egoIframesActive()?1:0.88;
+   // Gas panic (already set on save / hurt) thickens the muffling a hair.
+   if(m.elapsed<m.gasPanicUntil)level=Math.min(1,level+0.08);
+  }
+  if(combatCalmActive())level*=0.55;
+  bus.setCritical(level);
+ }
+ /** Rising-edge Ego Savior save → micro hitstop once per save. */
+ stepEgoSaveJuice(){
+  const seq=this.mission.egoSaveSeq;
+  if(seq!==this.egoSaveSeqSeen){
+   this.egoSaveSeqSeen=seq;
+   if(seq>0)this.juiceEgoSave();
+  }
+ }
+ /** Keep Mission streak gates aligned with the live style pip. */
+ syncStreakTier(){this.mission.syncStyleTier(this.style.tier);}
  syncPickups(){
-  for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);group.traverse(o=>{o.userData.gunAlive=false;if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
+  for(const [id,group] of this.pickupMeshes)if(!this.mission.pickups.some(p=>p.id===id)){this.scene.remove(group);
+   const si=this.pointCullSyncs.indexOf(group.userData.cullSync);if(si>=0)this.pointCullSyncs.splice(si,1);
+   const cb=group.userData.cullBox;if(cb)this.pointCullTargets=this.pointCullTargets.filter(t=>t.box!==cb);group.traverse(o=>{o.userData.gunAlive=false;if(o instanceof THREE.Mesh){o.geometry.dispose();(o.material as THREE.Material).dispose();}});this.pickupMeshes.delete(id);}
   for(const p of this.mission.pickups){let group=this.pickupMeshes.get(p.id);if(!group){group=new THREE.Group();const mat=new THREE.MeshStandardMaterial({color:p.item==='relic'?0xe2b65e:0x82c8b7,emissive:p.item==='relic'?0xff9a28:0x1a6a5c,emissiveIntensity:p.item==='relic'?1.35:.95,metalness:.4,roughness:.45});
-    if(p.item==='relic'){const points:THREE.Vector3[]=[],radii:number[]=[];for(let i=0;i<=72;i++){const t=i/72,a=t*Math.PI*4.5,r=.03+t*t*.62;points.push(V(Math.cos(a)*r,Math.sin(a)*r,0));radii.push(.01+t*.12);}group.add(this.tube(points,radii,mat,90,8));group.add(new THREE.PointLight(0xffb45a,5.5,8));}
+    if(p.item==='relic'){const points:THREE.Vector3[]=[],radii:number[]=[];for(let i=0;i<=72;i++){const t=i/72,a=t*Math.PI*4.5,r=.03+t*t*.62;points.push(V(Math.cos(a)*r,Math.sin(a)*r,0));radii.push(.01+t*.12);}group.add(this.tube(points,radii,mat,90,8));group.userData.glow={color:0xffb45a,intensity:5.5,distance:8,priority:3};}
     else if(p.item==='gun'||p.item==='bottle'||p.item==='coat'){
      const gear=this.gearPickupMesh(p.item);
      group.add(gear);
      if(p.item==='gun'){
-      // Neon tell so the floor carbine contributes to UnrealBloomPass without washing the corridor.
-      group.add(new THREE.PointLight(0x5ce0ff,2.8,5.5));
+      // Loot tell by grade: prize burns gold, near-miss warms amber (almost a keep),
+      // scavenged junk is dull grey, a maintained rifle keeps neon cyan.
+      const cond=p.cond??RIFLE.kitCond;
+      const prize=rifleIsPrize(cond)&&cond<RIFLE.kitCond;
+      const near=!!p.nearMiss&&!prize;
+      group.userData.glow={
+       color:prize?0xffc040:near?0xd4a86a:cond<RIFLE.keepCond?0x8a9aa4:0x5ce0ff,
+       intensity:prize?4.2:near?2.6:cond<RIFLE.keepCond?1.3:2.8,
+       distance:prize?7:near?5.5:4.5,
+       priority:1,
+      };
       this.propStreaming.add(`pickup-gun-${p.id}`,{x:p.position.x,z:p.position.z},()=>mountAk74u(gear,'pickup',{envMap:this.knifeEnvMap}),40);
      }
     }
-    else if(p.item==='sovietKey'){group.add(createSovietKeyPickup());group.add(new THREE.PointLight(0xffc050,2.2,4.5));}
+    else if(p.item==='gold'){
+     // Real gold: fully metallic, warm, and a small glint so greed can find it in the dark.
+     const gm=new THREE.MeshStandardMaterial({color:0xd8a531,metalness:1,roughness:.24,emissive:0x4a2c00,emissiveIntensity:.6,envMap:this.knifeEnvMap??null,envMapIntensity:1.4});
+     const grams=p.amount??1000;
+     if(grams>=1000){
+      // Kilobars (116 × 52 × 30 mm, trapezoid section), stacked when there is more than one.
+      const bar=new THREE.CylinderGeometry(.0368,.052,.03,4,1);bar.rotateY(Math.PI/4);bar.scale(1.6,1,.72);
+      const n=Math.min(8,Math.round(grams/1000));
+      for(let i=0;i<n;i++){const b=new THREE.Mesh(bar,gm);const layer=Math.floor(i/3);b.position.set(((i%3)-1)*.06*(n>1?1:0),.015+layer*.031,(layer%2)*.02);b.rotation.y=layer*Math.PI/2;group.add(b);}
+     }else{
+      const coin=new THREE.CylinderGeometry(.0125,.0125,.0022,14);
+      const n=Math.max(3,Math.min(24,Math.round(grams/15)));
+      for(let i=0;i<n;i++){const c=new THREE.Mesh(coin,gm);const a=i*2.399,r=.025*Math.sqrt(i);c.position.set(Math.cos(a)*r,.0011+(i%4)*.0022,Math.sin(a)*r);c.rotation.set((i%3)*.2,0,(i%5)*.15);group.add(c);}
+     }
+     group.userData.glow={color:0xffc050,intensity:grams>=1000?2.2:1.1,distance:grams>=1000?4:2.5,priority:1};
+    }
+    else if(p.item==='sovietKey'){group.add(createSovietKeyPickup());group.userData.glow={color:0xffc050,intensity:2.2,distance:4.5,priority:2};}
     else group.add(new THREE.Mesh(new THREE.IcosahedronGeometry(.3,1),mat));
     group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
     const pickup=group;
     const box=new THREE.Box3();
-    this.pointCullSyncs.push(()=>{
+    const cullSync=()=>{
      box.min.set(pickup.position.x-1,pickup.position.y-1,pickup.position.z-1);
      box.max.set(pickup.position.x+1,pickup.position.y+1,pickup.position.z+1);
-    });
+    };
+    // Remembered so the cull hooks leave with the pickup (they used to pile up with every drop).
+    group.userData.cullSync=cullSync;group.userData.cullBox=box;
+    this.pointCullSyncs.push(cullSync);
     this.adoptPointCull(pickup,box,false,true);
     // Sim y is the item's underside: lift the mesh so its lowest point sits exactly there.
     group.rotation.y=(p.id*2.399)%(Math.PI*2);group.updateMatrixWorld(true);
@@ -1865,8 +2207,34 @@ export class CaveWorld extends OceanWorld {
    const nowMs=performance.now();if(!(group.userData.bottomAt>nowMs-1000)){group.position.set(0,0,0);group.updateMatrixWorld(true);const bb=new THREE.Box3().setFromObject(group);if(!bb.isEmpty())group.userData.bottom=-bb.min.y;group.userData.bottomAt=nowMs;}
    group.position.set(p.position.x,p.position.y+(group.userData.bottom??0),p.position.z);
   }
+  this.assignPickupGlows();
  }
- publish(){this.ui({mission:this.mission,playing:this.playing,started:this.started,pointerLocked:this.pointerLocked,error:this.error,audioNotice:this.audioNotice,yaw:this.yaw,onFoot:this.onFoot,airborne:this.airborne,atWheel:!!this.valveStroke});}
+ /**
+  * Loot glows come from a fixed pool of point lights made once at start. Adding or removing a
+  * light (or toggling one's visibility) changes the light count baked into every lit shader,
+  * so three.js recompiles every material in the bunker: that was the multi-second freeze on
+  * each kill (the dropped rifle and coins each brought a light) and on each pickup. The pool
+  * lights never leave the scene; the nearest glowing pickups borrow them, the rest go dark.
+  */
+ assignPickupGlows(){
+  const cam=this.position,ranked=this._glowRank;ranked.length=0;
+  for(const g of this.pickupMeshes.values()){
+   const glow=g.userData.glow as {color:number;intensity:number;distance:number;priority:number}|undefined;
+   if(!glow)continue;
+   const d=Math.hypot(g.position.x-cam.x,g.position.z-cam.z);
+   if(d>glow.distance+30)continue;
+   ranked.push({g,score:d-glow.priority*6});
+  }
+  ranked.sort((a,b)=>a.score-b.score);
+  for(let i=0;i<this.pickupLights.length;i++){
+   const light=this.pickupLights[i],hit=ranked[i];
+   if(!hit){light.intensity=0;continue;}
+   const glow=hit.g.userData.glow as {color:number;intensity:number;distance:number};
+   light.color.setHex(glow.color);light.intensity=glow.intensity;light.distance=glow.distance;
+   light.position.set(hit.g.position.x,hit.g.position.y+.25,hit.g.position.z);
+  }
+ }
+ publish(){this.ui({mission:this.mission,playing:this.playing,started:this.started,pointerLocked:this.pointerLocked,error:this.error,audioNotice:this.audioNotice,yaw:this.yaw,onFoot:this.onFoot,airborne:this.airborne,atWheel:!!this.valveStroke,style:this.style.view()});}
  bind(){
   const on=(target:EventTarget,type:string,fn:EventListener,options?:AddEventListenerOptions)=>{target.addEventListener(type,fn,options);this.listeners.push(()=>target.removeEventListener(type,fn,options));};
   on(window,'keydown',((e:KeyboardEvent)=>{
@@ -1877,11 +2245,18 @@ export class CaveWorld extends OceanWorld {
    if(this.valveStroke&&e.code!=='Escape'&&e.code!=='KeyM'){this.publish();return;}
    if(e.code==='Escape'){
     if(this.mission.mapOpen){this.mission.mapOpen=false;this.requestLookLock(false);this.publish();return;}
-    if(this.mission.stashOpen){this.mission.closeStash();this.publish();return;}
+    if(this.mission.stashOpen){this.mission.closeStash();this.requestLookLock(false);this.publish();return;}
     if(this.mission.pending!==null){this.mission.pending=null;this.publish();}else this.pause();
    }
    // Inventory keys bind on window (not the canvas), so select/use/drop work without canvas focus.
+   // Shop: with the stash open, 7 / 8 / 9 buy Harder hits / Fewer jams / Bigger mag.
+   if(this.mission.stashOpen&&/^Digit[789]$/.test(e.code)){
+    const track=(['barrel','action','mag'] as const)[Number(e.code.slice(-1))-7];
+    this.mission.buyUpgrade(track);this.publish();return;
+   }
+   if(e.code==='KeyB'){this.mission.ditchGold();this.publish();}
    if(/^Digit[1-5]$/.test(e.code)){
+    // Stash overlay owns the mouse; keep 1–5 as bag select for the workbench rifle.
     if(this.mission.select(Number(e.code.slice(-1))-1))this.playSelectClick();
    }
    if(e.code==='Tab'){
@@ -1892,8 +2267,24 @@ export class CaveWorld extends OceanWorld {
     this.publish();return;
    }
    if(this.mission.mapOpen){this.publish();return;}
-   if(e.code==='KeyE'){if(this.mission.nearValve())this.beginValve();else this.mission.interact();}
+   if(e.code==='KeyE'){
+    if(this.mission.nearValve())this.beginValve();
+    else{
+     const wasStash=this.mission.stashOpen;
+     this.mission.interact();
+     // Free the cursor while the chest UI is up — same pattern as the map.
+     if(this.mission.stashOpen&&!wasStash){
+      if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();
+     }else if(wasStash&&!this.mission.stashOpen){
+      this.requestLookLock(false);
+     }
+    }
+   }
    if(e.code==='KeyF')this.mission.torch=!this.mission.torch;
+   // Movement tech (on foot only; in water Space keeps its buoyancy meaning). Edges only:
+   // auto-repeat returned above, so holding Space never queues a second jump.
+   if(this.onFoot&&e.code==='Space')requestJump(this.tech);
+   if(this.onFoot&&e.code==='KeyC')requestSlide(this.tech);
    if(e.code==='KeyV'&&this.holdingGun()&&this.aimBlend===0)inspectAk74u(this.gunVisual);
    if(e.code==='KeyT'){this.camera.getWorldDirection(this._aimDir);this.mission.throwSmoke(this._aimDir.x,this._aimDir.z);}
    if(e.code==='KeyR')this.mission.use();if(e.code==='KeyG')this.mission.drop();if(e.code==='KeyM')this.setSound(!this.sound);
@@ -1903,7 +2294,8 @@ export class CaveWorld extends OceanWorld {
   on(window,'blur',(()=>this.pause()) as EventListener);on(document,'visibilitychange',(()=>{if(document.hidden){this.pause();cancelAnimationFrame(this.frame);this.frame=0;}else this.requestRender();}) as EventListener);
   const canvas=this.renderer.domElement;
   on(canvas,'pointerdown',((e:PointerEvent)=>{
-   if(!this.playing||this.mission.mapOpen)return;
+   // Map / stash UI own the pointer — do not steal lock or fire through the panel.
+   if(!this.playing||this.mission.mapOpen||this.mission.stashOpen)return;
    try{canvas.setPointerCapture(e.pointerId);}catch{/* unsupported */}
    if(document.pointerLockElement!==canvas)this.requestLookLock(false);
    // Primary click: pistol in hand fires; knife in hand stabs.
@@ -1925,7 +2317,7 @@ export class CaveWorld extends OceanWorld {
   }) as EventListener);
   on(window,'mouseout',((e:MouseEvent)=>{if(!e.relatedTarget){this.lookPointer=null;this.fallbackTurn=0;}}) as EventListener);
   on(canvas,'wheel',((e:WheelEvent)=>{if(!this.playing)return;e.preventDefault();const scale=e.deltaMode===1?16:e.deltaMode===2?200:1;const delta=lookDelta(this.targetYaw,this.targetPitch,e.deltaX*scale,e.deltaY*scale);this.targetYaw=delta.yaw;this.targetPitch=delta.pitch;}) as EventListener,{passive:false});
-  on(document,'pointerlockchange',(()=>{const was=this.pointerLocked;this.pointerLocked=document.pointerLockElement===canvas;if(this.pointerLocked){this.everLocked=true;this.lockDenied=false;this.lookPointer=null;this.fallbackTurn=0;}if(was&&!this.pointerLocked&&!this.mission.mapOpen)this.pause();this.publish();}) as EventListener);
+  on(document,'pointerlockchange',(()=>{const was=this.pointerLocked;this.pointerLocked=document.pointerLockElement===canvas;if(this.pointerLocked){this.everLocked=true;this.lockDenied=false;this.lookPointer=null;this.fallbackTurn=0;}if(was&&!this.pointerLocked&&!this.mission.mapOpen&&!this.mission.stashOpen)this.pause();this.publish();}) as EventListener);
   on(document,'pointerlockerror',(()=>{this.lockDenied=true;this.mission.say('360° free look active. Steer left or right of center to keep turning — pointer stays in the dive.');this.publish();}) as EventListener);
   on(canvas,'webglcontextlost',((e:Event)=>{e.preventDefault();this.error='The graphics connection was lost. Reload the page to restart the dive.';this.pause();this.publish();}) as EventListener);
  }
@@ -1943,6 +2335,7 @@ export class CaveWorld extends OceanWorld {
    this.backgroundMusic=new BackgroundMusic(ctx,this.master);
    ctx.onstatechange=()=>{if(!this.alive)return;if(this.playing&&this.sound&&ctx.state!=='running')this.audioNotice='Sound interrupted. Pause and choose Test sound.';this.publish();};
   }catch{
+   this.audioProbe?.dispose();this.audioProbe=null;
    this.audioContext?.close().catch(()=>{});this.audioContext=null;this.master=null;
    this.audioNotice='Audio could not start in this browser. Try Test sound or open the game in Chrome.';
   }
@@ -2036,6 +2429,7 @@ export class CaveWorld extends OceanWorld {
   m.position.y=THREE.MathUtils.lerp(f.y,eyeY,k);
   if(!this.onFoot){m.buoyancy=0;m.buoyancyTrim=0;}
   // Hard work on a stiff wheel is exertion: breathing (gas) and legs pay for it.
+  this.syncStreakTier();
   m.update(dt,stepped.effort);
   this.position.set(m.position.x,m.position.y,m.position.z);
   // Head: square on the wheel, eyes a little above the hub.
@@ -2151,8 +2545,10 @@ export class CaveWorld extends OceanWorld {
   const mz=this.akMuzzle;if(!mz)return;
   gun.updateMatrixWorld(true);
   const at=this._muzzleAt.copy(mz.local);
-  mz.bone.localToWorld(at);gun.worldToLocal(at);
-  this.playerFlash.position.copy(at);this.playerFlashGlow.position.copy(at);
+  mz.bone.localToWorld(at);
+  this.playerFlash.position.copy(at);this.camera.worldToLocal(this.playerFlash.position);
+  gun.worldToLocal(at);
+  this.playerFlashGlow.position.copy(at);
   this.playerFlashStar.position.copy(at);this.playerFlashSparks.position.copy(at);
  }
  /**
@@ -2179,13 +2575,22 @@ export class CaveWorld extends OceanWorld {
   * inspect), the rig slides onto the sight line and the lens narrows.
   */
  updateAim(dt:number){
-  const can=this.playing&&this.aimHeld&&this.holdingGun()&&!this.valveStroke&&this.mission.pistol.reload<=0&&!this.mission.mapOpen;
+  const can=this.playing&&this.aimHeld&&this.holdingGun()&&!this.valveStroke&&this.mission.pistol.reload<=0&&!this.mission.mapOpen&&!this.mission.stashOpen;
   const step=dt/AK74U_ADS.seconds;
   this.aimBlend=can?Math.min(1,this.aimBlend+step):Math.max(0,this.aimBlend-step);
+  document.documentElement.classList.toggle('ads',this.aimEase()>.5);
+ }
+ /**
+  * Lens per frame: the speed spring sets the hip FOV, aiming blends toward the sights' fixed
+  * lens (a scope does not breathe with your speed), and the peripheral stretch follows the
+  * spring. Velocity is read only.
+  */
+ applyLens(dt:number){
+  const lens=this.speedFov.update(this.velocity,dt);
   const e=this.aimEase();
-  const fov=this.baseFov+(AK74U_ADS.fov-this.baseFov)*e;
+  const fov=lens+(AK74U_ADS.fov-lens)*e;
   if(Math.abs(this.camera.fov-fov)>1e-3){this.camera.fov=fov;this.camera.updateProjectionMatrix();}
-  document.documentElement.classList.toggle('ads',e>.5);
+  this.clipPass?.setWarp(this.speedFov.warp()*(1-e));
  }
  /** Sounds and feedback for the pistol's combat cue. */
  consumePistolCue(){
@@ -2193,11 +2598,18 @@ export class CaveWorld extends OceanWorld {
   if(!cue.startsWith('pistol-'))return;
   this.mission.combatCue='';
   const a=this.audible(),ctx=this.audioContext!,master=this.master!;
-  if(cue==='pistol-dry'){if(a)playPistolClick(ctx,master);return;}
+  if(cue==='pistol-dry'||cue==='pistol-jam'||cue==='pistol-clear'){if(a)playPistolClick(ctx,master);return;}
   if(cue==='pistol-reload'){if(a)playPistolClick(ctx,master);return;}
   if(cue==='pistol-hit'||cue==='pistol-head'||cue==='pistol-kill'){
-   if(a)playHitMarker(ctx,master,cue==='pistol-kill'?'kill':cue==='pistol-head'?'head':'hit');
-   if(cue==='pistol-head')this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopHead);
+   const hit=this.mission.lastPistolHit;
+   const tag=hit?.tag??(cue==='pistol-head'||hit?.headshot?'HEAD':'CLEAN');
+   const killed=cue==='pistol-kill'||!!hit?.killed;
+   // Primary tag (+ kill / headshotKill as needed). MULTI is an extra beat when chained.
+   this.scoreCombatTag(tag,killed);
+   if(hit?.multi)this.scoreCombatTag('MULTI');
+   this.juiceCombatTag(hit?.multi?'MULTI':tag);
+   const marker=hit?.multi?'multi':tag==='SCRAPE'?'scrape':tag==='HEAD'||cue==='pistol-head'?'head':cue==='pistol-kill'?'kill':'hit';
+   if(a)playHitMarker(ctx,master,marker);
    if(cue==='pistol-kill'){
     this.combatFeedback.triggerHitstop(COMBAT_FEEDBACK.hitstopKill);
     this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.gunFireHeavy.intensity*1.15,COMBAT_FEEDBACK.gunFireHeavy.duration);
@@ -2238,6 +2650,7 @@ export class CaveWorld extends OceanWorld {
   this.pistolReloadSeen=r;
   updateAk74u(this.gunVisual,dt);
   this.updateAim(dt);
+  this.applyLens(dt);
   if(this.playerFlashT>0)this.placePlayerMuzzle();
  }
  flashKnife(){
@@ -2254,6 +2667,12 @@ export class CaveWorld extends OceanWorld {
    return;
   }
   if(cue==='stab-guard'||cue==='stab-guard-kill'){
+   this.scoreStyle(cue==='stab-guard-kill'?'meleeKill':'meleeHit');
+   const outcome=this.mission.lastCombatOutcome;
+   if(cue==='stab-guard-kill'&&outcome?.tag==='MULTI'&&Math.abs(outcome.at-this.mission.elapsed)<.05){
+    this.scoreCombatTag('MULTI');this.juiceCombatTag('MULTI');
+    if(audible)playHitMarker(ctx!,master!,'multi');
+   }
    if(audible)playStabSound(ctx!,master!,true);
    this.combatFeedback.triggerScreenShake(
     cue==='stab-guard-kill'?COMBAT_FEEDBACK.meleeHit.intensity:COMBAT_FEEDBACK.gunFireHeavy.intensity,
@@ -2263,6 +2682,7 @@ export class CaveWorld extends OceanWorld {
    return;
   }
   if(cue==='stab-hit'||cue==='break'||cue==='kill'){
+   this.scoreStyle(cue==='kill'?'monsterKill':'monsterHit');
    if(audible)playStabSound(ctx!,master!,true);
    this.combatFeedback.triggerScreenShake(
     cue==='kill'?COMBAT_FEEDBACK.predatorHit.intensity:COMBAT_FEEDBACK.gunFireHeavy.intensity,
@@ -2289,12 +2709,107 @@ export class CaveWorld extends OceanWorld {
   else if(this.master&&this.audioContext)this.master.gain.setTargetAtTime(0,this.audioContext.currentTime,.04);
   this.publish();
  }
+ /**
+  * Compile every shader the dive can need before play starts. Pooled effects (smoke puffs,
+  * blood, muzzle and impact cards, held items) sit hidden until their first use, and three.js
+  * only compiles a material the first time it is drawn: that first smoke grenade or first kill
+  * stalled the frame while the GPU driver compiled. Here everything hidden is shown for one
+  * compile pass (lights excluded, so the light count the shaders bake in stays the real one),
+  * then hidden again. Uses the parallel compile path where the browser has it.
+  */
+ /**
+  * Compile `root` the way the frame renders it: into the composer's scene target (no tone
+  * mapping, linear output), with the whole scene's lights. Compiling against the screen would
+  * build different shader variants and the frame would compile again anyway.
+  */
+ compileLikeRender(root:THREE.Object3D,lightsFrom:THREE.Scene):Promise<unknown>{
+  const r=this.renderer,prev=r.getRenderTarget();
+  r.setRenderTarget(this.composer?.readBuffer??null);
+  let mats:Set<THREE.Material>;
+  try{mats=r.compile(root,this.camera,lightsFrom) as unknown as Set<THREE.Material>;}
+  finally{r.setRenderTarget(prev);}
+  // Our own readiness poll (three's compileAsync throws from a timer if a program is swapped
+  // out while it waits). A missing program counts as ready: it will build on first draw.
+  const props=(r as unknown as {properties:{get(m:THREE.Material):{currentProgram?:{isReady?:()=>boolean}}}}).properties;
+  return new Promise(resolve=>{
+   let tries=0;
+   const poll=()=>{
+    tries++;
+    for(const m of [...mats]){
+     let ready=true;
+     try{const pr=props.get(m).currentProgram;ready=!pr||!pr.isReady||pr.isReady();}catch{ready=true;}
+     if(ready)mats.delete(m);
+    }
+    if(!mats.size||tries>300)resolve(root);else setTimeout(poll,16);
+   };
+   poll();
+  });
+ }
+ /**
+  * Streamed props (lamps, sconces, radiators, the AK on the floor) arrive mid-dive with
+  * materials the GPU has never compiled; drawing them straight away stalls the frame while the
+  * driver compiles. After a load, any visible mesh whose material has no program yet is held
+  * off-screen while the driver compiles it in the background (KHR_parallel_shader_compile),
+  * then shown. Costs one scene walk per finished load — pass `roots` to limit the walk
+  * (inventory switches only scan the held camera props, not the whole bunker).
+  */
+ guardNewShaders(roots?: THREE.Object3D[]){
+  if(!this.shaderGuardDirty&&!roots)return;
+  if(!roots)this.shaderGuardDirty=false;
+  const props=(this.renderer as unknown as {properties:{get(m:THREE.Material):{currentProgram?:unknown}}}).properties;
+  const fresh:THREE.Object3D[]=[];
+  const visit=(o:THREE.Object3D)=>{
+   if(o===this.camera)return;
+   const mat=(o as THREE.Mesh).material as THREE.Material|THREE.Material[]|undefined;
+   if(!mat||!((o as THREE.Mesh).isMesh||(o as THREE.Sprite).isSprite))return;
+   for(const m of Array.isArray(mat)?mat:[mat])if(m&&!props.get(m).currentProgram){fresh.push(o);return;}
+  };
+  if(roots){for(const r of roots)r.traverseVisible(visit);}
+  else this.scene.traverseVisible(visit);
+  for(const o of fresh){
+   o.userData.shaderGuard=true;
+   let done:Promise<unknown>=Promise.resolve();
+   try{done=this.compileLikeRender(o,this.scene);}catch{/* compile on first draw instead */}
+   o.visible=false;
+   done.catch(()=>{}).then(()=>{if(o.userData.shaderGuard){o.userData.shaderGuard=false;o.visible=true;this.requestRender();}});
+  }
+ }
+ prewarmShaders(){
+  if(this.shadersWarm)return;
+  this.shadersWarm=true;
+  const hidden:THREE.Object3D[]=[];
+  this.scene.traverse(o=>{if(!o.visible&&!(o as THREE.Light).isLight){hidden.push(o);o.visible=true;}});
+  // Loot that only appears when a guard dies: warm its shader too (gold is metal + env map).
+  const warm=new THREE.Group();
+  const gold=new THREE.Mesh(new THREE.CylinderGeometry(.01,.01,.002,6),new THREE.MeshStandardMaterial({color:0xd8a531,metalness:1,roughness:.24,emissive:0x4a2c00,emissiveIntensity:.6,envMap:this.knifeEnvMap??null,envMapIntensity:1.4}));
+  const tag=new THREE.Mesh(new THREE.IcosahedronGeometry(.05,0),new THREE.MeshStandardMaterial({color:0x82c8b7,emissive:0x1a6a5c,emissiveIntensity:.95,metalness:.4,roughness:.45}));
+  warm.add(gold,tag);warm.position.copy(this.camera.position);
+  this.adoptPointCull(warm,new THREE.Box3(),false,true);
+  this.scene.add(warm);
+  // Upload their textures now too (compile builds programs but leaves textures for first draw).
+  const seenTex=new Set<THREE.Texture>();
+  for(const root of [...hidden,warm])root.traverse(o=>{
+   const mat=(o as THREE.Mesh).material as THREE.Material|THREE.Material[]|undefined;
+   if(!mat)return;
+   for(const m of Array.isArray(mat)?mat:[mat])for(const v of Object.values(m))if((v as THREE.Texture)?.isTexture&&!seenTex.has(v as THREE.Texture)){seenTex.add(v as THREE.Texture);try{this.renderer.initTexture(v as THREE.Texture);}catch{/* not ready yet */}}
+  });
+  try{this.compileLikeRender(this.scene,this.scene);}catch(err){console.warn('Shader prewarm skipped',err);}
+  finally{
+   for(const o of hidden)o.visible=false;
+   this.scene.remove(warm);
+   // Keep the materials alive (a disposed program is recompiled on next use); drop the geometry.
+   gold.geometry.dispose();tag.geometry.dispose();
+   this.warmKeep.push(gold.material,tag.material);
+  }
+ }
  start(){
+  this.lastFrameAt=0;
   if(this.mission.outcome!=='playing')this.reset();
   // One-time tip is already on this mission when tipsSeen is false; persist so the next launch stays quiet.
   if(!this.mission.tipsSeen)writeInventoryTipsSeen();
   this.bootEssentials();
   this.rockMaps.startDetail();
+  this.prewarmShaders();
   this.playing=true;this.started=true;this.keys.clear();this.clock.getDelta();this.testingAudio=false;
   this.onFoot=canWalk(this.mission.position,this.mission.breathWaterY);
   this.wasOnFoot=this.onFoot;
@@ -2315,17 +2830,21 @@ export class CaveWorld extends OceanWorld {
    },400);
   }
  }
- pause(){cancelAnimationFrame(this.frame);this.frame=0;if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.aimHeld=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
+ pause(){this.lastFrameAt=0;cancelAnimationFrame(this.frame);this.frame=0;if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.aimHeld=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
  reset(){
   this.endValve();
+  // Dive-again / restart: bank any pocket gold before the mission is replaced.
+  this.mission.bankCarriedGold();
   this.backgroundMusic?.reset();this.mission=new Mission(readInventoryTipsSeen());
   resetGradeClock(this.gradeClock);this.frameGrade='dry';
   this.resetSurvivalFx();
-  this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();
-  this.onFoot=true;this.wasOnFoot=true;this.gait.reset();
+  this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();this.style.reset();this.speedFov.reset();
+  this.onFoot=true;this.wasOnFoot=true;this.gait.reset();this.tech=makeTech();
   if(this.torchBody){this.torchBody.position.copy(this.torchRestPos);this.torchBody.rotation.copy(this.torchRestRot);}
   this.combatFeedback.reset();this.shakeClock=0;this.knifeFlashUntil=0;this.knifeEquipAt=null;this.stabQueue=0;
   this.impactFx.reset();this.fxHealthSeen=this.mission.health;this.fxBursting=false;
+  this.egoSaveSeqSeen=this.mission.egoSaveSeq;
+  this.audioProbe?.setCritical(0);
   if(this.knifeVisual){poseKnife(this.knifeVisual);this.knifeVisual.visible=this.holdingKnife()&&knifeMeshReady(this.knifeVisual);}
   if(this.gunVisual)this.gunVisual.visible=this.holdingGun();
   if(this.keyVisual)this.keyVisual.visible=this.holdingKey();
@@ -2346,9 +2865,19 @@ export class CaveWorld extends OceanWorld {
    void upgradeCopperPipeDetail(visual,this.knifeEnvMap).then(parts=>{
     if(!this.alive)return;
     for(const part of parts)this.adoptPointCull(part,this.worldBox(part),true,true);
-    updateCopperPipe(visual,this.position);
+    updateCopperPipe(visual,this.position);this.requestRender();
    });
   }
+  // Frame-time watchdog: step resolution / MSAA down under load, probe back up with headroom.
+  const frameAt=performance.now();
+  if(this.lastFrameAt){
+   const change=this.resolution.frame(frameAt-this.lastFrameAt,this.playing&&!document.hidden);
+   if(change){
+    this.setPixelRatio();
+    console.info(`Render ${change.rung.pixelRatio}× ${change.rung.msaa?`MSAA ${change.rung.msaa}×`:'no MSAA'} (${change.reason==='drop'?'frames over budget':change.reason==='probe'?'trying higher quality':'higher quality did not hold'})`);
+   }
+  }
+  this.lastFrameAt=frameAt;
   const clockDt=this.clock.getDelta();
   const realDt=this.playing?Math.min(clockDt,.05):0;
   this.shakeClock+=realDt;
@@ -2357,9 +2886,11 @@ export class CaveWorld extends OceanWorld {
   // Hitstop freezes sim updates (mission, movement, AI) while rendering continues.
   const dt=feedback.simDt;
   if(this.playing){this.time+=dt;const m=this.mission;this.drainStabQueue();
+   this.syncStreakTier();
    const pressed=(...keys:string[])=>keys.some(k=>this.keys.has(k))?1:0;
-   if(m.mapOpen){
-    // Chart reading: hold still, but the dive clock / gas / predator keep running.
+   if(m.mapOpen||m.stashOpen){
+    // Chart / stash UI: freeze the body so you cannot walk out of reach mid-click.
+    // Dive clock / gas / predator keep running (same as map).
     this.onFoot=canWalk(m.position,m.breathWaterY);
     this.velocity.set(0,0,0);this.keys.clear();
     this.gait.step(0,0,false,dt);
@@ -2399,26 +2930,81 @@ export class CaveWorld extends OceanWorld {
     const fx=this.forward.x/flat,fz=this.forward.z/flat;
     this.right.set(-fz,0,fx);
     const localZ=pressed('KeyW')-pressed('KeyS'),localX=pressed('KeyD')-pressed('KeyA');
-    // Hold C: crouch-walk. Half speed, no running, and the guards' eyes lose 35% of their reach.
-    m.crouching=!!pressed('KeyC');
-    const wantRun=!m.crouching&&!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&localZ>0;
-    this.noteBurstMovement(wantRun);
+    // ── Movement tech hook (dt loop): jump / slide / crouch state, then who moves the body. ──
+    // Hold C: crouch-walk (half speed, no running, guards' eyes lose 35% of their reach).
+    // Press C at a run: slide. Space: jump. See movementTech.ts for the vector math.
+    const tech=this.tech;
+    const crouchHeld=!!pressed('KeyC');
     const wadeDepth=Math.max(0,m.breathWaterY-FLOOR_Y);
-    const crouchSlow=m.crouching?SURVIVAL.stealth.speedFactor:1;
-    const events=this.gait.step(localX,localZ,wantRun,dt,wadingDrag(wadeDepth)*crouchSlow);
-    const v=this.gait.instantaneousSpeed(),d=this.gait.dir;
-    // Body frame → world: x = right, z = forward.
-    this.velocity.set((this.right.x*d.x+fx*d.z)*v,0,(this.right.z*d.x+fz*d.z)*v);
-    const before=m.position.x,beforeZ=m.position.z;
-    moveBody(m.position,this.velocity.x*dt,0,this.velocity.z*dt);
-    // Pushing into a wall: feet stop stepping instead of treading in place at full cadence.
-    const moved=Math.hypot(m.position.x-before,m.position.z-beforeZ),meant=v*dt;
-    if(meant>1e-4&&moved<meant*.35)this.gait.speed=Math.max(0,this.gait.speed-6*dt);
-    m.position.y=WALK_EYE_Y;
-    for(const e of events)this.onGaitEvent(e,wadeDepth);
-    m.update(dt,runWeight(this.gait.speed)>.5);this.position.copy(m.position);
+    const drag=wadingDrag(wadeDepth);
+    const gv=this.gait.instantaneousSpeed(),gd=this.gait.dir;
+    const tev=stepTech(tech,{
+     wishX:localX,wishZ:localZ,
+     fwd:{x:fx,z:fz},right:{x:this.right.x,z:this.right.z},
+     crouchHeld,
+     groundSpeed:this.gait.speed,
+     groundVel:{x:(this.right.x*gd.x+fx*gd.z)*gv,z:(this.right.z*gd.x+fz*gd.z)*gv},
+     normal:groundNormal(m.position),
+     stamina:m.stamina,drag,
+     headroom:h=>this.headroomClear(h),
+    },dt);
+    if(tev.staminaSpent)m.stamina=Math.max(0,m.stamina-tev.staminaSpent);
+    if(tev.handoff){
+     // Slide / jump over: the gait carries on at that speed and heading (world → body frame).
+     const hx=tev.handoff.x,hz=tev.handoff.z;
+     this.gait.dir={x:hx*this.right.x+hz*this.right.z,z:hx*fx+hz*fz};
+     this.gait.speed=tev.handoff.speed;
+    }
+    m.crouching=tech.mode==='crouch';
+    m.sliding=tech.mode==='slide';
+    let loud:boolean;
+    if(techOwnsMovement(tech)){
+     // The tech owns the velocity vector outright; the gait idles (no footfalls mid-slide).
+     this.gait.step(0,0,false,dt);
+     const bx=m.position.x,bz=m.position.z;
+     moveBody(m.position,tech.vel.x*dt,0,tech.vel.z*dt);
+     // A wall takes the component driven into it: what we actually moved is our velocity now.
+     if(dt>0){
+      const ax=(m.position.x-bx)/dt,az=(m.position.z-bz)/dt;
+      if(Math.abs(ax)<Math.abs(tech.vel.x)-1e-3)tech.vel.x=ax;
+      if(Math.abs(az)<Math.abs(tech.vel.z)-1e-3)tech.vel.z=az;
+     }
+     this.velocity.set(tech.vel.x,0,tech.vel.z);
+     // Feet ride tech.air above the floor (0 when sliding); the sim eye follows.
+     m.position.y=WALK_EYE_Y+tech.air;
+     // No post-FX pulse here: slides and jumps should read through the camera, not a flash.
+     this.noteBurstMovement(false);
+     // A slide scrapes loud; in the air you are silent until the boots hit the floor.
+     loud=tech.mode==='slide';
+    }else{
+     const wantRun=tech.mode==='walk'&&!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&localZ>0;
+     this.noteBurstMovement(wantRun);
+     const crouchSlow=m.crouching?SURVIVAL.stealth.speedFactor:1;
+     // Gold is dead weight: every kilo you pocket shortens your stride.
+     const events=this.gait.step(localX,localZ,wantRun,dt,drag*crouchSlow*m.loadWalkFactor());
+     const v=this.gait.instantaneousSpeed(),d=this.gait.dir;
+     // Body frame → world: x = right, z = forward.
+     this.velocity.set((this.right.x*d.x+fx*d.z)*v,0,(this.right.z*d.x+fz*d.z)*v);
+     const before=m.position.x,beforeZ=m.position.z;
+     moveBody(m.position,this.velocity.x*dt,0,this.velocity.z*dt);
+     // Pushing into a wall: feet stop stepping instead of treading in place at full cadence.
+     const moved=Math.hypot(m.position.x-before,m.position.z-beforeZ),meant=v*dt;
+     if(meant>1e-4&&moved<meant*.35)this.gait.speed=Math.max(0,this.gait.speed-6*dt);
+     m.position.y=WALK_EYE_Y;
+     for(const e of events)this.onGaitEvent(e,wadeDepth);
+     loud=runWeight(this.gait.speed)>.5;
+    }
+    if(tev.landed){
+     // Boots hit the concrete: a footfall the ears (and the guards) get.
+     this.onGaitEvent({kind:'heel-strike',foot:'left',speed:Math.hypot(tech.vel.x,tech.vel.z),run:1},wadeDepth);
+     loud=true;
+    }
+    // A slide or a landing is as loud as a run to the guards.
+    m.update(dt,loud);this.position.copy(m.position);
    }else{
-   m.crouching=false;
+   m.crouching=false;m.sliding=false;
+   // In the water the capsule is a swimmer: drop any jump / slide / crouch state.
+   if(this.tech.mode!=='walk'||this.tech.height!==STAND_HEIGHT)this.tech=makeTech();
    // Kick = look / strafe only. Space/Q drive BCD buoyancy, not equal XYZ thrust.
    this.move.copy(this.forward).multiplyScalar(pressed('KeyW')-pressed('KeyS')).addScaledVector(this.right,pressed('KeyD')-pressed('KeyA'));
    const bcd=pressed('Space')-pressed('KeyQ','ControlLeft','ControlRight');
@@ -2431,7 +3017,11 @@ export class CaveWorld extends OceanWorld {
    m.buoyancy=updateBuoyancy(m.buoyancy,bcd,dt,m.buoyancyTrim);
    const sprint=!!pressed('ShiftLeft','ShiftRight')&&m.stamina>3&&this.move.lengthSq()>.01;
    this.noteBurstMovement(sprint);
+   // Gold in the water: same fins pushing a heavier body, and ballast dragging you down
+   // against the BCD (carry the jacket's lift in gold and a full BCD only just holds you).
+   this.move.multiplyScalar(goldThrustFactor(m.gold));
    stepSwimVelocity(this.velocity,this.move,m.buoyancy,sprint,dt);
+   this.velocity.y-=goldSinkAccel(m.gold,SWIM_BUOYANCY_ACCEL)*dt;
    moveBody(m.position,this.velocity.x*dt,this.velocity.y*dt,this.velocity.z*dt);
    // Corridor flood is a local ceiling. The cave column is unchanged.
    if(inBreathCorridor(m.position)&&m.breathWaterY<SURFACE_Y-.35){
@@ -2449,6 +3039,10 @@ export class CaveWorld extends OceanWorld {
     m.update(dt,false);this.position.copy(m.position);
     this.camera.getWorldDirection(this.forward);this.right.crossVectors(this.forward,this.upAxis).normalize();
    }
+   // Hitscan magnetism (`firePistol`) reads these — prefer the live gait/swim vector over
+   // the sim's position-delta fallback so a same-frame trigger pull stays sticky.
+   m.playerVx=this.velocity.x;
+   m.playerVz=this.velocity.z;
    // Presentation-only hover bob when nearly still — never moves mission.position.
    // Walk bob is a light stride; swim keeps the stronger murk drift.
    if(!this.holdCamera&&!this.valveStroke){
@@ -2470,11 +3064,12 @@ export class CaveWorld extends OceanWorld {
     const fx=this.forward.x/flat,fz=this.forward.z/flat;
     eyeX=this.position.x+(-fz)*(h.x+sway)+fx*h.z;
     // Crouch lowers the eye smoothly (presentation; the sim keeps one body height).
-    const st=SURVIVAL.stealth;
-    this.crouchBlend=THREE.MathUtils.clamp(this.crouchBlend+(this.mission.crouching?1:-1)*dt/st.blendSeconds,0,1);
-    eyeY=this.position.y+h.y+breathe-st.eyeDrop*THREE.MathUtils.smoothstep(this.crouchBlend,0,1);
+    // Capsule is feet-anchored: the eye drops by exactly what the capsule lost (slide = 50 %).
+    // position.y already carries the jump height.
+    eyeY=this.position.y+h.y+breathe-(STAND_HEIGHT-this.tech.height);
     eyeZ=this.position.z+fx*(h.x+sway)+fz*h.z;
-    this.camera.rotation.set(this.pitch+h.pitch,this.yaw+h.yaw,h.roll);
+    // Slide leans the view a few degrees toward the slide (tech.roll > 0 = lean right).
+    this.camera.rotation.set(this.pitch+h.pitch,this.yaw+h.yaw,h.roll-this.tech.roll);
     this.handSwing=pose;
     bobBlend=still;
    }else{
@@ -2540,6 +3135,14 @@ export class CaveWorld extends OceanWorld {
    else if(m.outcome!=='playing')this.pause();
   }
   this.stepImpactFx(this.playing?dt:0);
+  this.stepEgoSaveJuice();
+  this.stepCriticalTheaterAudio();
+  // Style drains on sim time: hitstop and pause freeze it.
+  // Style pip: idle grace drain + standing-still drain (speed is currency).
+  if(this.playing){
+   this.style.update(dt,Math.hypot(this.velocity.x,this.velocity.z));
+   this.syncStreakTier();
+  }
   // Three fields, assigned. Depth and the exit do not tint the fog.
   const fog=this.scene.fog as THREE.FogExp2;
   const corridorAir=breathingFreeAir(this.position,this.mission.breathWaterY);
@@ -2560,6 +3163,13 @@ export class CaveWorld extends OceanWorld {
   this.gradeAmbient.intensity=lights.ambientI;
   this.gradeSky.color.setHex(lights.sun);
   this.gradeSky.intensity=lights.sunI;
+  // Baked bounce follows the grade's fill: white in the dry, teal flooded, red on the slam.
+  {
+   const dry=GRADE_LIGHTS.dry,t=BUNKER_LIGHT.uBkLmTint.value,a=this._lmTintA,b=this._lmTintB;
+   a.setHex(lights.sky).multiplyScalar(lights.hemi).add(b.setHex(lights.ambient).multiplyScalar(lights.ambientI));
+   b.setHex(dry.sky).multiplyScalar(dry.hemi).add(this._lmTintC.setHex(dry.ambient).multiplyScalar(dry.ambientI));
+   t.setRGB(a.r/b.r,a.g/b.g,a.b/b.b);
+  }
   const slam=gradeSlam(this.frameGrade);
   for(const spot of this.gradeSpots)spot.light.color.setHex(slam?field:spot.rest);
   if(this.clipPass)this.clipPass.uniforms.uSlam.value=slam;
@@ -2600,9 +3210,11 @@ export class CaveWorld extends OceanWorld {
    this.torchLight.intensity=torch.intensity;this.torchLight.distance=torch.distance;this.torchLight.decay=torch.decay;
    this.torchLight.color.setRGB(torch.r,torch.g,torch.b);
    // Keep shadow frustum matched to the attenuated range (avoids wasted Safari fill).
-   const far=Math.max(10,Math.min(48,torch.distance+2));
-   if(Math.abs(this.torchLight.shadow.camera.far-far)>.5){
-    this.torchLight.shadow.camera.far=far;this.torchLight.shadow.camera.updateProjectionMatrix();
+   if(PERF.shadows){
+    const far=Math.max(10,Math.min(48,torch.distance+2));
+    if(Math.abs(this.torchLight.shadow.camera.far-far)>.5){
+     this.torchLight.shadow.camera.far=far;this.torchLight.shadow.camera.updateProjectionMatrix();
+    }
    }
    const beamMat=this.beam.material as THREE.ShaderMaterial;
    const betaB=(torch.betaBackscatter.r+torch.betaBackscatter.g+torch.betaBackscatter.b)/3;
@@ -2617,7 +3229,8 @@ export class CaveWorld extends OceanWorld {
    beamMat.uniforms.uBeamLen.value=beamLen;
    // No camera-forward particle cone — that was a second beam fighting the lantern aim.
    (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
-  }else (this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;
+  }else{(this.particles.material as THREE.ShaderMaterial).uniforms.uTorch.value=0;this.torchLight.intensity=0;this.torchLight.shadow.autoUpdate=false;}
+  if(torchOn)this.torchLight.shadow.autoUpdate=true;
   const p=this.mission.predator;this.guardian.group.position.copy(p.position);
   if(p.state==='dead'){
    // Corpse settles; limp fins, no chase heading lerp.
@@ -2635,12 +3248,20 @@ export class CaveWorld extends OceanWorld {
   this.syncSovietGuard(dt);
   if(this.fx)this.syncSurvival(dt);
   this.syncBreathProps();
-  this.syncPickups();this.syncChests(dt);this.decoyMesh.visible=!!this.mission.decoy;if(this.mission.decoy)this.decoyMesh.position.copy(this.mission.decoy.position);
+  this.syncPickups();this.syncChests(dt);this.decoyMesh.visible=!!this.mission.decoy;this.decoyLight.intensity=this.mission.decoy?12:0;if(this.mission.decoy){this.decoyMesh.position.copy(this.mission.decoy.position);this.decoyLight.position.copy(this.mission.decoy.position);}
   if(this.time-this.lastSent>.05){this.lastSent=this.time;this.publish();}
   this.updatePointCull();
   this.applyPortalOcclusion();
+  // Inventory 1–5: only scan held camera props — a full scene.traverseVisible here hitch'd every swap.
+  if(this.mission.selected!==this._guardSelected){
+   this._guardSelected=this.mission.selected;
+   this.guardNewShaders([this.camera]);
+  }
+  // Slow sweep for streamed props that appear outside propStreaming.onLoaded.
+  if(Math.floor(this.time*0.5)!==this._guardSweep){this._guardSweep=Math.floor(this.time*0.5);this.shaderGuardDirty=true;}
+  this.guardNewShaders();
   this.composer.render();
   if(this.playing)this.requestRender();
  }
- dispose(){window.clearTimeout(this.akPrefetchTimer);if(this.copperPipe)this.copperPipe.disposed=true;this.rockMaps.dispose();this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
+ dispose(){window.clearTimeout(this.akPrefetchTimer);if(this.copperPipe)this.copperPipe.disposed=true;this.rockMaps.dispose();this.bunkerTextures?.dispose();this.bunkerLightmaps?.dispose();this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.audioProbe?.dispose();this.audioProbe=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
 }

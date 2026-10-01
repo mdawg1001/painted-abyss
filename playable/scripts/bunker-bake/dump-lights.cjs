@@ -1,0 +1,12 @@
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+(async()=>{const b=await chromium.launch({args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+const p=await b.newPage({viewport:{width:800,height:500}});p.on('pageerror',e=>console.log('ERR',e.message));
+await p.goto('http://127.0.0.1:5173/?test=1');await p.waitForFunction(()=>window.__abyss,{timeout:90000});
+await p.getByRole('button',{name:/Begin dive/}).click();await p.waitForTimeout(5000);
+const out=await p.evaluate(()=>{const w=window.__abyss;const L=[];const v=new w.camera.position.constructor();
+ w.scene.traverse(o=>{if(!o.isLight)return;o.getWorldPosition(v);const path=[];for(let q=o;q;q=q.parent)path.push(q.name||q.type);
+  L.push({type:o.type,name:o.name,path:path.slice(0,4).join('<'),pos:[+v.x.toFixed(2),+v.y.toFixed(2),+v.z.toFixed(2)],color:'#'+o.color.getHexString(),intensity:+o.intensity.toFixed(3),distance:o.distance,decay:o.decay,angle:o.angle,visible:o.visible,ground:o.groundColor?'#'+o.groundColor.getHexString():undefined});});
+ return L;});
+require('fs').writeFileSync(process.argv[2],JSON.stringify(out,null,0));
+for(const l of out)console.log(l.type,l.name,'|',l.path,l.pos.join(','),l.color,l.intensity,l.distance,l.decay);
+await b.close();})();

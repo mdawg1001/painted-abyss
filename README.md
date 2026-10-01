@@ -1,9 +1,179 @@
-# Painted Abyss — First Dive · 0.20.7
+# Painted Abyss — First Dive · 0.22.44
 
+## Critical heal clutch (0.22.43)
 
+Critical self-regen is stronger: **5 HP/s** toward a soft cap of **40** (was 2/s → 30), with a **0.75 s** post-hit delay. Fresh-blood leech still pays on kills; while health is ≤ ~15%, kill leech uses a **9 m** radius and **45%** share, and non-lethal hits return **15%** of damage dealt so shooting a guard at glass HP still feeds the bar. Passive soft cap never clamps combat heals.
 
+## Faster guards (0.22.42)
 
-## AK-74U viewmodel fixed: official model, iron sights (0.20.7)
+Corridor guards walk and chase about **25%** faster. Role `speed` / `combatSpeed`, `GUARD_SPEED` patrol/alert/chase/chaseTired/search, and the walk→run gait blend move with them. Authored foot-slide clip speeds are unchanged so the planted foot still locks to the floor. Aim / accuracy / HP / cadence unchanged.
+
+## Sharper guard aim again (0.22.41)
+
+Armed survival roles land shots ~**1.25×** more often on top of 0.22.37: role `accuracy` raised toward cap **0.995**, lighter burst climb / moving-fire / first-shot penalties, and horde spray accuracy ×1.25. Skin-of-teeth graze bias **0.30→0.32** so standing stays lethal while strafing still earns GRAZE room. Damage, HP, cadence, director, magnetism, and Ego Savior unchanged.
+
+## Health label (was Suit) (0.22.40)
+
+Player-facing HUD and copy rename the vital from **SUIT** to **HEALTH** (prompts, sealant description, say-strings). Internal ids (`health`, `CRITICAL_SUIT_REGEN`, CSS `.meter.suit`) unchanged.
+
+## Critical suit self-regen (0.22.39)
+
+When health drops to **≤5** (including after an Ego Savior clamp to 1–3), it slowly recovers toward a soft cap while undamaged. Tuned further in **0.22.43** (see above). Medkits and kill-leech still matter for getting back toward full. No new UI — the Health bar rising is the read.
+
+## Smooth frames + kill hatch spam (0.22.37)
+
+Restores the playability render floor after #191's Retina 2× + 4× MSAA governor left Safari/laptops stuttering frame-by-frame (governor started at the top and took seconds of cooldown steps to drop). Caps DPR at **1×**, MSAA **off**, fewer motes / slower light scans, inventory swaps no longer full-scene shader-walk. Removes the persistent gold center/side “HARDER HITS READY — BUY AT THE HATCH” overlays (hatch shop UI stays).
+
+## Sharper guard aim (0.22.36)
+
+Armed survival roles land shots ~**1.5×** more often via role `accuracy` ×1.5 (cap **0.95** so they are not aimbots). Skin-of-teeth graze bias nudged **0.24→0.28** so standing/slow is deadly while strafing still earns GRAZE room. Cadence, HP, corpse persistence, director, magnetism, and Ego Savior unchanged.
+
+## More aggressive corridor guards (0.22.35)
+
+Guards pressure harder without extra HP: faster reaction / shorter draw-to-chase, tighter burst gaps and shorter rests, slightly better accuracy and engagement range, snappier chase speeds, rushers more eager to melee. Squad call-outs stay sharp. Corpse persistence, director reinforces, player magnetism, and Ego Savior are unchanged.
+
+## Tougher corridor guards (0.22.34)
+
+Every survival role is **+50% HP** (assault 150→225, flanker 130→195, rusher 110→165, officer 240→360, heavy 280→420). Assault takes a full magazine of body shots or three close headshots; headshots stay clearly better than body dumps. Knife backstab multiplier raised so silent kills still drop infantry.
+
+## Near-death Ego Savior Phase 3 — mercy per engagement (0.22.17)
+
+Lethal overflow still clamps to **1–3** with i-frames and critical theater, but mercy is no longer a free save every life: it recharges after a **player kill** or after **leaving combat for 8 s** (no chasing/firing guard, no fresh core damage). While spent and after the i-frame window you are glass. **Air-empty / flood drown never use Ego Savior** — those deaths stay honest. Still no INVULNERABLE / CLUTCH text.
+
+## Near-death Ego Savior Phase 2 — critical theater (0.22.16)
+
+When health is ≤ ~15% or Ego Savior i-frames are live, the screen goes hard red with a heartbeat pulse, audio muffles (low-pass) with panic breath, and the lethal save itself gets a micro hitstop plus a brief snappier knife/gun clear — still no INVULNERABLE / CLUTCH text. Reduced-motion softens the pulse but keeps the critical read. P1 save math unchanged.
+
+## Near-death Ego Savior Phase 1 (0.22.15)
+
+The hit that would kill you can silently clamp health to **1–3** once per life, with **0.4–0.7 s** true i-frames and a short enemy shoot-cadence desync (longer burst gaps / delayed next shot). No INVULNERABLE banner — GRAZE tracers keep whipping past. After the window you are glass; the save recharges on hatch respawn.
+
+## Sharp image: full Retina resolution and edge smoothing (0.22.14)
+
+The game now renders at your display's full pixel density (2× on a Retina Mac) with 4× MSAA on every geometry edge. Before this, the playability profile rendered one pixel per screen point with no anti-aliasing, so Safari stretched a half-resolution image across a Retina screen: soft textures, stair-stepped edges on every wall, pipe and cable tray, and thin things shimmering as you moved. That is most of what read as "low poly".
+
+A frame-time watchdog keeps it fast (`playable/src/resolutionGovernor.ts`):
+
+- **Steps down under load**: when more than about a fifth of recent frames run slower than 60 fps, it drops one rung (2× → 1.75× → 1.5× → 1.25× → 1× with MSAA → 1× without). The bottom rung is exactly the old profile, so no machine is slower than before.
+- **Probes back up**: the browser paces frames to the display, so spare headroom is invisible. After a stretch of clean frames it tries the rung above; if that rung starts missing frames it steps back and waits twice as long before trying again.
+- **Hitches never cost resolution**: single long frames (a garbage-collection pause, a texture upload, a tab switch) are ignored, and nothing is judged in menus or while paused. Changes are at least 1.2 s apart, since each one reallocates the render targets.
+- Each change is logged in the browser console (for example `Render 1.75× MSAA 4× (frames over budget)`).
+
+## Baked lighting (0.22.13)
+
+The bunker's lighting is now precomputed offline in Blender's Cycles path tracer, the way AAA interiors are lit. Every lamp in the bunker (26 wall sconces, 7 hanging tubes, the corridor lamps, the shaft light and the fluorescent fills) is traced through the real geometry, and three results are stored in lightmaps:
+
+- **Bounced light**: light hitting the red-brown floor and the whitewash and spilling onto everything else. Ceilings glow warm above the lamps, colour bleeds off the painted walls, and rooms fall off into darkness away from their lamps instead of being evenly filled.
+- **Ambient occlusion**: corners, the wall-floor junction, under pipes, behind pilasters, around crates, desks and the relic plinth all darken as they would in real light.
+- **Shadows of the fixed lamps**: pipes, brackets, pilasters, beams, door frames and cover now cast proper shadows from the wall sconces and corridor lamps, and their light no longer leaks through walls.
+
+The lamps' light itself stays real time, so everything that moves still works: the hanging tubes swing when you shoot, sconces flicker, the flood turns the bounce teal and the relic slam turns it red. Nothing is added per frame beyond two texture reads per pixel, no lights are added, and all bunker surfaces still share one shader program, so this cannot bring back the freezes.
+
+Assets: `bunker-lit.pack` (the bunker geometry with lightmap UVs, 3.7 MB gzip), `lm_indirect.ktx2` (1024²) and `lm_ao.ktx2` (2048², occlusion plus shadow mask) in `playable/public/assets/soviet-bunker-kit/baked/`. The bake is signed with the layout, so if the bunker changes without a rebake the game falls back to the unbaked kit and a test fails. Rebake with `playable/scripts/bunker-bake/run.sh` (about 30 minutes on two cores; see its README).
+
+## Soviet bunker art pass (0.22.12)
+
+The prototype rock boxes are gone. The whole map is now a flooded Soviet civil defence shelter built from Quaternius's free Modular Sci-Fi MegaKit (CC0), repainted so nothing in it reads as science fiction. The simulation grid is untouched: the same 4 m cells drive collision, sight lines, AI and the flood, and the kit's 4 m grid lines up with them exactly.
+
+- **Walls**: riveted steel wainscot to 3 m, plaster plates above, a cable tray under the slab. Everything is painted by height in the shader: an oil paint dado to 1.55 m in each compartment's colour (green corridor, teal lab, bottle green hall, ochre service tunnel, oxide red back room), a thin dark stripe, then whitewash. Paint chips in patches and flakes down to plaster, whitewash peels near the damp ceiling, enamel chips to rust.
+- **Water has left its mark**: tide lines from earlier floods at about 1.2 m and 2.7 m with a damp film below, rust streaks running down from the tray and pipes, grime rising off the floor, glossy standing puddles, a little old blood low on the walls.
+- **Structure**: flat pilasters every 8 m on straight walls, hazard striped corner guards on every convex corner, ceiling beams every second row seam, deep lintels over each passage mouth, two colour coded service pipes on brackets that follow the walls round every corner without a break, whitewashed ceiling plates with water stains and ceiling vents.
+- **Hermetic doors**: the spawn hatch is now a proper sealed door (ГД-1) with a kit frame, a steel leaf, six lever clamps and a handwheel, and four more sealed doors dress the other compartments.
+- **Stencils**: sprayed Cyrillic signage painted into one canvas atlas at load, with stencil bridges, overspray and wear. Compartment names (ОТСЕК 1 to 7), the shelter plate (УБЕЖИЩЕ № 7), ВЫХОД arrows that point along the real route from the hall up the tunnel to the exit pool, ОСТОРОЖНО, НЕ КУРИТЬ, voltage warnings, red stars, a painted water depth gauge in every compartment (read the flood against it), and a structural grid mark on every pilaster.
+- **Props**: fuel drums in quiet corners, floor cable coils. The existing lamps, sconces, radiators, posters and pipes stay; posters are now pasted flat on the plaster and radiators sit closer to the wall, since there are no more boulders to clear.
+- **Physically honest**: a test samples every position the collision model lets the diver's eye reach, from a slide to the flood surface, and fails if any dressing contains it. Beams and lintels stay above the highest swimming eye.
+- **No new freezes**: all bunker surfaces share one shader program and add no lights. The kit streams in as a 650 KB binary plus six 1024 KTX2 trim maps (3 MB); until it lands the rooms are closed by plain painted planes using the same material, so the swap compiles nothing.
+
+Code: `playable/src/bunkerLayout.ts` (placement, pure and tested), `playable/src/sovietBunker.ts` (kit loading, the paint shader, baking), `playable/src/bunkerDecals.ts` (stencil atlas). Assets and the rebuild script: `playable/public/assets/soviet-bunker-kit/`, `playable/scripts/build_bunker_kit.py`.
+
+## No freeze when switching items (0.22.11)
+
+Switching away from the rifle froze the game for seconds. This was the same cause as the old kill freeze: the rifle's muzzle-flash light was a child of the rifle viewmodel. Putting the rifle away hid the viewmodel, which took its light out of the scene. The light count changed, and every lit shader in the bunker recompiled (27 programs in the headless test). Taking the rifle back out did it again.
+
+- **Muzzle light moved**: it now hangs off the camera and is placed at the barrel's muzzle each shot, so it never leaves the scene. The flash sprites stay on the rifle.
+- **Switching is checked in the same frame**: an item you've never held before (the knife, the rifle on first draw) has its shaders prepared in the background before it appears, instead of stalling the frame it is first shown.
+- **Measured headless**: gun, flare, knife, gun, bandage and air switches now compile nothing new beyond each viewmodel's own first appearance, and the light count stays at 34 point lights throughout.
+
+## No more freezes on kills and smoke (0.22.10)
+
+The freeze on every kill was the renderer recompiling every shader in the bunker. three.js builds the number of lights into each lit material's shader. Each dead guard dropped a rifle and coins that brought their own point lights, so the light count changed and every lit material recompiled at once. In a headless test on 0.22.8, one kill recompiled 27 shaders and took a 6.7 s frame. After this fix, the same kill recompiles none and the light count stays fixed for the whole dive.
+
+- **Loot glows** borrow from a fixed pool of 6 point lights made at start. The nearest glowing pickups (relic, Soviet key, rifles, gold) light up and the rest go dark. Picked-up items also release their light-cull hooks, which used to pile up with every drop.
+- **Torch (F) and flare**: their lights are dimmed to zero instead of hidden, because hiding a light changes the count as well.
+- **Shader prewarm on Begin dive**: everything that starts hidden (smoke puffs, blood, muzzle and impact cards, held items, gold and loot materials) is compiled and has its textures uploaded before play, so the first smoke grenade or first kill doesn't stall.
+- **Smoke**: 9 puff cards per cloud (was 14), and puffs the camera is inside fade out and aren't drawn. Those screen-filling layers were the fill-rate cost; the HUD smoke veil already shows being inside a cloud.
+- **Hitstop** shortened to a few frames: kill 55 ms (was 150), headshot 35 ms (was 90). It is still a punch you feel, not a pause you see.
+
+- **Streamed props no longer stall on arrival**: lamps, sconces, radiators and the floor AK used to compile their shaders during the frame they appeared. Now anything arriving with an uncompiled material is held off-screen while the driver compiles it in the background (KHR_parallel_shader_compile, which Chrome and Safari on Mac have), then pops in a moment later.
+- **Shaders match what's drawn**: warm-up compiles now target the post-processing buffer the frame really renders into. Before, they built variants for the screen that were never used, so the real ones still compiled mid-play; the headless build now makes 56 programs instead of 76.
+
+## Undo 5× simulation scale (0.22.1)
+
+Reverts PR #151 (`GAME_TIME_SCALE = 5`). Mission time, movement, AI, and gas run at wall clock again. Hitstop / combat feedback / hitch clamps are unchanged from the pre-0.22.0 path.
+
+## Runtime polish meets the speed lens (0.21.3)
+
+Merges the Cursor runtime pass (0.21.1 post/CPU polish) with the speed lens (0.21.2). The runtime pass fused the impact crunch into the clip-grade shader, which left the lens's peripheral stretch writing to a pass that no longer exists. The stretch now lives in the fused clip-grade pass, so you get the cheaper post stack and the lens together.
+
+## Speed lens toned down (0.21.2)
+
+The 0.21.1 lens swung from 60° to 110° and breathed with every step. It is now a rush rather than a trip:
+
+- **Range**: 64° (the game's normal view) up to 82° at slide speed, so +18° instead of +50°.
+- **Walking doesn't move it at all**: the lens only starts widening above 1.6 m/s. A run gives about 70°, and only slides and slide-jumps reach the top.
+- **No pulsing**: the lens follows your speed up over about a quarter of a second, so the stride's own speed ripple moves it less than 0.3°. It follows your speed down almost instantly, so stops still snap. Only horizontal speed counts, so bobbing in the water doesn't breathe the view.
+- **Snap kept, wobble gone**: stiffness 150, damping 13.5 (ζ ≈ 0.55). Stopping from a slide takes the view back halfway in about 0.13 s and dips about 2° under normal, then settles within about half a second. The old version dipped 10° and rang.
+- **Edge stretch**: 0.025 at top speed (was 0.08), a hint of tunnel rather than a fisheye.
+
+## Speed lens: FOV on a spring (0.21.1)
+
+`playable/src/speedFov.ts` makes the field of view follow your speed. It reads the player's velocity and never touches movement.
+
+- **Target**: V_norm = clamp(|v| / 7 m/s, 0, 1), and target FOV = 60° + V_norm × (110° − 60°). Walking gives about 71°, running about 84°, and a slide launch 110°. These are three.js vertical FOVs, as before (the old fixed lens was 64°).
+- **Spring, not a lerp**: acceleration = −stiffness × (fov − target) − damping × fovVel, integrated with semi-implicit Euler in sub-steps of at most 1/240 s. The feel is the same at any frame rate, and a hitch frame can't blow it up. With the defaults (stiffness 180, damping 12, ζ ≈ 0.45), a dead stop from top speed swings from 110° down to about 50° after 0.26 s, then settles on 60° within about 0.6 s.
+- **Peripheral stretch**: the post pass pulls samples toward the centre in proportion to r², so the walls stretch out to the frame edges while the centre stays true. It is up to 8% at the corners at top speed and follows the spring.
+- **Aiming** blends the lens toward the sights' fixed 52°, and the stretch fades out, so a scope does not breathe with your speed.
+- **Tuning**: `SPEED_FOV` at the top of the file has MIN_FOV, MAX_FOV, V_MAX, SPRING_STIFFNESS, SPRING_DAMPING, WARP_MAX, FLOOR_FOV and MAX_STEP. The per-frame update allocates nothing.
+
+## Runtime post/CPU polish (0.21.1)
+
+On top of the 0.21.0 playability profile: **UnsignedByte** composer buffers (no HalfFloat), impact crunch/chroma **fused into the clip-grade pass** (one fewer full-screen blit), PointLight registry rescanned every 12 frames, hanging-tube emissives cached (no per-frame glTF traverse), rock anisotropy 8→4, and `?test=1` exposes `__abyss` on production serves for frame probes.
+
+## Playability · ~5× cheaper frames (0.21.0)
+
+The dive was moving frame-by-frame on heavy machines again (Retina + MSAA + torch/hanging shadow maps + half-res bloom). `playable/src/perf.ts` now caps the canvas at **1× DPR**, turns **MSAA and shadow maps off**, runs bloom at **quarter-res**, cuts suspended motes **1800→360**, and follows only **3** hanging-tube spots (none casting shadows). Rock maps, hanging fixtures, frame grade, combat feedback, and HUD stay. After merge: `node playable/refresh.mjs` and confirm **BUILD v0.21.0**.
+
+## Style meter (0.20.10)
+
+`playable/src/styleMeter.ts` scores how you fight and shows a rank from D up to SSS on the left of the HUD, with a fill bar, a chain count and a short feed of recent actions (for example "+448 SLIDE HEADSHOT KILL").
+
+- **Actions and base points**: hit 40, headshot 90, kill 180, headshot kill 280, knife cut 70, knife kill 260, guardian wound 120, guardian kill 600. A **close call** is worth 110: a guard's round or swing misses you while you slide or are airborne, within 20 m. **Parry** (220) is in the API but nothing triggers it yet, because the game has no parry.
+- **Scaling**: mid-slide ×1.6 and airborne ×1.5, which stack. Each event within 2.5 s of the last adds 10% to a chain multiplier, up to ×2. Repeating the same action loses 35% of its value each time, down to a floor of 20%. That recovers at 5% a second, so variety pays and spamming doesn't.
+- **Ranks**: each letter has its own bar (300 points for D, up to 1,200 for SSS). Overflow promotes you, and SSS stays full.
+- **Decay**: after 2.5 s with no combat events the bar drains at 60 points a second at D, plus 35 per rank above D. It empties down through the letters to nothing. Taking damage costs 60% of the current bar and resets the chain. Dying resets the meter.
+- **Rank-up hook**: `style.onRankChange(fn)` fires once for every tier crossed, up or down. CaveWorld uses it to shake the screen on each rank-up, harder for higher letters. Hitstop and pause freeze the meter.
+
+## Jump replaces dash; faster slide (0.20.8)
+
+- **Dash removed.** Space no longer does the 8 m/s lunge.
+- **Space jumps** (on foot). You leave the ground at √(2·g·h) for a 0.5 m rise under real gravity, so about 0.64 s in the air. You keep your ground speed, with a little air control that can turn you but never speed you up. One jump per press, none in mid-air, and a press up to 0.12 s before landing jumps again on touchdown. A jump costs 6 stamina, and something overhead stops the rise. Landing is a footfall the guards can hear.
+- **The slide is a way to travel.** C at a run now launches at 7.0 m/s (about twice a run) on wet-concrete friction (μk 0.18). It stays faster than running for about 2 s and gains more than 3.5 m on a runner. Release C and you stand and keep running.
+- **Slide-jump**: a jump out of a slide keeps the slide's speed. Land with C held and you slide on at the speed you landed with. There's no fresh boost, so hopping can't build speed.
+- **Tilt +15%**: the slide lean is now 2.875° (was 2.5°).
+- **Smoother camera**: the drop into a slide eases in over about 0.15 s instead of snapping. The slide and jump no longer fire the screen pulse.
+
+## Dash and slide (0.20.7)
+
+On foot you now have two movement moves on top of the walking gait, both in `playable/src/movementTech.ts`.
+
+- **Dash: Space.** Your velocity is replaced (not added to) by 8 m/s in the direction you are pressing, relative to where you look; with no keys it goes straight ahead. It lasts 0.15 s (about 1.2 m) with gravity and vertical motion suspended, then has a 0.5 s cooldown from when it ends. One press gives one dash: holding the key does nothing, and a press up to 0.1 s early is buffered. Each dash costs 10 stamina.
+- **Slide: C at a run.** Pressing C at 2.6 m/s or faster drops you into a slide with 1.6 m/s added forward. Below that speed, C is the normal crouch. The body capsule halves from the bottom up, so the eye drops 0.875 m, and the view leans 2.5° toward the slide (to the left on a straight one). Kinetic friction (μk 0.34, clothing on concrete) slows you at μk·g ≈ 3.3 m/s², so a slide from a run covers about 3.6 m in 1.3 s. While you hold C it settles into a crouch-walk; release early and you stand and keep running.
+- **Slopes**: slide velocity is kept along the ground plane, with gravity's slope component added. On a slope steeper than about 19° (the friction angle) you speed up downhill; uphill you slow faster. The bunker floor is level today, so this applies automatically once ramps return a slope from `groundNormal()` in `simulation.ts`.
+- **Headroom check**: when you release C, five upward rays test the space above your head against the rendered geometry. If a ceiling or underside is inside standing height, you stay low (still sliding, or crouched) until you are clear.
+- A dash can cancel a slide, and holding C through a dash drops you straight into a slide at no more than a boosted run. Guards hear a dash or slide the way they hear a run; you only get the crouch sight bonus once the slide has become a crouch.
+- Ctrl is deliberately not used: in a browser, holding W while pressing Ctrl can close the tab (Ctrl+W), and a web page cannot block that outside fullscreen.
+
+## AK-74U viewmodel fixed: official model, iron sights (0.20.6)
 
 The 0.19.8 carbine was rebuilt from Sketchfab's web-viewer data, which scrambled its UVs (stripy, dotty textures) and swapped the texture slots (gold metal, shiny arms). It now uses the author's official glTF download: black matte steel, red-brown handguard, grey hoodie sleeves and skin-tone hands, exactly as on Sketchfab. Other fixes:
 
@@ -105,7 +275,7 @@ Original rock, wall, floor and moss maps are preserved. The picture around them 
 
 The bunker is held by a garrison that escalates as you push for the relic: a quiet start, first contact in the entrance chamber, waves through steel bulkheads (red lamp + clank + shout before anyone steps through), a short lull to reload and resupply, harder waves, then a final push from the moment you lift the relic until you reach the extraction pool.
 
-- Guards: assault (advance + bursts), rusher (sprints in, telegraphed knife stab), flanker (comes round your side), heavy (helmet + long bursts). Standard guards take two head shots up close, three at range, about five body hits.
+- Guards: assault (advance + bursts), rusher (sprints in, telegraphed knife stab), flanker (comes round your side), heavy (helmet + long bursts). Standard guards take three head shots up close, four at range, about eight body hits (a full magazine).
 - Controls: click fires the TT-33 (or stabs with the knife), R reloads, **T throws smoke**, E interacts, 1–5 select.
 - Smoke blocks sight for guards and for you. Walk over ammo boxes, field dressings and smoke tins to take them; a downed guard's pistol gives up its rounds when you walk over it.
 - Every balancing number (enemy counts, health, damage, accuracy, timings, supplies, smoke) lives in `playable/src/survivalConfig.ts`.
@@ -186,9 +356,9 @@ Pointer lock is requested by Begin / Resume. If the browser refuses it, moving t
 - Driftwood is spare salvage; replacing it keeps your useful supplies. Press **1** then **click** to stab the guardian at close range — wounds make it rage harder; at ~85% damage taken it breaks off slow and limping; killing it sinks the corpse with soft floating blood sprites in the water (optional — extract still only needs the relic). Press **1–5** to select a slot, then **R** to use consumables — air, sealant, and flares are consumed. A one-time tip appears on the first dive only; later dives rely on the selected-slot chrome. Selecting the knife draws it into a gloved diver's hand — a real-scale first-person viewmodel with the fist low in the bottom-right, forearm running out of frame and the blade angled up toward the crosshair; clicking plays a wind-up, thrust and recover stab; other slots return the mounted torch as the held FPS object.
 - Carry the relic east, enter the narrow fissure, then follow it north to the extraction pool. Press **E** near the light to win. You must still be carrying the relic; dropping it removes eligibility to extract.
 - **Five Soviet guards patrol the bunker.** Same behaviour, five kit colours (olive, khaki, steel-blue, brown, field-teal). Each walks an overlapping beat of the outer perimeter (~25% shared with the next man so they meet in doorways), about 1.3 m off the walls, stopping at corners and every ~16 m along long walls to look around. At each stop he surveys the open floor, turns (through the room, not across the wall) to face the longest view, sweeps it, and where the space opens two ways checks the other way too. He sees what is in front of him (≈65° either side; a lit torch from 16 m, dark from 9 m), hears you running within 11 m, and senses anyone within 2.5 m. Each respawn he starts from a different stop on his beat, at least 30 m from the hatch when that beat allows it. When he loses you he searches, then rejoins his own beat at the nearest stop. They cannot swim, so once the leak passes the walk line they hold their ground.
-- **Each guard shoots on sight.** He carries the TT-33 as his own sidearm. The moment he spots you he stops, raises the pistol (about 0.35 s) and fires aimed shots roughly every 0.75 s from a standing stance, reloading for 2.2 s after each 8-round magazine. Hits cost 30 suit (less with the coat); misses crack past with a ricochet. Close, steady targets are almost always hit; long shots in the dark, running targets and his rushed first shot often miss, so breaking his line of sight or sprinting for cover is how you survive. A soft key and rim light keep his face and uniform readable in the dark.
+- **Each guard shoots on sight.** He carries the TT-33 as his own sidearm. The moment he spots you he stops, raises the pistol (about 0.35 s) and fires aimed shots roughly every 0.75 s from a standing stance, reloading for 2.2 s after each 8-round magazine. Hits cost 30 health (less with the coat); misses crack past with a ricochet. Close, steady targets are almost always hit; long shots in the dark, running targets and his rushed first shot often miss, so breaking his line of sight or sprinting for cover is how you survive. A soft key and rim light keep his face and uniform readable in the dark.
 - Rock blocks the guardian's sight. Its states are patrol, alert, chase, search, damaged, and dead. Use the pillar, briefly sprint away, switch off the torch, deploy a flare, or fight with the knife. It cannot enter the narrow exit passage.
-- Air is a free-gas tank shown in **litres** on the HUD (**100 L** main ≈ 5.6 min surface cruise at 18 L/min SAC, plus a **9 L** pony). Burn scales with depth (ATA) and sprint/panic effort (R arms the pony). Space/Q fill a **BCD trim** (−1..+1); **[ ]** lock an idle bias and **X** clears it; look-pitch finning only adds a little vertical thrust. Sealant repairs 45 suit integrity. A flare distracts for 12 seconds unless you remain very close to the guardian. Dying or running out of air brings up Restart.
+- Air is a free-gas tank shown in **litres** on the HUD (**100 L** main ≈ 5.6 min surface cruise at 18 L/min SAC, plus a **9 L** pony). Burn scales with depth (ATA) and sprint/panic effort (R arms the pony). Space/Q fill a **BCD trim** (−1..+1); **[ ]** lock an idle bias and **X** clears it; look-pitch finning only adds a little vertical thrust. Sealant repairs 45 health. A flare distracts for 12 seconds unless you remain very close to the guardian. Dying or running out of air brings up Restart.
 - **Out of scope for First Dive:** cave currents / surge, a weight-belt inventory model, and real decompression stops or NDL tracking. The short mission stays shallow and theatrical; those systems are deferred.
 
 ## Edit and rebuild
@@ -220,6 +390,7 @@ New mission rules live in `playable/src/simulation.ts`; cave rendering and input
 
 ## Third-party assets
 
+- **Modular Sci-Fi MegaKit** by [Quaternius](https://quaternius.com), CC0 1.0. Industrial pieces repainted as the Soviet bunker (`playable/public/assets/soviet-bunker-kit/`).
 - **Fish Knife** ([Poly Haven](https://polyhaven.com/a/fish_knife)) by Mateusz Sadek — CC0 1.0. Used as the diving-knife inventory icon and held FPS prop when the knife slot is selected (`playable/public/assets/knife/`). Other slots restore the dive torch as the held object.
 - **Dive chests** (CC0 1.0): [Wooden Military Crate](https://polyhaven.com/a/wooden_military_crate) (Prabhjinder Singh), [Plastic Crate 02](https://polyhaven.com/a/plastic_crate_02) (Fabi_G), [Vintage Suitcase](https://polyhaven.com/a/vintage_suitcase) (Maximilian Schuster). Floor props under `playable/public/assets/chests/`. The military crate and suitcase open with **E**, then **E** takes the chart scrap. The plastic crate has no lid — the scrap is already visible and **E** grabs it.
 - **Map scrap scroll** (CC BY 4.0): [Scroll (game ready asset)](https://sketchfab.com/3d-models/scroll-game-ready-asset-c1503d2292c74faebf83a5937646c1c7) (Aparicio Silva 3D). Authored mesh and PBR maps under `playable/public/assets/scroll/`. It sits in the open-top plastic crate the whole time, and inside a lidded crate after that crate is opened.

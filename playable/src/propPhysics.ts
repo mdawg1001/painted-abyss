@@ -49,6 +49,8 @@ export const ITEM_BODY: Record<Item, ItemBody> = {
  coat: { mass: 1.5, volume: .0014, height: .05, area: .35, cd: 1.3 },
  // Weathered iron skeleton key — dense metal, sinks like the knife.
  sovietKey: { mass: .08, volume: .000012, height: .02, area: .004, cd: 1.1 },
+ // Good-delivery kilobar: 1 kg at 19,300 kg/m³. Drops like a stone and stays down.
+ gold: { mass: 1.0, volume: 1 / 19300, height: .04, area: .006, cd: 1.1 },
 };
 
 export const itemDensity = (item: Item) => ITEM_BODY[item].mass / ITEM_BODY[item].volume;

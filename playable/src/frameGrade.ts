@@ -1,5 +1,11 @@
 import { PALETTE } from './artPalette';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { Vector2 } from 'three';
+import {
+ CRUNCH_PIXEL,
+ IMPACT_CHROMA_MAX,
+ IMPACT_VIGNETTE_MAX,
+} from './postFx';
 
 /**
  * Overtide frame around the photographic cave.
@@ -136,13 +142,44 @@ const CLIP_GRADE_SHADER = {
   uShadowTint: { value: [...GRADE_SHADOW_TINT] },
   uHighlightTint: { value: [...GRADE_HIGHLIGHT_TINT] },
   uLift: { value: [...GRADE_LIFT] },
+  // Impact / crunch fused here so the composer skips a full-screen blit.
+  uIntensity: { value: 0 },
+  uChroma: { value: IMPACT_CHROMA_MAX },
+  uVignette: { value: IMPACT_VIGNETTE_MAX },
+  uCrunch: { value: CRUNCH_PIXEL },
+  uResolution: { value: new Vector2(1, 1) },
+  // Speed lens peripheral stretch (speedFov.ts), 0 when still.
+  uWarp: { value: 0 },
  },
  vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
  fragmentShader: `uniform sampler2D tDiffuse;uniform float uExposure;uniform float uContrast;uniform float uPivot;uniform float uSlam;
-uniform float uSaturation;uniform float uVibrance;uniform float uGamma;uniform vec3 uShadowTint;uniform vec3 uHighlightTint;uniform vec3 uLift;varying vec2 vUv;
+uniform float uSaturation;uniform float uVibrance;uniform float uGamma;uniform vec3 uShadowTint;uniform vec3 uHighlightTint;uniform vec3 uLift;
+uniform float uIntensity;uniform float uChroma;uniform float uVignette;uniform float uCrunch;uniform vec2 uResolution;uniform float uWarp;varying vec2 vUv;
 void main(){
-  vec4 tex=texture2D(tDiffuse,vUv);
-  vec3 c=max(tex.rgb*uExposure,vec3(0.0));
+  vec2 uv=vUv;
+  // Speed lens: sample toward the centre in proportion to r², so the periphery is stretched
+  // out to the frame edges while the middle stays true. Aspect-corrected radius.
+  if(uWarp>1e-4){
+    vec2 d=uv-.5;vec2 a=vec2(d.x*uResolution.x/uResolution.y,d.y);
+    float r2=dot(a,a)/(.25+.25*(uResolution.x*uResolution.x)/(uResolution.y*uResolution.y));
+    uv=.5+d*(1.0-uWarp*r2);
+  }
+  if(uCrunch>1.01){
+    vec2 grid=max(uResolution/uCrunch,vec2(1.0));
+    uv=(floor(uv*grid)+.5)/grid;
+  }
+  float i=clamp(uIntensity,0.0,1.0);
+  float aber=uChroma*i;
+  vec2 fromCentre=uv-.5;
+  float radial=length(fromCentre);
+  vec2 dir=radial>1e-4?fromCentre/radial:vec2(1.0,0.0);
+  vec2 off=dir*aber*(.35+radial);
+  float r=texture2D(tDiffuse,uv+off).r;
+  float g=texture2D(tDiffuse,uv).g;
+  float b=texture2D(tDiffuse,uv-off).b;
+  vec3 c=max(vec3(r,g,b)*uExposure,vec3(0.0));
+  float vig=smoothstep(.35,1.15,radial);
+  c*=1.0-vig*(uVignette*(.12+.88*i));
   // Vibrance + saturation around luma: the picture gets louder, the texture detail stays.
   float l=dot(c,vec3(0.2126,0.7152,0.0722));
   float mx=max(c.r,max(c.g,c.b)),mn=min(c.r,min(c.g,c.b));
@@ -161,11 +198,28 @@ void main(){
   // uSlam is 0 or 1. Multiply crushes the frame to hard red; it is not a tint mix.
   vec3 red=c*vec3(1.0,0.04,0.03);
   c=mix(c,red,step(0.5,uSlam));
-  gl_FragColor=vec4(c,tex.a);
+  gl_FragColor=vec4(c,1.0);
 }`,
 };
 
-/** Contrast clip in front of output. Tone mapping stays off so the clip is not filmed away. */
-export function createClipGradePass() {
- return new ShaderPass(CLIP_GRADE_SHADER);
+export type ClipGradePass = ShaderPass & {
+ setIntensity(v: number): void;
+ /** Peripheral speed stretch, 0 (none) to ~0.1. */
+ setWarp(v: number): void;
+ setSize(w: number, h: number): void;
+};
+
+/** Contrast clip + damage/dash impact in one pass (saves a composer blit). */
+export function createClipGradePass(): ClipGradePass {
+ const pass = new ShaderPass(CLIP_GRADE_SHADER) as ClipGradePass;
+ pass.setIntensity = (v: number) => {
+  pass.uniforms.uIntensity.value = Math.max(0, Math.min(1, v));
+ };
+ pass.setWarp = (v: number) => {
+  pass.uniforms.uWarp.value = Math.max(0, Math.min(.2, v));
+ };
+ pass.setSize = (w: number, h: number) => {
+  pass.uniforms.uResolution.value.set(Math.max(1, w), Math.max(1, h));
+ };
+ return pass;
 }
