@@ -1,9 +1,9 @@
-# Painted Abyss — First Dive · 0.20.6
+# Painted Abyss — First Dive · 0.20.7
 
 
 
 
-## AK-74U viewmodel fixed: official model, iron sights (0.20.6)
+## AK-74U viewmodel fixed: official model, iron sights (0.20.7)
 
 The 0.19.8 carbine was rebuilt from Sketchfab's web-viewer data, which scrambled its UVs (stripy, dotty textures) and swapped the texture slots (gold metal, shiny arms). It now uses the author's official glTF download: black matte steel, red-brown handguard, grey hoodie sleeves and skin-tone hands, exactly as on Sketchfab. Other fixes:
 
@@ -249,3 +249,11 @@ Regenerate previews with `node playable/scripts/build-texture-previews.mjs`. Ver
 The eight copper sections use a 1,457,764-byte distant model with 10,258 triangles per section (82,064 for the full run, about 79% fewer than the original 389,072). The authored geometry is simplified offline and its textures reduced to 256px; original bounds keep the wall placement and joints aligned. The unchanged 12,449,960-byte original downloads once when the player comes within 12 metres of any section. Each section switches to the original within 8 metres and back to the distant model beyond 9 metres. Loaded originals are reused on return visits and mission restarts. Failed detail downloads retain the distant model and retry at most three times with a ten-second cooldown.
 
 The offline generation script is `playable/scripts/build-copper-lod.mjs`; its header lists the optional build-tool dependencies. Normal game builds need no extra dependencies. `playable/tests/copper-lod-browser.cjs` checks actual rendering, fitting, distance switching, download reuse, and failure fallback against a Vite dev server.
+
+## Rendering while paused and at distance
+
+Menus retain the last rendered cave frame. There is no continuous render/animation loop while paused; resize and asset completion request a single fresh frame, and hidden tabs do not draw. Resume starts one animation loop and clears the idle time delta. Prop streaming queues advance only during gameplay.
+
+Guard root movement, AI, combat events, audio, and FX retain their normal tick rate. Skeletal poses update every frame within 20 m, at about 10 Hz beyond 20 m, and 5 Hz beyond 40 m, accumulating elapsed animation time between updates. Shots, hits, attacks, and unfinished death clips force immediate/full-rate poses. Lighting still accounts for off-screen light sources that reach visible surfaces, but skips zero-intensity lights and packing point-light uniforms for target volumes outside the camera frustum.
+
+Verification: `playable/tests/render-idle-browser.cjs` checks settled menu/pause inactivity, resume, resize, asset-driven redraw, hidden-tab behavior, disposal, and visible lighting against the full light set after camera turns. `playable/tests/render-profile.cjs` profiles 180 synthetic pose/light updates. Both use `GAME_URL` (Vite dev server, default port 5190) and optional `PLAYWRIGHT_MODULE`. See `playable/RENDER-PERFORMANCE.md` for measured results and limits.

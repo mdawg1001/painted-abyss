@@ -80,7 +80,7 @@ function adopt(dst: THREE.CompressedTexture, src: THREE.CompressedTexture, color
 }
 
 /** Preview first; full originals are streamed serially after the first Begin/Resume. */
-export function loadCaveRockMaps(renderer: THREE.WebGLRenderer): CaveRockMaps {
+export function loadCaveRockMaps(renderer: THREE.WebGLRenderer, onChange:()=>void=()=>{}): CaveRockMaps {
   const loader = new KTX2Loader().setTranscoderPath('./basis/').setWorkerLimit(2).detectSupport(renderer);
   let disposed = false, started = false;
   const abort = new AbortController();
@@ -99,7 +99,7 @@ export function loadCaveRockMaps(renderer: THREE.WebGLRenderer): CaveRockMaps {
   const load = async (entry: typeof entries[number], url: string) => {
     try {
       const texture = await loader.loadAsync(url);
-      if(!disposed)adopt(entry.texture,texture,entry.color);
+      if(!disposed){adopt(entry.texture,texture,entry.color);onChange();}
       texture.dispose();
     } catch(error) {
       // A failed upgrade leaves the already-rendering preview intact.

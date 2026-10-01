@@ -1,3 +1,5 @@
+import {PresentationCadence} from './presentationCadence';
+import {onAssetSettled} from './assetRedraw';
 import { CombatFeedbackManager, COMBAT_FEEDBACK } from './combatFeedback';
 import { PropStreaming } from './propStreaming';
 import { PALETTE } from './artPalette';
@@ -197,6 +199,10 @@ void main(){
 }`;
 
 export class CaveWorld extends OceanWorld {
+ guardCadence=new PresentationCadence();
+ lightFrustum=new THREE.Frustum();lightProjection=new THREE.Matrix4();
+ /** A single pending frame: continuous during play, demand-driven on menus. */
+ requestRender=()=>{if(this.alive&&!document.hidden&&!this.frame)this.frame=requestAnimationFrame(this.animate);};
  audioNotice='';audioProbe:AnalyserNode|null=null;audioTestTimer=0;
  backgroundMusic:BackgroundMusic|null=null;
  mission=new Mission(readInventoryTipsSeen());ui:(snapshot:Snapshot)=>void;error='';pointerLocked=false;everLocked=false;lastSent=0;
@@ -353,7 +359,7 @@ export class CaveWorld extends OceanWorld {
  rockMaps:CaveRockMaps;
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
   super(host,{onReady:()=>{},onPause:()=>{},onStatus:()=>{},onToggleUI:()=>{},onGlide:()=>{},onError:()=>{}},{deferStart:true});
-  this.ui=ui;this.rockMaps=loadCaveRockMaps(this.renderer);this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
+  this.ui=ui;this.listeners.push(onAssetSettled(this.requestRender));this.rockMaps=loadCaveRockMaps(this.renderer,this.requestRender);this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
   // Dirty ivory field. The three grades assign this color; they do not blend it.
   this.scene.background=new THREE.Color(DRY_FIELD);this.scene.fog=new THREE.FogExp2(DRY_FIELD,DRY_DENSITY);
   // Near plane at 3 cm: the carbine's receiver sits ~8 cm from the eye in the hip hold.
@@ -469,7 +475,7 @@ export class CaveWorld extends OceanWorld {
   });
   this.adoptPointCull(this.torchBody,this.heldLightBox,false,false);
   this.adoptPointCull(this.guardian.group,this.guardianLightBox,false,true);
-  this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
+  this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.requestRender();this.publish();
  }
  /**
   * First Begin dive: knife + guards + FX maps, then arm prop streaming.
@@ -845,12 +851,15 @@ export class CaveWorld extends OceanWorld {
  }
  /** Refresh packed point lights. A light outside its cutoff cannot change a pixel inside the chunk box. */
  updatePointCull(){
+  this.camera.updateMatrixWorld();
+  this.lightProjection.multiplyMatrices(this.camera.projectionMatrix,this.camera.matrixWorldInverse);
+  this.lightFrustum.setFromProjectionMatrix(this.lightProjection);
   for(const sync of this.pointCullSyncs)sync();
   const lights=this._cullLights;lights.length=0;
   const wp=this._cullWp;
   this.scene.traverse(o=>{
    const light=o as THREE.PointLight;
-   if(!light.isPointLight)return;
+   if(!light.isPointLight||light.intensity<=0)return;
    for(let p:THREE.Object3D|null=light;p;p=p.parent)if(!p.visible)return;
    const i=lights.length;
    lights.push(light);
@@ -858,6 +867,7 @@ export class CaveWorld extends OceanWorld {
    light.getWorldPosition(v);
   });
   for(const t of this.pointCullTargets){
+   if(!this.lightFrustum.intersectsBox(t.box))continue;
    let n=0;
    for(let i=0;i<lights.length;i++){
     const light=lights[i];
@@ -1240,6 +1250,7 @@ export class CaveWorld extends OceanWorld {
    const g=this.mission.guards[i];if(!visual||!g)continue;
    // A fresh life in this slot (reinforcement or restart): clear his fall and pose state.
    if(g.life!==this.guardLifeSeen[i]){
+    this.guardCadence.reset(i);
     this.guardLifeSeen[i]=g.life;this.guardFall[i]=0;this.guardRecoil[i]=0;this.guardJolt[i]=0;
     this.guardShotsSeen[i]=g.shots;this.guardStrikeSeen[i]=g.strikeAt;visual.pose=makeGuardCombatState(i);
     const fresh=this.guardActs[i];if(fresh)clearGuardAction(fresh);
@@ -1268,10 +1279,20 @@ export class CaveWorld extends OceanWorld {
    visual.root.rotation.order='YXZ';
    visual.root.rotation.set(-fall*1.48,g.heading,fall*(i%2?.22:-.22));
    syncGuardGear(visual,{gun:g.gun,bottle:g.bottle,coat:g.coat});
-   // Legs follow real ground velocity (strafe / backpedal while firing), chest follows you.
-   const gaitDir=updateGuardMoveFrame(visual.pose,g.vx,g.vz,g.heading,g.speed,dt);
-   if(visual.loco){
-    updateGuardLocomotion(visual.loco,dt,{moving:g.speed>.02,speed:g.speed,state:g.state,turnRate:g.turnRate,direction:gaitDir});
+   const hitNow=this.mission.lastPistolHit;
+   const knifeNow=this.mission.lastKnifeHit;
+   const urgent=g.shots!==this.guardShotsSeen[i]||g.windup>0||this.guardRecoil[i]>0||this.guardJolt[i]>0
+    ||!!(hitNow&&hitNow.guard===i&&hitNow.shot!==this.pistolHitSeen)
+    ||!!(knifeNow&&knifeNow.guard===i&&knifeNow.at!==this.knifeHitSeen)
+    ||!!(act?.kind&&(act.kind!=='death'||act.time<act.clips.death.duration))
+    ||this.guardFall[i]>0&&this.guardFall[i]<1;
+   const poseDt=this.guardCadence.step(i,dt,visual.root.position.distanceTo(this.position),urgent);
+   if(poseDt!==null){
+    // Legs follow real ground velocity (strafe / backpedal while firing), chest follows you.
+    const gaitDir=updateGuardMoveFrame(visual.pose,g.vx,g.vz,g.heading,g.speed,poseDt);
+    if(visual.loco){
+     updateGuardLocomotion(visual.loco,poseDt,{moving:g.speed>.02,speed:g.speed,state:g.state,turnRate:g.turnRate,direction:gaitDir});
+    }
    }
    // Rusher knife: the stab clip's wind-up is stretched over the sim's, the thrust lands on the blow.
    const rusherWind=g.role==='rusher'&&g.hp>0&&g.windup>0&&g.windupTotal>0;
@@ -1299,7 +1320,7 @@ export class CaveWorld extends OceanWorld {
    if(hit&&hit.guard===i&&hit.shot!==this.pistolHitSeen){this.pistolHitSeen=hit.shot;this.guardJolt[i]=1;if(act&&g.hp>0)playGuardAction(act,'hit');}
    const kh=this.mission.lastKnifeHit;
    if(kh&&kh.guard===i&&kh.at!==this.knifeHitSeen){this.knifeHitSeen=kh.at;if(act&&g.hp>0)playGuardAction(act,'hit');}
-   const actW=act&&visual.loco?stepGuardAction(visual.loco,act,dt,act.kind==='stab'&&rusherWind?1-g.windup/g.windupTotal:null):0;
+   const actW=act&&visual.loco?(poseDt===null?act.weight:stepGuardAction(visual.loco,act,poseDt,act.kind==='stab'&&rusherWind?1-g.windup/g.windupTotal:null)):0;
    this.guardJolt[i]=Math.max(0,(this.guardJolt[i]??0)-dt*4);
    const kick=Math.max(this.guardRecoil[i]??0,this.guardJolt[i]??0);
    // Close attack: grunt at the wind-up, thud or swish at the blow.
@@ -1315,17 +1336,19 @@ export class CaveWorld extends OceanWorld {
    const strikeAge=this.mission.elapsed-g.strikeAt;
    const clipOwnsBody=!!act&&act.kind==='death'&&actW>.5;
    const clipStab=!!act&&act.kind==='stab';
-   if(clipOwnsBody){
-    // Dead and crumpling: the clip owns every bone; only the face goes slack.
-    const f=visual.rig?.face;if(f?.morphTargetInfluences){f.morphTargetInfluences[0]=0;f.morphTargetInfluences[1]=1;}
-   }else if(visual.rig&&visual.loco){
-    applyGuardCombatPose(visual.rig,visual.pose,visual.gun,{
-     target:this._aimTarget,aim:g.gun?g.aim:0,engaged:g.hp>0&&g.state!=='patrol',
-     recoil:kick,speed:g.speed,dt,down:g.hp>0?0:1,
-     melee:!clipStab&&winding&&g.windupTotal>0?1-g.windup/g.windupTotal:0,
-     strike:!clipStab&&g.strikeAt>=0&&strikeAge>=0&&strikeAge<.3?1-strikeAge/.3:0,
-    });
-   }else applyGuardAim(visual,this._aimTarget,g.aim,kick);
+   if(poseDt!==null){
+    if(clipOwnsBody){
+     // Dead and crumpling: the clip owns every bone; only the face goes slack.
+     const f=visual.rig?.face;if(f?.morphTargetInfluences){f.morphTargetInfluences[0]=0;f.morphTargetInfluences[1]=1;}
+    }else if(visual.rig&&visual.loco){
+     applyGuardCombatPose(visual.rig,visual.pose,visual.gun,{
+      target:this._aimTarget,aim:g.gun?g.aim:0,engaged:g.hp>0&&g.state!=='patrol',
+      recoil:kick,speed:g.speed,dt:poseDt,down:g.hp>0?0:1,
+      melee:!clipStab&&winding&&g.windupTotal>0?1-g.windup/g.windupTotal:0,
+      strike:!clipStab&&g.strikeAt>=0&&strikeAge>=0&&strikeAge<.3?1-strikeAge/.3:0,
+     });
+    }else applyGuardAim(visual,this._aimTarget,g.aim,kick);
+   }
    let muzzle:THREE.Vector3|null=null;
    if(g.gun&&this.guardShotsSeen[i]===g.shots&&flashFrom===i){
     muzzle=visual.gun.getWorldPosition(new THREE.Vector3());
@@ -1793,7 +1816,7 @@ export class CaveWorld extends OceanWorld {
   const w=this.host.clientWidth,h=this.host.clientHeight;
   this.camera.aspect=w/h;this.camera.updateProjectionMatrix();
   this.setPixelRatio();
-  this.renderer.setSize(w,h);this.composer?.setSize(w,h);
+  this.renderer.setSize(w,h);this.composer?.setSize(w,h);this.requestRender();
   if(this.bloom)resizeBloomPass(this.bloom,w,h);
   this.impactPass?.setSize(w,h);
  }
@@ -1877,7 +1900,7 @@ export class CaveWorld extends OceanWorld {
    this.publish();
   }) as EventListener);
   on(window,'keyup',((e:KeyboardEvent)=>{this.keys.delete(e.code);}) as EventListener);
-  on(window,'blur',(()=>this.pause()) as EventListener);on(document,'visibilitychange',(()=>{if(document.hidden)this.pause();}) as EventListener);
+  on(window,'blur',(()=>this.pause()) as EventListener);on(document,'visibilitychange',(()=>{if(document.hidden){this.pause();cancelAnimationFrame(this.frame);this.frame=0;}else this.requestRender();}) as EventListener);
   const canvas=this.renderer.domElement;
   on(canvas,'pointerdown',((e:PointerEvent)=>{
    if(!this.playing||this.mission.mapOpen)return;
@@ -2278,7 +2301,7 @@ export class CaveWorld extends OceanWorld {
   this.airborne=breathingFreeAir(this.mission.position,this.mission.breathWaterY);
   this.backgroundMusic?.setDry(this.airborne);
   if(this.sound)this.enableAudio(true);
-  this.lookPointer=null;this.fallbackTurn=0;this.requestLookLock(true);this.publish();
+  this.lookPointer=null;this.fallbackTurn=0;this.requestLookLock(true);this.publish();this.requestRender();
   // QA: `?bloodTest=1` spawns a kill-scale blood cloud ahead of the diver (no combat required).
   if(typeof location!=='undefined'&&new URLSearchParams(location.search).has('bloodTest')){
    window.setTimeout(()=>{
@@ -2292,7 +2315,7 @@ export class CaveWorld extends OceanWorld {
    },400);
   }
  }
- pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.aimHeld=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
+ pause(){cancelAnimationFrame(this.frame);this.frame=0;if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.aimHeld=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
  reset(){
   this.endValve();
   this.backgroundMusic?.reset();this.mission=new Mission(readInventoryTipsSeen());
@@ -2314,10 +2337,11 @@ export class CaveWorld extends OceanWorld {
   this.syncPickups();this.syncChests(0);this.syncBreathProps();this.backgroundMusic?.setDry(true);this.publish();
  }
  animate=()=>{
-  if(!this.alive)return;
+  this.frame=0;
+  if(!this.alive||document.hidden)return;
   const propNow=performance.now()/1000;
-  if(propNow-this.lastPropCheck>=.25){this.lastPropCheck=propNow;this.propStreaming.update(this.position,propNow);}
-  if(this.copperPipe&&updateCopperPipe(this.copperPipe,this.position)){
+  if(this.playing&&propNow-this.lastPropCheck>=.25){this.lastPropCheck=propNow;this.propStreaming.update(this.position,propNow);}
+  if(this.playing&&this.copperPipe&&updateCopperPipe(this.copperPipe,this.position)){
    const visual=this.copperPipe;
    void upgradeCopperPipeDetail(visual,this.knifeEnvMap).then(parts=>{
     if(!this.alive)return;
@@ -2325,8 +2349,8 @@ export class CaveWorld extends OceanWorld {
     updateCopperPipe(visual,this.position);
    });
   }
-  this.frame=requestAnimationFrame(this.animate);
-  const realDt=Math.min(this.clock.getDelta(),.05);
+  const clockDt=this.clock.getDelta();
+  const realDt=this.playing?Math.min(clockDt,.05):0;
   this.shakeClock+=realDt;
   const feedback=this.combatFeedback.tick(realDt,this.shakeClock);
   this.combatShakeOffset=feedback.offset;
@@ -2616,6 +2640,7 @@ export class CaveWorld extends OceanWorld {
   this.updatePointCull();
   this.applyPortalOcclusion();
   this.composer.render();
+  if(this.playing)this.requestRender();
  }
  dispose(){window.clearTimeout(this.akPrefetchTimer);if(this.copperPipe)this.copperPipe.disposed=true;this.rockMaps.dispose();this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
 }
