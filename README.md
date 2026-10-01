@@ -1,8 +1,12 @@
-# Painted Abyss — First Dive · 0.22.45
+# Painted Abyss — First Dive · 0.23.0
+
+## Map-scale first-floor catwalk (0.23.0)
+
+Replaces the toy west-hall L-shelf with a **ground + first-floor** mezzanine: ~3.8 m grated pads covering most of the hall, the full neck bridge, and entrance edge shelves (centre combat lane stays ground-level). Multiple ladder climb points; intentional gap cells drop to the floodable floor. Deck at `FLOOR_Y+3.2` under pipe trays. Guards stay ground-only for v1.
 
 ## West-hall catwalk gallery (0.22.45)
 
-Walkable **broken service gallery** over the west hall: grated modular decks (L-run + spur), one collapsed span, and a south-end ladder climb. Solid spans support at `FLOOR_Y+3.2`; the gap drops to the floor. Guards stay on the ground for v1.
+Walkable **broken service gallery** over the west hall: grated modular decks (L-run + spur), one collapsed span, and a south-end ladder climb. Solid spans support at `FLOOR_Y+3.2`; the gap drops to the floor. Guards stay on the ground for v1. **Superseded by 0.23.0 map-scale mezzanine.**
 
 ## Critical heal clutch (0.22.43)
 

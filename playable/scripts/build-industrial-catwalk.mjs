@@ -1,6 +1,6 @@
 /**
  * Author compact modular industrial catwalk GLBs (Soviet steel, no warehouse orange).
- * Kit language: straight / cross / T / ladder / rail — Unity FBX can replace later.
+ * Kit language: pad / straight / cross / T / ladder / rail — Unity FBX can replace later.
  *
  * Writes raw GLB (no browser FileReader) from box meshes.
  * Usage: node scripts/build-industrial-catwalk.mjs
@@ -23,54 +23,79 @@ function box(cx,cy,cz,sx,sy,sz,color=[.29,.31,.32]){
  };
 }
 
-function grateDeck(length=2,width=1.2,thick=.06){
+function grateDeck(length=2,width=2.4,thick=.06){
  const dark=[.18,.2,.21],steel=[.29,.31,.32];
  const boxes=[box(0,thick*.5,0,width,thick,length,dark)];
- const n=Math.max(4,Math.round(length/.28));
+ const n=Math.max(4,Math.round(length/.32));
  for(let i=0;i<n;i++){
   const z=-length*.5+(i+.5)*(length/n);
-  boxes.push(box(0,thick+.02,z,width*.92,.03,.04,steel));
+  boxes.push(box(0,thick+.02,z,width*.94,.03,.04,steel));
  }
- const m=Math.max(3,Math.round(width/.28));
+ const m=Math.max(3,Math.round(width/.32));
  for(let i=0;i<m;i++){
   const x=-width*.5+(i+.5)*(width/m);
-  boxes.push(box(x,thick+.025,0,.04,.03,length*.92,steel));
+  boxes.push(box(x,thick+.025,0,.04,.03,length*.94,steel));
  }
  return boxes;
 }
 
-function sideRail(length=2,side=1,width=1.2){
+function sideRail(length=2,side=1,width=2.4){
  const steel=[.29,.31,.32];
  const x=side*(width*.5-.03);
  const boxes=[];
- for(const z of [-length*.4,0,length*.4])boxes.push(box(x,.525,z,.05,1.05,.05,steel));
+ const posts=Math.max(3,Math.round(length/.9));
+ for(let i=0;i<posts;i++){
+  const z=-length*.5+(i+.5)*(length/posts);
+  boxes.push(box(x,.525,z,.05,1.05,.05,steel));
+ }
  boxes.push(box(x,1.02,0,.04,.04,length*.92,steel));
  boxes.push(box(x,.55,0,.035,.03,length*.92,steel));
  return boxes;
 }
 
+/** Full cell-ish pad (~3.8 m) for map-scale mezzanine tiles. */
+function buildPad(){
+ const w=3.8,l=3.8;
+ return[
+  ...grateDeck(l,w),
+  ...sideRail(l,1,w),
+  ...sideRail(l,-1,w),
+  // End rails (rotate: posts along X)
+  ...sideRail(w,1,l).map(b=>{
+   const[minx,miny,minz]=b.min,[maxx,maxy,maxz]=b.max;
+   return{min:[minz,miny,minx],max:[maxz,maxy,maxx],color:b.color};
+  }),
+  ...sideRail(w,-1,l).map(b=>{
+   const[minx,miny,minz]=b.min,[maxx,maxy,maxz]=b.max;
+   return{min:[minz,miny,minx],max:[maxz,maxy,maxx],color:b.color};
+  }),
+ ];
+}
+
 function buildStraight(){
- return[...grateDeck(2,1.2),...sideRail(2,1),...sideRail(2,-1)];
+ const w=2.4,l=2;
+ return[...grateDeck(l,w),...sideRail(l,1,w),...sideRail(l,-1,w)];
 }
 
 function buildCross(){
- const a=grateDeck(2,1.2);
- // Spur: swap X/Z extents of a copy
- const spur=grateDeck(2,1.2).map(b=>{
+ const w=2.4,l=2;
+ const a=grateDeck(l,w);
+ const spur=grateDeck(l,w).map(b=>{
   const[minx,miny,minz]=b.min,[maxx,maxy,maxz]=b.max;
   return{min:[minz,miny,minx],max:[maxz,maxy,maxx],color:b.color};
  });
- return[...a,...spur,...sideRail(2,1),...sideRail(2,-1)];
+ return[...a,...spur,...sideRail(l,1,w),...sideRail(l,-1,w)];
 }
 
 function buildT(){
- const a=grateDeck(2,1.2);
- const spur=grateDeck(2,1.2).map(b=>{
+ const w=2.4,l=2;
+ const a=grateDeck(l,w);
+ const spur=grateDeck(l,w).map(b=>{
   const[minx,miny,minz]=b.min,[maxx,maxy,maxz]=b.max;
   // rotate 90° about Y and shift +X
   return{min:[minz+.9,miny,minx],max:[maxz+.9,maxy,maxx],color:b.color};
  });
- return[...a,...spur,...sideRail(2,-1)];
+ return[...a,...spur,...sideRail(l,-1,w)];
 }
 
 function buildLadder(){
@@ -85,7 +110,6 @@ function buildLadder(){
   const y=.25+i*((h-.4)/(rungs-1));
   boxes.push(box(0,y,0,w,.04,.05,steel));
  }
- // Simple cage bar at top
  boxes.push(box(0,h-.1,.28,.5,.05,.05,steel));
  return boxes;
 }
@@ -94,7 +118,6 @@ function buildRailBroken(){
  const rust=[.23,.21,.19];
  return[
   box(0,.225,0,.05,.45,.05,rust),
-  // dangling rail — approximate tilted bar as stepped boxes
   box(0,.4,.25,.04,.04,.55,rust),
   box(.04,.15,.7,.05,.05,.45,rust),
   box(.06,-.05,.95,.05,.05,.35,rust),
@@ -108,7 +131,6 @@ function writeGlb(boxes,file){
  const colors=[];
  const indices=[];
  const faces=[
-  // each face: normal + 4 corners as offsets into [min,max] corners encoded below
   {n:[0,1,0],c:[[0,1,0],[1,1,0],[1,1,1],[0,1,1]]},
   {n:[0,-1,0],c:[[0,0,1],[1,0,1],[1,0,0],[0,0,0]]},
   {n:[1,0,0],c:[[1,0,0],[1,0,1],[1,1,1],[1,1,0]]},
@@ -128,7 +150,6 @@ function writeGlb(boxes,file){
    [b.min[0],b.max[1],b.max[2]],
    [b.max[0],b.max[1],b.max[2]],
   ];
-  // index map: bit0=x max, bit1=y max, bit2=z max
   const corner=(cx,cy,cz)=>corners[(cx?1:0)|(cy?2:0)|(cz?4:0)];
   for(const f of faces){
    const base=v;
@@ -147,7 +168,6 @@ function writeGlb(boxes,file){
  const col=new Float32Array(colors);
  const idx=new Uint32Array(indices);
 
- // Pack buffer: POSITION, NORMAL, COLOR_0, INDICES — all aligned to 4 bytes
  const parts=[pos.buffer,nor.buffer,col.buffer,idx.buffer];
  let binSize=0;
  const offsets=[];
@@ -193,20 +213,21 @@ function writeGlb(boxes,file){
 
  const total=12+8+jsonChunk.byteLength+8+binChunk.byteLength;
  const header=Buffer.alloc(12);
- header.writeUInt32LE(0x46546C67,0); // glTF
+ header.writeUInt32LE(0x46546C67,0);
  header.writeUInt32LE(2,4);
  header.writeUInt32LE(total,8);
  const jsonHeader=Buffer.alloc(8);
  jsonHeader.writeUInt32LE(jsonChunk.byteLength,0);
- jsonHeader.writeUInt32LE(0x4E4F534A,4); // JSON
+ jsonHeader.writeUInt32LE(0x4E4F534A,4);
  const binHeader=Buffer.alloc(8);
  binHeader.writeUInt32LE(binChunk.byteLength,0);
- binHeader.writeUInt32LE(0x004E4942,4); // BIN
+ binHeader.writeUInt32LE(0x004E4942,4);
  fs.writeFileSync(file,Buffer.concat([header,jsonHeader,jsonChunk,binHeader,binChunk]));
  return total;
 }
 
 const pieces={
+ 'catwalk_pad.glb':buildPad(),
  'catwalk_straight.glb':buildStraight(),
  'catwalk_cross.glb':buildCross(),
  'catwalk_t.glb':buildT(),
@@ -223,15 +244,19 @@ for(const [name,boxes] of Object.entries(pieces)){
 fs.writeFileSync(path.join(outDir,'README.md'),`# Industrial catwalk modules
 
 Authored compact grated decks matching Modular Industrial Catwalk Kit language
-(straight / cross / T / ladder / broken rail). Dull Soviet steel — no warehouse orange.
+(pad / straight / cross / T / ladder / broken rail). Dull Soviet steel — no warehouse orange.
+
+Map-scale first-floor mezzanine uses \`catwalk_pad.glb\` (~3.8×3.8 m) per covered open cell.
+Straight / cross / T remain available for bridge runs.
 
 Replace with Unity Asset Store FBX→glTF conversions later if desired; mount names stay stable.
 
 Files:
-- \`catwalk_straight.glb\` — 2 m × 1.2 m grated span + side rails
+- \`catwalk_pad.glb\` — ~3.8 m × 3.8 m grated mezzanine tile + rails
+- \`catwalk_straight.glb\` — 2 m × 2.4 m grated span + side rails
 - \`catwalk_cross.glb\` — cross junction
 - \`catwalk_t.glb\` — T junction (spur +X)
 - \`catwalk_ladder.glb\` — cage ladder (~3.35 m)
-- \`catwalk_rail_broken.glb\` — dangling rail for the collapsed span
+- \`catwalk_rail_broken.glb\` — dangling rail for collapsed / gap edges
 `);
 console.log('done →',outDir);
