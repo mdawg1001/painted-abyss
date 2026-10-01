@@ -95,7 +95,7 @@ export const RELIC:Point={x:0,y:2,z:-112};
 /** Stone plinth the relic lies on. Its top is the support height for anything resting there. */
 export const RELIC_PLINTH={x:0,z:-112,radius:1.05,height:1.0} as const;
 /**
- * Support height under (x, z): first-floor catwalk grate, relic plinth, or bunker floor.
+ * Support height under (x, z): sparse service-gallery grate, relic plinth, or bunker floor.
  * Loose items rest here; `Pickup.position.y` is always the item's underside.
  * Only solid catwalk spans support — intentional gaps return the floor.
  */
