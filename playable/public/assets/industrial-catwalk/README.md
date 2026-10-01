@@ -1,17 +1,15 @@
-# Industrial catwalk modules
+# Bunker service-gallery modules
 
-Authored compact grated decks matching Modular Industrial Catwalk Kit language
-(pad / straight / cross / T / ladder / broken rail). Dull Soviet steel — no warehouse orange.
+Authored narrow grated walks with heavy stringers, kick plates, hangers, and wall
+brackets. Colours match bunker enamel dark / tray grey / concrete — not warehouse
+orange or sci-fi pad tiles.
 
-Map-scale first-floor mezzanine uses `catwalk_pad.glb` (~3.8×3.8 m) per covered open cell.
-Straight / cross / T remain available for bridge runs.
-
-Replace with Unity Asset Store FBX→glTF conversions later if desired; mount names stay stable.
+Sparse placements only (west-hall wall L, neck west shelf, hall pit north lip).
 
 Files:
-- `catwalk_pad.glb` — ~3.8 m × 3.8 m grated mezzanine tile + rails
-- `catwalk_straight.glb` — 2 m × 2.4 m grated span + side rails
+- `catwalk_straight.glb` — 2 m × 1.35 m grated span + rails + hangers
 - `catwalk_cross.glb` — cross junction
 - `catwalk_t.glb` — T junction (spur +X)
-- `catwalk_ladder.glb` — cage ladder (~3.35 m)
-- `catwalk_rail_broken.glb` — dangling rail for collapsed / gap edges
+- `catwalk_ladder.glb` — cage ladder (~3.35 m) with floor shoes
+- `catwalk_rail_broken.glb` — dangling rail for collapsed bays
+- `catwalk_bracket.glb` — angle-iron wall bracket into concrete

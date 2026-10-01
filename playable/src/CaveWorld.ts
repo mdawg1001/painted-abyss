@@ -331,7 +331,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
  copperPipe:CopperPipe|null=null;
  /** Sketchfab cast-iron radiators on breath-corridor / lab walls. */
  wallRadiators:WallRadiators|null=null;
- /** First-floor grated catwalk mezzanine (stub → modular industrial-catwalk GLBs). */
+ /** Sparse bunker service galleries (stub → modular industrial-catwalk GLBs). */
  westCatwalk:WestCatwalks|null=null;
  /** Both arms, shown only while the leak valve is being worked. */
  valveHands:ValveHandsRig|null=null;
@@ -692,13 +692,13 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    return ok;
   },44);
  }
- /** First-floor catwalk mezzanine: grated pads + ladders (stub → modular GLBs). */
+ /** Sparse bunker service galleries: short wall/pit runs + ladders (stub → modular GLBs). */
  mountWestCatwalk(){
   const visual=createCatwalk();
   this.scene.add(visual.group);
   this.westCatwalk=visual;
   const anchor=visual.mounts.find(m=>m.kind==='ladder')??visual.mounts[0]??{x:-28,z:-48};
-  this.propStreaming.add('first-floor-catwalk',anchor,async()=>{
+  this.propStreaming.add('bunker-service-galleries',anchor,async()=>{
    const ok=await upgradeCatwalk(visual,this.knifeEnvMap);
    if(!ok||!this.alive)return ok;
    for(const child of visual.group.children){

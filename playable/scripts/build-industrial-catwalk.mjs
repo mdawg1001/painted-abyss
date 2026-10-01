@@ -1,7 +1,8 @@
 /**
- * Author compact modular industrial catwalk GLBs (Soviet steel, no warehouse orange).
- * Kit language: pad / straight / cross / T / ladder / rail — Unity FBX can replace later.
+ * Author bunker-fitted service-gallery GLBs (Soviet enamel / dull steel / concrete).
+ * Narrow walkways with heavy stringers, kick plates, and wall brackets — not toy pad tiles.
  *
+ * Kit language: straight / cross / T / ladder / rail / bracket.
  * Writes raw GLB (no browser FileReader) from box meshes.
  * Usage: node scripts/build-industrial-catwalk.mjs
  */
@@ -15,7 +16,14 @@ fs.mkdirSync(outDir,{recursive:true});
 
 /** @typedef {{min:number[],max:number[],color:number[]}} Box */
 
-function box(cx,cy,cz,sx,sy,sz,color=[.29,.31,.32]){
+/** Bunker kit–aligned colours (linear-ish 0–1 from enamel dark / tray grey / steel). */
+const STEEL=[.255,.275,.255];      // ~ENAMEL_DARK 0x353a33
+const STEEL_LIGHT=[.49,.502,.475]; // ~TRAY_GREY 0x7d8079
+const DECK_DARK=[.16,.17,.16];
+const CONCRETE=[.36,.35,.32];
+const RUST=[.22,.19,.16];
+
+function box(cx,cy,cz,sx,sy,sz,color=STEEL){
  return{
   min:[cx-sx*.5,cy-sy*.5,cz-sz*.5],
   max:[cx+sx*.5,cy+sy*.5,cz+sz*.5],
@@ -23,62 +31,71 @@ function box(cx,cy,cz,sx,sy,sz,color=[.29,.31,.32]){
  };
 }
 
-function grateDeck(length=2,width=2.4,thick=.06){
- const dark=[.18,.2,.21],steel=[.29,.31,.32];
- const boxes=[box(0,thick*.5,0,width,thick,length,dark)];
- const n=Math.max(4,Math.round(length/.32));
+/** Heavy plate deck + open grate bars (thicker than the old toy modules). */
+function grateDeck(length=2,width=1.35,thick=.09){
+ const boxes=[
+  // Underside plate (reads as built steel, not floating grate)
+  box(0,thick*.35,0,width,thick*.7,length,DECK_DARK),
+  // Top wearing surface
+  box(0,thick*.85,0,width*.98,thick*.3,length*.98,STEEL),
+ ];
+ // Cross bars
+ const n=Math.max(5,Math.round(length/.26));
  for(let i=0;i<n;i++){
   const z=-length*.5+(i+.5)*(length/n);
-  boxes.push(box(0,thick+.02,z,width*.94,.03,.04,steel));
+  boxes.push(box(0,thick+.015,z,width*.9,.035,.05,STEEL_LIGHT));
  }
- const m=Math.max(3,Math.round(width/.32));
+ // Longitudinal bars
+ const m=Math.max(3,Math.round(width/.28));
  for(let i=0;i<m;i++){
   const x=-width*.5+(i+.5)*(width/m);
-  boxes.push(box(x,thick+.025,0,.04,.03,length*.94,steel));
+  boxes.push(box(x,thick+.02,0,.045,.03,length*.9,STEEL_LIGHT));
+ }
+ // Side stringers (I-beam-ish)
+ for(const side of[-1,1]){
+  const x=side*(width*.5+.02);
+  boxes.push(box(x,thick*.5,0,.07,thick+.04,length*.98,STEEL));
+  boxes.push(box(x,-.08,0,.1,.1,length*.96,STEEL)); // bottom flange
  }
  return boxes;
 }
 
-function sideRail(length=2,side=1,width=2.4){
- const steel=[.29,.31,.32];
- const x=side*(width*.5-.03);
+function sideRail(length=2,side=1,width=1.35){
+ const x=side*(width*.5-.04);
  const boxes=[];
- const posts=Math.max(3,Math.round(length/.9));
+ const posts=Math.max(3,Math.round(length/.85));
  for(let i=0;i<posts;i++){
   const z=-length*.5+(i+.5)*(length/posts);
-  boxes.push(box(x,.525,z,.05,1.05,.05,steel));
+  boxes.push(box(x,.55,z,.06,1.1,.06,STEEL));
  }
- boxes.push(box(x,1.02,0,.04,.04,length*.92,steel));
- boxes.push(box(x,.55,0,.035,.03,length*.92,steel));
+ // Top rail + mid rail
+ boxes.push(box(x,1.08,0,.05,.05,length*.94,STEEL_LIGHT));
+ boxes.push(box(x,.62,0,.045,.04,length*.94,STEEL));
+ // Kick plate (toe board) — reads industrial / bunker code
+ boxes.push(box(x,.12,0,.04,.2,length*.94,STEEL));
  return boxes;
 }
 
-/** Full cell-ish pad (~3.8 m) for map-scale mezzanine tiles. */
-function buildPad(){
- const w=3.8,l=3.8;
- return[
-  ...grateDeck(l,w),
-  ...sideRail(l,1,w),
-  ...sideRail(l,-1,w),
-  // End rails (rotate: posts along X)
-  ...sideRail(w,1,l).map(b=>{
-   const[minx,miny,minz]=b.min,[maxx,maxy,maxz]=b.max;
-   return{min:[minz,miny,minx],max:[maxz,maxy,maxx],color:b.color};
-  }),
-  ...sideRail(w,-1,l).map(b=>{
-   const[minx,miny,minz]=b.min,[maxx,maxy,maxz]=b.max;
-   return{min:[minz,miny,minx],max:[maxz,maxy,maxx],color:b.color};
-  }),
- ];
+/** Short under-deck braces (not full floor columns — walls carry the load via brackets). */
+function hangers(length=2,width=1.35){
+ const boxes=[];
+ for(const z of[-length*.32,length*.32]){
+  for(const side of[-1,1]){
+   const x=side*(width*.5-.08);
+   boxes.push(box(x,-.28,z,.07,.5,.07,STEEL));
+   boxes.push(box(x,-.52,z,.14,.06,.14,STEEL));
+  }
+ }
+ return boxes;
 }
 
 function buildStraight(){
- const w=2.4,l=2;
- return[...grateDeck(l,w),...sideRail(l,1,w),...sideRail(l,-1,w)];
+ const w=1.35,l=2;
+ return[...grateDeck(l,w),...sideRail(l,1,w),...sideRail(l,-1,w),...hangers(l,w)];
 }
 
 function buildCross(){
- const w=2.4,l=2;
+ const w=1.35,l=2;
  const a=grateDeck(l,w);
  const spur=grateDeck(l,w).map(b=>{
   const[minx,miny,minz]=b.min,[maxx,maxy,maxz]=b.max;
@@ -88,40 +105,69 @@ function buildCross(){
 }
 
 function buildT(){
- const w=2.4,l=2;
- const a=grateDeck(l,w);
+ const w=1.35,l=2;
  const spur=grateDeck(l,w).map(b=>{
   const[minx,miny,minz]=b.min,[maxx,maxy,maxz]=b.max;
-  // rotate 90° about Y and shift +X
-  return{min:[minz+.9,miny,minx],max:[maxz+.9,maxy,maxx],color:b.color};
+  return{min:[minz+.85,miny,minx],max:[maxz+.85,maxy,maxx],color:b.color};
  });
- return[...a,...spur,...sideRail(l,-1,w)];
+ return[
+  ...grateDeck(l,w),
+  ...spur,
+  ...sideRail(l,-1,w),
+  ...hangers(l,w),
+ ];
 }
 
 function buildLadder(){
- const steel=[.29,.31,.32];
- const h=3.35,w=.55;
+ const h=3.35,w=.58;
  const boxes=[
-  box(-w*.5,h*.5,0,.06,h,.06,steel),
-  box(w*.5,h*.5,0,.06,h,.06,steel),
+  box(-w*.5,h*.5,0,.07,h,.07,STEEL),
+  box(w*.5,h*.5,0,.07,h,.07,STEEL),
+  // Side cage straps (reads as bunker cage ladder, not toy)
+  box(-w*.5-.04,h*.55,.18,.04,h*.7,.04,STEEL),
+  box(w*.5+.04,h*.55,.18,.04,h*.7,.04,STEEL),
  ];
  const rungs=12;
  for(let i=0;i<rungs;i++){
   const y=.25+i*((h-.4)/(rungs-1));
-  boxes.push(box(0,y,0,w,.04,.05,steel));
+  boxes.push(box(0,y,0,w,.045,.055,STEEL_LIGHT));
  }
- boxes.push(box(0,h-.1,.28,.5,.05,.05,steel));
+ boxes.push(box(0,h-.08,.3,.55,.06,.06,STEEL));
+ // Floor shoe plates
+ boxes.push(box(-w*.5,.03,0,.14,.06,.14,CONCRETE));
+ boxes.push(box(w*.5,.03,0,.14,.06,.14,CONCRETE));
  return boxes;
 }
 
 function buildRailBroken(){
- const rust=[.23,.21,.19];
  return[
-  box(0,.225,0,.05,.45,.05,rust),
-  box(0,.4,.25,.04,.04,.55,rust),
-  box(.04,.15,.7,.05,.05,.45,rust),
-  box(.06,-.05,.95,.05,.05,.35,rust),
+  box(0,.225,0,.06,.5,.06,RUST),
+  box(0,.42,.28,.05,.05,.6,RUST),
+  box(.05,.14,.75,.06,.06,.48,RUST),
+  box(.08,-.06,1.0,.06,.06,.38,RUST),
  ];
+}
+
+/**
+ * Angle-iron wall bracket: vertical plate into concrete + diagonal brace + deck seat.
+ * Origin at deck underside; +Z faces into the room, −Z into the wall.
+ */
+function buildBracket(){
+ const boxes=[
+  // Wall plate (concrete-anchored)
+  box(0,.15,-.08,.22,.9,.05,CONCRETE),
+  box(0,.15,-.04,.16,.75,.04,STEEL),
+  // Horizontal seat under deck
+  box(0,.02,.35,.18,.07,.7,STEEL),
+  // Diagonal brace
+  box(0,-.35,.2,.08,.55,.08,STEEL),
+  // Anchor bolts (visual nubs)
+  box(-.07,.4,-.1,.04,.04,.06,STEEL_LIGHT),
+  box(.07,.4,-.1,.04,.04,.06,STEEL_LIGHT),
+  box(-.07,-.15,-.1,.04,.04,.06,STEEL_LIGHT),
+  box(.07,-.15,-.1,.04,.04,.06,STEEL_LIGHT),
+ ];
+ return boxes;
 }
 
 /** Emit a single-mesh GLB from axis-aligned boxes. */
@@ -183,7 +229,7 @@ function writeGlb(boxes,file){
  bin.set(new Uint8Array(idx.buffer),offsets[3]);
 
  const gltf={
-  asset:{version:'2.0',generator:'painted-abyss-industrial-catwalk'},
+  asset:{version:'2.0',generator:'painted-abyss-bunker-gallery'},
   buffers:[{byteLength:bin.byteLength}],
   bufferViews:[
    {buffer:0,byteOffset:offsets[0],byteLength:pos.byteLength,target:34962},
@@ -199,7 +245,11 @@ function writeGlb(boxes,file){
    {bufferView:2,componentType:5126,count:col.length/3,type:'VEC3'},
    {bufferView:3,componentType:5125,count:idx.length,type:'SCALAR'},
   ],
-  materials:[{name:'SovietSteel',pbrMetallicRoughness:{baseColorFactor:[.45,.48,.5,1],metallicFactor:.55,roughnessFactor:.72},doubleSided:false}],
+  materials:[{
+   name:'BunkerEnamelSteel',
+   pbrMetallicRoughness:{baseColorFactor:[.42,.45,.42,1],metallicFactor:.5,roughnessFactor:.78},
+   doubleSided:false,
+  }],
   meshes:[{primitives:[{attributes:{POSITION:0,NORMAL:1,COLOR_0:2},indices:3,material:0}]}],
   nodes:[{mesh:0,name:path.basename(file,'.glb')}],
   scenes:[{nodes:[0]}],
@@ -227,12 +277,12 @@ function writeGlb(boxes,file){
 }
 
 const pieces={
- 'catwalk_pad.glb':buildPad(),
  'catwalk_straight.glb':buildStraight(),
  'catwalk_cross.glb':buildCross(),
  'catwalk_t.glb':buildT(),
  'catwalk_ladder.glb':buildLadder(),
  'catwalk_rail_broken.glb':buildRailBroken(),
+ 'catwalk_bracket.glb':buildBracket(),
 };
 
 for(const [name,boxes] of Object.entries(pieces)){
@@ -241,22 +291,27 @@ for(const [name,boxes] of Object.entries(pieces)){
  console.log(`wrote ${name} (${bytes} bytes)`);
 }
 
-fs.writeFileSync(path.join(outDir,'README.md'),`# Industrial catwalk modules
+// Remove map-scale pad tile — no longer used.
+const pad=path.join(outDir,'catwalk_pad.glb');
+if(fs.existsSync(pad)){
+ fs.unlinkSync(pad);
+ console.log('removed catwalk_pad.glb');
+}
 
-Authored compact grated decks matching Modular Industrial Catwalk Kit language
-(pad / straight / cross / T / ladder / broken rail). Dull Soviet steel — no warehouse orange.
+fs.writeFileSync(path.join(outDir,'README.md'),`# Bunker service-gallery modules
 
-Map-scale first-floor mezzanine uses \`catwalk_pad.glb\` (~3.8×3.8 m) per covered open cell.
-Straight / cross / T remain available for bridge runs.
+Authored narrow grated walks with heavy stringers, kick plates, hangers, and wall
+brackets. Colours match bunker enamel dark / tray grey / concrete — not warehouse
+orange or sci-fi pad tiles.
 
-Replace with Unity Asset Store FBX→glTF conversions later if desired; mount names stay stable.
+Sparse placements only (west-hall wall L, neck west shelf, hall pit north lip).
 
 Files:
-- \`catwalk_pad.glb\` — ~3.8 m × 3.8 m grated mezzanine tile + rails
-- \`catwalk_straight.glb\` — 2 m × 2.4 m grated span + side rails
+- \`catwalk_straight.glb\` — 2 m × 1.35 m grated span + rails + hangers
 - \`catwalk_cross.glb\` — cross junction
 - \`catwalk_t.glb\` — T junction (spur +X)
-- \`catwalk_ladder.glb\` — cage ladder (~3.35 m)
-- \`catwalk_rail_broken.glb\` — dangling rail for collapsed / gap edges
+- \`catwalk_ladder.glb\` — cage ladder (~3.35 m) with floor shoes
+- \`catwalk_rail_broken.glb\` — dangling rail for collapsed bays
+- \`catwalk_bracket.glb\` — angle-iron wall bracket into concrete
 `);
 console.log('done →',outDir);

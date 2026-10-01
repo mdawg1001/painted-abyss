@@ -1,30 +1,23 @@
 /**
- * Map-scale first-floor catwalk mezzanine — pure layout (no THREE, no simulation import).
+ * Sparse bunker service galleries — pure layout (no THREE, no simulation import).
  *
- * Ground layer stays the existing bunker floor / flood. This module places a continuous
- * grated deck over a large share of hall + neck + entrance-edge open cells, with
- * intentional gap cells for drops and multiple ladder climb volumes.
+ * Pulls back the map-scale pad mezzanine: a few short wall-hugging / pit-edge runs
+ * where a Soviet industrial service walk would actually be built — not a first floor.
  *
  * Deck at FLOOR_Y + 3.2 (FLOOR_Y is 0.65 in simulation.ts), under wall pipe trays.
+ * Breath corridor / hatch / flood stay untouched.
  */
 /** Must match `FLOOR_Y` in simulation.ts. */
 const FLOOR_Y = .65;
-/** Must match `CELL` in simulation.ts. */
-const CELL = 4;
 
 /** Metres above the bunker floor slab. */
 export const CATWALK_DECK_RISE = 3.2;
 /** Walkable grate top Y. */
 export const CATWALK_DECK_Y = FLOOR_Y + CATWALK_DECK_RISE;
 
-/**
- * Mezzanine tile footprint (matches industrial-catwalk pad GLB).
- * ~3.8 m square so adjacent open-cell pads overlap and form a continuous network.
- */
-export const CATWALK_PAD = 3.8;
-/** Legacy run module size (straight / cross / T). */
+/** Module footprint (matches industrial-catwalk GLBs — narrow service walk, not pad tiles). */
 export const CATWALK_MODULE_LEN = 2;
-export const CATWALK_MODULE_W = 2.4;
+export const CATWALK_MODULE_W = 1.35;
 
 export type CatwalkSpan = { minX: number; maxX: number; minZ: number; maxZ: number };
 
@@ -41,156 +34,122 @@ export type CatwalkLadder = {
  label: string;
 };
 
-type Cell = { c: number; r: number };
-
-function worldXZ(c: number, r: number) {
- return { x: (c - 11) * CELL, z: -r * CELL };
-}
-
 /**
- * Open combat cells that receive a first-floor pad (excludes breath corridor, fissure,
- * pool, back, and intentional drop gaps). Encoded as "c,r" for Set membership.
+ * Solid grated spans only. Intentional gaps have no AABB (drop-through).
+ *
+ * 1) West-hall wall L — hugs col-4 west wall, spur east over the hall floor.
+ * 2) Neck west shelf — short N–S run on the west wall of the neck corridor.
+ * 3) Hall pit north lip — short E–W overlook on the north rim of the central void.
  */
-function intentionalGap(c: number, r: number): boolean {
- // N–S drop alleys through the hall (floodable volume under the grate network)
- if (c === 7 && r >= 14 && r <= 20) return true;
- if (c === 15 && r >= 14 && r <= 20) return true;
- // E–W gap bands north / south of the central hall void
- if (r === 14 && c >= 9 && c <= 13) return true;
- if (r === 21 && c >= 9 && c <= 13) return true;
- // Scattered single-cell drops for silhouette / fall drama
- if (c === 5 && (r === 18 || r === 22)) return true;
- if (c === 17 && (r === 12 || r === 18)) return true;
- if (c === 6 && r === 12) return true;
- if (c === 16 && r === 23) return true;
- return false;
-}
+export const CATWALK_SPANS: readonly CatwalkSpan[] = Object.freeze([
+ // —— West-hall wall gallery (x ≈ −27.2) ——
+ // South approach (ladder end)
+ { minX: -27.2 - CATWALK_MODULE_W * .5, maxX: -27.2 + CATWALK_MODULE_W * .5, minZ: -49, maxZ: -46.85 },
+ { minX: -27.2 - CATWALK_MODULE_W * .5, maxX: -27.2 + CATWALK_MODULE_W * .5, minZ: -51, maxZ: -49 },
+ // GAP −53…−51 intentionally omitted (collapsed bay)
+ { minX: -27.2 - CATWALK_MODULE_W * .5, maxX: -27.2 + CATWALK_MODULE_W * .5, minZ: -55, maxZ: -53 },
+ { minX: -27.2 - CATWALK_MODULE_W * .5, maxX: -27.2 + CATWALK_MODULE_W * .5, minZ: -57, maxZ: -55 },
+ // Spur east from T (toward hall centre)
+ { minX: -26.0, maxX: -24.0, minZ: -56.6, maxZ: -55.4 },
+ { minX: -24.0, maxX: -21.8, minZ: -56.6, maxZ: -55.4 },
+
+ // —— Neck west wall shelf (x ≈ −5.35, hugs west wall of neck cols 10–12) ——
+ { minX: -5.35 - CATWALK_MODULE_W * .5, maxX: -5.35 + CATWALK_MODULE_W * .5, minZ: -34, maxZ: -32 },
+ { minX: -5.35 - CATWALK_MODULE_W * .5, maxX: -5.35 + CATWALK_MODULE_W * .5, minZ: -36, maxZ: -34 },
+ { minX: -5.35 - CATWALK_MODULE_W * .5, maxX: -5.35 + CATWALK_MODULE_W * .5, minZ: -38, maxZ: -36 },
+
+ // —— Hall pit north-lip overlook (z ≈ −58, north rim of void rows 15–20) ——
+ { minX: -14.0, maxX: -12.0, minZ: -58.7, maxZ: -57.3 },
+ { minX: -12.0, maxX: -10.0, minZ: -58.7, maxZ: -57.3 },
+ { minX: -10.0, maxX: -8.0, minZ: -58.7, maxZ: -57.3 },
+]);
 
 /**
- * Same open-cell set as simulation.ts (combat floors only — no breath corridor).
- * Kept local so this module stays free of simulation imports.
- */
-function combatOpenCells(): Cell[] {
- const set = new Set<string>();
- const rect = (a: number, b: number, c0: number, d: number) => {
-  for (let col = a; col <= b; col++) for (let row = c0; row <= d; row++) set.add(`${col},${row}`);
- };
- rect(8, 14, 1, 5); // entrance
- rect(10, 12, 5, 11); // neck (overlaps entrance row 5)
- rect(4, 18, 11, 24); // hall
- for (let c = 9; c <= 12; c++) for (let r = 15; r <= 20; r++) set.delete(`${c},${r}`); // hall void
- const out: Cell[] = [];
- for (const key of set) {
-  const [c, r] = key.split(',').map(Number);
-  out.push({ c, r });
- }
- return out;
-}
-
-function zoneOf(c: number, r: number): 'entrance' | 'neck' | 'hall' | 'other' {
- if (r <= 5) return 'entrance';
- if (r <= 10) return 'neck';
- if (r <= 24) return 'hall';
- return 'other';
-}
-
-/** True when this open combat cell hosts a grated pad. */
-export function cellHasCatwalk(c: number, r: number): boolean {
- if (intentionalGap(c, r)) return false;
- const z = zoneOf(c, r);
- if (z === 'entrance') {
-  // Edge shelves only — leave the centre combat lane on the ground.
-  return c <= 9 || c >= 13;
- }
- if (z === 'neck') return true;
- if (z === 'hall') return true;
- return false;
-}
-
-function coveredCells(): Cell[] {
- return combatOpenCells().filter(({ c, r }) => cellHasCatwalk(c, r));
-}
-
-function padSpan(c: number, r: number): CatwalkSpan {
- const p = worldXZ(c, r);
- const h = CATWALK_PAD * .5;
- return { minX: p.x - h, maxX: p.x + h, minZ: p.z - h, maxZ: p.z + h };
-}
-
-/** Solid grated spans (one AABB per covered cell). Gap cells have no AABB. */
-export const CATWALK_SPANS: readonly CatwalkSpan[] = Object.freeze(
- coveredCells().map(({ c, r }) => padSpan(c, r)),
-);
-
-/**
- * Ladder climb volumes — approach from the ground, climb onto an adjacent pad.
- * Guards stay ground-only for v1.
+ * Climb volumes — one ladder per gallery (3 total). Sparse vs the old map-scale set of 7.
  */
 export const CATWALK_LADDERS: readonly CatwalkLadder[] = Object.freeze([
- // Entrance west edge → pad on (8,3)
- { x: -12, z: -10, hx: .5, hz: .55, minY: FLOOR_Y, maxY: CATWALK_DECK_Y + .35, landX: -12, landZ: -12, label: 'entrance-west' },
- // Entrance east edge → pad on (14,3)
- { x: 12, z: -10, hx: .5, hz: .55, minY: FLOOR_Y, maxY: CATWALK_DECK_Y + .35, landX: 12, landZ: -12, label: 'entrance-east' },
- // Neck south (hall approach) → pad on (11,10)
- { x: 0, z: -38, hx: .5, hz: .55, minY: FLOOR_Y, maxY: CATWALK_DECK_Y + .35, landX: 0, landZ: -40, label: 'neck-south' },
- // Hall NW → pad on (4,12)
- { x: -28, z: -46, hx: .5, hz: .55, minY: FLOOR_Y, maxY: CATWALK_DECK_Y + .35, landX: -28, landZ: -48, label: 'hall-nw' },
- // Hall NE → pad on (18,12)
- { x: 28, z: -46, hx: .5, hz: .55, minY: FLOOR_Y, maxY: CATWALK_DECK_Y + .35, landX: 28, landZ: -48, label: 'hall-ne' },
- // Hall SW deep → pad on (4,23)
- { x: -28, z: -94, hx: .5, hz: .55, minY: FLOOR_Y, maxY: CATWALK_DECK_Y + .35, landX: -28, landZ: -92, label: 'hall-sw' },
- // Hall SE deep → pad on (18,23)
- { x: 28, z: -94, hx: .5, hz: .55, minY: FLOOR_Y, maxY: CATWALK_DECK_Y + .35, landX: 28, landZ: -92, label: 'hall-se' },
+ // West-hall south approach → land on south grate
+ {
+  x: -27.2, z: -47.2, hx: .5, hz: .55,
+  minY: FLOOR_Y, maxY: CATWALK_DECK_Y + .35,
+  landX: -27.2, landZ: -48, label: 'west-hall',
+ },
+ // Neck south approach → land on south-most neck shelf bay
+ {
+  x: -5.35, z: -31.2, hx: .5, hz: .55,
+  minY: FLOOR_Y, maxY: CATWALK_DECK_Y + .35,
+  landX: -5.35, landZ: -33, label: 'neck-west',
+ },
+ // Pit north-lip west end → land on west grate bay
+ {
+  x: -13.0, z: -56.85, hx: .55, hz: .5,
+  minY: FLOOR_Y, maxY: CATWALK_DECK_Y + .35,
+  landX: -13.0, landZ: -58, label: 'pit-lip',
+ },
 ]);
 
 /** @deprecated Prefer CATWALK_LADDERS[0]; kept for older call sites during transition. */
 export const CATWALK_LADDER = CATWALK_LADDERS[0]!;
 
-export type CatwalkMountKind = 'pad' | 'straight' | 'cross' | 't' | 'ladder' | 'rail_broken';
+export type CatwalkMountKind =
+ | 'straight'
+ | 'cross'
+ | 't'
+ | 'ladder'
+ | 'rail_broken'
+ | 'bracket';
 
 export type CatwalkMount = {
  kind: CatwalkMountKind;
  x: number;
  z: number;
- /** World yaw (rad). */
+ /** World yaw (rad). Straight/T along ±Z by default. */
  yaw: number;
  label: string;
 };
 
-/** Gap cells that border a covered pad — dangling rail dressing. */
-function gapEdgeCells(): Cell[] {
- const covered = new Set(coveredCells().map(({ c, r }) => `${c},${r}`));
- const open = new Set(combatOpenCells().map(({ c, r }) => `${c},${r}`));
- const edges: Cell[] = [];
- for (const { c, r } of combatOpenCells()) {
-  if (covered.has(`${c},${r}`)) continue;
-  if (!open.has(`${c},${r}`)) continue;
-  const neigh = [`${c + 1},${r}`, `${c - 1},${r}`, `${c},${r + 1}`, `${c},${r - 1}`];
-  if (neigh.some(k => covered.has(k))) edges.push({ c, r });
- }
- return edges;
-}
-
 /**
- * Visual mounts: one pad per covered cell, ladders, broken rails on gap edges.
- * Deck pieces sit with grate top at CATWALK_DECK_Y; ladder feet on FLOOR_Y.
+ * Visual mounts for the three sparse galleries.
+ * Deck pieces sit with grate top at CATWALK_DECK_Y; ladder feet on FLOOR_Y;
+ * wall brackets sit at deck height against the host wall.
  */
 export function catwalkMounts(): CatwalkMount[] {
- const mounts: CatwalkMount[] = [];
- for (const { c, r } of coveredCells()) {
-  const p = worldXZ(c, r);
-  mounts.push({ kind: 'pad', x: p.x, z: p.z, yaw: 0, label: `pad-${c}-${r}` });
- }
- for (const L of CATWALK_LADDERS) {
-  mounts.push({ kind: 'ladder', x: L.x, z: L.z, yaw: 0, label: `ladder-${L.label}` });
- }
- for (const { c, r } of gapEdgeCells()) {
-  const p = worldXZ(c, r);
-  // Two facing dangling rails so the drop reads as a collapsed span.
-  mounts.push({ kind: 'rail_broken', x: p.x + .9, z: p.z, yaw: 0, label: `gap-e-${c}-${r}` });
-  mounts.push({ kind: 'rail_broken', x: p.x - .9, z: p.z, yaw: Math.PI, label: `gap-w-${c}-${r}` });
- }
- return mounts;
+ return [
+  // —— West-hall wall L ——
+  { kind: 'straight', x: -27.2, z: -48, yaw: 0, label: 'wh-ns-south' },
+  { kind: 'straight', x: -27.2, z: -50, yaw: 0, label: 'wh-ns-mid' },
+  { kind: 'rail_broken', x: -26.55, z: -52, yaw: 0, label: 'wh-gap-e' },
+  { kind: 'rail_broken', x: -27.85, z: -52, yaw: Math.PI, label: 'wh-gap-w' },
+  { kind: 'straight', x: -27.2, z: -54, yaw: 0, label: 'wh-ns-deep' },
+  { kind: 't', x: -27.2, z: -56, yaw: 0, label: 'wh-t-spur' },
+  { kind: 'straight', x: -25.0, z: -56, yaw: Math.PI / 2, label: 'wh-spur-a' },
+  { kind: 'straight', x: -22.8, z: -56, yaw: Math.PI / 2, label: 'wh-spur-b' },
+  { kind: 'ladder', x: -27.2, z: -47.2, yaw: 0, label: 'ladder-west-hall' },
+  // Wall brackets into the west concrete (host wall is −X of the run)
+  { kind: 'bracket', x: -27.95, z: -48, yaw: Math.PI / 2, label: 'wh-brk-a' },
+  { kind: 'bracket', x: -27.95, z: -50, yaw: Math.PI / 2, label: 'wh-brk-b' },
+  { kind: 'bracket', x: -27.95, z: -54, yaw: Math.PI / 2, label: 'wh-brk-c' },
+  { kind: 'bracket', x: -27.95, z: -56, yaw: Math.PI / 2, label: 'wh-brk-d' },
+
+  // —— Neck west shelf ——
+  { kind: 'straight', x: -5.35, z: -33, yaw: 0, label: 'nk-ns-a' },
+  { kind: 'straight', x: -5.35, z: -35, yaw: 0, label: 'nk-ns-b' },
+  { kind: 'straight', x: -5.35, z: -37, yaw: 0, label: 'nk-ns-c' },
+  { kind: 'ladder', x: -5.35, z: -31.2, yaw: 0, label: 'ladder-neck' },
+  { kind: 'bracket', x: -6.05, z: -33, yaw: Math.PI / 2, label: 'nk-brk-a' },
+  { kind: 'bracket', x: -6.05, z: -35, yaw: Math.PI / 2, label: 'nk-brk-b' },
+  { kind: 'bracket', x: -6.05, z: -37, yaw: Math.PI / 2, label: 'nk-brk-c' },
+
+  // —— Hall pit north-lip overlook ——
+  { kind: 'straight', x: -13.0, z: -58, yaw: Math.PI / 2, label: 'pit-ew-a' },
+  { kind: 'straight', x: -11.0, z: -58, yaw: Math.PI / 2, label: 'pit-ew-b' },
+  { kind: 'straight', x: -9.0, z: -58, yaw: Math.PI / 2, label: 'pit-ew-c' },
+  { kind: 'rail_broken', x: -7.6, z: -57.45, yaw: Math.PI / 2, label: 'pit-gap-e' },
+  { kind: 'ladder', x: -13.0, z: -56.85, yaw: Math.PI, label: 'ladder-pit' },
+  { kind: 'bracket', x: -13.0, z: -57.15, yaw: 0, label: 'pit-brk-a' },
+  { kind: 'bracket', x: -11.0, z: -57.15, yaw: 0, label: 'pit-brk-b' },
+  { kind: 'bracket', x: -9.0, z: -57.15, yaw: 0, label: 'pit-brk-c' },
+ ];
 }
 
 /** True when (x,z) is on a solid grate span. */
@@ -226,11 +185,9 @@ export function nearestCatwalkLadder(x: number, z: number, y?: number): CatwalkL
 
 /**
  * Keepout discs so bunker dressing skips the west-hall service pier footprint.
- *
- * These discs are intentionally the same as the 0.22.45 west-hall gallery so the
- * shipped bunker lightmap signature stays valid. Map-scale suspended pads and the
- * new ladder feet outside this pier do not add keepouts (larger / relocated discs
- * would force a Blender rebake). Revisit after the next bunker-bake.
+ * Intentionally the same discs as 0.22.45 / 0.23.0 so the shipped bunker lightmap
+ * signature stays valid (larger / relocated discs force a Blender rebake).
+ * Neck / pit galleries do not add keepouts for this pass.
  */
 export function catwalkKeepouts(): { x: number; z: number; r: number }[] {
  return [
@@ -247,18 +204,12 @@ export function catwalkKeepouts(): { x: number; z: number; r: number }[] {
 
 /** Stats for tests / playtest notes. */
 export function catwalkCoverageStats() {
- const combat = combatOpenCells();
- const covered = coveredCells();
- const combatKeys = new Set(combat.map(({ c, r }) => `${c},${r}`));
- // Deduplicate entrance/neck overlap already handled by Set in combatOpenCells
- const pct = combat.length ? (100 * covered.length) / combat.length : 0;
+ const mounts = catwalkMounts();
  return {
-  combatOpen: combat.length,
-  coveredCells: covered.length,
-  coveragePct: pct,
-  climbPoints: CATWALK_LADDERS.length,
+  galleries: 3,
   spans: CATWALK_SPANS.length,
-  gapEdgeCells: gapEdgeCells().length,
-  combatKeys,
+  climbPoints: CATWALK_LADDERS.length,
+  deckModules: mounts.filter(m => m.kind === 'straight' || m.kind === 't' || m.kind === 'cross').length,
+  brackets: mounts.filter(m => m.kind === 'bracket').length,
  };
 }
