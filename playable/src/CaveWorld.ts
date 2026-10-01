@@ -1,3 +1,5 @@
+import {PresentationCadence} from './presentationCadence';
+import {onAssetSettled} from './assetRedraw';
 import { CombatFeedbackManager, COMBAT_FEEDBACK } from './combatFeedback';
 import { PropStreaming } from './propStreaming';
 import { PALETTE } from './artPalette';
@@ -230,6 +232,10 @@ void main(){
 }`;
 
 export class CaveWorld extends OceanWorld {
+ guardCadence=new PresentationCadence();
+ lightFrustum=new THREE.Frustum();lightProjection=new THREE.Matrix4();
+ /** A single pending frame: continuous during play, demand-driven on menus. */
+ requestRender=()=>{if(this.alive&&!document.hidden&&!this.frame)this.frame=requestAnimationFrame(this.animate);};
  audioNotice='';audioProbe:DiveAudioBus|null=null;audioTestTimer=0;
  backgroundMusic:BackgroundMusic|null=null;
  /** Rising-edge tracker for Ego Savior save juice (hitstop + hero clear). */
@@ -400,7 +406,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
  _pcx=[0,0,0,0];
  _pcy=[0,0,0,0];
  _adoptTmp=new THREE.Box3();
- propStreaming=(()=>{const ps=new PropStreaming();ps.onLoaded=()=>{this.shaderGuardDirty=true;};return ps;})();
+ propStreaming=(()=>{const ps=new PropStreaming();ps.onLoaded=()=>{this.shaderGuardDirty=true;this._cullLightScan=0;this.requestRender();};return ps;})();
  lastPropCheck=0;
  /** Knife / guards / FX maps — started on Begin dive so the menu only pays for rock previews + JS. */
  essentialsBooted=false;
@@ -435,7 +441,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    dprCap:PERF.dprCap,
    particleCount:PERF.particleCount,
   });
-  this.ui=ui;this.rockMaps=loadCaveRockMaps(this.renderer);this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
+  this.ui=ui;this.listeners.push(onAssetSettled(()=>{this._cullLightScan=0;this.requestRender();}));this.rockMaps=loadCaveRockMaps(this.renderer,this.requestRender);this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.pitch=this.targetPitch=0;
   // Dirty ivory field. The three grades assign this color; they do not blend it.
   this.scene.background=new THREE.Color(DRY_FIELD);this.scene.fog=new THREE.FogExp2(DRY_FIELD,DRY_DENSITY);
   // Near plane at 3 cm: the carbine's receiver sits ~8 cm from the eye in the hip hold.
@@ -558,7 +564,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   this.adoptPointCull(this.guardian.group,this.guardianLightBox,false,true);
   // Loot glow pool: created once so the scene's light count never changes mid-dive.
   for(let i=0;i<PICKUP_LIGHT_POOL;i++){const l=new THREE.PointLight(0xffc050,0,4,2);l.castShadow=false;l.name='pickupGlow';this.scene.add(l);this.pickupLights.push(l);}
-  this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.animate();this.publish();
+  this.bind();this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(host);this.syncPickups();this.requestRender();this.publish();
  }
  /**
   * First Begin dive: knife + guards + FX maps, then arm prop streaming.
@@ -947,6 +953,9 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
  }
  /** Refresh packed point lights. A light outside its cutoff cannot change a pixel inside the chunk box. */
  updatePointCull(){
+  this.camera.updateMatrixWorld();
+  this.lightProjection.multiplyMatrices(this.camera.projectionMatrix,this.camera.matrixWorldInverse);
+  this.lightFrustum.setFromProjectionMatrix(this.lightProjection);
   for(const sync of this.pointCullSyncs)sync();
   const lights=this._cullLights;lights.length=0;
   const wp=this._cullWp;
@@ -969,6 +978,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    light.getWorldPosition(v);
   }
   for(const t of this.pointCullTargets){
+   if(!this.lightFrustum.intersectsBox(t.box))continue;
    let n=0;
    for(let i=0;i<lights.length;i++){
     const light=lights[i];
@@ -1044,7 +1054,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   const {rock:rockMaps,moss:mossMaps}=this.rockMaps;
   // Soviet bunker art pass on the simulation grid (see bunkerLayout.ts): same cells, same collision.
   const layout=buildBunkerLayout({keepouts:bunkerKeepouts()});
-  this.bunkerTextures=createBunkerTextures(this.renderer,this.rockMaps.loader);
+  this.bunkerTextures=createBunkerTextures(this.renderer,this.rockMaps.loader,undefined,this.requestRender);
   const atlas=createStencilAtlas(layout.labels);
   // Corridor cells stay in their own meshes (bunkerBucketOf): sharing a 16 m chunk with the
   // entrance cave forced every occluded cave triangle into the hatch view.
@@ -1101,17 +1111,18 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    if(!this.alive)return;
    removeMeshes(fallback);
    addBaked(bake(kit,true));
-   this.shaderGuardDirty=true;
+   this.shaderGuardDirty=true;this.requestRender();
   });
   this.bunkerReady=loadLitBunker().then(lit=>{
    if(!this.alive)return;
    if(lit.signature!==signature){console.warn(`Baked bunker is stale (${lit.signature} != ${signature}); rebake with scripts/bunker-bake. Using unbaked kit.`);return kitPath();}
    removeMeshes(procedural);removeMeshes(fallback);
    for(const m of lit.meshes)addMesh(m.bucket,m.key as BakeKey,m.geometry);
-   this.shaderGuardDirty=true;
+   this.shaderGuardDirty=true;this.requestRender();
    return lightmaps.load(lit.lmScale).then(ok=>{if(ok&&this.alive)lmOn.value=1;});
   },err=>{console.warn('Baked bunker unavailable; using unbaked kit',err);return kitPath();})
    .catch(err=>console.warn('Bunker kit unavailable; keeping plain walls',err));
+  void this.bunkerReady.then(this.requestRender);
   const bone=this.material(0xc8c0a8,'rock',.82,1.5,rockMaps,mossMaps);
   const boneBox=new THREE.Box3();
   for(let i=0;i<6;i++)for(const s of [-1,1]){
@@ -1461,6 +1472,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    const g=this.mission.guards[i];if(!visual||!g)continue;
    // A fresh life in this slot (reinforcement or restart): clear his fall and pose state.
    if(g.life!==this.guardLifeSeen[i]){
+    this.guardCadence.reset(i);
     this.guardLifeSeen[i]=g.life;this.guardFall[i]=0;this.guardRecoil[i]=0;this.guardJolt[i]=0;
     this.guardShotsSeen[i]=g.shots;this.guardStrikeSeen[i]=g.strikeAt;visual.pose=makeGuardCombatState(i);
     const fresh=this.guardActs[i];if(fresh)clearGuardAction(fresh);
@@ -1489,10 +1501,20 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    visual.root.rotation.order='YXZ';
    visual.root.rotation.set(-fall*1.48,g.heading,fall*(i%2?.22:-.22));
    syncGuardGear(visual,{gun:g.gun,bottle:g.bottle,coat:g.coat});
-   // Legs follow real ground velocity (strafe / backpedal while firing), chest follows you.
-   const gaitDir=updateGuardMoveFrame(visual.pose,g.vx,g.vz,g.heading,g.speed,dt);
-   if(visual.loco){
-    updateGuardLocomotion(visual.loco,dt,{moving:g.speed>.02,speed:g.speed,state:g.state,turnRate:g.turnRate,direction:gaitDir});
+   const hitNow=this.mission.lastPistolHit;
+   const knifeNow=this.mission.lastKnifeHit;
+   const urgent=g.shots!==this.guardShotsSeen[i]||g.windup>0||this.guardRecoil[i]>0||this.guardJolt[i]>0
+    ||!!(hitNow&&hitNow.guard===i&&hitNow.shot!==this.pistolHitSeen)
+    ||!!(knifeNow&&knifeNow.guard===i&&knifeNow.at!==this.knifeHitSeen)
+    ||!!(act?.kind&&(act.kind!=='death'||act.time<act.clips.death.duration))
+    ||this.guardFall[i]>0&&this.guardFall[i]<1;
+   const poseDt=this.guardCadence.step(i,dt,visual.root.position.distanceTo(this.position),urgent);
+   if(poseDt!==null){
+    // Legs follow real ground velocity (strafe / backpedal while firing), chest follows you.
+    const gaitDir=updateGuardMoveFrame(visual.pose,g.vx,g.vz,g.heading,g.speed,poseDt);
+    if(visual.loco){
+     updateGuardLocomotion(visual.loco,poseDt,{moving:g.speed>.02,speed:g.speed,state:g.state,turnRate:g.turnRate,direction:gaitDir});
+    }
    }
    // Rusher knife: the stab clip's wind-up is stretched over the sim's, the thrust lands on the blow.
    const rusherWind=g.role==='rusher'&&g.hp>0&&g.windup>0&&g.windupTotal>0;
@@ -1531,7 +1553,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    if(hit&&hit.guard===i&&hit.shot!==this.pistolHitSeen){this.pistolHitSeen=hit.shot;this.guardJolt[i]=1;if(act&&g.hp>0)playGuardAction(act,'hit');}
    const kh=this.mission.lastKnifeHit;
    if(kh&&kh.guard===i&&kh.at!==this.knifeHitSeen){this.knifeHitSeen=kh.at;if(act&&g.hp>0)playGuardAction(act,'hit');}
-   const actW=act&&visual.loco?stepGuardAction(visual.loco,act,dt,act.kind==='stab'&&rusherWind?1-g.windup/g.windupTotal:null):0;
+   const actW=act&&visual.loco?(poseDt===null?act.weight:stepGuardAction(visual.loco,act,poseDt,act.kind==='stab'&&rusherWind?1-g.windup/g.windupTotal:null)):0;
    this.guardJolt[i]=Math.max(0,(this.guardJolt[i]??0)-dt*4);
    const kick=Math.max(this.guardRecoil[i]??0,this.guardJolt[i]??0);
    // Close attack: grunt at the wind-up, thud or swish at the blow.
@@ -1548,17 +1570,19 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    const strikeAge=this.mission.elapsed-g.strikeAt;
    const clipOwnsBody=!!act&&act.kind==='death'&&actW>.5;
    const clipStab=!!act&&act.kind==='stab';
-   if(clipOwnsBody){
-    // Dead and crumpling: the clip owns every bone; only the face goes slack.
-    const f=visual.rig?.face;if(f?.morphTargetInfluences){f.morphTargetInfluences[0]=0;f.morphTargetInfluences[1]=1;}
-   }else if(visual.rig&&visual.loco){
-    applyGuardCombatPose(visual.rig,visual.pose,visual.gun,{
-     target:this._aimTarget,aim:g.gun?g.aim:0,engaged:g.hp>0&&g.state!=='patrol',
-     recoil:kick,speed:g.speed,dt,down:g.hp>0?0:1,
-     melee:!clipStab&&winding&&g.windupTotal>0?1-g.windup/g.windupTotal:0,
-     strike:!clipStab&&g.strikeAt>=0&&strikeAge>=0&&strikeAge<.3?1-strikeAge/.3:0,
-    });
-   }else applyGuardAim(visual,this._aimTarget,g.aim,kick);
+   if(poseDt!==null){
+    if(clipOwnsBody){
+     // Dead and crumpling: the clip owns every bone; only the face goes slack.
+     const f=visual.rig?.face;if(f?.morphTargetInfluences){f.morphTargetInfluences[0]=0;f.morphTargetInfluences[1]=1;}
+    }else if(visual.rig&&visual.loco){
+     applyGuardCombatPose(visual.rig,visual.pose,visual.gun,{
+      target:this._aimTarget,aim:g.gun?g.aim:0,engaged:g.hp>0&&g.state!=='patrol',
+      recoil:kick,speed:g.speed,dt:poseDt,down:g.hp>0?0:1,
+      melee:!clipStab&&winding&&g.windupTotal>0?1-g.windup/g.windupTotal:0,
+      strike:!clipStab&&g.strikeAt>=0&&strikeAge>=0&&strikeAge<.3?1-strikeAge/.3:0,
+     });
+    }else applyGuardAim(visual,this._aimTarget,g.aim,kick);
+   }
    let muzzle:THREE.Vector3|null=null;
    if(g.gun&&this.guardShotsSeen[i]===g.shots&&flashFrom===i){
     muzzle=visual.gun.getWorldPosition(this._muzzleScratch);
@@ -2052,7 +2076,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   const w=this.host.clientWidth,h=this.host.clientHeight;
   this.camera.aspect=w/h;this.camera.updateProjectionMatrix();
   this.setPixelRatio();
-  this.renderer.setSize(w,h);this.composer?.setSize(w,h);
+  this.renderer.setSize(w,h);this.composer?.setSize(w,h);this.requestRender();
   if(this.bloom)resizeBloomPass(this.bloom,w,h);
   this.clipPass?.setSize(w,h);
  }
@@ -2267,7 +2291,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    this.publish();
   }) as EventListener);
   on(window,'keyup',((e:KeyboardEvent)=>{this.keys.delete(e.code);}) as EventListener);
-  on(window,'blur',(()=>this.pause()) as EventListener);on(document,'visibilitychange',(()=>{if(document.hidden)this.pause();}) as EventListener);
+  on(window,'blur',(()=>this.pause()) as EventListener);on(document,'visibilitychange',(()=>{if(document.hidden){this.pause();cancelAnimationFrame(this.frame);this.frame=0;}else this.requestRender();}) as EventListener);
   const canvas=this.renderer.domElement;
   on(canvas,'pointerdown',((e:PointerEvent)=>{
    // Map / stash UI own the pointer — do not steal lock or fire through the panel.
@@ -2747,7 +2771,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    let done:Promise<unknown>=Promise.resolve();
    try{done=this.compileLikeRender(o,this.scene);}catch{/* compile on first draw instead */}
    o.visible=false;
-   done.catch(()=>{}).then(()=>{if(o.userData.shaderGuard){o.userData.shaderGuard=false;o.visible=true;}});
+   done.catch(()=>{}).then(()=>{if(o.userData.shaderGuard){o.userData.shaderGuard=false;o.visible=true;this.requestRender();}});
   }
  }
  prewarmShaders(){
@@ -2779,6 +2803,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   }
  }
  start(){
+  this.lastFrameAt=0;
   if(this.mission.outcome!=='playing')this.reset();
   // One-time tip is already on this mission when tipsSeen is false; persist so the next launch stays quiet.
   if(!this.mission.tipsSeen)writeInventoryTipsSeen();
@@ -2791,7 +2816,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   this.airborne=breathingFreeAir(this.mission.position,this.mission.breathWaterY);
   this.backgroundMusic?.setDry(this.airborne);
   if(this.sound)this.enableAudio(true);
-  this.lookPointer=null;this.fallbackTurn=0;this.requestLookLock(true);this.publish();
+  this.lookPointer=null;this.fallbackTurn=0;this.requestLookLock(true);this.publish();this.requestRender();
   // QA: `?bloodTest=1` spawns a kill-scale blood cloud ahead of the diver (no combat required).
   if(typeof location!=='undefined'&&new URLSearchParams(location.search).has('bloodTest')){
    window.setTimeout(()=>{
@@ -2805,7 +2830,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    },400);
   }
  }
- pause(){if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.aimHeld=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
+ pause(){this.lastFrameAt=0;cancelAnimationFrame(this.frame);this.frame=0;if(!this.playing)return;this.testingAudio=false;window.clearTimeout(this.audioTestTimer);this.playing=false;this.aimHeld=false;this.lookPointer=null;this.fallbackTurn=0;this.keys.clear();this.velocity.set(0,0,0);if(document.pointerLockElement===this.renderer.domElement)document.exitPointerLock();this.audioContext?.suspend().catch(()=>{});this.publish();}
  reset(){
   this.endValve();
   // Dive-again / restart: bank any pocket gold before the mission is replaced.
@@ -2831,18 +2856,18 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   this.syncPickups();this.syncChests(0);this.syncBreathProps();this.backgroundMusic?.setDry(true);this.publish();
  }
  animate=()=>{
-  if(!this.alive)return;
+  this.frame=0;
+  if(!this.alive||document.hidden)return;
   const propNow=performance.now()/1000;
-  if(propNow-this.lastPropCheck>=.25){this.lastPropCheck=propNow;this.propStreaming.update(this.position,propNow);}
-  if(this.copperPipe&&updateCopperPipe(this.copperPipe,this.position)){
+  if(this.playing&&propNow-this.lastPropCheck>=.25){this.lastPropCheck=propNow;this.propStreaming.update(this.position,propNow);}
+  if(this.playing&&this.copperPipe&&updateCopperPipe(this.copperPipe,this.position)){
    const visual=this.copperPipe;
    void upgradeCopperPipeDetail(visual,this.knifeEnvMap).then(parts=>{
     if(!this.alive)return;
     for(const part of parts)this.adoptPointCull(part,this.worldBox(part),true,true);
-    updateCopperPipe(visual,this.position);
+    updateCopperPipe(visual,this.position);this.requestRender();
    });
   }
-  this.frame=requestAnimationFrame(this.animate);
   // Frame-time watchdog: step resolution / MSAA down under load, probe back up with headroom.
   const frameAt=performance.now();
   if(this.lastFrameAt){
@@ -2853,7 +2878,8 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    }
   }
   this.lastFrameAt=frameAt;
-  const realDt=Math.min(this.clock.getDelta(),.05);
+  const clockDt=this.clock.getDelta();
+  const realDt=this.playing?Math.min(clockDt,.05):0;
   this.shakeClock+=realDt;
   const feedback=this.combatFeedback.tick(realDt,this.shakeClock);
   this.combatShakeOffset=feedback.offset;
@@ -3235,6 +3261,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   if(Math.floor(this.time*0.5)!==this._guardSweep){this._guardSweep=Math.floor(this.time*0.5);this.shaderGuardDirty=true;}
   this.guardNewShaders();
   this.composer.render();
+  if(this.playing)this.requestRender();
  }
  dispose(){window.clearTimeout(this.akPrefetchTimer);if(this.copperPipe)this.copperPipe.disposed=true;this.rockMaps.dispose();this.bunkerTextures?.dispose();this.bunkerLightmaps?.dispose();this.propStreaming.dispose();window.clearTimeout(this.audioTestTimer);if(this.audioContext)this.audioContext.onstatechange=null;this.audioProbe?.dispose();this.audioProbe=null;this.backgroundMusic?.dispose();this.pause();this.composer?.dispose();super.dispose();}
 }

@@ -34,7 +34,7 @@ function flatMap(rgba: [number, number, number, number]) {
 /** Per-sheet mean of the kit albedo luminance (ORD.b), so detail darkens and lightens evenly. */
 const DET_MEAN: Record<Sheet, number> = { T1: .36, T2: .41, T3: .66, none: .63 };
 
-export function createBunkerTextures(renderer: THREE.WebGLRenderer, shared?: KTX2Loader, base = BUNKER_KIT_BASE): BunkerTextures {
+export function createBunkerTextures(renderer: THREE.WebGLRenderer, shared?: KTX2Loader, base = BUNKER_KIT_BASE, onChange: () => void = () => {}): BunkerTextures {
  const flatN: [number, number, number, number] = [128, 128, 255, 255];
  const flatO: [number, number, number, number] = [255, 150, 160, 255];
  const sheets = {} as Record<Sheet, SheetMaps>;
@@ -53,7 +53,7 @@ export function createBunkerTextures(renderer: THREE.WebGLRenderer, shared?: KTX
    try {
     const t = await loader.loadAsync(job.url);
     if (disposed) return;
-    adopt(job.tex, t, false);
+    adopt(job.tex, t, false);onChange();
     job.tex.flipY = false;
     job.tex.anisotropy = PERF.anisotropy;
     t.dispose();

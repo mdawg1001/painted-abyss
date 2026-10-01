@@ -1,0 +1,25 @@
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const assert=require('node:assert/strict');
+(async()=>{const browser=await chromium.launch({channel:'chrome',headless:true});try{
+ const page=await browser.newPage({viewport:{width:1100,height:760}});const errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.goto((process.env.GAME_URL||'http://127.0.0.1:5190')+'/?test=1',{waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>window.__abyss,null,{timeout:60000});
+ await page.evaluate(()=>Promise.all([window.__abyss.rockMaps.previewsReady,window.__abyss.bunkerReady]));await page.waitForTimeout(3000);
+ await page.evaluate(()=>{const w=window.__abyss;window.__counts={render:0,guards:0,lights:0};for(const [o,k,n] of [[w.composer,'render','render'],[w,'syncSovietGuard','guards'],[w,'updatePointCull','lights']]){const old=o[k].bind(o);o[k]=(...a)=>{window.__counts[n]++;return old(...a);};}w.sound=false;w.requestLookLock=()=>{};});
+ await page.waitForTimeout(1500);assert.deepEqual(await page.evaluate(()=>window.__counts),{render:0,guards:0,lights:0});
+ await page.evaluate(()=>window.__abyss.start());
+ await page.waitForFunction(()=>['rock','sand','moss'].every(k=>['diff','nor','arm'].every(t=>window.__abyss.rockMaps[k][t].image.width===2048)),null,{timeout:120000});
+ await page.waitForFunction(()=>window.__abyss.sovietGuards.every(v=>v.loco),null,{timeout:120000});
+ await page.waitForTimeout(2000);await page.evaluate(()=>window.__abyss.pause());await page.waitForTimeout(1000);
+ const paused=await page.evaluate(()=>({counts:{...window.__counts},time:window.__abyss.mission.elapsed}));
+ await page.waitForTimeout(1500);assert.deepEqual(await page.evaluate(()=>window.__counts),paused.counts);assert.equal(await page.evaluate(()=>window.__abyss.mission.elapsed),paused.time);
+ await page.setViewportSize({width:1200,height:780});await page.waitForTimeout(350);const resized=await page.evaluate(()=>window.__counts.render);assert.ok(resized>paused.counts.render&&resized-paused.counts.render<=3);
+ await page.evaluate(async()=>{const {DefaultLoadingManager}=await import('/node_modules/.vite/deps/three.js');DefaultLoadingManager.itemStart('qa');DefaultLoadingManager.itemEnd('qa');});await page.waitForTimeout(250);assert.equal(await page.evaluate(()=>window.__counts.render),resized+1);
+ const lighting=await page.evaluate(async()=>{const THREE=await import('/node_modules/.vite/deps/three.js');const w=window.__abyss,checks=[];for(const yaw of [0,Math.PI]){w.camera.rotation.y=yaw;w._cullLightScan=0;w.updatePointCull();let visible=0,skipped=0;const lights=[];w.scene.traverse(o=>{if(!o.isPointLight||o.intensity<=0)return;for(let p=o;p;p=p.parent)if(!p.visible)return;lights.push(o);});for(const t of w.pointCullTargets){if(!w.lightFrustum.intersectsBox(t.box)){skipped++;continue;}visible++;const relevant=lights.filter(l=>l.distance<=0||t.box.distanceToPoint(l.getWorldPosition(new THREE.Vector3()))<l.distance-1e-3).slice(0,t.pos.length);if(t.count.value!==relevant.length)throw Error('Visible target lost lighting');relevant.forEach((l,i)=>{if(t.pos[i].distanceTo(l.getWorldPosition(new THREE.Vector3()))>1e-6||Math.abs(t.col[i].x-l.color.r*l.intensity)>1e-6)throw Error('Stale lighting after camera turn');});}checks.push({visible,skipped});}return checks;});assert.ok(lighting.every(s=>s.visible>0&&s.skipped>0));
+ await page.evaluate(()=>{Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});document.dispatchEvent(new Event('visibilitychange'));window.__abyss.requestRender();});const hidden=await page.evaluate(()=>window.__counts.render);await page.waitForTimeout(350);assert.equal(await page.evaluate(()=>window.__counts.render),hidden);
+ await page.evaluate(()=>{delete document.hidden;document.dispatchEvent(new Event('visibilitychange'));});await page.waitForTimeout(250);
+ await page.evaluate(()=>window.__abyss.start());await page.waitForTimeout(750);assert.ok(await page.evaluate(()=>window.__abyss.mission.elapsed)>paused.time);
+ await page.evaluate(()=>window.__abyss.dispose());const disposed=await page.evaluate(()=>window.__counts.render);await page.waitForTimeout(350);assert.equal(await page.evaluate(()=>window.__counts.render),disposed);
+ assert.deepEqual(errors,[]);console.log(JSON.stringify({paused,lighting,resized,checks:'idle, pause/resume, resize, asset redraw, visibility and disposal passed'}));
+}finally{await browser.close();}})().catch(e=>{console.error(e);process.exit(1)});
