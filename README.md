@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.22.44
+# Painted Abyss — First Dive · 0.22.45
+
+## West-hall catwalk gallery (0.22.45)
+
+Walkable **broken service gallery** over the west hall: grated modular decks (L-run + spur), one collapsed span, and a south-end ladder climb. Solid spans support at `FLOOR_Y+3.2`; the gap drops to the floor. Guards stay on the ground for v1.
 
 ## Critical heal clutch (0.22.43)
 

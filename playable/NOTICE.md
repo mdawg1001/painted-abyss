@@ -148,3 +148,11 @@ The copper-pipe distance LOD (`public/assets/copper-pipe/copper_pipe_far.glb`) i
 - Author: Kevin Iglesias
 - License: Unity Asset Store standard EULA (third-party publisher)
 - Used: Death01, CombatDamage01 and Attack1H01_R, retargeted onto the Quaternius guard rig by `scripts/retarget-kevin-iglesias.mjs` (FBX converted with FBX2glTF, world-space retarget) into `public/assets/soviet-uniform/guard-actions.json`. Guards crumple with the death clip, flinch (upper body) when hit, and knife rushers thrust with the one-handed attack.
+
+## Industrial catwalk modules (authored)
+
+- Source: authored for Painted Abyss to match Modular Industrial Catwalk Kit language (straight / cross / T / ladder / broken rail). Unity Asset Store FBX may replace later.
+- License: game-embedded original meshes (not a redistributable kit dump)
+- Files: `public/assets/industrial-catwalk/*.glb`
+- West-hall walkable grated gallery + south-end ladder.
+
