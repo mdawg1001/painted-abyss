@@ -151,8 +151,8 @@ The copper-pipe distance LOD (`public/assets/copper-pipe/copper_pipe_far.glb`) i
 
 ## Industrial catwalk modules (authored)
 
-- Source: authored for Painted Abyss to match Modular Industrial Catwalk Kit language (straight / cross / T / ladder / broken rail). Unity Asset Store FBX may replace later.
+- Source: authored for Painted Abyss to match Modular Industrial Catwalk Kit language (pad / straight / cross / T / ladder / broken rail). Unity Asset Store FBX may replace later.
 - License: game-embedded original meshes (not a redistributable kit dump)
 - Files: `public/assets/industrial-catwalk/*.glb`
-- West-hall walkable grated gallery + south-end ladder.
+- Map-scale first-floor grated mezzanine (pad tiles ~3.8 m) over hall / neck / entrance edges + multiple ladders.
 

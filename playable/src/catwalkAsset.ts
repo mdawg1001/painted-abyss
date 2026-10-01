@@ -1,6 +1,6 @@
 /**
- * West-hall industrial catwalk gallery — modular grated decks + ladder.
- * Authored GLBs under `/assets/industrial-catwalk/` (kit language: straight/cross/T/ladder/rail).
+ * Map-scale industrial catwalk mezzanine — modular grated decks + ladders.
+ * Authored GLBs under `/assets/industrial-catwalk/` (pad / straight / cross / T / ladder / rail).
  * Pattern mirrors radiatorAsset: mounts → procedural stubs → PropStreaming upgrade.
  */
 import * as THREE from 'three';
@@ -9,6 +9,10 @@ import {
  CATWALK_DECK_Y,
  CATWALK_DECK_RISE,
  CATWALK_LADDER,
+ CATWALK_LADDERS,
+ CATWALK_PAD,
+ CATWALK_MODULE_LEN,
+ CATWALK_MODULE_W,
  catwalkMounts,
  type CatwalkMount,
  type CatwalkMountKind,
@@ -19,12 +23,14 @@ export {
  CATWALK_DECK_Y,
  CATWALK_DECK_RISE,
  CATWALK_LADDER,
+ CATWALK_LADDERS,
  catwalkMounts,
 } from './catwalkLayout';
-export type { CatwalkMount, CatwalkMountKind } from './catwalkLayout';
+export type { CatwalkMount, CatwalkMountKind, CatwalkLadder } from './catwalkLayout';
 
 const BASE = '/assets/industrial-catwalk';
 export const CATWALK_URLS: Record<CatwalkMountKind, string> = {
+ pad: `${BASE}/catwalk_pad.glb`,
  straight: `${BASE}/catwalk_straight.glb`,
  cross: `${BASE}/catwalk_cross.glb`,
  t: `${BASE}/catwalk_t.glb`,
@@ -76,18 +82,26 @@ export function buildCatwalkStub(mount: CatwalkMount): THREE.Group {
   root.rotation.y = mount.yaw;
   return root;
  }
- // Deck piece: thin grate box + side rails
- const deck = new THREE.Mesh(new THREE.BoxGeometry(1.2, .06, 2), mat);
+ const w = mount.kind === 'pad' ? CATWALK_PAD : CATWALK_MODULE_W;
+ const len = mount.kind === 'pad' ? CATWALK_PAD : CATWALK_MODULE_LEN;
+ const deck = new THREE.Mesh(new THREE.BoxGeometry(w, .06, len), mat);
  deck.position.y = .03;
- const railL = new THREE.Mesh(new THREE.BoxGeometry(.04, 1.0, 1.9), mat);
- railL.position.set(-.58, .55, 0);
+ const railL = new THREE.Mesh(new THREE.BoxGeometry(.04, 1.0, len * .95), mat);
+ railL.position.set(-(w * .5 - .02), .55, 0);
  const railR = railL.clone();
- railR.position.x = .58;
+ railR.position.x = w * .5 - .02;
  root.add(deck, railL, railR);
  if (mount.kind === 't' || mount.kind === 'cross') {
-  const spur = new THREE.Mesh(new THREE.BoxGeometry(2, .06, 1.2), mat);
+  const spur = new THREE.Mesh(new THREE.BoxGeometry(len, .06, w), mat);
   spur.position.set(mount.kind === 't' ? .9 : 0, .03, 0);
   root.add(spur);
+ }
+ if (mount.kind === 'pad') {
+  const railN = new THREE.Mesh(new THREE.BoxGeometry(w * .95, 1.0, .04), mat);
+  railN.position.set(0, .55, len * .5 - .02);
+  const railS = railN.clone();
+  railS.position.z = -(len * .5 - .02);
+  root.add(railN, railS);
  }
  root.position.set(mount.x, CATWALK_DECK_Y, mount.z);
  root.rotation.y = mount.yaw;
@@ -103,7 +117,6 @@ function prepareModel(model: THREE.Object3D, envMap?: THREE.Texture | null) {
    if (!(m instanceof THREE.MeshStandardMaterial)) continue;
    m.metalness = Math.min(m.metalness || .55, .55);
    m.roughness = Math.max(m.roughness || .5, .48);
-   // Kill any authored warm/orange tint — keep Soviet grey steel.
    if (m.color) {
     const hsl = { h: 0, s: 0, l: 0 };
     m.color.getHSL(hsl);
@@ -125,7 +138,6 @@ export function fitCatwalk(model: THREE.Object3D, mount: CatwalkMount): THREE.Gr
  const pivot = new THREE.Group();
  pivot.name = `catwalk_${mount.label}`;
  pivot.userData.mount = mount;
- // Centre xz; put local min Y on the attachment plane.
  model.position.set(
   -(box.min.x + box.max.x) * .5,
   -box.min.y,
@@ -138,8 +150,6 @@ export function fitCatwalk(model: THREE.Object3D, mount: CatwalkMount): THREE.Gr
  } else if (mount.kind === 'rail_broken') {
   pivot.position.set(mount.x, CATWALK_DECK_Y, mount.z);
  } else {
-  // Deck underside on CATWALK_DECK_Y − thickness ≈ top at DECK_Y after authored thick.
-  // Authored grate top sits ~0.09 above local 0; lower so top ≈ CATWALK_DECK_Y.
   const top = box.max.y - box.min.y;
   pivot.position.set(mount.x, CATWALK_DECK_Y - top + .02, mount.z);
  }
@@ -148,7 +158,7 @@ export function fitCatwalk(model: THREE.Object3D, mount: CatwalkMount): THREE.Gr
 
 export function createCatwalk(mounts = catwalkMounts()): WestCatwalks {
  const group = new THREE.Group();
- group.name = 'westHallCatwalk';
+ group.name = 'firstFloorCatwalk';
  for (const m of mounts) group.add(buildCatwalkStub(m));
  return { group, ready: false, mounts };
 }

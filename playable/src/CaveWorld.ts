@@ -48,7 +48,7 @@ import { createWallPosters, upgradeWallPosters, type WallPosters } from './poste
 import { createCopperPipe, upgradeCopperPipe, upgradeCopperPipeDetail, updateCopperPipe, type CopperPipe } from './copperPipeAsset';
 import { createWallRadiators, upgradeWallRadiators, type WallRadiators } from './radiatorAsset';
 import { createCatwalk, upgradeCatwalk, type WestCatwalks } from './catwalkAsset';
-import { CATWALK_DECK_RISE, CATWALK_LADDER, inCatwalkLadder } from './catwalkLayout';
+import { CATWALK_DECK_RISE, nearestCatwalkLadder } from './catwalkLayout';
 import { createWallPipe, upgradeWallPipe, setPipeWheel, PIPE_MOUNT, type WallPipe } from './pipeAsset';
 import { startStroke, stepStroke, handPoses, smootherstep, VALVE_STAND, WHEEL_CENTRE, BREAKAWAY_TIME, REGRIP_TIME, type ValveStroke } from './valve';
 import { createValveHands, poseValveHands, resetValveHands, type ValveHandsRig } from './valveHands';
@@ -331,7 +331,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
  copperPipe:CopperPipe|null=null;
  /** Sketchfab cast-iron radiators on breath-corridor / lab walls. */
  wallRadiators:WallRadiators|null=null;
- /** West-hall grated service gallery (stub → modular industrial-catwalk GLBs). */
+ /** First-floor grated catwalk mezzanine (stub → modular industrial-catwalk GLBs). */
  westCatwalk:WestCatwalks|null=null;
  /** Both arms, shown only while the leak valve is being worked. */
  valveHands:ValveHandsRig|null=null;
@@ -692,13 +692,13 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    return ok;
   },44);
  }
- /** West-hall broken service gallery: grated decks + ladder (stub → modular GLBs). */
+ /** First-floor catwalk mezzanine: grated pads + ladders (stub → modular GLBs). */
  mountWestCatwalk(){
   const visual=createCatwalk();
   this.scene.add(visual.group);
   this.westCatwalk=visual;
-  const anchor=visual.mounts.find(m=>m.kind==='ladder')??visual.mounts[0]??{x:-27.2,z:-48};
-  this.propStreaming.add('west-catwalk',anchor,async()=>{
+  const anchor=visual.mounts.find(m=>m.kind==='ladder')??visual.mounts[0]??{x:-28,z:-48};
+  this.propStreaming.add('first-floor-catwalk',anchor,async()=>{
    const ok=await upgradeCatwalk(visual,this.knifeEnvMap);
    if(!ok||!this.alive)return ok;
    for(const child of visual.group.children){
@@ -2959,12 +2959,12 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
     const wadeDepth=Math.max(0,m.breathWaterY-FLOOR_Y);
     const drag=wadingDrag(wadeDepth);
     const gv=this.gait.instantaneousSpeed(),gd=this.gait.dir;
-    // Ladder climb: stick to the south-end cage and raise feet to the grate (jump cannot).
+    // Ladder climb: stick to the nearest cage and raise feet to the grate (jump cannot).
     const feetY=FLOOR_Y+tech.air;
-    const onLadder=inCatwalkLadder(m.position.x,m.position.z,feetY);
-    const wantClimb=onLadder&&(localZ>0||!!pressed('KeyE'));
-    const wantDescend=onLadder&&localZ<0&&tech.air>0.05;
-    if(wantClimb||wantDescend){
+    const ladder=nearestCatwalkLadder(m.position.x,m.position.z,feetY);
+    const wantClimb=!!ladder&&(localZ>0||!!pressed('KeyE'));
+    const wantDescend=!!ladder&&localZ<0&&tech.air>0.05;
+    if(ladder&&(wantClimb||wantDescend)){
      const climbSpeed=2.1;
      const dir=wantClimb?1:-1;
      tech.mode='air';
@@ -2972,11 +2972,11 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
      tech.air=Math.max(0,Math.min(CATWALK_DECK_RISE,tech.air+dir*climbSpeed*dt));
      tech.airCap=0;
      // Stick to the ladder centre so you don't walk off mid-climb.
-     m.position.x+=(CATWALK_LADDER.x-m.position.x)*Math.min(1,dt*10);
-     m.position.z+=(CATWALK_LADDER.z-m.position.z)*Math.min(1,dt*10);
+     m.position.x+=(ladder.x-m.position.x)*Math.min(1,dt*10);
+     m.position.z+=(ladder.z-m.position.z)*Math.min(1,dt*10);
      if(tech.air>=CATWALK_DECK_RISE-.02){
-      // Step onto the south grate (ladder xz alone may sit just past the span edge).
-      m.position.x=-27.2;m.position.z=-48;
+      // Step onto the landing pad (ladder xz alone may sit just past the span edge).
+      m.position.x=ladder.landX;m.position.z=ladder.landZ;
       tech.mode='walk';tech.air=CATWALK_DECK_RISE;tech.vel={x:0,y:0,z:0};
      }else if(tech.air<=0.02&&!wantClimb){
       tech.mode='walk';tech.air=0;tech.vel={x:0,y:0,z:0};
