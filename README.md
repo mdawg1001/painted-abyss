@@ -1,8 +1,8 @@
-# Painted Abyss — First Dive · 0.24.5
+# Painted Abyss — First Dive · 0.24.6
 
-## Six cartoon civilian archetypes (0.24.4 / 0.24.5)
+## Six cartoon civilian archetypes (0.24.6)
 
-v0.24.5 fixes a skinning regression: archetype width/bone scales were melting characters and flailing walk cycles. Runtime variety is hair + skin + **uniform height** + posture only.
+v0.24.6 restores the proven single-mesh civilian GLB. Archetypes only remap **skin/hair vertex colours** — no scale, bone, or posture hacks (those melted/flailed the rig). Hair-style kits deferred.
 
 Shared coral jacket / turquoise trousers / cream shoes; blank faces. Six designed characters cycle by slot — tall/lanky, short/sturdy, broad/bald, slim/bob, scruffy/messy, athletic/ponytail — via silhouette scale, hair kit, skin tone and idle posture. Stickman-civilian packs are art reference only (not imported).
 

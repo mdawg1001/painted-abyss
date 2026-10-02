@@ -1497,7 +1497,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
     this.guardCadence.reset(i);
     this.guardLifeSeen[i]=g.life;this.guardFall[i]=0;this.guardRecoil[i]=0;this.guardJolt[i]=0;
     this.guardShotsSeen[i]=g.shots;this.guardStrikeSeen[i]=g.strikeAt;
-    visual.pose=makeGuardCombatState(i,guardArchetype(i).posture);
+    visual.pose=makeGuardCombatState(i);
     const fresh=this.guardActs[i];if(fresh)clearGuardAction(fresh);
    }
    if(!g.active){visual.root.visible=false;continue;}

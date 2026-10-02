@@ -350,16 +350,8 @@ export function applyGuardCombatPose(rig:GuardRig,st:GuardCombatState,gun:THREE.
  // Shoulders ahead of the hips, combat breathing, and the recoil rocking him back.
  _left.crossVectors(UP,_dirH).normalize();
  const breathe=Math.sin(st.t*Math.PI*2*(.3+.18*st.anger));
- // Archetype posture: readable cartoon habits that stay under the combat layer.
- // Always rotateAxis (quaternion-safe). Never write bone.rotation — clips use quaternions
- // and a stale Euler += was wiping the mixer pose (melt / flailing legs).
- const idle=1-stance;
- rotateAxis(rig.hips,_left,st.postureSlouch*idle);
- rotateAxis(rig.abdomen,_left,GUARD_STANCE_LEAN*stance*.6+st.posturePitch*idle);
- rotateAxis(rig.torso,_left,GUARD_STANCE_LEAN*stance*.4+.018*breathe*(.5+st.anger)-.07*rec+st.posturePitch*.5*idle);
- if(Math.abs(st.postureSwagger)>1e-4){
-  rotateAxis(rig.pelvis,UP,st.postureSwagger*idle*Math.sin(st.t*1.7)*.35);
- }
+ rotateAxis(rig.abdomen,_left,GUARD_STANCE_LEAN*stance*.6);
+ rotateAxis(rig.torso,_left,GUARD_STANCE_LEAN*stance*.4+.018*breathe*(.5+st.anger)-.07*rec);
 
  // --- Two-handed isosceles grip on the line from the shoulders to the target. ---
  if(w>1e-3){
