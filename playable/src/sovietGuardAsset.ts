@@ -22,6 +22,7 @@ import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js
 import { createCivilianRifle } from './civilianRifle';
 import { buildGuardRig, makeGuardCombatState, type GuardRig, type GuardCombatState } from './guardCombatPose';
 import { guardArchetype, GUARD_UNIFORM, hairObjectName, facialObjectName, capObjectName, type GuardArchetype } from './guardArchetypes';
+import { applyHairStrandMaps } from './hairStrandMaps';
 import { createOfficerCap } from './sovietKeyAsset';
 export { GUARD_ARCHETYPES, guardArchetype, GUARD_UNIFORM, hairObjectName, facialObjectName, capObjectName } from './guardArchetypes';
 
@@ -237,12 +238,21 @@ function litGuardMaterials(root:THREE.Object3D){
  root.traverse(o=>{
   if(!(o instanceof THREE.Mesh))return;
   o.castShadow=true;o.receiveShadow=true;o.frustumCulled=false;
+  const isHair=o.name.startsWith('Hair_')||o.name.startsWith('Facial_');
   const mats=Array.isArray(o.material)?o.material:[o.material];
   for(const m of mats){
    if(!m||!('roughness' in m))continue;
    const sm=m as THREE.MeshStandardMaterial;
    if('flatShading' in sm&&sm.flatShading)sm.flatShading=false;
-   // Cartoon toy response: matte, fully saturated primaries — no cloth sheen.
+   if(isHair){
+    // Strand albedo/normal/roughness; archetype tints via material.color.
+    applyHairStrandMaps(sm);
+    sm.emissive.setHex(0x000000);
+    sm.emissiveIntensity=0;
+    sm.needsUpdate=true;
+    continue;
+   }
+   // Cartoon toy body: matte, fully saturated primaries — no cloth sheen.
    if(sm.vertexColors){sm.roughness=.92;sm.metalness=0;sm.color?.setHex(0xffffff);}
    const phys=sm as THREE.MeshPhysicalMaterial;
    if('sheen' in phys)phys.sheen=0;
@@ -343,8 +353,10 @@ function tintKitMesh(o:THREE.Object3D,hex:number){
  for(const m of mats){
   if(!m||!('color' in m))continue;
   const sm=m as THREE.MeshStandardMaterial;
+  // Keep strand maps; only tint. No emissive wash (that flattened hair to plastic).
   sm.color.setHex(hex);
-  if(sm.emissive){sm.emissive.copy(sm.color);sm.emissiveIntensity=.03;}
+  if(sm.emissive){sm.emissive.setHex(0x000000);sm.emissiveIntensity=0;}
+  if(!sm.map&&(o.name.startsWith('Hair_')||o.name.startsWith('Facial_')))applyHairStrandMaps(sm);
   sm.needsUpdate=true;
  }
 }
