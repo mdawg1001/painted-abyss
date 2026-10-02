@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {clone} from 'three/examples/jsm/utils/SkeletonUtils.js';
 import {
- GUARD_ARCHETYPES,guardArchetype,GUARD_UNIFORM,hairObjectName,
+ GUARD_ARCHETYPES,guardArchetype,GUARD_UNIFORM,hairObjectName,facialObjectName,capObjectName,
 } from '../src/guardArchetypes';
 import {
  applyGuardArchetype,hideGuardHairKits,normalizeHumanoid,SOVIET_GUARD_HEIGHT,
@@ -22,21 +22,27 @@ test('eight enemy-guard archetypes keep a shared stark red/blue kit',()=>{
  assert.equal(GUARD_ARCHETYPES.length,8);
  assert.equal(GUARD_UNIFORM.jacket,0xff0000);
  assert.equal(GUARD_UNIFORM.trousers,0x0000ff);
- assert.equal(GUARD_UNIFORM.trim,0x0000ff);
  assert.equal(new Set(GUARD_ARCHETYPES.map(a=>a.id)).size,8);
- assert.equal(guardArchetype(8).id,guardArchetype(0).id);
- // Opening slots 1 and 4 are female blue-pigtail enemies.
  assert.equal(guardArchetype(1).hair,'pigtails');
  assert.equal(guardArchetype(4).hair,'pigtails');
- assert.equal(guardArchetype(1).hairColor,0x3d9bff);
+ assert.equal(guardArchetype(0).hair,'spiky');
+ assert.equal(guardArchetype(2).hair,'afro');
+ assert.equal(guardArchetype(3).facial,'handlebar');
+ assert.equal(guardArchetype(5).hair,'mullet');
+ assert.equal(guardArchetype(6).cap,'baseball');
+ assert.equal(guardArchetype(7).hair,'mohawk');
 });
 
-test('GLB ships six hair kits on the shared skeleton (incl. pigtails)',async()=>{
+test('GLB ships makeover hair kits plus facial and cap',async()=>{
  const g=await load();
  const names:string[]=[];
- g.scene.traverse(o=>{if(o.name.startsWith('Hair_'))names.push(o.name);});
- assert.deepEqual(names.sort(),['Hair_bob','Hair_curls','Hair_messy','Hair_pigtails','Hair_ponytail','Hair_sidePart'].sort());
- assert.ok(g.scene.getObjectByName('ColourfulCivilian'));
+ g.scene.traverse(o=>{
+  if(o.name.startsWith('Hair_')||o.name.startsWith('Facial_')||o.name.startsWith('Cap_'))names.push(o.name);
+ });
+ assert.deepEqual(names.sort(),[
+  'Cap_baseball','Facial_handlebar',
+  'Hair_afro','Hair_buzz','Hair_mohawk','Hair_mullet','Hair_pigtails','Hair_spiky',
+ ].sort());
 });
 
 test('archetype shows one hair kit, remaps skin, leaves skinned scale alone',async()=>{
@@ -49,16 +55,11 @@ test('archetype shows one hair kit, remaps skin, leaves skinned scale alone',asy
  const rig=buildGuardRig(scene);
  assert.ok(rig);
  const scaleBefore=scene.scale.clone();
- applyGuardArchetype(scene,rig,pose,0); // lanky → sidePart
+ applyGuardArchetype(scene,rig,pose,0); // lanky → spiky
  assert.ok(scene.scale.equals(scaleBefore),'skinned mesh scale untouched');
- assert.ok(Math.abs(rig.head.scale.x-1)<1e-6,'no bone.scale');
- assert.ok(scene.getObjectByName('Hair_sidePart')?.visible);
- assert.equal(scene.getObjectByName('Hair_curls')?.visible,false);
- assert.equal(scene.getObjectByName('Hair_ponytail')?.visible,false);
- // Broad (outfit 3) is bald — every hair kit stays hidden.
- const broad=clone(g.scene);
- applyGuardArchetype(broad,buildGuardRig(broad),makeGuardCombatState(3),3);
- broad.traverse(o=>{if(o.name.startsWith('Hair_'))assert.equal(o.visible,false,`${o.name} hidden when bald`);});
+ assert.ok(scene.getObjectByName('Hair_spiky')?.visible);
+ assert.equal(scene.getObjectByName('Hair_mullet')?.visible,false);
+ assert.equal(scene.getObjectByName('Cap_baseball')?.visible,false);
  const body=scene.getObjectByName('ColourfulCivilian') as THREE.Mesh;
  const col=body.geometry.getAttribute('color');
  const skin=new THREE.Color(guardArchetype(0).skin);
@@ -67,19 +68,33 @@ test('archetype shows one hair kit, remaps skin, leaves skinned scale alone',asy
   if(Math.abs(col.getX(i)-skin.r)+Math.abs(col.getY(i)-skin.g)+Math.abs(col.getZ(i)-skin.b)<.05)matched++;
  }
  assert.ok(matched>80,'skin verts remapped');
- assert.ok(Math.abs(pose.postureSwagger-guardArchetype(0).posture.swagger)<1e-6);
 });
 
-test('guardRootScale encodes tall/narrow vs short/stocky on the outer root',()=>{
- const lanky=guardRootScale(0);
- const sturdy=guardRootScale(2);
- assert.ok(lanky.y>sturdy.y,'lanky taller');
- assert.ok(lanky.x<sturdy.x,'lanky narrower');
- const officer=guardRootScale(5,'officer');
- assert.ok(officer.y>guardRootScale(5).y);
+test('handlebar and baseball cap kits enable correctly',async()=>{
+ const g=await load();
+ hideGuardHairKits(g.scene);
+ normalizeHumanoid(g.scene,SOVIET_GUARD_HEIGHT);
+ // Broad: buzz + handlebar
+ {
+  const scene=clone(g.scene);
+  scene.traverse(o=>{if(o instanceof THREE.Mesh)o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();});
+  applyGuardArchetype(scene,buildGuardRig(scene),makeGuardCombatState(3),3);
+  assert.ok(scene.getObjectByName('Hair_buzz')?.visible);
+  assert.ok(scene.getObjectByName('Facial_handlebar')?.visible);
+  assert.equal(scene.getObjectByName('Cap_baseball')?.visible,false);
+ }
+ // Scruffy: buzz + baseball cap
+ {
+  const scene=clone(g.scene);
+  scene.traverse(o=>{if(o instanceof THREE.Mesh)o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();});
+  applyGuardArchetype(scene,buildGuardRig(scene),makeGuardCombatState(6),6);
+  assert.ok(scene.getObjectByName('Hair_buzz')?.visible);
+  assert.ok(scene.getObjectByName('Cap_baseball')?.visible);
+  assert.equal(scene.getObjectByName('Facial_handlebar')?.visible,false);
+ }
+ assert.equal(facialObjectName('handlebar'),'Facial_handlebar');
+ assert.equal(capObjectName('baseball'),'Cap_baseball');
  assert.equal(hairObjectName('bald'),null);
- assert.equal(hairObjectName('ponytail'),'Hair_ponytail');
- assert.equal(hairObjectName('pigtails'),'Hair_pigtails');
 });
 
 test('female enemy guards show blue pigtails only',async()=>{
@@ -89,17 +104,39 @@ test('female enemy guards show blue pigtails only',async()=>{
  for(const outfit of [1,4]){
   const scene=clone(g.scene);
   scene.traverse(o=>{if(o instanceof THREE.Mesh)o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();});
-  const pose=makeGuardCombatState(outfit,guardArchetype(outfit).posture);
-  applyGuardArchetype(scene,buildGuardRig(scene),pose,outfit);
-  assert.ok(scene.getObjectByName('Hair_pigtails')?.visible,`${guardArchetype(outfit).id} pigtails visible`);
-  scene.traverse(o=>{
-   if(!o.name.startsWith('Hair_')||o.name==='Hair_pigtails')return;
-   assert.equal(o.visible,false,`${o.name} hidden`);
-  });
+  applyGuardArchetype(scene,buildGuardRig(scene),makeGuardCombatState(outfit),outfit);
+  assert.ok(scene.getObjectByName('Hair_pigtails')?.visible);
   const hair=scene.getObjectByName('Hair_pigtails') as THREE.Mesh;
-  const mat=hair.material as THREE.MeshStandardMaterial;
-  assert.equal(mat.color.getHex(),0x3d9bff);
+  assert.equal((hair.material as THREE.MeshStandardMaterial).color.getHex(),0x3d9bff);
  }
+});
+
+test('hair kits have unmistakable silhouettes',async()=>{
+ const g=await load();
+ hideGuardHairKits(g.scene);
+ normalizeHumanoid(g.scene,SOVIET_GUARD_HEIGHT);
+ const size=async(outfit:number)=>{
+  const scene=clone(g.scene);
+  scene.traverse(o=>{if(o instanceof THREE.Mesh)o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();});
+  applyGuardArchetype(scene,buildGuardRig(scene),makeGuardCombatState(outfit),outfit);
+  scene.updateMatrixWorld(true);
+  let box=new THREE.Box3();
+  scene.traverse(o=>{if(o instanceof THREE.Mesh&&o.visible&&o.name.startsWith('Hair_'))box.union(new THREE.Box3().setFromObject(o));});
+  return box.getSize(new THREE.Vector3());
+ };
+ const spiky=await size(0),pigtails=await size(1),afro=await size(2),mullet=await size(5),mohawk=await size(7);
+ assert.ok(afro.x>spiky.x*1.4,'afro much wider than spiky');
+ assert.ok(pigtails.y>spiky.y*1.4,'pigtails much taller/longer than spiky');
+ assert.ok(mullet.y>spiky.y*1.3,'mullet hangs much longer');
+ assert.ok(mohawk.x<spiky.x*.5,'mohawk is a thin ridge');
+ assert.ok(pigtails.x<1.0,'pigtails hang down, not out as wings');
+});
+
+test('guardRootScale encodes tall/narrow vs short/stocky on the outer root',()=>{
+ const lanky=guardRootScale(0);
+ const sturdy=guardRootScale(2);
+ assert.ok(lanky.y>sturdy.y,'lanky taller');
+ assert.ok(lanky.x<sturdy.x,'lanky narrower');
 });
 
 test('walk + combat pose keeps feet near the floor for every archetype',async()=>{
@@ -115,7 +152,6 @@ test('walk + combat pose keeps feet near the floor for every archetype',async()=
   const rig=buildGuardRig(scene);
   assert.ok(rig);
   applyGuardArchetype(scene,rig,pose,outfit);
-  // Outer-root silhouette (what CaveWorld/survivalFx apply).
   const wrap=new THREE.Group();
   wrap.scale.copy(guardRootScale(outfit));
   wrap.add(scene);

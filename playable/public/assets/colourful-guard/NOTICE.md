@@ -6,4 +6,4 @@ The Stickman Civilian Characters Pack (Unity Asset Store) is an art-direction re
 
 The 23-bone skeleton and idle/walk/run animation data are reused from Quaternius Ultimate Animated Character Pack — Soldier_Male (CC0 1.0): https://quaternius.com/packs/ultimateanimatedcharacter.html . The original GLB remains in `../soviet-uniform/`.
 
-This GLB ships a body SkinnedMesh (`ColourfulCivilian`) plus six hair kits (`Hair_sidePart`, `Hair_curls`, `Hair_bob`, `Hair_messy`, `Hair_ponytail`, `Hair_pigtails`) bound to the same skeleton. Runtime shows one hair (or none when bald), remaps skin vertex colours, and applies tall/narrow↔short/stocky silhouette on the **outer visual root** only — never as bone.scale on the skinned mixer target.
+This GLB ships a body SkinnedMesh (`ColourfulCivilian`) plus hairstyle kits (`Hair_spiky`, `Hair_mullet`, `Hair_afro`, `Hair_pigtails`, `Hair_buzz`, `Hair_mohawk`) plus `Facial_handlebar` and `Cap_baseball` bound to the same skeleton. Runtime shows one hair (or none when bald), remaps skin vertex colours, and applies tall/narrow↔short/stocky silhouette on the **outer visual root** only — never as bone.scale on the skinned mixer target.
