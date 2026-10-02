@@ -12,13 +12,16 @@ export type GuardArchetype={
  hair:GuardHairId;
  hairColor:number;
  skin:number;
- /** Whole-body scale after height normalise (cartoon proportions). */
- width:number;
+ /**
+  * Uniform height scale only (safe with Quaternius skinning).
+  * Width/belly variation is reserved for build-time body kits — do not apply as
+  * non-uniform Object3D or bone.scale (that melts the skinned mesh).
+  */
  height:number;
+ /** Design notes for a future baked-body pass (unused at runtime). */
+ width:number;
  depth:number;
- /** Extra bone scales on the cloned rig. */
  head:number;
- /** Vertical squash/stretch on the head (round vs long). */
  headY:number;
  shoulders:number;
  belly:number;
