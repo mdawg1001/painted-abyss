@@ -33,7 +33,7 @@ function box(at,size,color,bone,angle=0){const g=new T.BoxGeometry(...size);g.ro
 function segment(a,b,r1,r2,color,first,second=first){
  const delta=b.clone().sub(a),length=delta.length();const g=new T.CylinderGeometry(r2,r1,length,8,4);
  g.applyQuaternion(new T.Quaternion().setFromUnitVectors(new T.Vector3(0,1,0),delta.clone().normalize()));g.translate(...a.clone().add(b).multiplyScalar(.5).toArray());
- add(g,color,p=>{const t=T.MathUtils.clamp(p.clone().sub(a).dot(delta)/(length*length),0,1);const w=T.MathUtils.smoothstep(t,.65,1)*.5;return first===second?[[first,1]]:[[first,1-w],[second,w]];});
+ add(g,color,p=>{const t=T.MathUtils.clamp(p.clone().sub(a).dot(delta)/(length*length),0,1);const w=T.MathUtils.smoothstep(t,.65,1);return first===second?[[first,1]]:[[first,1-w],[second,w]];});
 }
 // Jacket rings: broad shoulders, shaped waist and hem; weighted continuously up the spine.
 const rings=[[1.02,.30,.19],[1.12,.34,.21],[1.42,.33,.22],[1.72,.40,.24],[1.88,.32,.20],[1.99,.12,.12]];
@@ -47,9 +47,12 @@ ellipsoid([0,1.05,-.03],[.34,.19,.22],C.trousers,'Hips');
 // Blank oval face, ears and angular purple hair. No facial decal or expression morphs.
 ellipsoid([0,2.24,.025],[.30,.35,.26],C.skin,'Head',12);
 for(const s of [-1,1])ellipsoid([s*.292,2.23,.015],[.055,.087,.045],C.skin,'Head',8);
-const hair=new T.SphereGeometry(1,12,5,0,Math.PI*2,0,Math.PI*.54);hair.scale(.315,.37,.275);hair.translate(0,2.27,.01);add(hair,C.hair,rigid('Head'));
-// Asymmetric swept fringe, faceted rather than painted on the face.
-ellipsoid([-.125,2.46,.196],[.19,.12,.11],C.hair,'Head',7);
+const hp=[];
+const hairV=(ring,i)=>{const a=i/12*Math.PI*2,edge=1.4-.45*Math.cos(a),t=ring/5*edge;return [Math.sin(a)*Math.sin(t)*.318,2.27+Math.cos(t)*.375,Math.cos(a)*Math.sin(t)*.28+.01];};
+for(let r=0;r<5;r++)for(let i=0;i<12;i++)hp.push(...hairV(r,i),...hairV(r+1,i),...hairV(r,i+1),...hairV(r,i+1),...hairV(r+1,i),...hairV(r+1,i+1));
+const hair=new T.BufferGeometry();hair.setAttribute('position',new T.Float32BufferAttribute(hp,3));add(hair,C.hair,rigid('Head'));
+// Swept fringe follows the scalp, with a slanted edge above the blank face.
+const fringe=new T.BufferGeometry();fringe.setAttribute('position',new T.Float32BufferAttribute([-.27,2.43,.17, .22,2.51,.19, -.11,2.62,.20, -.27,2.43,.17, -.11,2.62,.20, -.29,2.52,.12],3));add(fringe,C.hair,rigid('Head'));
 box([-.125,1.93,.158],[.19,.17,.04],C.trim,'Torso',-.28);
 box([.125,1.93,.158],[.19,.17,.04],C.trim,'Torso',.28);
 // Zipper sections follow their own spine region.
@@ -57,6 +60,7 @@ for(let y=1.12;y<1.88;y+=.085)box([0,y,.215],[.016,.09,.012],C.zip,y<1.48?'Abdom
 box([0,1.80,.235],[.048,.069,.026],C.zip,'Torso');
 for(const side of ['L','R']){
  const a=bones.get('UpperArm'+side).p,b=bones.get('LowerArm'+side).p,h=bones.get('Fist'+side).p;
+ ellipsoid(a.toArray(),[.16,.15,.15],C.jacket,'UpperArm'+side);
  segment(a,b,.145,.115,C.jacket,'UpperArm'+side,'LowerArm'+side);
  segment(b,h,.12,.095,C.jacket,'LowerArm'+side,'Fist'+side);
  ellipsoid(b.toArray(),[.119,.12,.12],C.jacket,'LowerArm'+side);
@@ -67,7 +71,7 @@ for(const side of ['L','R']){
  segment(k,f,.145,.12,C.trousers,'LowerLeg'+side,'Foot'+side);
  ellipsoid(k.toArray(),[.15,.15,.15],C.trousers,'LowerLeg'+side);
  const x=f.x;ellipsoid([x,.045,.055],[.16,.115,.255],C.shoe,'Foot'+side);
- box([x,-.037,.055],[.31,.075,.44],C.sole,'Foot'+side);
+ ellipsoid([x,-.027,.055],[.164,.05,.26],C.sole,'Foot'+side);
  box([x,.111,.125],[.21,.045,.13],C.shoe,'Foot'+side);
 }
 const geometry=mergeGeometries(parts);geometry.computeBoundingBox();geometry.computeBoundingSphere();

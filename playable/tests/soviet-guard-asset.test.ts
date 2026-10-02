@@ -12,7 +12,7 @@ import * as THREE from 'three';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 
-test('Quaternius soldier GLB with authored loco clips is credited and present',()=>{
+test('original civilian mesh and retained CC0 skeleton/animation credits are present',()=>{
  const dir=path.join(root,'public/assets/soviet-uniform');
  assert.ok(fs.existsSync(path.join(dir,'quaternius_soldier_male.glb')));
  assert.ok(fs.existsSync(path.join(dir,'README.md')));
@@ -21,7 +21,9 @@ test('Quaternius soldier GLB with authored loco clips is credited and present',(
  assert.match(readme,/CC0/);
  assert.match(SOVIET_GUARD_SOURCE,/quaternius\.com/);
  assert.equal(SOVIET_GUARD_LICENSE,'CC0 1.0');
- assert.equal(SOVIET_GUARD_GLB,'/assets/soviet-uniform/quaternius_soldier_male.glb');
+ assert.equal(SOVIET_GUARD_GLB,'/assets/colourful-guard/civilian.glb');
+ assert.ok(fs.existsSync(path.join(root,'public',SOVIET_GUARD_GLB)));
+ assert.match(fs.readFileSync(path.join(root,'public/assets/colourful-guard/NOTICE.md'),'utf8'),/original procedural mesh/);
  assert.equal(GUARD_LOCO_PROCEDURAL,false);
  const notice=fs.readFileSync(path.join(root,'NOTICE.md'),'utf8');
  assert.match(notice,/Quaternius/);

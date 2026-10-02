@@ -22,13 +22,13 @@ import {wrapAngle} from '../src/guardSteering';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 
-test('Soviet guard asset is credited and the glb is present',()=>{
+test('civilian guard ships with the reused skeleton and animation credits',()=>{
  assert.match(SOVIET_GUARD_SOURCE,/quaternius\.com/);
  assert.equal(SOVIET_GUARD_AUTHOR,'Quaternius');
  assert.match(SOVIET_GUARD_LICENSE,/CC0/);
- assert.equal(SOVIET_GUARD_GLB,'/assets/soviet-uniform/quaternius_soldier_male.glb');
+ assert.equal(SOVIET_GUARD_GLB,'/assets/colourful-guard/civilian.glb');
  assert.ok(SOVIET_GUARD_HEIGHT>=1.85&&SOVIET_GUARD_HEIGHT<=2.0);
- const glb=path.join(root,'public/assets/soviet-uniform/quaternius_soldier_male.glb');
+ const glb=path.join(root,'public',SOVIET_GUARD_GLB);
  assert.ok(fs.existsSync(glb),'glb must ship under public/assets');
  const buf=fs.readFileSync(glb);
  assert.equal(buf.toString('ascii',0,4),'glTF');

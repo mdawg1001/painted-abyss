@@ -110,8 +110,8 @@ test('firing stance: two hands on the gun, knees bent with feet planted, chest o
  // Chest squared up (bind forward of Torso points at the target horizontally).
  const f=rig.fwd.get(rig.torso)!.clone().applyQuaternion(rig.torso.getWorldQuaternion(new THREE.Quaternion())).setY(0).normalize();
  assert.ok(f.dot(toT)>.95,'chest faces the target');
- // Scowl.
- assert.ok(rig.face&&rig.face.morphTargetInfluences![0]>.9,'brows knit, eyes narrowed');
+ // The approved civilian is faceless, including while fighting.
+ assert.equal(rig.face,null);
 });
 
 test('strafing sideways: pelvis turns into the step, chest stays on the target; backpedal reverses the gait',async()=>{
@@ -136,4 +136,16 @@ test('strafing sideways: pelvis turns into the step, chest stays on the target; 
  updateGuardLocomotion(loco,.1,{moving:true,speed:.9,state:'chase',direction:dir});
  const d=((loco.phase-phase0)%1+1)%1;
  assert.ok(d>.5,'walk phase runs backwards');
+});
+
+
+test('rifle stance separates support hand onto the foregrip and keeps muzzle on target',async()=>{
+ const {root,gun,loco,rig}=await guardInstance();gun.userData.rifle=true;
+ const target=new THREE.Vector3(1.5,1.6,6),st=makeGuardCombatState();
+ for(let i=0;i<90;i++){updateGuardLocomotion(loco,1/60,{moving:false,speed:0,state:'chase'});root.updateMatrixWorld(true);applyGuardCombatPose(rig,st,gun,{target,aim:1,engaged:true,recoil:0,speed:0,dt:1/60});}
+ root.updateMatrixWorld(true);const right=wp(rig.armR[2]),left=wp(rig.armL[2]),dir=target.clone().sub(right).normalize();
+ assert.ok(left.clone().sub(right).dot(dir)>.2,'support hand ahead of firing hand');
+ assert.ok(right.distanceTo(left)<.4,'hands remain on the same weapon');
+ const forward=new THREE.Vector3(0,0,-1).applyQuaternion(gun.getWorldQuaternion(new THREE.Quaternion()));
+ assert.ok(forward.dot(target.clone().sub(wp(gun)).normalize())>.99,'rifle points at target');
 });

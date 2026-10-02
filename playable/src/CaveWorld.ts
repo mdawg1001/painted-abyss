@@ -598,7 +598,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   }
   Promise.all(this.sovietGuards.map(v=>upgradeSovietGuardVisual(v))).then(async()=>{
    if(!this.alive)return;
-   this.syncSovietGuard(0);
+   this.syncSovietGuard(0);this.shaderGuardDirty=true;this.requestRender();
    const clips=await loadGuardActions();
    if(!clips||!this.alive)return;
    this.guardActs=this.sovietGuards.map(v=>v.loco?attachGuardActions(v.loco,clips):null);
@@ -1606,9 +1606,9 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    }
    let muzzle:THREE.Vector3|null=null;
    if(g.gun&&this.guardShotsSeen[i]===g.shots&&flashFrom===i){
-    muzzle=visual.gun.getWorldPosition(this._muzzleScratch);
-    this._muzzleAim.copy(this._aimTarget).sub(muzzle).normalize();
-    muzzle.addScaledVector(this._muzzleAim,.28);
+    const tip=visual.gun.getObjectByName('guardMuzzle');
+    muzzle=(tip??visual.gun).getWorldPosition(this._muzzleScratch);
+    if(!tip){this._muzzleAim.copy(this._aimTarget).sub(muzzle).normalize();muzzle.addScaledVector(this._muzzleAim,.28);}
    }
    this.fx.syncGuard(i,visual,g,this.mission.elapsed,flashFrom===i,muzzle,dt);
    if(muzzle){

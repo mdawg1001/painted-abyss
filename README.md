@@ -1,5 +1,13 @@
 # Painted Abyss — First Dive · 0.24.0
 
+## Colourful faceless guards (0.24.0)
+
+Original low-poly civilian enemies replace the soldier mesh: coral jackets, turquoise trousers, cream/yellow shoes and purple swept hair around a blank face. The texture-free model has 3,422 triangles and a 23-bone skeleton. Existing CC0 locomotion and the separately credited combat clips drive walking, running, aiming, knife attacks, hit reactions and death. Original assets remain available.
+
+A lightweight original rifle is attached to the firing hand, with a separate support-hand grip and a muzzle marker for flashes/tracers. Enemy combat rules and damage are unchanged. Knife rushers, officer identification and armour/loot behaviour continue through the existing game systems. Each enemy keeps independent animation and hit-flash state; the earlier distant-animation cadence remains active.
+
+Regenerate the character from the repository root with `node playable/scripts/build-colourful-guard.mjs`. See `playable/public/assets/colourful-guard/NOTICE.md` for authorship and reused animation credits. No Unity or paid character package is required.
+
 ## Sparse bunker service galleries (0.23.1)
 
 Pulls back the 0.23.0 map-scale pad mezzanine. **Three short** fitting galleries only: west-hall wall L (collapsed bay), neck west shelf, hall pit north-lip overlook. Thick enamel/dull-steel structure with wall brackets and kick plates — not floating pad tiles. Two–three ladders; intentional gap drops. Deck still `FLOOR_Y+3.2`. Hatch / breath flood unchanged.
