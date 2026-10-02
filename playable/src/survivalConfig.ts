@@ -184,16 +184,16 @@ export type DoorSide='W'|'E'|'S'|'N';
 /** Reinforcement doors: steel bulkheads set into the bunker walls (grid cell + wall side). */
 export const SURVIVAL_DOORS:{name:string;col:number;row:number;side:DoorSide}[]=[
  {name:'hatch corridor',col:10,row:-6,side:'W'},
- {name:'west chamber',col:8,row:3,side:'W'},
- {name:'east chamber',col:14,row:2,side:'E'},
- {name:'approach corridor',col:10,row:8,side:'W'},
- {name:'west shelf',col:4,row:14,side:'W'},
- {name:'west deep',col:4,row:22,side:'W'},
- {name:'south-east cavern',col:18,row:23,side:'E'},
- {name:'fissure',col:19,row:9,side:'E'},
- {name:'bone alcove west',col:8,row:29,side:'W'},
- {name:'bone alcove east',col:14,row:28,side:'E'},
- {name:'extraction pool',col:21,row:3,side:'E'},
+ {name:'west chamber',col:7,row:3,side:'W'},
+ {name:'east chamber',col:15,row:2,side:'E'},
+ {name:'approach corridor',col:9,row:8,side:'W'},
+ {name:'west annex',col:0,row:14,side:'W'},
+ {name:'west deep',col:0,row:24,side:'W'},
+ {name:'south-east cavern',col:20,row:26,side:'E'},
+ {name:'fissure',col:21,row:10,side:'E'},
+ {name:'bone alcove west',col:6,row:38,side:'W'},
+ {name:'bone alcove east',col:16,row:36,side:'E'},
+ {name:'extraction pool',col:24,row:3,side:'E'},
 ];
 
 /**
@@ -223,15 +223,21 @@ export const SURVIVAL_COVER:{x:number;z:number;hx:number;hz:number;kind:'crates'
  {x:12,z:-70,hx:1.05,hz:.55,kind:'cardboard'},
  {x:-15,z:-82,hx:.7,hz:.7,kind:'crates'},
  {x:10,z:-90,hx:1.2,hz:.35,kind:'wall'},
- {x:-8,z:-88,hx:1.05,hz:.55,kind:'cardboard'},
- // Bone alcove round the relic.
- {x:-6,z:-108,hx:.7,hz:.7,kind:'crates'},
- {x:6,z:-114,hx:1.2,hz:.35,kind:'wall'},
- {x:0,z:-92,hx:1.05,hz:.55,kind:'cardboard'},
- {x:-2,z:-94,hx:1.05,hz:.55,kind:'cardboard'},
+ {x:-16,z:-88,hx:1.05,hz:.55,kind:'cardboard'},
+ // West annex.
+ {x:-40,z:-56,hx:.7,hz:.7,kind:'crates'},
+ {x:-36,z:-72,hx:1.05,hz:.55,kind:'cardboard'},
+ {x:-38,z:-96,hx:.35,hz:1.2,kind:'wall'},
+ // Deep cavern / bone wing.
+ {x:-10,z:-120,hx:.7,hz:.7,kind:'crates'},
+ {x:12,z:-128,hx:1.2,hz:.35,kind:'wall'},
+ {x:-6,z:-140,hx:1.05,hz:.55,kind:'cardboard'},
+ {x:6,z:-152,hx:.7,hz:.7,kind:'crates'},
+ {x:-10,z:-136,hx:1.05,hz:.55,kind:'cardboard'},
  // Extraction pool.
- {x:26,z:-6,hx:.7,hz:.7,kind:'crates'},
- {x:26,z:-14,hx:1.05,hz:.55,kind:'cardboard'},
+ {x:32,z:-6,hx:.7,hz:.7,kind:'crates'},
+ {x:40,z:-14,hx:1.05,hz:.55,kind:'cardboard'},
+ {x:28,z:-20,hx:1.2,hz:.35,kind:'wall'},
 ];
 
 /** Supply caches: kind and world position. Risky spots: open floor, crossfire lanes. */
@@ -240,10 +246,12 @@ export const SURVIVAL_CACHES:{kind:'ammo'|'medkit'|'smoke';x:number;z:number}[]=
  {kind:'smoke',x:0,z:-30},
  {kind:'medkit',x:-20,z:-60},
  {kind:'ammo',x:20,z:-58},
- {kind:'ammo',x:-4,z:-86},
+ {kind:'ammo',x:-36,z:-80},
  {kind:'medkit',x:16,z:-94},
  {kind:'smoke',x:-24,z:-94},
- {kind:'ammo',x:0,z:-100},
- {kind:'medkit',x:32,z:-40},
- {kind:'ammo',x:32,z:-72},
+ {kind:'ammo',x:0,z:-120},
+ {kind:'medkit',x:8,z:-148},
+ {kind:'smoke',x:-12,z:-140},
+ {kind:'ammo',x:36,z:-16},
+ {kind:'medkit',x:40,z:-80},
 ];
