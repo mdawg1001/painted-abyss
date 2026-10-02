@@ -128,6 +128,11 @@ export type TechInput = {
  stamina: number;
  drag: number;
  headroom: (crown: number) => boolean;
+ /**
+  * Feet height above FLOOR_Y that counts as grounded (0 = bunker slab,
+  * CATWALK_DECK_RISE on a solid grate). Jump take-off and landing use this.
+  */
+ groundAir?: number;
 };
 
 export type TechEvents = {
@@ -199,10 +204,14 @@ export function stepTech(st: TechState, inp: TechInput, dt: number): TechEvents 
  const J = MOVE_TECH.jump, S = MOVE_TECH.slide;
  const wish = wishDirection(inp);
  const wishing = len2(inp.wishX, inp.wishZ) > .1;
+ const groundAir = inp.groundAir ?? 0;
+
+ // Stick grounded feet to the current support before jump/slide decisions.
+ if (st.mode !== 'air') st.air = groundAir;
 
  // ── Jump: from the ground (walk, crouch or slide), one per press, buffered briefly ──
  const grounded = st.mode !== 'air';
- if (st.jumpQueued > 0 && grounded && inp.stamina >= J.staminaCost && inp.headroom(st.height + .1)) {
+ if (st.jumpQueued > 0 && grounded && inp.stamina >= J.staminaCost && inp.headroom(st.air + st.height + .1)) {
   // Take-off keeps whatever we were doing on the ground: a slide's speed, or the gait's.
   const ground = st.mode === 'slide' ? { x: st.vel.x, z: st.vel.z } : inp.groundVel;
   st.vel = { x: ground.x, y: JUMP_SPEED * Math.max(.5, inp.drag), z: ground.z };
@@ -229,8 +238,8 @@ export function stepTech(st: TechState, inp: TechInput, dt: number): TechEvents 
   let next = st.air + st.vel.y * dt;
   if (st.vel.y > 0 && !inp.headroom(next + st.height)) { next = st.air; st.vel.y = 0; }
   st.air = next;
-  if (st.air <= 0) {
-   st.air = 0;
+  if (st.air <= groundAir) {
+   st.air = groundAir;
    ev.landed = true;
    const speed = len2(st.vel.x, st.vel.z);
    st.vel.y = 0;
@@ -281,9 +290,9 @@ export function stepTech(st: TechState, inp: TechInput, dt: number): TechEvents 
   const speed = Math.hypot(v.x, v.y, v.z);
   if (speed <= S.exitSpeed) {
    // Momentum spent: crouch-walk if the key is held (or the ceiling forces it), else stand.
-   st.mode = !inp.crouchHeld && inp.headroom(STAND_HEIGHT) ? 'walk' : 'crouch';
+   st.mode = !inp.crouchHeld && inp.headroom(st.air + STAND_HEIGHT) ? 'walk' : 'crouch';
    ev.handoff = handoff(v, wish, GAIT_SPEED.run);
-  } else if (!inp.crouchHeld && inp.headroom(STAND_HEIGHT)) {
+  } else if (!inp.crouchHeld && inp.headroom(st.air + STAND_HEIGHT)) {
    // Released with room overhead: pop up and run on at the slide's speed (capped at a run).
    st.mode = 'walk';
    ev.handoff = handoff(v, wish, GAIT_SPEED.run);
@@ -293,7 +302,7 @@ export function stepTech(st: TechState, inp: TechInput, dt: number): TechEvents 
 
  // ── Crouch ⇄ walk, gated by headroom ──────────────────────────────────────────────
  if (st.mode === 'walk' && inp.crouchHeld) st.mode = 'crouch';
- if (st.mode === 'crouch' && !inp.crouchHeld && inp.headroom(STAND_HEIGHT)) st.mode = 'walk';
+ if (st.mode === 'crouch' && !inp.crouchHeld && inp.headroom(st.air + STAND_HEIGHT)) st.mode = 'walk';
 
  // ── Capsule height: feet anchored, eased (no snap), rising only into free space ────
  const target = st.mode === 'slide' ? SLIDE_HEIGHT : st.mode === 'crouch' ? CROUCH_HEIGHT : STAND_HEIGHT;

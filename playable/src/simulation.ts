@@ -5,6 +5,7 @@ import { rollKillLoot, killLootCueFor, isEmptyKillLoot, killLootFeedback, type K
 export type { KillLootCue } from './killLoot';
 export { KILL_LOOT, killLootHudLabel, killLootFeedback } from './killLoot';
 import { ITEM_BODY, stepBody, submergedFraction, type BodyState } from './propPhysics';
+import { catwalkSupportY } from './catwalkLayout';
 import { steerToward, faceStanding, yawToward, wrapAngle, turnToward, forwardOf, GUARD_STEER_WALK, GUARD_STEER_RUN } from './guardSteering';
 import { SURVIVAL, SURVIVAL_COVER, type GuardRole } from './survivalConfig';
 import { Director, patrolPosts, nearestFree, pistolDamage, rayWallPoint, smokeBlocks, smokeAlive, smokeLanding, survivalDoors, makeCaches, type SmokeCloud, type SmokeGrenade, type SupplyCache, type SupplyKind } from './survival';
@@ -94,12 +95,17 @@ export const RELIC:Point={x:0,y:2,z:-112};
 /** Stone plinth the relic lies on. Its top is the support height for anything resting there. */
 export const RELIC_PLINTH={x:0,z:-112,radius:1.05,height:1.0} as const;
 /**
- * Support height under (x, z): the bunker floor, or the plinth top. Loose items
- * rest here; `Pickup.position.y` is always the item's underside.
+ * Support height under (x, z): sparse service-gallery grate, relic plinth, or bunker floor.
+ * Loose items rest here; `Pickup.position.y` is always the item's underside.
+ * Only solid catwalk spans support — intentional gaps return the floor.
  */
 export function supportHeight(x:number,z:number){
+ const deck=catwalkSupportY(x,z);
+ if(deck!=null)return deck;
  return Math.hypot(x-RELIC_PLINTH.x,z-RELIC_PLINTH.z)<=RELIC_PLINTH.radius?FLOOR_Y+RELIC_PLINTH.height:FLOOR_Y;
 }
+/** Feet height above FLOOR_Y for movement tech (0 on slab, CATWALK_DECK_RISE on grate). */
+export function supportAir(x:number,z:number){return supportHeight(x,z)-FLOOR_Y;}
 export const EXIT:Point={x:32,y:3,z:-12};
 /**
  * Breath corridor — one addition south of the entrance chamber.

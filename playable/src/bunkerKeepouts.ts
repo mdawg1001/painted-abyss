@@ -6,6 +6,7 @@ import type { Keepout } from './bunkerLayout';
 import { wallSconceMounts } from './sconceAsset';
 import { wallPosterMount } from './posterAsset';
 import { radiatorMounts } from './radiatorAsset';
+import { catwalkKeepouts } from './catwalkLayout';
 import { copperWallSpan } from './copperPipeAsset';
 import { PIPE_MOUNT } from './pipeAsset';
 import { LIFEBUOY_POS } from './lifebuoyAsset';
@@ -17,6 +18,7 @@ export function bunkerKeepouts(): Keepout[] {
  for (const m of wallSconceMounts()) k.push({ x: m.x, z: m.z, r: .9 });
  const poster = wallPosterMount(); k.push({ x: poster.x, z: poster.z, r: 1.9 });
  for (const m of radiatorMounts()) k.push({ x: m.x, z: m.z, r: 1.3 });
+ for (const c of catwalkKeepouts()) k.push(c);
  const span = copperWallSpan();
  for (let x = Math.min(span.x0, span.x1); x <= Math.max(span.x0, span.x1) + .01; x += 1) k.push({ x, z: span.z, r: 1 });
  k.push({ x: PIPE_MOUNT.x, z: PIPE_MOUNT.z, r: 2.2 });

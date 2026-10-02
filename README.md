@@ -1,4 +1,16 @@
-# Painted Abyss — First Dive · 0.23.0
+# Painted Abyss — First Dive · 0.24.0
+
+## Sparse bunker service galleries (0.23.1)
+
+Pulls back the 0.23.0 map-scale pad mezzanine. **Three short** fitting galleries only: west-hall wall L (collapsed bay), neck west shelf, hall pit north-lip overlook. Thick enamel/dull-steel structure with wall brackets and kick plates — not floating pad tiles. Two–three ladders; intentional gap drops. Deck still `FLOOR_Y+3.2`. Hatch / breath flood unchanged.
+
+## Map-scale first-floor catwalk (0.23.0)
+
+Replaced the toy west-hall L-shelf with a map-scale mezzanine (~81% combat-floor pads). **Superseded by 0.23.1** — too much coverage, read as unrealistic.
+
+## West-hall catwalk gallery (0.22.45)
+
+Walkable **broken service gallery** over the west hall (L-run + spur). Folded into the sparse 0.23.1 west-hall placement.
 
 ## Critical heal clutch (0.22.43)
 

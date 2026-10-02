@@ -47,6 +47,8 @@ import { createHangingLights, hangingLightMounts, stepHangingLights, upgradeHang
 import { createWallPosters, upgradeWallPosters, type WallPosters } from './posterAsset';
 import { createCopperPipe, upgradeCopperPipe, upgradeCopperPipeDetail, updateCopperPipe, type CopperPipe } from './copperPipeAsset';
 import { createWallRadiators, upgradeWallRadiators, type WallRadiators } from './radiatorAsset';
+import { createCatwalk, upgradeCatwalk, type WestCatwalks } from './catwalkAsset';
+import { CATWALK_DECK_RISE, nearestCatwalkLadder } from './catwalkLayout';
 import { createWallPipe, upgradeWallPipe, setPipeWheel, PIPE_MOUNT, type WallPipe } from './pipeAsset';
 import { startStroke, stepStroke, handPoses, smootherstep, VALVE_STAND, WHEEL_CENTRE, BREAKAWAY_TIME, REGRIP_TIME, type ValveStroke } from './valve';
 import { createValveHands, poseValveHands, resetValveHands, type ValveHandsRig } from './valveHands';
@@ -71,7 +73,7 @@ import {
 } from './gunAsset';
 import { RIFLE, rifleIsPrize } from './rifleCondition';
 import { goldSinkAccel, goldThrustFactor, nextUpgradeTarget } from './gold';
-import { SWIM_BUOYANCY_ACCEL, Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, groundNormal, GUARD_COUNT, STASH_POSITION, STASH_YAW, EGO_SAVIOR, type BreathFootprint, type BreathTankMount } from './simulation';
+import { SWIM_BUOYANCY_ACCEL, Mission, cells, world, CELL, EXIT, RELIC, RELIC_PLINTH, FLOOR_Y, moveBody, lookDelta, edgeTurn, FREE_LOOK_RATE, torchModulation, torchShouldShine, holdingTorchItem, readInventoryTipsSeen, writeInventoryTipsSeen, updateBuoyancy, updateBuoyancyTrim, stepSwimVelocity, breathHatchSpawn, breathTankMounts, breathFootprint, breathZone, canWalkBreath, canWalk, inBreathCorridor, breathingFreeAir, floodColumnY, WALK_EYE_Y, WALK_SPEED, WALK_SPRINT, SURFACE_Y, groundNormal, supportAir, GUARD_COUNT, STASH_POSITION, STASH_YAW, EGO_SAVIOR, type BreathFootprint, type BreathTankMount } from './simulation';
 export type Snapshot={mission:Mission;playing:boolean;started:boolean;pointerLocked:boolean;error:string;audioNotice:string;yaw:number;onFoot:boolean;
  /** Head above the bunker waterline (free air). */
  airborne:boolean;
@@ -329,6 +331,8 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
  copperPipe:CopperPipe|null=null;
  /** Sketchfab cast-iron radiators on breath-corridor / lab walls. */
  wallRadiators:WallRadiators|null=null;
+ /** Sparse bunker service galleries (stub → modular industrial-catwalk GLBs). */
+ westCatwalk:WestCatwalks|null=null;
  /** Both arms, shown only while the leak valve is being worked. */
  valveHands:ValveHandsRig|null=null;
  /** Active hand-over-hand turn on the leak valve (null when not at the wheel). */
@@ -541,6 +545,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   this.mountHangingLights();
   this.mountWallPosters();
   this.mountWallRadiators();
+  this.mountWestCatwalk();
   this.mountWallPipe();
   this.mountCopperPipe();
   for(const job of this.fx.coverJobs){
@@ -686,6 +691,21 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    }
    return ok;
   },44);
+ }
+ /** Sparse bunker service galleries: short wall/pit runs + ladders (stub → modular GLBs). */
+ mountWestCatwalk(){
+  const visual=createCatwalk();
+  this.scene.add(visual.group);
+  this.westCatwalk=visual;
+  const anchor=visual.mounts.find(m=>m.kind==='ladder')??visual.mounts[0]??{x:-28,z:-48};
+  this.propStreaming.add('bunker-service-galleries',anchor,async()=>{
+   const ok=await upgradeCatwalk(visual,this.knifeEnvMap);
+   if(!ok||!this.alive)return ok;
+   for(const child of visual.group.children){
+    this.adoptPointCull(child,this.worldBox(child),true,true);
+   }
+   return ok;
+  },52);
  }
  /** Repeat the Sketchfab copper section along the hand-wheel wall. */
  mountCopperPipe(){
@@ -1306,8 +1326,9 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   if(floor+crown>SURFACE_Y-.02)return false;
   const p=this.mission.position;
   if(this.time-this._headAt>.1||Math.hypot(p.x-this._headX,p.z-this._headZ)>.1){
-   const from=floor+Math.min(this.tech.air+this.tech.height,STAND_HEIGHT)-.05;
-   const ray=this._headRay;ray.near=0;ray.far=floor+STAND_HEIGHT+1.2-from;ray.camera=this.camera;
+   // Crown probe from just under the current head (feet at FLOOR_Y+tech.air).
+   const from=floor+this.tech.air+this.tech.height-.05;
+   const ray=this._headRay;ray.near=0;ray.far=Math.max(.15,SURFACE_Y-.02-from);ray.camera=this.camera;
    const scene=this.scene.children.filter(c=>c!==this.camera&&c.visible);
    const up=new THREE.Vector3(0,1,0),o=new THREE.Vector3(),n=new THREE.Vector3();
    let ceil=Infinity;
@@ -2938,6 +2959,42 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
     const wadeDepth=Math.max(0,m.breathWaterY-FLOOR_Y);
     const drag=wadingDrag(wadeDepth);
     const gv=this.gait.instantaneousSpeed(),gd=this.gait.dir;
+    // Ladder climb: stick to the nearest cage and raise feet to the grate (jump cannot).
+    const feetY=FLOOR_Y+tech.air;
+    const ladder=nearestCatwalkLadder(m.position.x,m.position.z,feetY);
+    const wantClimb=!!ladder&&(localZ>0||!!pressed('KeyE'));
+    const wantDescend=!!ladder&&localZ<0&&tech.air>0.05;
+    if(ladder&&(wantClimb||wantDescend)){
+     const climbSpeed=2.1;
+     const dir=wantClimb?1:-1;
+     tech.mode='air';
+     tech.vel={x:0,y:dir*climbSpeed,z:0};
+     tech.air=Math.max(0,Math.min(CATWALK_DECK_RISE,tech.air+dir*climbSpeed*dt));
+     tech.airCap=0;
+     // Stick to the ladder centre so you don't walk off mid-climb.
+     m.position.x+=(ladder.x-m.position.x)*Math.min(1,dt*10);
+     m.position.z+=(ladder.z-m.position.z)*Math.min(1,dt*10);
+     if(tech.air>=CATWALK_DECK_RISE-.02){
+      // Step onto the landing pad (ladder xz alone may sit just past the span edge).
+      m.position.x=ladder.landX;m.position.z=ladder.landZ;
+      tech.mode='walk';tech.air=CATWALK_DECK_RISE;tech.vel={x:0,y:0,z:0};
+     }else if(tech.air<=0.02&&!wantClimb){
+      tech.mode='walk';tech.air=0;tech.vel={x:0,y:0,z:0};
+     }
+     this.gait.step(0,0,false,dt);
+     this.velocity.set(0,0,0);
+     m.position.y=WALK_EYE_Y+tech.air;
+     m.crouching=false;m.sliding=false;
+     this.noteBurstMovement(false);
+     m.update(dt,false);this.position.copy(m.position);
+    }else{
+    // Walked off a grate gap / ledge: leave the support and fall under gravity.
+    const ground=supportAir(m.position.x,m.position.z);
+    if(tech.mode!=='air'&&tech.air>ground+.12){
+     tech.mode='air';
+     tech.vel={x:this.velocity.x,y:0,z:this.velocity.z};
+     tech.airCap=Math.max(Math.hypot(this.velocity.x,this.velocity.z),WALK_SPEED);
+    }
     const tev=stepTech(tech,{
      wishX:localX,wishZ:localZ,
      fwd:{x:fx,z:fz},right:{x:this.right.x,z:this.right.z},
@@ -2947,6 +3004,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
      normal:groundNormal(m.position),
      stamina:m.stamina,drag,
      headroom:h=>this.headroomClear(h),
+     groundAir:ground,
     },dt);
     if(tev.staminaSpent)m.stamina=Math.max(0,m.stamina-tev.staminaSpent);
     if(tev.handoff){
@@ -2970,7 +3028,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
       if(Math.abs(az)<Math.abs(tech.vel.z)-1e-3)tech.vel.z=az;
      }
      this.velocity.set(tech.vel.x,0,tech.vel.z);
-     // Feet ride tech.air above the floor (0 when sliding); the sim eye follows.
+     // Feet ride tech.air above FLOOR_Y (includes catwalk rise when grounded on grate).
      m.position.y=WALK_EYE_Y+tech.air;
      // No post-FX pulse here: slides and jumps should read through the camera, not a flash.
      this.noteBurstMovement(false);
@@ -2990,7 +3048,16 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
      // Pushing into a wall: feet stop stepping instead of treading in place at full cadence.
      const moved=Math.hypot(m.position.x-before,m.position.z-beforeZ),meant=v*dt;
      if(meant>1e-4&&moved<meant*.35)this.gait.speed=Math.max(0,this.gait.speed-6*dt);
-     m.position.y=WALK_EYE_Y;
+     // Re-sample support after the step (ledge / onto grate).
+     const g2=supportAir(m.position.x,m.position.z);
+     if(tech.mode!=='air'&&tech.air>g2+.12){
+      tech.mode='air';
+      tech.vel={x:this.velocity.x,y:0,z:this.velocity.z};
+      tech.airCap=Math.max(Math.hypot(this.velocity.x,this.velocity.z),WALK_SPEED);
+     }else if(tech.mode!=='air'){
+      tech.air=g2;
+     }
+     m.position.y=WALK_EYE_Y+tech.air;
      for(const e of events)this.onGaitEvent(e,wadeDepth);
      loud=runWeight(this.gait.speed)>.5;
     }
@@ -3001,6 +3068,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
     }
     // A slide or a landing is as loud as a run to the guards.
     m.update(dt,loud);this.position.copy(m.position);
+    }
    }else{
    m.crouching=false;m.sliding=false;
    // In the water the capsule is a swimmer: drop any jump / slide / crouch state.
