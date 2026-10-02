@@ -28,28 +28,30 @@ function add(geo,color,weights){
  geo.setAttribute('color',new T.Float32BufferAttribute(cols,3));geo.setAttribute('skinIndex',new T.Uint16BufferAttribute(ids,4));geo.setAttribute('skinWeight',new T.Float32BufferAttribute(ws,4));parts.push(geo);
 }
 const rigid=n=>()=>[[n,1]];
-function ellipsoid(at,scale,color,bone,segments=10){const g=new T.SphereGeometry(1,segments,8);g.scale(...scale);g.translate(...at);add(g,color,rigid(bone));}
+function ellipsoid(at,scale,color,bone,segments=12){const g=new T.SphereGeometry(1,segments,10);g.scale(...scale);g.translate(...at);add(g,color,rigid(bone));}
 function box(at,size,color,bone,angle=0){const g=new T.BoxGeometry(...size);g.rotateZ(angle);g.translate(...at);add(g,color,rigid(bone));}
 function segment(a,b,r1,r2,color,first,second=first){
- const delta=b.clone().sub(a),length=delta.length();const g=new T.CylinderGeometry(r2,r1,length,8,4);
+ const delta=b.clone().sub(a),length=delta.length();const g=new T.CylinderGeometry(r2,r1,length,10,5);
  g.applyQuaternion(new T.Quaternion().setFromUnitVectors(new T.Vector3(0,1,0),delta.clone().normalize()));g.translate(...a.clone().add(b).multiplyScalar(.5).toArray());
  add(g,color,p=>{const t=T.MathUtils.clamp(p.clone().sub(a).dot(delta)/(length*length),0,1);const w=T.MathUtils.smoothstep(t,.65,1);return first===second?[[first,1]]:[[first,1-w],[second,w]];});
 }
 // Jacket rings: broad shoulders, shaped waist and hem; weighted continuously up the spine.
 const rings=[[1.02,.30,.19],[1.12,.34,.21],[1.42,.33,.22],[1.72,.40,.24],[1.88,.32,.20],[1.99,.12,.12]];
-const vertices=[];for(let r=0;r<rings.length-1;r++)for(let i=0;i<12;i++){
- const vertex=(rr,j)=>{const [y,x,z]=rings[rr],a=j/12*Math.PI*2;return [Math.sin(a)*x,y,Math.cos(a)*z-.02];};
+const RING_SEGS=14;
+const vertices=[];for(let r=0;r<rings.length-1;r++)for(let i=0;i<RING_SEGS;i++){
+ const vertex=(rr,j)=>{const [y,x,z]=rings[rr],a=j/RING_SEGS*Math.PI*2;return [Math.sin(a)*x,y,Math.cos(a)*z-.02];};
  vertices.push(...vertex(r,i),...vertex(r,i+1),...vertex(r+1,i),...vertex(r+1,i),...vertex(r,i+1),...vertex(r+1,i+1));
 }
 const torso=new T.BufferGeometry();torso.setAttribute('position',new T.Float32BufferAttribute(vertices,3));
 add(torso,C.jacket,p=>{const w=T.MathUtils.smoothstep(p.y,1.25,1.75);return [['Abdomen',1-w],['Torso',w]];});
 ellipsoid([0,1.05,-.03],[.34,.19,.22],C.trousers,'Hips');
 // Blank oval face, ears and angular purple hair. No facial decal or expression morphs.
-ellipsoid([0,2.24,.025],[.30,.35,.26],C.skin,'Head',12);
+ellipsoid([0,2.24,.025],[.30,.35,.26],C.skin,'Head',14);
 for(const s of [-1,1])ellipsoid([s*.292,2.23,.015],[.055,.087,.045],C.skin,'Head',8);
 const hp=[];
-const hairV=(ring,i)=>{const a=i/12*Math.PI*2,edge=1.4-.45*Math.cos(a),t=ring/5*edge;return [Math.sin(a)*Math.sin(t)*.318,2.27+Math.cos(t)*.375,Math.cos(a)*Math.sin(t)*.28+.01];};
-for(let r=0;r<5;r++)for(let i=0;i<12;i++)hp.push(...hairV(r,i),...hairV(r+1,i),...hairV(r,i+1),...hairV(r,i+1),...hairV(r+1,i),...hairV(r+1,i+1));
+const HAIR_SEGS=14;
+const hairV=(ring,i)=>{const a=i/HAIR_SEGS*Math.PI*2,edge=1.4-.45*Math.cos(a),t=ring/5*edge;return [Math.sin(a)*Math.sin(t)*.318,2.27+Math.cos(t)*.375,Math.cos(a)*Math.sin(t)*.28+.01];};
+for(let r=0;r<5;r++)for(let i=0;i<HAIR_SEGS;i++)hp.push(...hairV(r,i),...hairV(r+1,i),...hairV(r,i+1),...hairV(r,i+1),...hairV(r+1,i),...hairV(r+1,i+1));
 const hair=new T.BufferGeometry();hair.setAttribute('position',new T.Float32BufferAttribute(hp,3));add(hair,C.hair,rigid('Head'));
 // Swept fringe follows the scalp, with a slanted edge above the blank face.
 const fringe=new T.BufferGeometry();fringe.setAttribute('position',new T.Float32BufferAttribute([-.27,2.43,.17, .22,2.51,.19, -.11,2.62,.20, -.27,2.43,.17, -.11,2.62,.20, -.29,2.52,.12],3));add(fringe,C.hair,rigid('Head'));
@@ -75,7 +77,8 @@ for(const side of ['L','R']){
  box([x,.111,.125],[.21,.045,.13],C.shoe,'Foot'+side);
 }
 const geometry=mergeGeometries(parts);geometry.computeBoundingBox();geometry.computeBoundingSphere();
-const material=new T.MeshStandardMaterial({name:'OriginalCivilian',vertexColors:true,roughness:.86,metalness:0,flatShading:true});
+// Smooth shading + denser limbs/torso: faceted flatShading was the main "pixelated" look.
+const material=new T.MeshStandardMaterial({name:'OriginalCivilian',vertexColors:true,roughness:.86,metalness:0,flatShading:false});
 const mesh=new T.SkinnedMesh(geometry,material);mesh.name='ColourfulCivilian';scene.add(mesh);scene.updateMatrixWorld(true);mesh.bind(skeleton);mesh.frustumCulled=false;
 scene.name='ColourfulGuard';scene.userData.originalMesh=true;
 const clips=gltf.animations.filter(a=>['idle','walk','run'].includes(a.name.toLowerCase()));
