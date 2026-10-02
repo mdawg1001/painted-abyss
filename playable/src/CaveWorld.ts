@@ -444,8 +444,10 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
  _lmTintA=new THREE.Color();_lmTintB=new THREE.Color();_lmTintC=new THREE.Color();
  /** Soft dry-grade blend toward the compartment the diver is standing in. */
  _zoneFog=new THREE.Color(DRY_FIELD);_zoneAmb=new THREE.Color(GRADE_LIGHTS.dry.ambient);
- _zoneHemi=new THREE.Color(GRADE_LIGHTS.dry.sky);_zoneTmp=new THREE.Color();
+ _zoneHemi=new THREE.Color(GRADE_LIGHTS.dry.sky);_zoneSun=new THREE.Color(GRADE_LIGHTS.dry.sun);
+ _zoneTmp=new THREE.Color();
  _zoneDensity:number=DRY_DENSITY;_zoneAmbI:number=GRADE_LIGHTS.dry.ambientI;_zoneHemiI:number=GRADE_LIGHTS.dry.hemi;
+ _zoneSunI:number=GRADE_LIGHTS.dry.sunI;
  /** Settles when the kit meshes have replaced the plain fallback walls. */
  bunkerReady:Promise<void>=Promise.resolve();
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
@@ -2899,6 +2901,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   this._zoneFog.setHex(DRY_FIELD);this._zoneDensity=DRY_DENSITY;
   this._zoneAmb.setHex(GRADE_LIGHTS.dry.ambient);this._zoneAmbI=GRADE_LIGHTS.dry.ambientI;
   this._zoneHemi.setHex(GRADE_LIGHTS.dry.sky);this._zoneHemiI=GRADE_LIGHTS.dry.hemi;
+  this._zoneSun.setHex(GRADE_LIGHTS.dry.sun);this._zoneSunI=GRADE_LIGHTS.dry.sunI;
   this.resetSurvivalFx();
   this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();this.style.reset();this.speedFov.reset();
   this.onFoot=true;this.wasOnFoot=true;this.gait.reset();this.tech=makeTech();
@@ -3274,18 +3277,21 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    this._zoneDensity+=(zl.fogDensity-this._zoneDensity)*k;
    this._zoneAmb.lerp(this._zoneTmp.setHex(zl.ambient),k);
    this._zoneAmbI+=(zl.ambientI-this._zoneAmbI)*k;
-   this._zoneHemi.lerp(this._zoneTmp.setHex(zl.ambient),k);
+   // Hemi + key sun carry the wing colour so the whole dry grade shifts, not only fog.
+   this._zoneHemi.lerp(this._zoneTmp.setHex(zl.color),k);
    this._zoneHemiI+=(zl.hemi-this._zoneHemiI)*k;
+   this._zoneSun.lerp(this._zoneTmp.setHex(zl.color),k);
+   this._zoneSunI+=(GRADE_LIGHTS.dry.sunI*(zl.intensity/11)-this._zoneSunI)*k;
    fog.color.copy(this._zoneFog);
    fog.density=this._zoneDensity;
    (this.scene.background as THREE.Color).copy(fog.color);
    this.gradeHemi.color.copy(this._zoneHemi);
-   this.gradeHemi.groundColor.setHex(GRADE_LIGHTS.dry.ground);
+   this.gradeHemi.groundColor.copy(this._zoneFog);
    this.gradeHemi.intensity=this._zoneHemiI;
    this.gradeAmbient.color.copy(this._zoneAmb);
    this.gradeAmbient.intensity=this._zoneAmbI;
-   this.gradeSky.color.setHex(GRADE_LIGHTS.dry.sun);
-   this.gradeSky.intensity=GRADE_LIGHTS.dry.sunI;
+   this.gradeSky.color.copy(this._zoneSun);
+   this.gradeSky.intensity=this._zoneSunI;
   }else{
    const field=gradeField(this.frameGrade);
    fog.color.setHex(field);
@@ -3307,6 +3313,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    }
    this._zoneAmb.setHex(lights.ambient);this._zoneAmbI=lights.ambientI;
    this._zoneHemi.setHex(lights.sky);this._zoneHemiI=lights.hemi;
+   this._zoneSun.setHex(lights.sun);this._zoneSunI=lights.sunI;
   }
   // Baked bounce follows the grade's fill: white in the dry, teal flooded, red on the slam.
   {

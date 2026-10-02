@@ -22,24 +22,25 @@ export type ZoneLight={
 };
 
 /**
- * Area moods — cold tubes in service corridors, warmer entrance enamel,
+ * Area moods — cold tubes in service corridors, colder entrance enamel,
  * sparse amber in the fissure, cyan extraction, red emergency in the bone wing.
+ * Tuned ~50% further from hall/neutral so wing shifts read in motion.
  */
 export const ZONE_LIGHT:Record<Zone,ZoneLight>={
  corridor:{
-  color:0xb5d4c8,intensity:13,distance:13,
-  fog:0x14241f,fogDensity:.0195,
-  ambient:0x3a5e52,ambientI:.4,hemi:.7,flickerBias:.06,
+  color:0x7ee0b0,intensity:15,distance:14,
+  fog:0x0c2e1c,fogDensity:.0215,
+  ambient:0x2a7a58,ambientI:.34,hemi:.58,flickerBias:.08,
  },
  entrance:{
-  color:0xd2e6f0,intensity:16,distance:13,
-  fog:0x1a252a,fogDensity:.0155,
-  ambient:0x4e6872,ambientI:.5,hemi:.82,flickerBias:0,
+  color:0xa8e8ff,intensity:20,distance:14,
+  fog:0x122838,fogDensity:.014,
+  ambient:0x3a7a92,ambientI:.58,hemi:.95,flickerBias:0,
  },
  neck:{
-  color:0xc4dbc8,intensity:12,distance:12,
-  fog:0x18231e,fogDensity:.0175,
-  ambient:0x456456,ambientI:.44,hemi:.74,flickerBias:.1,
+  color:0x9ae0b4,intensity:13,distance:12,
+  fog:0x10281c,fogDensity:.019,
+  ambient:0x34785a,ambientI:.38,hemi:.66,flickerBias:.14,
  },
  hall:{
   color:FLUORESCENT,intensity:11,distance:14,
@@ -47,23 +48,24 @@ export const ZONE_LIGHT:Record<Zone,ZoneLight>={
   ambient:0x52666a,ambientI:.46,hemi:.78,flickerBias:.12,
  },
  fissure:{
-  color:0xffc878,intensity:8,distance:9,
-  fog:0x1c160e,fogDensity:.021,
-  ambient:0x5a4828,ambientI:.3,hemi:.5,flickerBias:.22,
+  color:0xffa848,intensity:5.5,distance:8,
+  fog:0x2a1406,fogDensity:.0245,
+  ambient:0x6a3e14,ambientI:.22,hemi:.36,flickerBias:.3,
  },
  pool:{
-  color:0x9ee8f2,intensity:20,distance:15,
-  fog:0x123838,fogDensity:.0135,
-  ambient:0x3a7a7c,ambientI:.55,hemi:.92,flickerBias:0,
+  color:0x5ef4ff,intensity:28,distance:17,
+  fog:0x084848,fogDensity:.0115,
+  ambient:0x28a0a8,ambientI:.68,hemi:1.15,flickerBias:0,
  },
  back:{
-  color:0xff3e32,intensity:7.5,distance:11,
-  fog:0x221010,fogDensity:.023,
-  ambient:0x5c241c,ambientI:.34,hemi:.48,flickerBias:.18,
+  color:0xff1810,intensity:5,distance:10,
+  fog:0x300808,fogDensity:.027,
+  ambient:0x7a1810,ambientI:.26,hemi:.34,flickerBias:.26,
  },
 };
 
-export const ZONE_BLEND_SEC=.45;
+/** Faster wing cross so the grade shift lands before you leave the room. */
+export const ZONE_BLEND_SEC=.28;
 
 /** Zone under a world XZ (open floor). Falls back to hall. */
 export function zoneAt(x:number,z:number):Zone{
@@ -84,10 +86,13 @@ export function zoneLight(zone:Zone):ZoneLight{
  return ZONE_LIGHT[zone];
 }
 
-/** Warm accent vs zone tube — every third steady sconce keeps a caged bulb. */
+/**
+ * Warm accent vs zone tube — hall/neck keep every-third caged bulbs;
+ * signature wings stay pure zone colour so the mood reads.
+ */
 export function zoneSconceColor(zone:Zone,index:number,flicker:boolean):number{
  if(flicker)return zoneLight(zone).color;
- if(index%3===0&&zone!=='back'&&zone!=='fissure')return BULB_ORANGE;
+ if(index%3===0&&(zone==='hall'||zone==='neck'))return BULB_ORANGE;
  return zoneLight(zone).color;
 }
 
@@ -111,8 +116,8 @@ export function zoneFillMounts():ZoneFillMount[]{
  for(const [zone,a] of acc){
   if(a.n<=0)continue;
   const L=zoneLight(zone);
-  const y=zone==='pool'?5.2:zone==='back'?6.2:7.6;
-  const boost=zone==='pool'?1.35:zone==='entrance'?1.15:1;
+  const y=zone==='pool'?5.2:zone==='back'?6.2:zone==='fissure'?6.8:7.6;
+  const boost=zone==='pool'?1.7:zone==='entrance'?1.45:zone==='back'?1.25:zone==='fissure'?.85:1;
   out.push({
    zone,
    x:a.sx/a.n,
@@ -120,7 +125,7 @@ export function zoneFillMounts():ZoneFillMount[]{
    z:a.sz/a.n,
    color:L.color,
    intensity:L.intensity*boost,
-   distance:L.distance+CELL,
+   distance:L.distance+CELL*(zone==='pool'||zone==='entrance'?1.25:1),
   });
  }
  return out;
