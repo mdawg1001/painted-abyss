@@ -39,7 +39,7 @@ test('stubs share the coral cartoon kit and cycle six archetypes',()=>{
   const visual=createSovietGuardVisual(i);
   assert.equal(visual.outfit,i);
   assert.match(visual.root.name,new RegExp(`:${i}$`));
-  assert.equal(visual.pose.postureSwagger,guardArchetype(i).posture.swagger);
+  assert.equal(visual.pose.postureSwagger,0);
   let jacket=-1,skin=-1;
   visual.body.traverse(o=>{
    if(!(o instanceof THREE.Mesh))return;

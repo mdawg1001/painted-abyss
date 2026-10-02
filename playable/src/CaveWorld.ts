@@ -67,7 +67,6 @@ import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion, applyGuardAim,
  type SovietGuardVisual,
 } from './sovietGuardAsset';
-import { guardArchetype } from './guardArchetypes';
 import {
  mountAk74u, prefetchAk74u, updateAk74u, drawAk74u, shootAk74u, reloadAk74u, inspectAk74u, ak74uMuzzle, ak74uAimOffset,
  AK74U_HELD_POS, AK74U_HELD_ROT, AK74U_ADS,
@@ -1497,7 +1496,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
     this.guardCadence.reset(i);
     this.guardLifeSeen[i]=g.life;this.guardFall[i]=0;this.guardRecoil[i]=0;this.guardJolt[i]=0;
     this.guardShotsSeen[i]=g.shots;this.guardStrikeSeen[i]=g.strikeAt;
-    visual.pose=makeGuardCombatState(i,guardArchetype(i).posture);
+    visual.pose=makeGuardCombatState(i);
     const fresh=this.guardActs[i];if(fresh)clearGuardAction(fresh);
    }
    if(!g.active){visual.root.visible=false;continue;}
