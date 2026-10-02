@@ -184,7 +184,7 @@ test('predator spawn candidates are open cavern floor away from the diver start'
   assert.ok(fits(p,1.3));
   assert.ok(distance(p,START)>SPAWN_SEPARATION);
   const t={col:Math.round(p.x/4)+11,row:Math.round(-p.z/4)};
-  assert.ok(t.col>=4&&t.col<=18&&t.row>=12&&t.row<=28);
+  assert.ok(t.col>=0&&t.col<=22&&t.row>=12&&t.row<=40);
   assert.ok(cells.has(`${t.col},${t.row}`));
  }
  assert.equal(PREDATOR_SPAWN_CELLS.length>=picks.length,true);
@@ -396,7 +396,7 @@ test('knife wound rages then breaks off at 85% damage; death sinks FSM',()=>{
  const health=m.health;m.position={...m.predator.position};advance(m,3);assert.equal(m.health,health);
  assert.equal(m.outcome,'playing');
 });
-test('safe narrow passage prevents bites and leaves an escape route',()=>{const m=new Mission();m.breathWaterY=FLOOR_Y+PREDATOR_SWIM_DEPTH+.3;m.position=world(19,20);m.predator.position=world(18,20);m.predator.state='chase';m.predator.lastKnown={...m.position};advance(m,3);assert.equal(m.health,100);assert.equal(m.predator.state,'search');assert.ok(m.predator.position.x<30);});
+test('safe narrow passage prevents bites and leaves an escape route',()=>{const m=new Mission();m.breathWaterY=FLOOR_Y+PREDATOR_SWIM_DEPTH+.3;m.position=world(21,20);m.predator.position=world(20,20);m.predator.state='chase';m.predator.lastKnown={...m.position};advance(m,3);assert.equal(m.health,100);assert.equal(m.predator.state,'search');assert.ok(m.predator.position.x<40);});
 test('three distinct Poly Haven chests sit in the cavern and open with E',()=>{
  const chests=createDiveChests();
  assert.equal(chests.length,3);

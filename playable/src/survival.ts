@@ -59,7 +59,7 @@ let postCache:XZ[]|null=null;
 export function patrolPosts():XZ[]{
  if(postCache)return postCache;
  const cand:XZ[]=[];
- for(let x=-40;x<=48;x+=2)for(let z=36;z>=-124;z-=2){
+ for(let x=-52;x<=60;x+=2)for(let z=36;z>=-176;z-=2){
   const p={x,y:WALK_EYE_Y,z};
   if(fits(p,SURVIVAL.postClearance))cand.push({x,z});
  }

@@ -41,8 +41,8 @@ export const MODEL={
  * what an adult gloved fist closes round. Everything else follows from it.
  */
 export const PIPE_SCALE=.032/(2*MODEL.rimTubeR);
-/** Blind south wall of the far south-west cavern corner. */
-export const PIPE_WALL={x:-26,z:-98};
+/** Blind south lip of the main cavern (west shelf) — long face for copper + valve. */
+export const PIPE_WALL={x:-28,z:-122};
 /** Rear of the bracket clears the wall-face boulders. */
 export const PIPE_WALL_CLEARANCE=.35;
 /** Riser foot sits just into the sand (props stand on FLOOR_Y). */

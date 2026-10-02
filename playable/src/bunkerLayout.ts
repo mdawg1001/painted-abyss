@@ -72,11 +72,11 @@ export const CABLE_BLACK = 0x17181a;
 
 export function zoneOf(c: number, r: number): Zone {
  if (breathZone(c, r) !== '') return 'corridor';
- if (c >= 17 && r <= 4) return 'pool';
- if (c === 19 && r <= 10) return 'fissure';
+ if (c >= 17 && r <= 6) return 'pool';
+ if (c >= 21 && r <= 28) return 'fissure';
  if (r <= 5) return 'entrance';
  if (r <= 10) return 'neck';
- if (r <= 24) return 'hall';
+ if (r <= 30) return 'hall';
  return 'back';
 }
 

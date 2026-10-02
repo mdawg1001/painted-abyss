@@ -91,9 +91,9 @@ export const PREDATOR_FLINCH=.42;
 export const FLOOR_Y=.65;
 export const SURFACE_Y=7.1;
 export const START:Point={x:0,y:3,z:-12};
-export const RELIC:Point={x:0,y:2,z:-112};
+export const RELIC:Point={x:0,y:2,z:-148};
 /** Stone plinth the relic lies on. Its top is the support height for anything resting there. */
-export const RELIC_PLINTH={x:0,z:-112,radius:1.05,height:1.0} as const;
+export const RELIC_PLINTH={x:0,z:-148,radius:1.05,height:1.0} as const;
 /**
  * Support height under (x, z): sparse service-gallery grate, relic plinth, or bunker floor.
  * Loose items rest here; `Pickup.position.y` is always the item's underside.
@@ -759,10 +759,20 @@ export function torchShouldShine(torchFlag:boolean, selectedItem:Item|null):bool
 }
 export const cells=new Set<string>();
 const rect=(a:number,b:number,c:number,d:number)=>{for(let col=a;col<=b;col++)for(let row=c;row<=d;row++)cells.add(`${col},${row}`);};
-rect(8,14,1,5);rect(10,12,5,11);rect(4,18,11,24);rect(10,12,24,26);rect(8,14,26,30);
-for(let c=9;c<=12;c++)for(let r=15;r<=20;r++)cells.delete(`${c},${r}`);
-// A single-cell fissure separates the predator's cavern from the extraction pool.
-rect(19,19,4,20);rect(18,19,20,21);rect(17,21,1,4);
+// Wider entrance → neck → vastly larger hunting cavern → deep bone alcove.
+rect(7,15,1,5);       // entrance chamber (was 8–14)
+rect(9,13,5,11);      // approach neck (was 10–12)
+rect(2,20,11,30);     // main cavern ~2× floor (was 4–18 × 11–24)
+rect(8,14,30,34);     // throat to deep back
+rect(6,16,34,42);     // deep bone / relic wing (was shallow 26–30)
+// Central pillar void (larger so the cavern still reads as a chamber).
+for(let c=9;c<=13;c++)for(let r=17;r<=24;r++)cells.delete(`${c},${r}`);
+// East fissure + extraction pool (bigger far-east wing).
+rect(21,21,2,28);     // long fissure corridor
+rect(20,22,26,28);    // fissure ↔ deep wing link
+rect(17,24,1,6);      // extraction pool (was 17–21 × 1–4)
+// West annex — second combat wing off the cavern.
+rect(0,2,12,28);
 // South corridor joined to the entrance (row 1). Does not replace any cave cell.
 for(const col of BREATH_COLS)for(let row=BREATH_ROW_HATCH;row<=BREATH_ROW_FAR;row++)cells.add(`${col},${row}`);
 export const world=(col:number,row:number):Point=>({x:(col-11)*CELL,y:3,z:-row*CELL});
@@ -810,7 +820,11 @@ export function groundNormal(_p:{x:number;z:number}){return {x:0,y:1,z:0};}
 /** Multiplier on every guard pick-up distance: `SURVIVAL.stealth.sightFactor` while crouched, 1 standing. */
 export function stealthSightFactor(crouching:boolean){return crouching?SURVIVAL.stealth.sightFactor:1;}
 export function visible(a:Point,b:Point){const n=Math.ceil(distance(a,b)/.4);for(let i=0;i<=n;i++){const t=n?i/n:0;if(!isOpen(a.x+(b.x-a.x)*t,a.z+(b.z-a.z)*t))return false;}return true;}
-function predatorCell(col:number,row:number){return col>=4&&col<=18&&row>=12&&row<=28&&cells.has(`${col},${row}`);}
+function predatorCell(col:number,row:number){
+ // Hunting cavern + west annex + deep wing — not the single-file east fissure or extraction pool.
+ if(col>=21||row<12||row>40)return false;
+ return cells.has(`${col},${row}`);
+}
 /** Minimum diver↔guardian spawn separation each dive (metres). */
 export const SPAWN_SEPARATION=32;
 /**
@@ -823,16 +837,14 @@ export const PLAYER_SPAWN_CELLS:[number,number][]=[
  [11,3],[8,2],[14,5],
  // Approach corridor
  [11,8],
- // West + east hunting shelves
- [4,13],[4,22],[18,13],[18,22],
+ // West annex + east hunting shelves
+ [0,14],[0,22],[2,20],[18,13],[20,22],
  // Mid-cavern mouth (around the central pillar void)
- [7,12],[15,12],
+ [7,12],[15,12],[4,16],[18,16],
  // Extraction / exit arm
- [19,4],[20,2],
- // Deep south corners + cavern mouth
- [4,24],[18,24],[11,24],
- // Far north / bone alcove
- [8,28],[14,28],[11,30],
+ [19,4],[22,2],[24,3],
+ // Deep cavern + bone wing
+ [4,28],[18,28],[11,30],[8,36],[14,38],[11,42],
 ];
 /**
  * Curated hunting-cavern corners / chambers (inside `predatorCell` bounds).
@@ -840,7 +852,7 @@ export const PLAYER_SPAWN_CELLS:[number,number][]=[
  */
 export const PREDATOR_SPAWN_CELLS:[number,number][]=[
  [16,19],[6,19],[16,22],[6,22],[6,13],[16,13],
- [4,16],[18,16],[4,22],[18,22],[11,24],[8,28],[14,28],
+ [2,16],[20,16],[2,24],[20,24],[11,28],[8,34],[14,36],[0,20],[18,30],
 ];
 function spawnCellOpen(col:number,row:number){return cells.has(`${col},${row}`);}
 /** Valid open-water diver starts from `PLAYER_SPAWN_CELLS` (falls back to classic START). */
@@ -3352,13 +3364,13 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  spawnGuards(){
   for(const g of this.guards)this.deactivateGuard(g);
   const rooms:{x0:number;x1:number;z0:number;z1:number;role:GuardRole}[]=[
-   {x0:-12,x1:12,z0:-20,z1:-4,role:'assault'},
-   {x0:-12,x1:12,z0:-20,z1:-4,role:'assault'},
-   {x0:-28,x1:28,z0:-96,z1:-44,role:'assault'},
-   {x0:-28,x1:28,z0:-96,z1:-44,role:'rusher'},
-   {x0:-28,x1:28,z0:-96,z1:-44,role:'flanker'},
-   // Main officer beat: west mid-cavern — seek him for the key; not on the relic or hatch.
-   {x0:-28,x1:-2,z0:-88,z1:-52,role:'officer'},
+   {x0:-16,x1:16,z0:-20,z1:-4,role:'assault'},
+   {x0:-16,x1:16,z0:-20,z1:-4,role:'assault'},
+   {x0:-44,x1:40,z0:-120,z1:-44,role:'assault'},
+   {x0:-44,x1:40,z0:-120,z1:-44,role:'rusher'},
+   {x0:-44,x1:40,z0:-120,z1:-44,role:'flanker'},
+   // Main officer beat: west mid-cavern / annex — seek him for the key.
+   {x0:-44,x1:-4,z0:-112,z1:-52,role:'officer'},
   ];
   const posts=patrolPosts();
   const used:number[]=[];
