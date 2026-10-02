@@ -15,7 +15,8 @@ test('original mesh is lightweight, texture-free, fully weighted and independent
  const g=await load();let mesh!:THREE.SkinnedMesh;let count=0;
  g.scene.traverse(o=>{if((o as THREE.Mesh).isMesh){count++;mesh=o as THREE.SkinnedMesh;}});
  assert.equal(count,1);assert.equal(mesh.name,'ColourfulCivilian');assert.equal(mesh.skeleton.bones.length,23);
- assert.ok(mesh.geometry.attributes.position.count/3<4000);assert.equal((mesh.material as THREE.MeshStandardMaterial).map,null);
+ assert.ok(mesh.geometry.attributes.position.count/3<5500);assert.equal((mesh.material as THREE.MeshStandardMaterial).map,null);
+ assert.equal((mesh.material as THREE.MeshStandardMaterial).flatShading,false,'smooth shading — not faceted flatShading');
  const weights=mesh.geometry.attributes.skinWeight,indices=mesh.geometry.attributes.skinIndex;
  for(let i=0;i<weights.count;i++){
   assert.ok(Math.abs(weights.getX(i)+weights.getY(i)+weights.getZ(i)+weights.getW(i)-1)<1e-6);

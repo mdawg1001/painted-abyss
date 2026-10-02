@@ -232,6 +232,8 @@ function litGuardMaterials(root:THREE.Object3D){
   for(const m of mats){
    if(!m||!('roughness' in m))continue;
    const sm=m as THREE.MeshStandardMaterial;
+   // Smooth vertex normals; baked flatShading made the colourful mesh look chunky/pixelated.
+   if('flatShading' in sm&&sm.flatShading){sm.flatShading=false;sm.needsUpdate=true;}
    sm.envMapIntensity=.35;
    if(!sm.emissive)sm.emissive=new THREE.Color(0x000000);
    // A gentle lift in the material's own colour so cloth and skin keep their hue in the
