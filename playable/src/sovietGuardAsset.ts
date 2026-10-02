@@ -21,8 +21,9 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { createCivilianRifle } from './civilianRifle';
 import { buildGuardRig, makeGuardCombatState, type GuardRig, type GuardCombatState } from './guardCombatPose';
-import { GUARD_OUTFIT_COLORS } from './simulation';
+import { guardArchetype, hairObjectName, GUARD_UNIFORM, type GuardArchetype } from './guardArchetypes';
 import { createOfficerCap } from './sovietKeyAsset';
+export { GUARD_ARCHETYPES, guardArchetype, GUARD_UNIFORM } from './guardArchetypes';
 
 /** Attribution for the reused skeleton and gait clips; original mesh credit is in its NOTICE. */
 export const SOVIET_GUARD_SOURCE='https://quaternius.com/packs/ultimateanimatedcharacter.html';
@@ -87,7 +88,7 @@ export type SovietGuardVisual={
  /** Warm key light carried with him (his own lamp) so he reads clearly in the dark. */
  fill:THREE.PointLight;
  rim:THREE.PointLight;
- /** Index into GUARD_OUTFIT_COLORS. */
+ /** Slot index → `guardArchetype(outfit)` (cycles every six). */
  outfit:number;
  /** Bones for the procedural combat layer (null on the capsule stub). */
  rig:GuardRig|null;
@@ -109,22 +110,22 @@ function clothMat(color:number,rough=.82){
  });
 }
 
-/** Capsule stand-in while the glTF loads (or if it fails). */
-export function buildSovietGuardStub(cloth=0x4a5a3a){
+/** Capsule stand-in while the glTF loads (or if it fails) — coral cartoon kit. */
+export function buildSovietGuardStub(arch?:GuardArchetype){
+ const a=arch??guardArchetype(0);
  const body=new THREE.Group();
  body.name='sovietGuardBody';
- const h=SOVIET_GUARD_HEIGHT;
- const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.28,h*.42,6,10),clothMat(cloth));
+ const h=SOVIET_GUARD_HEIGHT*a.height;
+ const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.28*a.width,h*.42,6,10),clothMat(GUARD_UNIFORM.jacket));
  torso.position.y=h*.58;
  torso.castShadow=true;torso.receiveShadow=true;
  body.add(torso);
- const head=new THREE.Mesh(new THREE.SphereGeometry(.16,12,10),clothMat(0xc4a882,.55));
+ const legs=new THREE.Mesh(new THREE.CapsuleGeometry(.22*a.width,h*.28,4,8),clothMat(GUARD_UNIFORM.trousers));
+ legs.position.y=h*.28;body.add(legs);
+ const head=new THREE.Mesh(new THREE.SphereGeometry(.17*a.head,12,10),clothMat(a.skin,.55));
  head.position.y=h*.92;
  head.castShadow=true;
  body.add(head);
- const helmet=new THREE.Mesh(new THREE.SphereGeometry(.18,12,8,0,Math.PI*2,0,Math.PI*.55),clothMat(0x3a4038,.7));
- helmet.position.y=h*.95;
- body.add(helmet);
  return body;
 }
 
@@ -232,32 +233,27 @@ function litGuardMaterials(root:THREE.Object3D){
   for(const m of mats){
    if(!m||!('roughness' in m))continue;
    const sm=m as THREE.MeshStandardMaterial;
-   // Smooth vertex normals; baked flatShading made the colourful mesh look chunky/pixelated.
-   if('flatShading' in sm&&sm.flatShading){sm.flatShading=false;}
-   // Soft cloth response for the vertex-colour civilian (sheen if Physical).
-   if(sm.vertexColors){
-    sm.roughness=Math.min(sm.roughness??.8,.7);
-    sm.metalness=0;
-    const phys=sm as THREE.MeshPhysicalMaterial;
-    if('sheen' in phys){phys.sheen=Math.max(phys.sheen??0,.35);phys.sheenRoughness=phys.sheenRoughness??.6;}
-   }
-   sm.envMapIntensity=.45;
+   if('flatShading' in sm&&sm.flatShading)sm.flatShading=false;
+   // Cartoon toy response: matte, saturated — no cloth sheen.
+   if(sm.vertexColors){sm.roughness=.88;sm.metalness=0;}
+   const phys=sm as THREE.MeshPhysicalMaterial;
+   if('sheen' in phys)phys.sheen=0;
+   sm.envMapIntensity=.25;
    if(!sm.emissive)sm.emissive=new THREE.Color(0x000000);
-   // A gentle lift in the material's own colour so cloth and skin keep their hue in the
-   // murk. Kept low: the key/rim lights do the modelling, this only stops pure-black shadows.
-   const base=sm.color?sm.color.clone():new THREE.Color(0x4a5a3a);
+   const base=sm.color?sm.color.clone():new THREE.Color(GUARD_UNIFORM.jacket);
    sm.emissive.copy(base);
-   sm.emissiveIntensity=sm.vertexColors?.04:GUARD_EMISSIVE_LIFT;
+   sm.emissiveIntensity=sm.vertexColors?.035:GUARD_EMISSIVE_LIFT;
    sm.needsUpdate=true;
   }
  });
 }
 
 /**
- * Dye cloth (not skin or metal) so five clones read as a squad in different kits.
- * Materials are cloned so instances do not share a tint.
+ * Legacy olive-kit dye. Colourful civilians keep the shared coral uniform — no-op when
+ * the mesh is flagged `colourfulGuard`.
  */
 export function tintGuardOutfit(root:THREE.Object3D,hex:number){
+ if(root.userData.colourfulGuard||root.getObjectByName('ColourfulCivilian'))return;
  const tint=new THREE.Color(hex);
  const olive=new THREE.Color(0x4a5a3a);
  root.traverse(o=>{
@@ -270,16 +266,11 @@ export function tintGuardOutfit(root:THREE.Object3D,hex:number){
    if(/skin|face|head|hand|flesh|body/.test(name))return sm;
    const c=sm.color;
    const luma=.2126*c.r+.7152*c.g+.0722*c.b;
-   if(luma>.42&&c.r>c.b+.05&&c.r>c.g*.8)return sm; // skin
+   if(luma>.42&&c.r>c.b+.05&&c.r>c.g*.8)return sm;
    if('metalness' in sm&&(sm.metalness??0)>.45)return sm;
-   // Keep value; shift hue toward this outfit from the authored olive.
    const dyed=c.clone().lerp(tint,.62);
-   if(hex!==0x4a5a3a)c.copy(dyed);
-   else c.lerp(olive,.15);
-   if(sm.emissive){
-    sm.emissive.copy(c);
-    sm.emissiveIntensity=sm.vertexColors?.045:GUARD_EMISSIVE_LIFT;
-   }
+   if(hex!==0x4a5a3a)c.copy(dyed);else c.lerp(olive,.15);
+   if(sm.emissive){sm.emissive.copy(c);sm.emissiveIntensity=GUARD_EMISSIVE_LIFT;}
    sm.needsUpdate=true;
    return sm;
   });
@@ -289,10 +280,80 @@ export function tintGuardOutfit(root:THREE.Object3D,hex:number){
 
 function findSkinnedMesh(root:THREE.Object3D):THREE.SkinnedMesh|null{
  let skin:THREE.SkinnedMesh|null=null;
+ let body:THREE.SkinnedMesh|null=null;
  root.traverse(o=>{
-  if(!skin&&(o as THREE.SkinnedMesh).isSkinnedMesh)skin=o as THREE.SkinnedMesh;
+  if(!(o as THREE.SkinnedMesh).isSkinnedMesh)return;
+  const sm=o as THREE.SkinnedMesh;
+  if(sm.name==='ColourfulCivilian')body=sm;
+  if(!skin)skin=sm;
  });
- return skin;
+ return body??skin;
+}
+
+const DEFAULT_SKIN=new THREE.Color(0xecd5ad);
+
+/** Remap authored skin verts on a private geometry clone. */
+function remapSkinColors(mesh:THREE.Mesh,hex:number){
+ const geo=mesh.geometry;
+ const col=geo.getAttribute('color');
+ if(!col)return;
+ const next=new THREE.Color(hex);
+ for(let i=0;i<col.count;i++){
+  const r=col.getX(i),g=col.getY(i),b=col.getZ(i);
+  const d=Math.abs(r-DEFAULT_SKIN.r)+Math.abs(g-DEFAULT_SKIN.g)+Math.abs(b-DEFAULT_SKIN.b);
+  if(d<.45)col.setXYZ(i,next.r,next.g,next.b);
+ }
+ col.needsUpdate=true;
+}
+
+/** Silhouette + hair + skin for one of the six cartoon archetypes. */
+export function applyGuardArchetype(root:THREE.Object3D,rig:GuardRig|null,pose:GuardCombatState,outfit:number){
+ const arch=guardArchetype(outfit);
+ root.userData.archetype=arch.id;
+ root.userData.colourfulGuard=true;
+ // Hair: show exactly one style (or none when bald).
+ const want=hairObjectName(arch.hair);
+ root.traverse(o=>{
+  if(!o.name.startsWith('Hair_'))return;
+  o.visible=!!want&&o.name===want;
+  if(!(o instanceof THREE.Mesh))return;
+  const mats=Array.isArray(o.material)?o.material:[o.material];
+  for(const m of mats){
+   if(!m||!('color' in m))continue;
+   const sm=m as THREE.MeshStandardMaterial;
+   sm.color.setHex(arch.hairColor);
+   if(sm.emissive){sm.emissive.copy(sm.color);sm.emissiveIntensity=.03;}
+   sm.needsUpdate=true;
+  }
+ });
+ // Body skin tone (geometry must be unique per instance).
+ const body=root.getObjectByName('ColourfulCivilian') as THREE.Mesh|undefined;
+ if(body?.isMesh){
+  if(!body.geometry.userData.skinClone){
+   body.geometry=body.geometry.clone();
+   body.geometry.userData.skinClone=true;
+  }
+  remapSkinColors(body,arch.skin);
+ }
+ // Cartoon silhouette: height first, then width/depth squash, feet back on y=0.
+ normalizeHumanoid(root,SOVIET_GUARD_HEIGHT*arch.height);
+ root.scale.x*=arch.width;
+ root.scale.z*=arch.depth;
+ {
+  const box=meshWorldBox(root);
+  root.position.y-=box.min.y;
+  root.updateMatrixWorld(true);
+ }
+ if(rig){
+  rig.head.scale.set(arch.head,arch.head*arch.headY,arch.head);
+  rig.torso.scale.set(arch.shoulders,1,Math.max(.85,arch.shoulders*.95));
+  rig.abdomen.scale.set(arch.belly,1,arch.belly);
+  // Broad necks: nudge the neck bone a touch.
+  rig.neck.scale.setScalar(.95+(arch.shoulders-1)*.4);
+ }
+ pose.posturePitch=arch.posture.spinePitch;
+ pose.postureSlouch=arch.posture.slouch;
+ pose.postureSwagger=arch.posture.swagger;
 }
 
 function pickLocoClips(anims:THREE.AnimationClip[]):Record<GuardLocomotionKind,THREE.AnimationClip>|null{
@@ -417,8 +478,8 @@ export function updateGuardLocomotion(
 export function createSovietGuardVisual(outfit=0):SovietGuardVisual{
  const root=new THREE.Group();
  root.name=`sovietGuard:${outfit}`;
- const cloth=GUARD_OUTFIT_COLORS[outfit%GUARD_OUTFIT_COLORS.length];
- const body=buildSovietGuardStub(cloth);
+ const arch=guardArchetype(outfit);
+ const body=buildSovietGuardStub(arch);
  root.add(body);
  const props=makeGearProps(root);
  // Key: in front of his chest, like a lamp clipped to the webbing (he faces +Z).
@@ -428,13 +489,16 @@ export function createSovietGuardVisual(outfit=0):SovietGuardVisual{
  rim.name='guardRim';rim.position.set(-.3,2.1,-.7);rim.castShadow=false;
  root.add(fill,rim);
  const officerCap=createOfficerCap(SOVIET_GUARD_HEIGHT);
+ officerCap.visible=false; // civilians — only survivalFx may show for officer role
  root.add(officerCap);
- return{root,body,ready:false,loco:null,fill,rim,outfit,rig:null,pose:makeGuardCombatState(outfit),...props};
+ const pose=makeGuardCombatState(outfit,arch.posture);
+ return{root,body,ready:false,loco:null,fill,rim,outfit,rig:null,pose,...props};
 }
 
 /**
- * Swap the stub for the original civilian mesh + attach the existing authored gait clips.
+ * Swap the stub for the cartoon civilian mesh + attach authored gait clips.
  * Uses SkeletonUtils.clone so skinned bind pose stays linked to the bones.
+ * Applies one of six archetypes (silhouette / hair / skin / posture).
  */
 export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
  try{
@@ -443,7 +507,7 @@ export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
   visual.root.remove(visual.body);
   const instance=cloneSkinned(scene);
   instance.name='sovietGuardMesh';instance.userData.colourfulGuard=true;
-  // Preserve the approved palette. Hit-flash state must be private to each guard.
+  // Private materials (and body geometry later) so hit-flash / skin stay per-guard.
   instance.traverse(o=>{if(o instanceof THREE.Mesh)o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();});
   visual.root.add(instance);
   visual.body=instance;
@@ -451,6 +515,7 @@ export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
   mountGuardGunOnHand(instance,visual.gun);
   visual.loco=attachGuardLocomotion(instance,clips);
   visual.rig=buildGuardRig(instance);
+  applyGuardArchetype(instance,visual.rig,visual.pose,visual.outfit);
   return visual;
  }catch{
   return visual;

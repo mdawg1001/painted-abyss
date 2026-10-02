@@ -12,20 +12,20 @@ async function load(){
  return new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'');
 }
 test('original mesh is lightweight, texture-free, fully weighted and independently cloneable',async()=>{
- const g=await load();let mesh!:THREE.SkinnedMesh;let count=0;
- g.scene.traverse(o=>{if((o as THREE.Mesh).isMesh){count++;mesh=o as THREE.SkinnedMesh;}});
- assert.equal(count,1);assert.equal(mesh.name,'ColourfulCivilian');assert.equal(mesh.skeleton.bones.length,23);
- const geo=mesh.geometry;
- const triCount=geo.index?geo.index.count/3:geo.attributes.position.count/3;
- assert.ok(triCount<16000&&triCount>4000,`expected denser smooth mesh, got ${triCount} tris`);
+ const g=await load();
+ const meshes:THREE.SkinnedMesh[]=[];
+ g.scene.traverse(o=>{if((o as THREE.SkinnedMesh).isSkinnedMesh)meshes.push(o as THREE.SkinnedMesh);});
+ const mesh=meshes.find(m=>m.name==='ColourfulCivilian')!;
+ assert.ok(mesh,'body mesh');
+ assert.equal(mesh.skeleton.bones.length,23);
+ assert.ok(meshes.some(m=>m.name.startsWith('Hair_')),'hair kits present');
+ const triCount=mesh.geometry.index?mesh.geometry.index.count/3:mesh.geometry.attributes.position.count/3;
+ assert.ok(triCount<16000&&triCount>2000,`body tris ${triCount}`);
  assert.equal((mesh.material as THREE.MeshStandardMaterial).map,null);
- assert.equal((mesh.material as THREE.MeshStandardMaterial).flatShading,false,'smooth shading — not faceted flatShading');
- // Corner normals must vary on most triangles — proves weld-before-normals (not face-flat).
- const nrm=geo.attributes.normal;let smoothTris=0;
- const corner=(i:number)=>{
-  if(geo.index)return[geo.index.getX(i),geo.index.getX(i+1),geo.index.getX(i+2)];
-  return[i,i+1,i+2];
- };
+ assert.equal((mesh.material as THREE.MeshStandardMaterial).flatShading,false);
+ const nrm=mesh.geometry.attributes.normal;let smoothTris=0;
+ const geo=mesh.geometry;
+ const corner=(i:number)=>geo.index?[geo.index.getX(i),geo.index.getX(i+1),geo.index.getX(i+2)]:[i,i+1,i+2];
  for(let i=0;i<(geo.index?geo.index.count:nrm.count);i+=3){
   const [a,b,c]=corner(i);
   const d=Math.hypot(nrm.getX(a)-nrm.getX(b),nrm.getY(a)-nrm.getY(b),nrm.getZ(a)-nrm.getZ(b))
@@ -43,7 +43,8 @@ test('original mesh is lightweight, texture-free, fully weighted and independent
  const before=mesh.skeleton.bones[0].quaternion.clone();copy.skeleton.bones[0].rotation.x+=.4;assert.ok(before.equals(mesh.skeleton.bones[0].quaternion));
 });
 test('skinned surface stays finite and human-sized throughout the embedded gait cycles',async()=>{
- const g=await load();normalizeHumanoid(g.scene);let mesh!:THREE.SkinnedMesh;g.scene.traverse(o=>{if((o as THREE.SkinnedMesh).isSkinnedMesh)mesh=o as THREE.SkinnedMesh;});
+ const g=await load();normalizeHumanoid(g.scene);let mesh!:THREE.SkinnedMesh;
+ g.scene.traverse(o=>{if((o as THREE.SkinnedMesh).isSkinnedMesh&&o.name==='ColourfulCivilian')mesh=o as THREE.SkinnedMesh;});
  const mixer=new THREE.AnimationMixer(g.scene);
  for(const clip of g.animations){
   mixer.stopAllAction();mixer.clipAction(clip).play();
