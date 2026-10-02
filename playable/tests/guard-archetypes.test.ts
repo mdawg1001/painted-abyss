@@ -63,7 +63,7 @@ test('walk + combat pose keeps feet on the floor for every archetype',async()=>{
    updateGuardLocomotion(loco,1/60,{moving:true,speed:1.2,state:'chase',direction:1});
    applyGuardCombatPose(rig,pose,gun,{target:new THREE.Vector3(0,1.5,4),aim:.5,engaged:true,recoil:0,speed:1.2,dt:1/60});
    scene.updateMatrixWorld(true);
-   const mesh=scene.getObjectByName('ColourfulCivilian')!;
+   const mesh=scene.getObjectByName('ColourfulCivilian') as THREE.SkinnedMesh;
    mesh.skeleton.update();
    let minY=Infinity,maxY=-Infinity,maxW=0;
    const v=new THREE.Vector3();

@@ -67,7 +67,6 @@ import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion, applyGuardAim,
  type SovietGuardVisual,
 } from './sovietGuardAsset';
-import { guardArchetype } from './guardArchetypes';
 import {
  mountAk74u, prefetchAk74u, updateAk74u, drawAk74u, shootAk74u, reloadAk74u, inspectAk74u, ak74uMuzzle, ak74uAimOffset,
  AK74U_HELD_POS, AK74U_HELD_ROT, AK74U_ADS,
