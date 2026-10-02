@@ -1,6 +1,8 @@
-# Painted Abyss — First Dive · 0.24.7
+# Painted Abyss — First Dive · 0.24.8
 
-## Six cartoon civilian archetypes (0.24.7)
+## Six cartoon civilian archetypes (0.24.8)
+
+Stark toy kit: **pure red** jacket and **pure blue** trousers/trim (was faded coral/teal).
 
 Distinct looks again: five `Hair_*` kits + skin tones, with tall/narrow↔short/stocky via **outer-root** scale only (never bone/mesh scale — that melted the Quaternius rig). Bald = no hair kit. Mild idle posture after the mixer.
 

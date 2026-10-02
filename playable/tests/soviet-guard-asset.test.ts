@@ -32,7 +32,7 @@ test('original civilian mesh and retained CC0 skeleton/animation credits are pre
  assert.match(notice,/idle|Idle/);
 });
 
-test('stubs share the coral cartoon kit and cycle six archetypes',()=>{
+test('stubs share the stark red/blue cartoon kit and cycle six archetypes',()=>{
  assert.ok(GUARD_COUNT>=GUARD_ARCHETYPES.length);
  const skins=new Set<number>();
  for(let i=0;i<GUARD_ARCHETYPES.length;i++){
@@ -48,7 +48,7 @@ test('stubs share the coral cartoon kit and cycle six archetypes',()=>{
    if((o.geometry as THREE.BufferGeometry).type==='CapsuleGeometry'&&jacket<0)jacket=hex;
    if((o.geometry as THREE.SphereGeometry)?.type==='SphereGeometry'||o.geometry.type==='SphereGeometry')skin=hex;
   });
-  assert.equal(jacket,GUARD_UNIFORM.jacket,'shared coral jacket on stub');
+  assert.equal(jacket,GUARD_UNIFORM.jacket,'shared pure-red jacket on stub');
   assert.equal(skin,guardArchetype(i).skin);
   skins.add(skin);
  }

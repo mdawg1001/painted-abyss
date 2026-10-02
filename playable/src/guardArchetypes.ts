@@ -1,6 +1,6 @@
 /**
  * Six deliberately designed cartoon civilians (stickman-civilian inspiration).
- * Shared coral jacket / turquoise trousers / cream shoes; identity from
+ * Shared pure-red jacket / pure-blue trousers / cream shoes; identity from
  * silhouette, hair and skin. Blank faces. Accessories deferred.
  */
 export type GuardHairId='sidePart'|'curls'|'bob'|'messy'|'ponytail'|'bald';
@@ -28,13 +28,13 @@ export type GuardArchetype={
  posture:{spinePitch:number;slouch:number;swagger:number};
 };
 
-/** Coral / cyan / cream — the shared uniform; not olive squad dyes. */
+/** Stark toy primary colours — pure red / pure blue / cream; not olive squad dyes. */
 export const GUARD_UNIFORM={
- jacket:0xe95b49,
- trim:0x3bbbc5,
- trousers:0x268d9a,
- shoe:0xf0e6cf,
- sole:0xe2b43c,
+ jacket:0xff0000,
+ trim:0x0000ff,
+ trousers:0x0000ff,
+ shoe:0xfff2a8,
+ sole:0xffcc00,
 } as const;
 
 /**

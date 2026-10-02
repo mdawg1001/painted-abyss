@@ -110,7 +110,7 @@ function clothMat(color:number,rough=.82){
  });
 }
 
-/** Capsule stand-in while the glTF loads (or if it fails) — coral cartoon kit. */
+/** Capsule stand-in while the glTF loads (or if it fails) — stark red/blue toy kit. */
 export function buildSovietGuardStub(arch?:GuardArchetype){
  const a=arch??guardArchetype(0);
  const body=new THREE.Group();
@@ -234,15 +234,21 @@ function litGuardMaterials(root:THREE.Object3D){
    if(!m||!('roughness' in m))continue;
    const sm=m as THREE.MeshStandardMaterial;
    if('flatShading' in sm&&sm.flatShading)sm.flatShading=false;
-   // Cartoon toy response: matte, saturated — no cloth sheen.
-   if(sm.vertexColors){sm.roughness=.88;sm.metalness=0;}
+   // Cartoon toy response: matte, fully saturated primaries — no cloth sheen.
+   if(sm.vertexColors){sm.roughness=.92;sm.metalness=0;sm.color?.setHex(0xffffff);}
    const phys=sm as THREE.MeshPhysicalMaterial;
    if('sheen' in phys)phys.sheen=0;
-   sm.envMapIntensity=.25;
+   sm.envMapIntensity=.1;
    if(!sm.emissive)sm.emissive=new THREE.Color(0x000000);
-   const base=sm.color?sm.color.clone():new THREE.Color(GUARD_UNIFORM.jacket);
-   sm.emissive.copy(base);
-   sm.emissiveIntensity=sm.vertexColors?.035:GUARD_EMISSIVE_LIFT;
+   // Soft self-light so bunker grade doesn't wash pure red/blue into pastel.
+   if(sm.vertexColors){
+    sm.emissive.setHex(0xffffff);
+    sm.emissiveIntensity=.06;
+   }else{
+    const base=sm.color?sm.color.clone():new THREE.Color(GUARD_UNIFORM.jacket);
+    sm.emissive.copy(base);
+    sm.emissiveIntensity=GUARD_EMISSIVE_LIFT;
+   }
    sm.needsUpdate=true;
   }
  });

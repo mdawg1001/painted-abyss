@@ -1,6 +1,6 @@
 # Colourful civilian guard
 
-The faceless head, hair kits, coral jacket, turquoise trousers, cuffs, zipper and cream/yellow shoes are an original procedural mesh created for Painted Abyss. Regenerate with `node playable/scripts/build-colourful-guard.mjs` from the repository root. No Unity installation or purchased character asset is used.
+The faceless head, hair kits, pure-red jacket, pure-blue trousers, cuffs, zipper and cream/yellow shoes are an original procedural mesh created for Painted Abyss. Regenerate with `node playable/scripts/build-colourful-guard.mjs` from the repository root. No Unity installation or purchased character asset is used.
 
 The Stickman Civilian Characters Pack (Unity Asset Store) is an art-direction reference only. It is not shipped and is not converted into the game mesh.
 

@@ -1,6 +1,6 @@
 # Colourful civilian integration — v0.24.7
 
-Original cartoon civilians inspired by stickman-civilian packs (art reference only): coral jacket, cyan collar/cuffs, turquoise trousers and cream/yellow shoes. Blank faces. Six designed archetypes — not random mixes. No purchased Unity character is used.
+Original cartoon civilians inspired by stickman-civilian packs (art reference only): pure-red jacket, pure-blue collar/cuffs and trousers and cream/yellow shoes. Blank faces. Six designed archetypes — not random mixes. No purchased Unity character is used.
 
 | Slot | Look |
 |------|------|
@@ -15,7 +15,7 @@ Original cartoon civilians inspired by stickman-civilian packs (art reference on
 - `src/guardArchetypes.ts`: silhouette scales, hair id, skin tone, idle posture bias.
 - Runtime: hair visibility + skin remap on the skinned clone; **width/height/depth on `visual.root` only** (safe with locomotion scale tracks).
 - `scripts/build-colourful-guard.mjs`: reproducible original geometry.
-- Olive `tintGuardOutfit` dyes are skipped for colourful guards so the coral kit stays shared.
+- Olive `tintGuardOutfit` dyes are skipped for colourful guards so the stark red/blue kit stays shared.
 
 ## Validation
 

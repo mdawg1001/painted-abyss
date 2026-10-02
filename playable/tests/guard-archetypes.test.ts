@@ -18,9 +18,11 @@ async function load(){
  return new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'');
 }
 
-test('six designed archetypes keep a shared coral kit',()=>{
+test('six designed archetypes keep a shared stark red/blue kit',()=>{
  assert.equal(GUARD_ARCHETYPES.length,6);
- assert.equal(GUARD_UNIFORM.jacket,0xe95b49);
+ assert.equal(GUARD_UNIFORM.jacket,0xff0000);
+ assert.equal(GUARD_UNIFORM.trousers,0x0000ff);
+ assert.equal(GUARD_UNIFORM.trim,0x0000ff);
  assert.equal(new Set(GUARD_ARCHETYPES.map(a=>a.id)).size,6);
  assert.equal(guardArchetype(6).id,guardArchetype(0).id);
 });

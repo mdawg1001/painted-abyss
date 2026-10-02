@@ -1,7 +1,7 @@
 /** Cartoon faceless civilians. Reuses CC0 Quaternius skeleton + gait clips.
  * Run: node scripts/build-colourful-guard.mjs
  *
- * Body mesh is shared coral/turquoise/cream kit. Hair styles are separate
+ * Body mesh is shared pure-red / pure-blue / cream kit. Hair styles are separate
  * SkinnedMeshes (`Hair_*`) bound to the same skeleton — runtime shows one.
  * Stickman-civilian inspiration; original geometry (no Unity asset).
  */
@@ -24,7 +24,7 @@ const skeleton=original.skeleton;
 const bones=new Map(skeleton.bones.map((b,i)=>[b.name,{b,i,p:b.getWorldPosition(new T.Vector3())}]));
 for(const o of old)o.removeFromParent();
 
-const C={skin:0xecd5ad,jacket:0xe95b49,trim:0x3bbbc5,trousers:0x268d9a,shoe:0xf0e6cf,sole:0xe2b43c,zip:0xa1a6a2};
+const C={skin:0xecd5ad,jacket:0xff0000,trim:0x0000ff,trousers:0x0000ff,shoe:0xfff2a8,sole:0xffcc00,zip:0xffffff};
 const rigid=n=>()=>[[n,1]];
 
 function skinGeo(geo,color,weights){
