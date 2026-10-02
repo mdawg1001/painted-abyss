@@ -1,4 +1,4 @@
-# Colourful civilian integration — v0.24.7
+# Colourful civilian integration — v0.24.9
 
 Original cartoon civilians inspired by stickman-civilian packs (art reference only): pure-red jacket, pure-blue collar/cuffs and trousers and cream/yellow shoes. Blank faces. Six designed archetypes — not random mixes. No purchased Unity character is used.
 
@@ -10,6 +10,8 @@ Original cartoon civilians inspired by stickman-civilian packs (art reference on
 | Slim | Upright, bob |
 | Scruffy | Soft belly (deeper torso scale), messy hair, slouch |
 | Athletic | Ponytail, swagger |
+| Pigtail | Female enemy — blue pigtails |
+| PigtailTall | Female enemy — tall blue pigtails |
 
 - `public/assets/colourful-guard/civilian.glb`: shared body + five hair kits on the Quaternius CC0 skeleton, embedded idle/walk/run clips.
 - `src/guardArchetypes.ts`: silhouette scales, hair id, skin tone, idle posture bias.

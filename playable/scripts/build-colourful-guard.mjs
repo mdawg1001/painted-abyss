@@ -172,6 +172,19 @@ const hairs={
   add(tail);
   add(ellipsoidGeo([0,1.92,-.42],[.06,.07,.06],8));
  }),
+ // Twin pigtails — clear female read for enemy guards.
+ pigtails:hairParts(add=>{
+  add(ellipsoidGeo([0,2.34,0],[.33,.28,.30],12)); // crown
+  add(ellipsoidGeo([0,2.48,.08],[.22,.10,.18],10)); // bangs
+  for(const side of [-1,1]){
+   add(ellipsoidGeo([side*.28,2.36,.02],[.09,.09,.09],8)); // ear bun / knot
+   const strand=new T.CylinderGeometry(.055,.04,.42,10,5);
+   strand.translate(side*.34,2.08,.02);
+   strand.rotateZ(side*-.35);
+   add(strand);
+   add(ellipsoidGeo([side*.42,1.82,.04],[.07,.09,.07],8)); // tip puff
+  }
+ }),
 };
 
 const hairNames=[];
