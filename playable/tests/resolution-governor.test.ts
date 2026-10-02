@@ -9,10 +9,11 @@ const run=(g:ResolutionGovernor,ms:number,n:number,active=true)=>{const ev=[];fo
 /** Build a multi-rung ladder like the pre-0.22.37 Retina profile (for drop/probe tests). */
 const fatCfg={...R,maxPixelRatio:2,msaa:4};
 
-test('ladder: playability cap is 1× / no MSAA (top equals floor under current PERF)',()=>{
+test('ladder: top follows PERF cap; floor stays 1× / no MSAA',()=>{
  const l=resolutionLadder(2);
  assert.deepEqual(l[0],{pixelRatio:PERF.dprCap,msaa:PERF.msaa});
  assert.deepEqual(l[l.length-1],{pixelRatio:1,msaa:0});
+ assert.ok(l.length>=3,'mild cap exposes intermediate rungs the governor can step');
  assert.ok(l.every(r=>r.pixelRatio<=PERF.dprCap),'never above the playability density cap');
  assert.ok(l.every(r=>r.pixelRatio>=1),'never below one pixel per CSS pixel');
  assert.equal(resolutionLadder(3)[0].pixelRatio,PERF.dprCap,'device density cannot exceed PERF.dprCap');

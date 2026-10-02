@@ -17,7 +17,7 @@ import {
 } from '../src/postFx';
 
 test('bloom costs the same at any pixel density: sized from CSS pixels', () => {
- assert.equal(POST_FX_DPR_CAP, 1, 'playability density cap (no Retina framebuffer)');
+ assert.equal(POST_FX_DPR_CAP, 1.5, 'mild density cap (governor floor still 1×)');
  let pr = 1;
  const bloom = createBloomPass(960, 600, () => pr);
  bloom.setSize(960, 600);

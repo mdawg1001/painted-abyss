@@ -1,10 +1,9 @@
 /**
  * Frame-time watchdog for render resolution and anti-aliasing.
  *
- * Defaults follow the playability profile in perf.ts (1× pixels, no MSAA). If a
- * future build raises PERF.dprCap / PERF.msaa, the governor starts on the
- * cheapest rung and only probes up — so a failed or slow drop never leaves
- * Retina+MSAA stuck on and crushing Safari/laptop frames.
+ * PERF sets the top rung (currently 1.5× / 2× MSAA). The governor always starts
+ * on the cheapest rung (1× / no MSAA) and only probes up — so a failed or slow
+ * drop never leaves a heavy rung stuck on and crushing Safari/laptop frames.
  *
  * Browsers pace requestAnimationFrame to the display, so a frame that finishes early still reports
  * a full refresh interval: spare headroom is invisible. The governor therefore *probes*: after a
@@ -30,7 +29,7 @@ export const RESOLUTION = {
  /** A probe fails if this share of frames after it goes over budget. */
  probeFailShare: .12,
  /** Clean seconds before the first probe up; doubled after every failed probe (capped). */
- probeAfter: 3,
+ probeAfter: 2,
  probeAfterMax: 48,
  /** Seconds a probe is watched before it is kept. */
  probeWatch: 2.5,

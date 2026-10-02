@@ -164,6 +164,7 @@ void main(){
     float r2=dot(a,a)/(.25+.25*(uResolution.x*uResolution.x)/(uResolution.y*uResolution.y));
     uv=.5+d*(1.0-uWarp*r2);
   }
+  // Keep in lockstep with postFx IMPACT_SHADER crunch (softened in v0.24.3).
   if(uCrunch>1.01){
     vec2 grid=max(uResolution/uCrunch,vec2(1.0));
     uv=(floor(uv*grid)+.5)/grid;

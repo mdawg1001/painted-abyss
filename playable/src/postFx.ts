@@ -15,7 +15,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { PERF } from './perf';
 
 /** Cap device pixel ratio when the bloom stack is live (Retina + UnrealBloomPass hitch). */
-/** Highest render density; mirrors PERF.dprCap (playability floor). */
+/** Highest render density; mirrors PERF.dprCap (governor top rung). */
 export const POST_FX_DPR_CAP = PERF.dprCap;
 
 /** Soft bloom: high threshold, modest strength — neon / muzzle / pickups only. */
@@ -29,8 +29,8 @@ export const BLOOM_RES_SCALE = PERF.bloomResScale;
 export const IMPACT_HIT_PEAK = 1;
 export const IMPACT_DASH_PEAK = 0.72;
 export const IMPACT_DECAY = 2.4;
-/** Always-on mild pixel crunch (screen pixels per sample). 1 = off-ish; 2–3 = crunchy. */
-export const CRUNCH_PIXEL = 1.75;
+/** Always-on mild pixel crunch (screen pixels per sample). 1 = off; higher = crunchier. */
+export const CRUNCH_PIXEL = 1.2;
 export const IMPACT_CHROMA_MAX = 0.0048;
 export const IMPACT_VIGNETTE_MAX = 0.72;
 
@@ -94,7 +94,7 @@ void main(){
     float r2=dot(a,a)/(.25+.25*(uResolution.x*uResolution.x)/(uResolution.y*uResolution.y));
     uv=.5+d*(1.0-uWarp*r2);
   }
-  // Mild always-on pixel crunch — keeps 2K albedo, reads retro at presentation.
+  // Very mild always-on crunch — barely groups samples so albedo stays sharp.
   if(uCrunch>1.01){
     vec2 grid=max(uResolution/uCrunch,vec2(1.0));
     uv=(floor(uv*grid)+.5)/grid;
