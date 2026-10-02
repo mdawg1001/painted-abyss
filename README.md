@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.24.3
+# Painted Abyss — First Dive · 0.24.4
+
+## Six cartoon civilian archetypes (0.24.4)
+
+Shared coral jacket / turquoise trousers / cream shoes; blank faces. Six designed characters cycle by slot — tall/lanky, short/sturdy, broad/bald, slim/bob, scruffy/messy, athletic/ponytail — via silhouette scale, hair kit, skin tone and idle posture. Stickman-civilian packs are art reference only (not imported).
 
 ## Sharper render path (0.24.3)
 
@@ -6,7 +10,7 @@ Framebuffer density cap rises to **1.5×** with **2× MSAA** on the composer sce
 
 ## Colourful faceless guards (0.24.2)
 
-Original low-poly civilian enemies replace the soldier mesh: coral jackets, turquoise trousers, cream/yellow shoes and purple swept hair around a blank face. The texture-free model uses smooth welded normals, denser limbs/torso, rounded trim, and a soft sheen cloth material so silhouettes read less faceted. Existing CC0 locomotion and the separately credited combat clips drive walking, running, aiming, knife attacks, hit reactions and death. Original assets remain available.
+Original low-poly civilian enemies replace the soldier mesh: coral jackets, turquoise trousers, cream/yellow shoes and blank faces. Existing CC0 locomotion and the separately credited combat clips drive walking, running, aiming, knife attacks, hit reactions and death.
 
 A lightweight original rifle is attached to the firing hand, with a separate support-hand grip and a muzzle marker for flashes/tracers. Enemy combat rules and damage are unchanged. Knife rushers, officer identification and armour/loot behaviour continue through the existing game systems. Each enemy keeps independent animation and hit-flash state; the earlier distant-animation cadence remains active.
 

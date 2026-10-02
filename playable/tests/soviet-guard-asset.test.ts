@@ -5,9 +5,10 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
  SOVIET_GUARD_GLB,SOVIET_GUARD_SOURCE,SOVIET_GUARD_LICENSE,GUARD_LOCO_PROCEDURAL,
- createSovietGuardVisual,
+ createSovietGuardVisual,GUARD_UNIFORM,
 } from '../src/sovietGuardAsset';
-import {GUARD_COUNT,GUARD_OUTFIT_COLORS} from '../src/simulation';
+import {GUARD_ARCHETYPES,guardArchetype} from '../src/guardArchetypes';
+import {GUARD_COUNT} from '../src/simulation';
 import * as THREE from 'three';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -31,22 +32,24 @@ test('original civilian mesh and retained CC0 skeleton/animation credits are pre
  assert.match(notice,/idle|Idle/);
 });
 
-test('five stub kits wear distinct cloth dyes',()=>{
- assert.ok(GUARD_COUNT>=GUARD_OUTFIT_COLORS.length,'the pool reuses the five kits');
- assert.equal(GUARD_OUTFIT_COLORS.length,5);
- const hexes=new Set<number>();
- for(let i=0;i<GUARD_OUTFIT_COLORS.length;i++){
+test('stubs share the coral cartoon kit and cycle six archetypes',()=>{
+ assert.ok(GUARD_COUNT>=GUARD_ARCHETYPES.length);
+ const skins=new Set<number>();
+ for(let i=0;i<GUARD_ARCHETYPES.length;i++){
   const visual=createSovietGuardVisual(i);
   assert.equal(visual.outfit,i);
   assert.match(visual.root.name,new RegExp(`:${i}$`));
-  let cloth=-1;
+  assert.equal(visual.pose.postureSwagger,guardArchetype(i).posture.swagger);
+  let jacket=-1,skin=-1;
   visual.body.traverse(o=>{
-   if(o instanceof THREE.Mesh&&(o.geometry as THREE.BufferGeometry).type==='CapsuleGeometry'){
-    cloth=(o.material as THREE.MeshStandardMaterial).color.getHex();
-   }
+   if(!(o instanceof THREE.Mesh))return;
+   const hex=(o.material as THREE.MeshStandardMaterial).color.getHex();
+   if((o.geometry as THREE.BufferGeometry).type==='CapsuleGeometry'&&jacket<0)jacket=hex;
+   if((o.geometry as THREE.SphereGeometry)?.type==='SphereGeometry'||o.geometry.type==='SphereGeometry')skin=hex;
   });
-  assert.equal(cloth,GUARD_OUTFIT_COLORS[i]);
-  hexes.add(cloth);
+  assert.equal(jacket,GUARD_UNIFORM.jacket,'shared coral jacket on stub');
+  assert.equal(skin,guardArchetype(i).skin);
+  skins.add(skin);
  }
- assert.equal(hexes.size,GUARD_OUTFIT_COLORS.length);
+ assert.ok(skins.size>=4,'archetype skin tones differ on stubs');
 });

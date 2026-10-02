@@ -47,10 +47,19 @@ export type GuardCombatState={
  /** Seconds, for breathing / sway / blinks. */
  t:number;
  nextBlink:number;blink:number;
+ /** Cartoon archetype idle bias (rad) — spine pitch / slouch / swagger. */
+ posturePitch:number;
+ postureSlouch:number;
+ postureSwagger:number;
 };
 
-export function makeGuardCombatState(seed=0):GuardCombatState{
- return{warp:0,back:false,stance:0,anger:0,t:seed*1.37,nextBlink:2+seed%3,blink:0};
+export function makeGuardCombatState(seed=0,posture?:{spinePitch:number;slouch:number;swagger:number}):GuardCombatState{
+ return{
+  warp:0,back:false,stance:0,anger:0,t:seed*1.37,nextBlink:2+seed%3,blink:0,
+  posturePitch:posture?.spinePitch??0,
+  postureSlouch:posture?.slouch??0,
+  postureSwagger:posture?.swagger??0,
+ };
 }
 
 /** Hips lowered this far in the full stance (m): a slight, athletic knee bend. */
@@ -341,8 +350,13 @@ export function applyGuardCombatPose(rig:GuardRig,st:GuardCombatState,gun:THREE.
  // Shoulders ahead of the hips, combat breathing, and the recoil rocking him back.
  _left.crossVectors(UP,_dirH).normalize();
  const breathe=Math.sin(st.t*Math.PI*2*(.3+.18*st.anger));
- rotateAxis(rig.abdomen,_left,GUARD_STANCE_LEAN*stance*.6);
- rotateAxis(rig.torso,_left,GUARD_STANCE_LEAN*stance*.4+.018*breathe*(.5+st.anger)-.07*rec);
+ // Archetype posture: readable cartoon habits that stay under the combat layer.
+ const idle=1-stance;
+ rotateAxis(rig.hips,_left,st.postureSlouch*idle);
+ rotateAxis(rig.abdomen,_left,GUARD_STANCE_LEAN*stance*.6+st.posturePitch*idle);
+ rotateAxis(rig.torso,_left,GUARD_STANCE_LEAN*stance*.4+.018*breathe*(.5+st.anger)-.07*rec+st.posturePitch*.5*idle);
+ // Light left/right swagger on the pelvis so walk reads personal without hiding aim.
+ if(Math.abs(st.postureSwagger)>1e-4)rig.pelvis.rotation.y+=st.postureSwagger*idle*Math.sin(st.t*1.7)*.35;
 
  // --- Two-handed isosceles grip on the line from the shoulders to the target. ---
  if(w>1e-3){

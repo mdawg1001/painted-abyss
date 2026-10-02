@@ -465,8 +465,8 @@ export const liveGuard=(g:Guard)=>g.active&&g.hp>0;
 /** Adjacent beats share this fraction of their waypoints (~one room of overlap). */
 export const GUARD_PATROL_OVERLAP=.25;
 /**
- * Cloth dyes — same cut, five colours so they read as a squad, not clones.
- * Olive, khaki, steel-blue, brown, field-teal.
+ * Legacy olive-kit dyes (unused by colourful cartoon civilians — they share a
+ * coral uniform and vary by `guardArchetypes` instead). Kept for older stubs/tests.
  */
 export const GUARD_OUTFIT_COLORS=[0x505b43,0x71694e,0x535e5c,0x645748,0x455c50] as const;
 const TAU_GUARD=Math.PI*2;
