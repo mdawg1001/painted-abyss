@@ -1,8 +1,8 @@
-# Painted Abyss — First Dive · 0.24.10
+# Painted Abyss — First Dive · 0.24.11
 
-## Enemy guard looks (0.24.10)
+## Enemy guard looks (0.24.11)
 
-Stark toy kit + hairstyle makeover: **spiky**, **mullet**, **afro**, **mohawk**, **blue pigtails**, **baseball cap**, **handlebar moustache**. Outer-root silhouette only (never bone/mesh scale).
+Hairstyle makeover with **exaggerated silhouettes** (spiky / mullet / afro / mohawk / hanging blue pigtails / baseball cap / handlebar). Body-only height normalize so kits stay readable. Outer-root silhouette only.
 
 ## Sharper render path (0.24.3)
 

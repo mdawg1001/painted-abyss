@@ -111,6 +111,27 @@ test('female enemy guards show blue pigtails only',async()=>{
  }
 });
 
+test('hair kits have unmistakable silhouettes',async()=>{
+ const g=await load();
+ hideGuardHairKits(g.scene);
+ normalizeHumanoid(g.scene,SOVIET_GUARD_HEIGHT);
+ const size=async(outfit:number)=>{
+  const scene=clone(g.scene);
+  scene.traverse(o=>{if(o instanceof THREE.Mesh)o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();});
+  applyGuardArchetype(scene,buildGuardRig(scene),makeGuardCombatState(outfit),outfit);
+  scene.updateMatrixWorld(true);
+  let box=new THREE.Box3();
+  scene.traverse(o=>{if(o instanceof THREE.Mesh&&o.visible&&o.name.startsWith('Hair_'))box.union(new THREE.Box3().setFromObject(o));});
+  return box.getSize(new THREE.Vector3());
+ };
+ const spiky=await size(0),pigtails=await size(1),afro=await size(2),mullet=await size(5),mohawk=await size(7);
+ assert.ok(afro.x>spiky.x*1.4,'afro much wider than spiky');
+ assert.ok(pigtails.y>spiky.y*1.4,'pigtails much taller/longer than spiky');
+ assert.ok(mullet.y>spiky.y*1.3,'mullet hangs much longer');
+ assert.ok(mohawk.x<spiky.x*.5,'mohawk is a thin ridge');
+ assert.ok(pigtails.x<1.0,'pigtails hang down, not out as wings');
+});
+
 test('guardRootScale encodes tall/narrow vs short/stocky on the outer root',()=>{
  const lanky=guardRootScale(0);
  const sturdy=guardRootScale(2);

@@ -206,18 +206,26 @@ export function meshWorldBox(root:THREE.Object3D):THREE.Box3{
  return new THREE.Box3().setFromObject(root);
 }
 
+/** Body mesh only — hair/cap/facial kits must not drive height normalisation. */
+function bodyWorldBox(root:THREE.Object3D):THREE.Box3{
+ const body=root.getObjectByName('ColourfulCivilian');
+ if(body){root.updateMatrixWorld(true);return new THREE.Box3().setFromObject(body);}
+ return meshWorldBox(root);
+}
+
 /**
- * Scale so **mesh** crown→feet ≈ `targetHeight`, then put feet on local y=0.
+ * Scale so **body** crown→feet ≈ `targetHeight`, then put feet on local y=0.
+ * Uses the body mesh only so giant afros / pigtails cannot crush the character.
  */
 export function normalizeHumanoid(scene:THREE.Object3D,targetHeight=SOVIET_GUARD_HEIGHT){
  scene.scale.set(1,1,1);
  scene.position.set(0,0,0);
  scene.rotation.set(0,0,0);
- const box=meshWorldBox(scene);
+ const box=bodyWorldBox(scene);
  const height=Math.max(box.max.y-box.min.y,.001);
  const scale=targetHeight/height;
  scene.scale.setScalar(scale);
- const box2=meshWorldBox(scene);
+ const box2=bodyWorldBox(scene);
  const center=box2.getCenter(new THREE.Vector3());
  scene.position.x-=center.x;
  scene.position.z-=center.z;
