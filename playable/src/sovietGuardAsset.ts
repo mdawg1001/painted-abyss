@@ -233,14 +233,21 @@ function litGuardMaterials(root:THREE.Object3D){
    if(!m||!('roughness' in m))continue;
    const sm=m as THREE.MeshStandardMaterial;
    // Smooth vertex normals; baked flatShading made the colourful mesh look chunky/pixelated.
-   if('flatShading' in sm&&sm.flatShading){sm.flatShading=false;sm.needsUpdate=true;}
-   sm.envMapIntensity=.35;
+   if('flatShading' in sm&&sm.flatShading){sm.flatShading=false;}
+   // Soft cloth response for the vertex-colour civilian (sheen if Physical).
+   if(sm.vertexColors){
+    sm.roughness=Math.min(sm.roughness??.8,.7);
+    sm.metalness=0;
+    const phys=sm as THREE.MeshPhysicalMaterial;
+    if('sheen' in phys){phys.sheen=Math.max(phys.sheen??0,.35);phys.sheenRoughness=phys.sheenRoughness??.6;}
+   }
+   sm.envMapIntensity=.45;
    if(!sm.emissive)sm.emissive=new THREE.Color(0x000000);
    // A gentle lift in the material's own colour so cloth and skin keep their hue in the
    // murk. Kept low: the key/rim lights do the modelling, this only stops pure-black shadows.
    const base=sm.color?sm.color.clone():new THREE.Color(0x4a5a3a);
    sm.emissive.copy(base);
-   sm.emissiveIntensity=sm.vertexColors?.045:GUARD_EMISSIVE_LIFT;
+   sm.emissiveIntensity=sm.vertexColors?.04:GUARD_EMISSIVE_LIFT;
    sm.needsUpdate=true;
   }
  });

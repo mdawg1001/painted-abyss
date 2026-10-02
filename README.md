@@ -1,8 +1,8 @@
-# Painted Abyss — First Dive · 0.24.0
+# Painted Abyss — First Dive · 0.24.2
 
-## Colourful faceless guards (0.24.0)
+## Colourful faceless guards (0.24.2)
 
-Original low-poly civilian enemies replace the soldier mesh: coral jackets, turquoise trousers, cream/yellow shoes and purple swept hair around a blank face. The texture-free model has 3,422 triangles and a 23-bone skeleton. Existing CC0 locomotion and the separately credited combat clips drive walking, running, aiming, knife attacks, hit reactions and death. Original assets remain available.
+Original low-poly civilian enemies replace the soldier mesh: coral jackets, turquoise trousers, cream/yellow shoes and purple swept hair around a blank face. The texture-free model uses smooth welded normals, denser limbs/torso, rounded trim, and a soft sheen cloth material so silhouettes read less faceted. Existing CC0 locomotion and the separately credited combat clips drive walking, running, aiming, knife attacks, hit reactions and death. Original assets remain available.
 
 A lightweight original rifle is attached to the firing hand, with a separate support-hand grip and a muzzle marker for flashes/tracers. Enemy combat rules and damage are unchanged. Knife rushers, officer identification and armour/loot behaviour continue through the existing game systems. Each enemy keeps independent animation and hit-flash state; the earlier distant-animation cadence remains active.
 

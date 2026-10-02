@@ -15,8 +15,24 @@ test('original mesh is lightweight, texture-free, fully weighted and independent
  const g=await load();let mesh!:THREE.SkinnedMesh;let count=0;
  g.scene.traverse(o=>{if((o as THREE.Mesh).isMesh){count++;mesh=o as THREE.SkinnedMesh;}});
  assert.equal(count,1);assert.equal(mesh.name,'ColourfulCivilian');assert.equal(mesh.skeleton.bones.length,23);
- assert.ok(mesh.geometry.attributes.position.count/3<5500);assert.equal((mesh.material as THREE.MeshStandardMaterial).map,null);
+ const geo=mesh.geometry;
+ const triCount=geo.index?geo.index.count/3:geo.attributes.position.count/3;
+ assert.ok(triCount<16000&&triCount>4000,`expected denser smooth mesh, got ${triCount} tris`);
+ assert.equal((mesh.material as THREE.MeshStandardMaterial).map,null);
  assert.equal((mesh.material as THREE.MeshStandardMaterial).flatShading,false,'smooth shading — not faceted flatShading');
+ // Corner normals must vary on most triangles — proves weld-before-normals (not face-flat).
+ const nrm=geo.attributes.normal;let smoothTris=0;
+ const corner=(i:number)=>{
+  if(geo.index)return[geo.index.getX(i),geo.index.getX(i+1),geo.index.getX(i+2)];
+  return[i,i+1,i+2];
+ };
+ for(let i=0;i<(geo.index?geo.index.count:nrm.count);i+=3){
+  const [a,b,c]=corner(i);
+  const d=Math.hypot(nrm.getX(a)-nrm.getX(b),nrm.getY(a)-nrm.getY(b),nrm.getZ(a)-nrm.getZ(b))
+   +Math.hypot(nrm.getX(b)-nrm.getX(c),nrm.getY(b)-nrm.getY(c),nrm.getZ(b)-nrm.getZ(c));
+  if(d>1e-3)smoothTris++;
+ }
+ assert.ok(smoothTris>triCount*.55,`smooth corner normals on ${smoothTris}/${triCount} tris`);
  const weights=mesh.geometry.attributes.skinWeight,indices=mesh.geometry.attributes.skinIndex;
  for(let i=0;i<weights.count;i++){
   assert.ok(Math.abs(weights.getX(i)+weights.getY(i)+weights.getZ(i)+weights.getW(i)-1)<1e-6);
