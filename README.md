@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.24.2
+# Painted Abyss — First Dive · 0.24.3
+
+## Sharper render path (0.24.3)
+
+Framebuffer density cap rises to **1.5×** with **2× MSAA** on the composer scene target (was 1× / off). The resolution governor still boots on the cheap **1× / no-MSAA** floor and only probes up when frames stay on budget, so Safari cannot get stuck on the old Retina 2× + 4× crush path. Post pixel-crunch eases from 1.75→1.2; rock/sand anisotropy is 8 for cleaner wall/floor filtering.
 
 ## Colourful faceless guards (0.24.2)
 

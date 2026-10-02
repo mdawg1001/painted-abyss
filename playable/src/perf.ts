@@ -10,22 +10,24 @@
  * (multi-second cooldown ladder) — restore the playability floor as the cap.
  * v0.22.37: dprCap 1 / MSAA 0 again; fewer motes; slower light scans; governor
  * starts at the cheap floor so a failed probe never leaves Retina+MSAA stuck on.
+ * v0.24.3: mild sharpness path — cap 1.5× + 2× MSAA. Governor still boots on
+ * the 1× / no-MSAA floor and only probes up when frames stay on budget, so a
+ * lagging drop cannot pin Safari on the old 2×/4× crush rung.
  */
 export const PERF = {
  /**
-  * Render density cap. 1× = one framebuffer pixel per CSS pixel (the 0.21
-  * playability floor). Retina 2× + bloom + MSAA is what made the dive feel
-  * frame-by-frame on laptop Safari — do not raise without a proven governor.
+  * Render density cap. 1.5× is a middle ground between the 1× playability floor
+  * and the Retina 2× that crushed Safari in #191. The governor starts at 1× and
+  * only climbs when frame time allows.
   */
- dprCap: 1,
+ dprCap: 1.5,
  /** Canvas MSAA stays off: the scene renders into the composer target. */
  antialias: false,
  /**
-  * MSAA samples on the composer's scene target. Off by default — 4× on a
-  * Retina framebuffer was the #191 crush path. The governor may still drop
-  * further if a future build raises this again.
+  * MSAA samples on the composer's scene target. 2× softens geometry edges
+  * without the 4× (#191) cost. Floor rung of the governor still forces 0.
   */
- msaa: 0,
+ msaa: 2,
  /**
   * Shadow maps (torch SpotLight + one hanging tube) each re-render the scene.
   * Silhouettes go; pools and grade stay.
@@ -46,6 +48,6 @@ export const PERF = {
  composerFloat: false,
  /** Rebuild the PointLight registry every N frames (scene.traverse is expensive). */
  lightScanFrames: 20,
- /** Rock / sand / moss sampler anisotropy (was 8). */
- anisotropy: 4,
+ /** Rock / sand / moss sampler anisotropy — sharper wall/floor textures. */
+ anisotropy: 8,
 } as const;
