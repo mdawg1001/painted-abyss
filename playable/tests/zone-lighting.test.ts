@@ -18,9 +18,15 @@ test('every compartment has a distinct practical colour and fog', () => {
  assert.ok(fogs.size >= 5, 'wings do not share one fog');
  assert.equal(ZONE_LIGHT.hall.color, FLUORESCENT);
  assert.equal(ZONE_LIGHT.hall.fog, DRY_FIELD);
- assert.ok(ZONE_LIGHT.back.color > 0xff0000 || ((ZONE_LIGHT.back.color >> 16) & 0xff) > 0xc0, 'bone wing reads red');
- assert.ok(((ZONE_LIGHT.pool.color) & 0xff) > 0xc0, 'extraction reads cyan');
- assert.ok(((ZONE_LIGHT.fissure.color >> 8) & 0xff) > 0x80, 'fissure keeps warm amber');
+ assert.ok(((ZONE_LIGHT.back.color >> 16) & 0xff) > 0xe0, 'bone wing reads hard red');
+ assert.ok(((ZONE_LIGHT.pool.color) & 0xff) > 0xe0, 'extraction reads hot cyan');
+ assert.ok(((ZONE_LIGHT.fissure.color >> 16) & 0xff) > 0xe0, 'fissure keeps hot amber');
+ assert.ok(((ZONE_LIGHT.corridor.color >> 8) & 0xff) > 0xc0, 'corridor leans green');
+ // Extreme spread vs hall so wing shifts read in motion (~50% past the first pass).
+ assert.ok(ZONE_LIGHT.pool.intensity >= ZONE_LIGHT.hall.intensity * 2.2);
+ assert.ok(ZONE_LIGHT.fissure.intensity <= ZONE_LIGHT.hall.intensity * .55);
+ assert.ok(ZONE_LIGHT.back.fogDensity >= ZONE_LIGHT.hall.fogDensity * 1.45);
+ assert.ok(ZONE_LIGHT.pool.fogDensity <= ZONE_LIGHT.hall.fogDensity * .75);
 });
 
 test('zoneAt follows open floor; START and EXIT land in expected wings', () => {
@@ -50,12 +56,16 @@ test('zoneFillMounts places one ceiling practical per inhabited zone', () => {
  }
 });
 
-test('zone sconce colour keeps warm accents outside emergency wings', () => {
+test('zone sconce colour keeps warm accents only in hall/neck', () => {
  assert.equal(zoneSconceColor('hall', 0, false), BULB_ORANGE);
+ assert.equal(zoneSconceColor('neck', 0, false), BULB_ORANGE);
  assert.equal(zoneSconceColor('hall', 1, false), ZONE_LIGHT.hall.color);
  assert.equal(zoneSconceColor('hall', 2, true), ZONE_LIGHT.hall.color);
+ assert.equal(zoneSconceColor('entrance', 0, false), ZONE_LIGHT.entrance.color);
+ assert.equal(zoneSconceColor('corridor', 0, false), ZONE_LIGHT.corridor.color);
  assert.equal(zoneSconceColor('back', 0, false), ZONE_LIGHT.back.color);
  assert.equal(zoneSconceColor('fissure', 0, false), ZONE_LIGHT.fissure.color);
+ assert.equal(zoneSconceColor('pool', 0, false), ZONE_LIGHT.pool.color);
 });
 
 test('wall sconces carry a zone and paint lights from ZONE_LIGHT', () => {
