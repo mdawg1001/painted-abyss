@@ -255,7 +255,7 @@ function litGuardMaterials(root:THREE.Object3D){
 }
 
 /**
- * Legacy olive-kit dye. Colourful civilians keep the shared coral uniform — no-op when
+ * Legacy olive-kit dye. Colourful civilians keep the shared red/blue kit — no-op when
  * the mesh is flagged `colourfulGuard`.
  */
 export function tintGuardOutfit(root:THREE.Object3D,hex:number){
