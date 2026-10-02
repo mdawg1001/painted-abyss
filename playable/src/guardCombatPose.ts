@@ -358,10 +358,12 @@ export function applyGuardCombatPose(rig:GuardRig,st:GuardCombatState,gun:THREE.
   // Soft elbows: wrists at ~90 % of full reach, just under the shoulder line (the
   // chunky helmeted head then sights down over the gun instead of hiding behind it),
   // kicked up and back by the shot.
-  const reach=armLen*(.9-.1*rec);
+  const rifle=!!gun.userData.rifle;
+  const reach=armLen*((rifle?.58:.9)-.1*rec);
   _G.copy(_S).addScaledVector(_dir,reach).addScaledVector(UP,-.05+.07*rec);
+  if(rifle)_G.addScaledVector(_left,-.1);
   // Support hand cups the grip from below and inside, so the slide stays in view.
-  _GL.copy(_G).addScaledVector(_left,.04).addScaledVector(UP,-.07).addScaledVector(_dir,-.01);
+  _GL.copy(_G).addScaledVector(_left,rifle?0:.04).addScaledVector(UP,rifle?.015:-.07).addScaledVector(_dir,rifle?.28:-.01);
   _pole.copy(_SR).addScaledVector(UP,-.45).addScaledVector(_left,-.35).addScaledVector(_dir,-.1);
   armIK(rig.armR,_G,_pole,w);
   _pole.copy(_SL).addScaledVector(UP,-.45).addScaledVector(_left,.35).addScaledVector(_dir,-.1);

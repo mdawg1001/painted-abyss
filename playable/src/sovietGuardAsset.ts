@@ -1,6 +1,7 @@
 import { PALETTE } from './artPalette';
 /**
- * Phase 3 corridor guard mesh + locomotion.
+ * Original colourful civilian mesh on the existing combat-compatible skeleton.
+ * Mesh generator: scripts/build-colourful-guard.mjs. The original soldier is preserved.
  *
  * Quaternius Ultimate Animated Character — Soldier_Male (CC0 1.0):
  * https://quaternius.com/packs/ultimateanimatedcharacter.html
@@ -11,25 +12,27 @@ import { PALETTE } from './artPalette';
  * SkeletonUtils.retarget onto that Unreal-style rig also failed — see
  * NOTICE.md and `scripts/retarget-guard-locomotion.mjs`.
  *
+ * Locomotion and skeleton remain Quaternius CC0; the visible mesh is original.
  * Scale: mesh AABB → ~1.90 m, feet on local y=0.
  * Always clone with `SkeletonUtils.clone` so skinned bind stays linked.
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { mountTt33 } from './gunAsset';
-import { addGuardFaceMorphs, buildGuardRig, makeGuardCombatState, type GuardRig, type GuardCombatState } from './guardCombatPose';
+import { createCivilianRifle } from './civilianRifle';
+import { buildGuardRig, makeGuardCombatState, type GuardRig, type GuardCombatState } from './guardCombatPose';
 import { GUARD_OUTFIT_COLORS } from './simulation';
 import { createOfficerCap } from './sovietKeyAsset';
 
+/** Attribution for the reused skeleton and gait clips; original mesh credit is in its NOTICE. */
 export const SOVIET_GUARD_SOURCE='https://quaternius.com/packs/ultimateanimatedcharacter.html';
 export const SOVIET_GUARD_AUTHOR='Quaternius';
 export const SOVIET_GUARD_LICENSE='CC0 1.0';
 export const SOVIET_GUARD_PACK='Ultimate Animated Character Pack — Soldier_Male';
 /** Prior Sketchfab mesh (CC BY) — Mixamo autorig blocked; retained for credit history only. */
 export const SOVIET_GUARD_SKETCHFAB_PRIOR='https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99';
-/** Public path — must match files under `playable/public/assets/soviet-uniform/`. */
-export const SOVIET_GUARD_GLB='/assets/soviet-uniform/quaternius_soldier_male.glb';
+/** Original mesh; legacy SOVIET names retained for the gameplay API. */
+export const SOVIET_GUARD_GLB='/assets/colourful-guard/civilian.glb';
 /** True when shipped clips are procedural bake (should be false — real Quaternius clips). */
 export const GUARD_LOCO_PROCEDURAL=false;
 /**
@@ -48,8 +51,8 @@ export const GUARD_RIM_INTENSITY=2.5;
  * (`tests/soviet-guard-gait.test.ts` re-measures the GLB and fails if these drift).
  * Stride rate is scaled from these so the planted foot stays locked to the floor.
  */
-export const GUARD_WALK_CLIP_SPEED=1.05;
-export const GUARD_RUN_CLIP_SPEED=2.65;
+export const GUARD_WALK_CLIP_SPEED=1.205;
+export const GUARD_RUN_CLIP_SPEED=3.049;
 /** Walk→run blend band (m/s). Below the start it is pure walk, above the end pure run. */
 export const GUARD_GAIT_BLEND_START=2.09;
 export const GUARD_GAIT_BLEND_END=2.95;
@@ -139,18 +142,8 @@ function makeGearProps(root:THREE.Group){
  const gun=new THREE.Group();
  gun.name='guardGun';
  gun.userData.gunAlive=true;
- const stub=new THREE.Group();
- stub.name='gunStub';
- stub.userData.gunStub=true;
- const barrel=new THREE.Mesh(
-  new THREE.BoxGeometry(.08,.08,.55),
-  new THREE.MeshStandardMaterial({color:0x9aa3aa,metalness:.55,roughness:.4}),
- );
- // Chest-height stub until TT-33 mounts / hand bone parents.
- barrel.position.set(.32,SOVIET_GUARD_HEIGHT*.66,-.38);
- stub.add(barrel);
- gun.add(stub);
- mountTt33(gun,'guard');
+ gun.userData.rifle=true;
+ gun.add(createCivilianRifle());
  gun.visible=false;
  root.add(gun);
 
@@ -245,7 +238,7 @@ function litGuardMaterials(root:THREE.Object3D){
    // murk. Kept low: the key/rim lights do the modelling, this only stops pure-black shadows.
    const base=sm.color?sm.color.clone():new THREE.Color(0x4a5a3a);
    sm.emissive.copy(base);
-   sm.emissiveIntensity=GUARD_EMISSIVE_LIFT;
+   sm.emissiveIntensity=sm.vertexColors?.045:GUARD_EMISSIVE_LIFT;
    sm.needsUpdate=true;
   }
  });
@@ -276,7 +269,7 @@ export function tintGuardOutfit(root:THREE.Object3D,hex:number){
    else c.lerp(olive,.15);
    if(sm.emissive){
     sm.emissive.copy(c);
-    sm.emissiveIntensity=GUARD_EMISSIVE_LIFT;
+    sm.emissiveIntensity=sm.vertexColors?.045:GUARD_EMISSIVE_LIFT;
    }
    sm.needsUpdate=true;
    return sm;
@@ -311,7 +304,7 @@ function loadGuardBundle(){
   scene.name='sovietGuardMesh';
   normalizeHumanoid(scene,SOVIET_GUARD_HEIGHT);
   litGuardMaterials(scene);
-  addGuardFaceMorphs(scene);
+  // The approved character is deliberately faceless; no expression morphs.
   const clips=pickLocoClips(gltf.animations);
   if(!clips)throw new Error('Guard GLB missing idle/walk/run clips');
   return{scene,clips};
@@ -431,7 +424,7 @@ export function createSovietGuardVisual(outfit=0):SovietGuardVisual{
 }
 
 /**
- * Swap the stub for the Quaternius soldier + attach authored loco clips.
+ * Swap the stub for the original civilian mesh + attach the existing authored gait clips.
  * Uses SkeletonUtils.clone so skinned bind pose stays linked to the bones.
  */
 export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
@@ -440,8 +433,9 @@ export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
   if(visual.ready&&visual.body.name==='sovietGuardMesh')return visual;
   visual.root.remove(visual.body);
   const instance=cloneSkinned(scene);
-  instance.name='sovietGuardMesh';
-  tintGuardOutfit(instance,GUARD_OUTFIT_COLORS[visual.outfit%GUARD_OUTFIT_COLORS.length]);
+  instance.name='sovietGuardMesh';instance.userData.colourfulGuard=true;
+  // Preserve the approved palette. Hit-flash state must be private to each guard.
+  instance.traverse(o=>{if(o instanceof THREE.Mesh)o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();});
   visual.root.add(instance);
   visual.body=instance;
   visual.ready=true;
