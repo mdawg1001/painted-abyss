@@ -65,7 +65,7 @@ const STYLE_MODS_AERIAL: StyleModifier[] = ['aerial'];
 import { makeTech, stepTech, requestJump, requestSlide, techOwnsMovement, STAND_HEIGHT, type TechState } from './movementTech';
 import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion, applyGuardAim,
- type SovietGuardVisual,
+ guardArchetype, type SovietGuardVisual,
 } from './sovietGuardAsset';
 import {
  mountAk74u, prefetchAk74u, updateAk74u, drawAk74u, shootAk74u, reloadAk74u, inspectAk74u, ak74uMuzzle, ak74uAimOffset,
@@ -1496,7 +1496,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
     this.guardCadence.reset(i);
     this.guardLifeSeen[i]=g.life;this.guardFall[i]=0;this.guardRecoil[i]=0;this.guardJolt[i]=0;
     this.guardShotsSeen[i]=g.shots;this.guardStrikeSeen[i]=g.strikeAt;
-    visual.pose=makeGuardCombatState(i);
+    visual.pose=makeGuardCombatState(i,guardArchetype(i).posture);
     const fresh=this.guardActs[i];if(fresh)clearGuardAction(fresh);
    }
    if(!g.active){visual.root.visible=false;continue;}

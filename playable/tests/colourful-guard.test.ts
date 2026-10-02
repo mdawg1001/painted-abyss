@@ -11,24 +11,33 @@ async function load(){
  const b=fs.readFileSync(new URL('../public/assets/colourful-guard/civilian.glb',import.meta.url));
  return new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'');
 }
-test('original mesh is lightweight, texture-free, fully weighted and independently cloneable',async()=>{
- const g=await load();let mesh!:THREE.SkinnedMesh;let count=0;
- g.scene.traverse(o=>{if((o as THREE.Mesh).isMesh){count++;mesh=o as THREE.SkinnedMesh;}});
- assert.equal(count,1);assert.equal(mesh.name,'ColourfulCivilian');assert.equal(mesh.skeleton.bones.length,23);
+test('body + hair kits are lightweight, texture-free, fully weighted and cloneable',async()=>{
+ const g=await load();
+ const meshes:THREE.SkinnedMesh[]=[];
+ g.scene.traverse(o=>{if((o as THREE.SkinnedMesh).isSkinnedMesh)meshes.push(o as THREE.SkinnedMesh);});
+ assert.equal(meshes.length,6); // body + 5 hair kits
+ const mesh=meshes.find(m=>m.name==='ColourfulCivilian')!;
+ assert.ok(mesh);assert.equal(mesh.skeleton.bones.length,23);
+ const hairs=meshes.filter(m=>m.name.startsWith('Hair_')).map(m=>m.name).sort();
+ assert.deepEqual(hairs,['Hair_bob','Hair_curls','Hair_messy','Hair_ponytail','Hair_sidePart']);
  const triCount=mesh.geometry.index?mesh.geometry.index.count/3:mesh.geometry.attributes.position.count/3;
  assert.ok(triCount<16000&&triCount>2000);
  assert.equal((mesh.material as THREE.MeshStandardMaterial).map,null);
  assert.equal((mesh.material as THREE.MeshStandardMaterial).flatShading,false);
- const weights=mesh.geometry.attributes.skinWeight,indices=mesh.geometry.attributes.skinIndex;
- for(let i=0;i<weights.count;i++){
-  assert.ok(Math.abs(weights.getX(i)+weights.getY(i)+weights.getZ(i)+weights.getW(i)-1)<1e-6);
-  for(const n of [indices.getX(i),indices.getY(i),indices.getZ(i),indices.getW(i)])assert.ok(n>=0&&n<23);
+ for(const m of meshes){
+  const weights=m.geometry.attributes.skinWeight,indices=m.geometry.attributes.skinIndex;
+  for(let i=0;i<weights.count;i++){
+   assert.ok(Math.abs(weights.getX(i)+weights.getY(i)+weights.getZ(i)+weights.getW(i)-1)<1e-6);
+   for(const n of [indices.getX(i),indices.getY(i),indices.getZ(i),indices.getW(i)])assert.ok(n>=0&&n<23);
+  }
  }
  const other=clone(g.scene);const copy=other.getObjectByName(mesh.name) as THREE.SkinnedMesh;
  assert.notEqual(copy.skeleton.bones[0],mesh.skeleton.bones[0]);assert.equal(copy.geometry,mesh.geometry);
 });
-test('skinned surface stays finite and human-sized throughout the embedded gait cycles',async()=>{
- const g=await load();normalizeHumanoid(g.scene);let mesh!:THREE.SkinnedMesh;g.scene.traverse(o=>{if((o as THREE.SkinnedMesh).isSkinnedMesh)mesh=o as THREE.SkinnedMesh;});
+test('skinned body stays finite and human-sized throughout the embedded gait cycles',async()=>{
+ const g=await load();normalizeHumanoid(g.scene);
+ const mesh=g.scene.getObjectByName('ColourfulCivilian') as THREE.SkinnedMesh;
+ assert.ok(mesh);
  const mixer=new THREE.AnimationMixer(g.scene);
  for(const clip of g.animations){
   mixer.stopAllAction();mixer.clipAction(clip).play();

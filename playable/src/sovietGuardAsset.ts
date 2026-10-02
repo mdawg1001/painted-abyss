@@ -21,9 +21,9 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { createCivilianRifle } from './civilianRifle';
 import { buildGuardRig, makeGuardCombatState, type GuardRig, type GuardCombatState } from './guardCombatPose';
-import { guardArchetype, GUARD_UNIFORM, type GuardArchetype } from './guardArchetypes';
+import { guardArchetype, GUARD_UNIFORM, hairObjectName, type GuardArchetype } from './guardArchetypes';
 import { createOfficerCap } from './sovietKeyAsset';
-export { GUARD_ARCHETYPES, guardArchetype, GUARD_UNIFORM } from './guardArchetypes';
+export { GUARD_ARCHETYPES, guardArchetype, GUARD_UNIFORM, hairObjectName } from './guardArchetypes';
 
 /** Attribution for the reused skeleton and gait clips; original mesh credit is in its NOTICE. */
 export const SOVIET_GUARD_SOURCE='https://quaternius.com/packs/ultimateanimatedcharacter.html';
@@ -292,44 +292,72 @@ function findSkinnedMesh(root:THREE.Object3D):THREE.SkinnedMesh|null{
 
 const DEFAULT_SKIN=new THREE.Color(0xecd5ad);
 
-const DEFAULT_HAIR=new THREE.Color(0x493a58);
-
-/** Remap skin/hair vertex colours on a private geometry clone. No transforms. */
-function remapArchetypeColors(mesh:THREE.Mesh,skinHex:number,hairHex:number){
+/** Remap authored skin verts on a private geometry clone. */
+function remapSkinColors(mesh:THREE.Mesh,hex:number){
  const col=mesh.geometry.getAttribute('color');
  if(!col)return;
- const skin=new THREE.Color(skinHex);
- const hair=new THREE.Color(hairHex);
+ const next=new THREE.Color(hex);
  for(let i=0;i<col.count;i++){
   const r=col.getX(i),g=col.getY(i),b=col.getZ(i);
-  const ds=Math.abs(r-DEFAULT_SKIN.r)+Math.abs(g-DEFAULT_SKIN.g)+Math.abs(b-DEFAULT_SKIN.b);
-  if(ds<.45){col.setXYZ(i,skin.r,skin.g,skin.b);continue;}
-  const dh=Math.abs(r-DEFAULT_HAIR.r)+Math.abs(g-DEFAULT_HAIR.g)+Math.abs(b-DEFAULT_HAIR.b);
-  if(dh<.45)col.setXYZ(i,hair.r,hair.g,hair.b);
+  const d=Math.abs(r-DEFAULT_SKIN.r)+Math.abs(g-DEFAULT_SKIN.g)+Math.abs(b-DEFAULT_SKIN.b);
+  if(d<.45)col.setXYZ(i,next.r,next.g,next.b);
  }
  col.needsUpdate=true;
 }
 
+/** Hide every hair kit (GLTF load does not preserve `visible:false` from the builder). */
+export function hideGuardHairKits(root:THREE.Object3D){
+ root.traverse(o=>{if(o.name.startsWith('Hair_'))o.visible=false;});
+}
+
 /**
- * Safe archetype pass: skin + hair **vertex colours only**.
- * No Object3D scale, no bone.scale, no posture — those melted/flailed the Quaternius skin.
- * Hair-style meshes deferred until a proven single-skeleton attach path exists.
+ * Outer-root silhouette scale for a role × archetype.
+ * Applied on `visual.root` (not the skinned mixer target) so Quaternius scale
+ * tracks cannot melt the bind pose. Never touch bone.scale / body.scale.
+ */
+export function guardRootScale(outfit:number,role?:string):THREE.Vector3{
+ const arch=guardArchetype(outfit);
+ const roleMul=role==='heavy'?1.12:role==='officer'?1.14:1;
+ return new THREE.Vector3(arch.width*roleMul,arch.height*roleMul,arch.depth*roleMul);
+}
+
+/**
+ * Hair kit + skin tone + idle posture slots.
+ * Silhouette (width/height/depth) is applied on `visual.root` via `guardRootScale`.
+ * Never scales the skinned mesh or bones — that melts Quaternius locomotion.
  */
 export function applyGuardArchetype(root:THREE.Object3D,_rig:GuardRig|null,pose:GuardCombatState,outfit:number){
  const arch=guardArchetype(outfit);
  root.userData.archetype=arch.id;
  root.userData.colourfulGuard=true;
- // Keep posture slots at zero so combat pose stays the pre-archetype path.
- pose.posturePitch=0;pose.postureSlouch=0;pose.postureSwagger=0;
- const body=(root.getObjectByName('ColourfulCivilian')??findSkinnedMesh(root)) as THREE.Mesh|null;
- if(!body?.isMesh)return;
- if(!body.geometry.userData.skinClone){
-  body.geometry=body.geometry.clone();
-  body.geometry.userData.skinClone=true;
+ root.userData.guardOutfit=outfit;
+ // Hair: show exactly one style (or none when bald). Never leave all kits stacked.
+ const want=hairObjectName(arch.hair);
+ root.traverse(o=>{
+  if(!o.name.startsWith('Hair_'))return;
+  o.visible=!!want&&o.name===want;
+  if(!(o instanceof THREE.Mesh))return;
+  const mats=Array.isArray(o.material)?o.material:[o.material];
+  for(const m of mats){
+   if(!m||!('color' in m))continue;
+   const sm=m as THREE.MeshStandardMaterial;
+   sm.color.setHex(arch.hairColor);
+   if(sm.emissive){sm.emissive.copy(sm.color);sm.emissiveIntensity=.03;}
+   sm.needsUpdate=true;
+  }
+ });
+ // Body skin tone (geometry must be unique per instance).
+ const body=root.getObjectByName('ColourfulCivilian') as THREE.Mesh|undefined;
+ if(body?.isMesh){
+  if(!body.geometry.userData.skinClone){
+   body.geometry=body.geometry.clone();
+   body.geometry.userData.skinClone=true;
+  }
+  remapSkinColors(body,arch.skin);
  }
- remapArchetypeColors(body,arch.skin,arch.hairColor);
- // Optional Hair_* kits (if present): hide all — baked hair on the body carries colour.
- root.traverse(o=>{if(o.name.startsWith('Hair_'))o.visible=false;});
+ pose.posturePitch=arch.posture.spinePitch;
+ pose.postureSlouch=arch.posture.slouch;
+ pose.postureSwagger=arch.posture.swagger;
 }
 
 function pickLocoClips(anims:THREE.AnimationClip[]):Record<GuardLocomotionKind,THREE.AnimationClip>|null{
@@ -348,8 +376,9 @@ function loadGuardBundle(){
   const gltf=await new GLTFLoader().loadAsync(SOVIET_GUARD_GLB);
   const scene=gltf.scene;
   scene.name='sovietGuardMesh';
-  // Hide optional Hair_* kits if a multi-hair GLB is present; body carries baked hair.
-  scene.traverse(o=>{if(o.name.startsWith('Hair_'))o.visible=false;});
+  // Exporter ignores authored visible:false — hide kits on the shared template.
+  hideGuardHairKits(scene);
+  // One shared adult height; per-guard tall/short is `visual.root` scale only.
   normalizeHumanoid(scene,SOVIET_GUARD_HEIGHT);
   litGuardMaterials(scene);
   // The approved character is deliberately faceless; no expression morphs.
@@ -469,8 +498,9 @@ export function createSovietGuardVisual(outfit=0):SovietGuardVisual{
  const officerCap=createOfficerCap(SOVIET_GUARD_HEIGHT);
  officerCap.visible=false; // civilians — only survivalFx may show for officer role
  root.add(officerCap);
- // Posture biases disabled — bone-layer swagger melted the skinned civilian.
- const pose=makeGuardCombatState(outfit);
+ const pose=makeGuardCombatState(outfit,arch.posture);
+ // Silhouette on the outer root (safe). Skinned body stays at unit scale.
+ root.scale.copy(guardRootScale(outfit));
  return{root,body,ready:false,loco:null,fill,rim,outfit,rig:null,pose,...props};
 }
 
