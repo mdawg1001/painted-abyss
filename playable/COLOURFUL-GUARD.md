@@ -1,8 +1,8 @@
-# Colourful civilian integration — v0.24.1
+# Colourful civilian integration — v0.24.2
 
 Original model created for the approved faceless civilian direction: coral jacket, cyan collar/cuffs, turquoise trousers, purple hair and cream/yellow shoes. This is a prototype interpretation of the concept, not an image-to-model conversion. No purchased Unity character is used.
 
-- `public/assets/colourful-guard/civilian.glb`: ~1.2 MB, 4,998 triangles, one texture-free smooth-shaded vertex-colour mesh, 23 bones, embedded idle/walk/run clips. v0.24.1 turns off flatShading and slightly densifies limbs/torso so the mesh reads less faceted/pixelated (global DPR/MSAA caps are unchanged).
+- `public/assets/colourful-guard/civilian.glb`: ~762 KB, 12,384 indexed triangles, one texture-free smooth-shaded vertex-colour MeshPhysicalMaterial with soft sheen, 23 bones, embedded idle/walk/run clips. v0.24.2 welds verts before normals (fixes faceted face-normals), densifies torso/limbs, rounds collar/zipper, and softens the rifle prop. Global DPR/MSAA caps are unchanged.
 - `scripts/build-colourful-guard.mjs`: reproducible original geometry and skin weights. Reuses the shipped CC0 Quaternius skeleton and gait clips; the original soldier and all existing combat-animation credits remain.
 - Existing guard AI, damage, hit detection, knife attacks, hit/death clips, spawn/restart and distance cadence continue through `SovietGuardVisual` (API name retained). There is no new hammer enemy in this slice.
 - Original low-poly rifle uses the existing ranged combat rules. Its support-hand stance and muzzle attachment differ from the previous pistol prop; firing damage/rate are unchanged.
