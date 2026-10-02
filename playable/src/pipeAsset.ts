@@ -26,8 +26,8 @@ export const PIPE_ROOF_Y=8.1;
 /** Albedo multiplier for silt and corrosion on the factory paint. */
 export const PIPE_GRIME=.55;
 
-/** Wall face the riser stands on (the south face of cells (4,24)/(5,24)); faces +Z into the room. */
-export const PIPE_MOUNT:SconceMount={x:PIPE_WALL.x,z:PIPE_WALL.z,yaw:0};
+/** Wall face the riser stands on (south lip near cells (4,31)); faces +Z into the bone wing. */
+export const PIPE_MOUNT:SconceMount={x:PIPE_WALL.x,z:PIPE_WALL.z,yaw:0,zone:'back'};
 export { PIPE_WALL_CLEARANCE };
 
 export type WallPipe={group:THREE.Group;ready:boolean;wheel:THREE.Object3D|null};
