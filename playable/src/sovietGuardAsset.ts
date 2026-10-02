@@ -21,9 +21,9 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { createCivilianRifle } from './civilianRifle';
 import { buildGuardRig, makeGuardCombatState, type GuardRig, type GuardCombatState } from './guardCombatPose';
-import { guardArchetype, GUARD_UNIFORM, hairObjectName, type GuardArchetype } from './guardArchetypes';
+import { guardArchetype, GUARD_UNIFORM, hairObjectName, facialObjectName, capObjectName, type GuardArchetype } from './guardArchetypes';
 import { createOfficerCap } from './sovietKeyAsset';
-export { GUARD_ARCHETYPES, guardArchetype, GUARD_UNIFORM, hairObjectName } from './guardArchetypes';
+export { GUARD_ARCHETYPES, guardArchetype, GUARD_UNIFORM, hairObjectName, facialObjectName, capObjectName } from './guardArchetypes';
 
 /** Attribution for the reused skeleton and gait clips; original mesh credit is in its NOTICE. */
 export const SOVIET_GUARD_SOURCE='https://quaternius.com/packs/ultimateanimatedcharacter.html';
@@ -311,9 +311,11 @@ function remapSkinColors(mesh:THREE.Mesh,hex:number){
  col.needsUpdate=true;
 }
 
-/** Hide every hair kit (GLTF load does not preserve `visible:false` from the builder). */
+/** Hide hair / facial / cap kits (GLTF load does not preserve `visible:false`). */
 export function hideGuardHairKits(root:THREE.Object3D){
- root.traverse(o=>{if(o.name.startsWith('Hair_'))o.visible=false;});
+ root.traverse(o=>{
+  if(o.name.startsWith('Hair_')||o.name.startsWith('Facial_')||o.name.startsWith('Cap_'))o.visible=false;
+ });
 }
 
 /**
@@ -327,8 +329,20 @@ export function guardRootScale(outfit:number,role?:string):THREE.Vector3{
  return new THREE.Vector3(arch.width*roleMul,arch.height*roleMul,arch.depth*roleMul);
 }
 
+function tintKitMesh(o:THREE.Object3D,hex:number){
+ if(!(o instanceof THREE.Mesh))return;
+ const mats=Array.isArray(o.material)?o.material:[o.material];
+ for(const m of mats){
+  if(!m||!('color' in m))continue;
+  const sm=m as THREE.MeshStandardMaterial;
+  sm.color.setHex(hex);
+  if(sm.emissive){sm.emissive.copy(sm.color);sm.emissiveIntensity=.03;}
+  sm.needsUpdate=true;
+ }
+}
+
 /**
- * Hair kit + skin tone + idle posture slots.
+ * Hair / facial / cap kits + skin tone + idle posture.
  * Silhouette (width/height/depth) is applied on `visual.root` via `guardRootScale`.
  * Never scales the skinned mesh or bones — that melts Quaternius locomotion.
  */
@@ -337,19 +351,31 @@ export function applyGuardArchetype(root:THREE.Object3D,_rig:GuardRig|null,pose:
  root.userData.archetype=arch.id;
  root.userData.colourfulGuard=true;
  root.userData.guardOutfit=outfit;
- // Hair: show exactly one style (or none when bald). Never leave all kits stacked.
- const want=hairObjectName(arch.hair);
+ const wantHair=hairObjectName(arch.hair);
+ const wantFacial=facialObjectName(arch.facial);
+ const wantCap=capObjectName(arch.cap);
  root.traverse(o=>{
-  if(!o.name.startsWith('Hair_'))return;
-  o.visible=!!want&&o.name===want;
-  if(!(o instanceof THREE.Mesh))return;
-  const mats=Array.isArray(o.material)?o.material:[o.material];
-  for(const m of mats){
-   if(!m||!('color' in m))continue;
-   const sm=m as THREE.MeshStandardMaterial;
-   sm.color.setHex(arch.hairColor);
-   if(sm.emissive){sm.emissive.copy(sm.color);sm.emissiveIntensity=.03;}
-   sm.needsUpdate=true;
+  if(o.name.startsWith('Hair_')){
+   o.visible=!!wantHair&&o.name===wantHair;
+   if(o.visible)tintKitMesh(o,arch.hairColor);
+   return;
+  }
+  if(o.name.startsWith('Facial_')){
+   o.visible=!!wantFacial&&o.name===wantFacial;
+   if(o.visible)tintKitMesh(o,arch.hairColor);
+   return;
+  }
+  if(o.name.startsWith('Cap_')){
+   // Cap keeps authored navy verts — leave material white.
+   o.visible=!!wantCap&&o.name===wantCap;
+   if(o.visible&&o instanceof THREE.Mesh){
+    const mats=Array.isArray(o.material)?o.material:[o.material];
+    for(const m of mats){
+     if(!m||!('color' in m))continue;
+     (m as THREE.MeshStandardMaterial).color.setHex(0xffffff);
+     (m as THREE.MeshStandardMaterial).needsUpdate=true;
+    }
+   }
   }
  });
  // Body skin tone (geometry must be unique per instance).

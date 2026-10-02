@@ -1,10 +1,8 @@
-# Painted Abyss — First Dive · 0.24.9
+# Painted Abyss — First Dive · 0.24.10
 
-## Enemy guard looks (0.24.9)
+## Enemy guard looks (0.24.10)
 
-Stark toy kit: **pure red** jacket and **pure blue** trousers/trim. Female enemy guards with **blue pigtails** in the opening squad (slots 1 & 4).
-
-Distinct looks: six `Hair_*` kits (incl. pigtails) + skin tones, with tall/narrow↔short/stocky via **outer-root** scale only (never bone/mesh scale — that melted the Quaternius rig). Bald = no hair kit. Mild idle posture after the mixer.
+Stark toy kit + hairstyle makeover: **spiky**, **mullet**, **afro**, **mohawk**, **blue pigtails**, **baseball cap**, **handlebar moustache**. Outer-root silhouette only (never bone/mesh scale).
 
 ## Sharper render path (0.24.3)
 

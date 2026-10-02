@@ -15,11 +15,14 @@ test('body + hair kits are lightweight, texture-free, fully weighted and cloneab
  const g=await load();
  const meshes:THREE.SkinnedMesh[]=[];
  g.scene.traverse(o=>{if((o as THREE.SkinnedMesh).isSkinnedMesh)meshes.push(o as THREE.SkinnedMesh);});
- assert.equal(meshes.length,7); // body + 6 hair kits
+ assert.equal(meshes.length,9); // body + 6 hair + facial + cap
  const mesh=meshes.find(m=>m.name==='ColourfulCivilian')!;
  assert.ok(mesh);assert.equal(mesh.skeleton.bones.length,23);
- const hairs=meshes.filter(m=>m.name.startsWith('Hair_')).map(m=>m.name).sort();
- assert.deepEqual(hairs,['Hair_bob','Hair_curls','Hair_messy','Hair_pigtails','Hair_ponytail','Hair_sidePart']);
+ const kits=meshes.filter(m=>/^(Hair|Facial|Cap)_/.test(m.name)).map(m=>m.name).sort();
+ assert.deepEqual(kits,[
+  'Cap_baseball','Facial_handlebar',
+  'Hair_afro','Hair_buzz','Hair_mohawk','Hair_mullet','Hair_pigtails','Hair_spiky',
+ ]);
  const triCount=mesh.geometry.index?mesh.geometry.index.count/3:mesh.geometry.attributes.position.count/3;
  assert.ok(triCount<16000&&triCount>2000);
  assert.equal((mesh.material as THREE.MeshStandardMaterial).map,null);

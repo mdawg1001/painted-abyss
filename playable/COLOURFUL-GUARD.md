@@ -1,15 +1,15 @@
-# Colourful civilian integration — v0.24.9
+# Colourful civilian integration — v0.24.10
 
 Original cartoon civilians inspired by stickman-civilian packs (art reference only): pure-red jacket, pure-blue collar/cuffs and trousers and cream/yellow shoes. Blank faces. Six designed archetypes — not random mixes. No purchased Unity character is used.
 
 | Slot | Look |
 |------|------|
-| Lanky | Tall/narrow, side-part |
-| Sturdy | Short/stocky, curls |
-| Broad | Wide, bald |
-| Slim | Upright, bob |
-| Scruffy | Soft belly (deeper torso scale), messy hair, slouch |
-| Athletic | Ponytail, swagger |
+| Lanky | Tall/narrow, short spiky |
+| Sturdy | Short/stocky, afro |
+| Broad | Wide, buzz + handlebar moustache |
+| Slim | Upright, mullet |
+| Scruffy | Soft belly, buzz + baseball cap |
+| Athletic | Mohawk, swagger |
 | Pigtail | Female enemy — blue pigtails |
 | PigtailTall | Female enemy — tall blue pigtails |
 

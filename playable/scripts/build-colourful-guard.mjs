@@ -1,8 +1,8 @@
 /** Cartoon faceless civilians. Reuses CC0 Quaternius skeleton + gait clips.
  * Run: node scripts/build-colourful-guard.mjs
  *
- * Body mesh is shared pure-red / pure-blue / cream kit. Hair styles are separate
- * SkinnedMeshes (`Hair_*`) bound to the same skeleton — runtime shows one.
+ * Body mesh is shared pure-red / pure-blue / cream kit. Hairstyle kits are
+ * separate SkinnedMeshes (`Hair_*`, plus `Facial_*` / `Cap_*`) on the Head bone.
  * Stickman-civilian inspiration; original geometry (no Unity asset).
  */
 import fs from 'node:fs';
@@ -131,58 +131,62 @@ for(const side of ['L','R']){
 }
 const bodyMesh=bindMesh(body,'ColourfulCivilian');
 
-// ——— Hair kits (white verts → runtime hairColor via material.color) ———
-function hairParts(builder){
+// ——— Hair / facial / cap kits (Head-bound). Hair_* verts are white → runtime hairColor. ———
+function kitParts(builder,vertColor=0xffffff){
  const parts=[];
- const addH=(geo)=>{
-  // Neutral vertex colour so material.color tints the style.
-  parts.push(skinGeo(geo,0xffffff,rigid('Head')));
- };
- builder(addH);
+ const add=(geo)=>parts.push(skinGeo(geo,vertColor,rigid('Head')));
+ builder(add);
  return parts;
 }
+const hairParts=(builder)=>kitParts(builder,0xffffff);
 
 const hairs={
- sidePart:hairParts(add=>{
-  add(ellipsoidGeo([0,2.30,.0],[.36,.34,.32],14)); // scalp
-  add(ellipsoidGeo([-.12,2.42,.16],[.20,.10,.12],10)); // side sweep
-  add(ellipsoidGeo([.05,2.48,.18],[.10,.06,.08],8));
- }),
- curls:hairParts(add=>{
-  add(ellipsoidGeo([0,2.32,0],[.34,.30,.30],12));
-  for(const [x,y,z,s] of [[-.18,2.40,.12,.09],[.16,2.42,.10,.08],[-.05,2.50,.08,.09],[.12,2.38,-.12,.08],[-.14,2.36,-.10,.075],[.0,2.52,-.02,.07]]){
-   add(ellipsoidGeo([x,y,z],[s,s,s],8));
+ // Short spiky — upright cones around the crown.
+ spiky:hairParts(add=>{
+  add(ellipsoidGeo([0,2.28,0],[.30,.22,.28],12));
+  for(const [a,h,r] of [[0,.22,.07],[.9,.20,.065],[1.8,.24,.07],[2.7,.19,.06],[3.6,.23,.07],[4.5,.18,.06],[5.4,.21,.065]]){
+   const spike=new T.ConeGeometry(r,h,6);
+   spike.translate(Math.sin(a)*.16,2.38+h*.35,Math.cos(a)*.14);
+   add(spike);
   }
  }),
- bob:hairParts(add=>{
-  add(ellipsoidGeo([0,2.22,.02],[.38,.32,.34],14)); // bowl
-  add(ellipsoidGeo([0,2.38,.05],[.34,.16,.30],12));
+ // Business in front, party in the back.
+ mullet:hairParts(add=>{
+  add(ellipsoidGeo([0,2.34,.04],[.30,.22,.26],12)); // short top
+  add(ellipsoidGeo([0,2.42,.16],[.22,.08,.12],10)); // fringe
+  add(ellipsoidGeo([0,2.10,-.22],[.28,.28,.22],12)); // long back volume
+  const curtain=new T.CylinderGeometry(.12,.16,.38,10,4);
+  curtain.translate(0,1.88,-.28);curtain.rotateX(.35);
+  add(curtain);
  }),
- messy:hairParts(add=>{
-  add(ellipsoidGeo([0,2.30,0],[.35,.32,.31],12));
-  for(const [x,y,z,sx,sy,sz] of [[-.2,2.48,.1,.12,.1,.1],[.18,2.50,.08,.1,.12,.09],[.0,2.55,.12,.11,.08,.1],[-.08,2.46,-.14,.1,.09,.1],[.14,2.44,-.1,.09,.11,.08]]){
-   add(ellipsoidGeo([x,y,z],[sx,sy,sz],8));
-  }
+ // Big round toy afro.
+ afro:hairParts(add=>{
+  add(ellipsoidGeo([0,2.38,0],[.48,.46,.48],16));
  }),
- ponytail:hairParts(add=>{
-  add(ellipsoidGeo([0,2.32,0],[.34,.30,.30],12));
-  add(ellipsoidGeo([0,2.20,-.22],[.08,.08,.08],8)); // knot
-  const tail=new T.CylinderGeometry(.055,.04,.28,10,4);
-  tail.translate(0,2.05,-.32);tail.rotateX(.55);
-  add(tail);
-  add(ellipsoidGeo([0,1.92,-.42],[.06,.07,.06],8));
- }),
- // Twin pigtails — clear female read for enemy guards.
+ // Twin pigtails — female enemy guards.
  pigtails:hairParts(add=>{
-  add(ellipsoidGeo([0,2.34,0],[.33,.28,.30],12)); // crown
-  add(ellipsoidGeo([0,2.48,.08],[.22,.10,.18],10)); // bangs
+  add(ellipsoidGeo([0,2.34,0],[.33,.28,.30],12));
+  add(ellipsoidGeo([0,2.48,.08],[.22,.10,.18],10));
   for(const side of [-1,1]){
-   add(ellipsoidGeo([side*.28,2.36,.02],[.09,.09,.09],8)); // ear bun / knot
+   add(ellipsoidGeo([side*.28,2.36,.02],[.09,.09,.09],8));
    const strand=new T.CylinderGeometry(.055,.04,.42,10,5);
    strand.translate(side*.34,2.08,.02);
    strand.rotateZ(side*-.35);
    add(strand);
-   add(ellipsoidGeo([side*.42,1.82,.04],[.07,.09,.07],8)); // tip puff
+   add(ellipsoidGeo([side*.42,1.82,.04],[.07,.09,.07],8));
+  }
+ }),
+ // Tight crop under a cap / with a moustache.
+ buzz:hairParts(add=>{
+  add(ellipsoidGeo([0,2.30,0],[.31,.20,.28],12));
+ }),
+ // Mohawk ridge (etc.).
+ mohawk:hairParts(add=>{
+  add(ellipsoidGeo([0,2.28,0],[.28,.18,.26],10));
+  for(let i=0;i<5;i++){
+   const spike=new T.ConeGeometry(.06,.20+i*.02,6);
+   spike.translate(0,2.42+i*.02,-.12+i*.07);
+   add(spike);
   }
  }),
 };
@@ -190,8 +194,38 @@ const hairs={
 const hairNames=[];
 for(const [id,parts] of Object.entries(hairs)){
  const m=bindMesh(parts,`Hair_${id}`);
- m.visible=false; // runtime enables one
+ m.visible=false;
  hairNames.push(m.name);
+}
+
+// Handlebar moustache — tinted with hairColor at runtime.
+{
+ const parts=kitParts(add=>{
+  for(const side of [-1,1]){
+   const wing=new T.TorusGeometry(.07,.025,6,10,Math.PI);
+   wing.rotateY(Math.PI/2);
+   wing.rotateZ(side*.4);
+   wing.translate(side*.09,2.08,.26);
+   add(wing);
+  }
+  add(ellipsoidGeo([0,2.07,.27],[.05,.025,.035],8)); // centre
+ },0xffffff);
+ const m=bindMesh(parts,'Facial_handlebar');
+ m.visible=false;
+}
+
+// Baseball cap — fixed navy verts (not hair-tinted).
+{
+ const CAP=0x1a237e;
+ const parts=kitParts(add=>{
+  add(ellipsoidGeo([0,2.42,0],[.36,.16,.34],12)); // crown
+  const brim=new T.BoxGeometry(.42,.04,.22);
+  brim.translate(0,2.30,.28);
+  add(brim);
+  add(ellipsoidGeo([0,2.48,.02],[.12,.04,.10],8)); // button
+ },CAP);
+ const m=bindMesh(parts,'Cap_baseball');
+ m.visible=false;
 }
 
 scene.name='ColourfulGuard';scene.userData.originalMesh=true;scene.userData.hairStyles=hairNames;
@@ -204,6 +238,8 @@ console.log({
  bytes:output.byteLength,
  bodyTris:tris(bodyMesh.geometry),
  hairs:hairNames,
+ facial:['Facial_handlebar'],
+ caps:['Cap_baseball'],
  bones:skeleton.bones.length,
  clips:clips.map(c=>c.name),
 });
