@@ -2,6 +2,7 @@
  * Procedural hair strand PBR maps for colourful-guard Hair_* / Facial_* kits.
  * Original — not from the Unity Asset Store (project policy: no Unity character assets).
  * Greyscale albedo is tinted at runtime via `material.color` (archetype hairColor).
+ * Alpha cutouts suit hair-card geometry (planes), not solid plastic blobs.
  */
 import * as THREE from 'three';
 
@@ -26,8 +27,8 @@ function noise(x:number,y:number){
 }
 
 /**
- * Build seamless strand albedo / normal / roughness once.
- * Strands run mostly along V so spherical/cylindrical UVs read as hair flow.
+ * Build seamless strand albedo (RGB + alpha) / normal / roughness once.
+ * Strands run mostly along V; alpha gaps cut cards into fibre ribbons.
  */
 export function getHairStrandMaps(size=256){
  if(cached)return cached;
@@ -39,17 +40,26 @@ export function getHairStrandMaps(size=256){
  for(let y=0;y<size;y++){
   for(let x=0;x<size;x++){
    const u=x/size,v=y/size;
-   // Many fine strands + a few thicker clumps.
-   const strand=Math.sin((u*48+noise(u*6,v*2)*.8)*Math.PI*2)*.5+.5;
-   const clump=Math.sin((u*11+noise(u*2,v)*.5)*Math.PI*2)*.5+.5;
-   const flow=noise(u*3,v*8);
-   const h=THREE.MathUtils.clamp(strand*.55+clump*.25+flow*.2,.08,.98);
+   // Fine strands + thicker clumps; slight lengthwise flow.
+   const strand=Math.sin((u*56+noise(u*8,v*2)*.9)*Math.PI*2)*.5+.5;
+   const clump=Math.sin((u*13+noise(u*2.2,v)*.55)*Math.PI*2)*.5+.5;
+   const flow=noise(u*3.2,v*10);
+   const h=THREE.MathUtils.clamp(strand*.55+clump*.28+flow*.17,.06,.98);
    height[y*size+x]=h;
+   // Soft-edged fibre mask — opaque ribbons with clear gaps (not nearly-empty).
+   // Raised cosine bands keep ~55% coverage so cards read as hair, not vanish.
+   const phase=u*56+noise(u*6,v)*.7;
+   const fibre=.55+.45*Math.cos(phase*Math.PI*2); // [0.1..1]
+   const clumpMask=.65+.35*Math.cos((u*13+noise(u*2,v)*.4)*Math.PI*2);
+   const mask=THREE.MathUtils.clamp(fibre*clumpMask+.08*flow,.0,1);
+   // Only feather the very tips; keep mid-card solid.
+   const tipFade=THREE.MathUtils.smoothstep(v,0.0,0.04)*THREE.MathUtils.smoothstep(v,1.0,0.96);
+   const a=THREE.MathUtils.clamp(mask*Math.max(tipFade,.85),0,1);
    const i=(y*size+x)*4;
-   const g=Math.round(40+h*200);
-   albedo[i]=albedo[i+1]=albedo[i+2]=g;albedo[i+3]=255;
-   // Roughness: tips / lit strands glossier.
-   const r=Math.round(140+(1-h)*90);
+   const g=Math.round(28+h*210);
+   albedo[i]=albedo[i+1]=albedo[i+2]=g;
+   albedo[i+3]=Math.round(a*255);
+   const r=Math.round(120+(1-h)*100);
    rough[i]=rough[i+1]=rough[i+2]=r;rough[i+3]=255;
   }
  }
@@ -59,7 +69,7 @@ export function getHairStrandMaps(size=256){
    const xm=(x+size-1)%size,xp=(x+1)%size,ym=(y+size-1)%size,yp=(y+1)%size;
    const dx=height[y*size+xp]-height[y*size+xm];
    const dy=height[yp*size+x]-height[ym*size+x];
-   const nx=-dx*4,ny=-dy*4,nz=1;
+   const nx=-dx*5.5,ny=-dy*5.5,nz=1;
    const len=Math.hypot(nx,ny,nz)||1;
    const i=(y*size+x)*4;
    normal[i]=Math.round((nx/len*.5+.5)*255);
@@ -77,7 +87,7 @@ export function getHairStrandMaps(size=256){
   t.generateMipmaps=true;
   if(colorSpace)t.colorSpace=colorSpace as THREE.ColorSpace;
   t.needsUpdate=true;
-  t.repeat.set(2.5,2.5);
+  t.repeat.set(3.2,2.4);
   return t;
  };
 
@@ -89,16 +99,21 @@ export function getHairStrandMaps(size=256){
  return cached;
 }
 
-/** Apply strand maps to a hair/facial material. Tint with `material.color`. */
+/** Apply strand maps for hair-card kits. Tint with `material.color`. */
 export function applyHairStrandMaps(mat:THREE.MeshStandardMaterial){
  const maps=getHairStrandMaps();
  mat.map=maps.albedo;
  mat.normalMap=maps.normal;
- mat.normalScale=new THREE.Vector2(1.1,1.1);
+ mat.normalScale=new THREE.Vector2(1.35,1.35);
  mat.roughnessMap=maps.roughness;
- mat.roughness=.62;
+ mat.roughness=.58;
  mat.metalness=0;
  mat.vertexColors=false;
- mat.envMapIntensity=.35;
+ mat.envMapIntensity=.4;
+ // Alpha cutouts turn card planes into fibre ribbons (not plastic shells).
+ mat.transparent=false;
+ mat.alphaTest=.28;
+ mat.depthWrite=true;
+ mat.side=THREE.DoubleSide;
  mat.needsUpdate=true;
 }

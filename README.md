@@ -1,8 +1,8 @@
-# Painted Abyss — First Dive · 0.24.12
+# Painted Abyss — First Dive · 0.24.13
 
-## Enemy guard looks (0.24.12)
+## Enemy guard looks (0.24.13)
 
-Hair kits use **procedural strand PBR maps** (albedo/normal/roughness) — not Unity Asset Store packs. Exaggerated silhouettes (spiky / mullet / afro / mohawk / hanging blue pigtails / baseball cap / handlebar). Body-only height normalize so kits stay readable. Outer-root silhouette only.
+Hair kits are **alpha hair-cards** (strand-cutout planes) with procedural PBR maps — not solid plastic ellipsoids, not Unity Asset Store packs. Exaggerated silhouettes (spiky / mullet / afro / mohawk / hanging blue pigtails / baseball cap / handlebar). Body-only height normalize so kits stay readable. Outer-root silhouette only.
 
 ## Sharper render path (0.24.3)
 

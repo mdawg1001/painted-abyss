@@ -14,13 +14,15 @@ test('procedural hair strand maps are seamless DataTextures',()=>{
  assert.equal(a.albedo.wrapS,THREE.RepeatWrapping);
 });
 
-test('applyHairStrandMaps wires albedo/normal/roughness and drops vertexColors',()=>{
+test('applyHairStrandMaps wires albedo/normal/roughness and hair-card alpha',()=>{
  const mat=new THREE.MeshStandardMaterial({vertexColors:true,color:0xff0000});
  applyHairStrandMaps(mat);
  assert.equal(mat.vertexColors,false);
  assert.ok(mat.map);
  assert.ok(mat.normalMap);
  assert.ok(mat.roughnessMap);
+ assert.ok(mat.alphaTest>=.2&&mat.alphaTest<.5,'alpha cutouts for hair-cards');
+ assert.equal(mat.side,THREE.DoubleSide);
  assert.equal(mat.color.getHex(),0xff0000,'tint colour preserved');
 });
 
