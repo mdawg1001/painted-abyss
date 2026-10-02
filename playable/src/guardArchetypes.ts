@@ -13,12 +13,11 @@ export type GuardArchetype={
  hairColor:number;
  skin:number;
  /**
-  * Uniform height scale only (safe with Quaternius skinning).
-  * Width/belly variation is reserved for build-time body kits — do not apply as
-  * non-uniform Object3D or bone.scale (that melts the skinned mesh).
+  * Outer-root scales (`visual.root` via `guardRootScale`). Safe because the
+  * AnimationMixer targets the skinned body, not this parent group.
+  * Never apply these as bone.scale or on the mixer root — that melts the mesh.
   */
  height:number;
- /** Design notes for a future baked-body pass (unused at runtime). */
  width:number;
  depth:number;
  head:number;

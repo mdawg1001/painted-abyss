@@ -12,7 +12,7 @@ import { warFxTextures } from './warFx';
 import { SURVIVAL, SURVIVAL_COVER } from './survivalConfig';
 import { survivalDoors, smokeDensity, smokeRadius, type SmokeCloud, type SmokeGrenade, type SupplyCache } from './survival';
 import { FLOOR_Y, type Guard, type Point } from './simulation';
-import { GUARD_KEY_INTENSITY, GUARD_RIM_INTENSITY, type SovietGuardVisual } from './sovietGuardAsset';
+import { GUARD_KEY_INTENSITY, GUARD_RIM_INTENSITY, guardRootScale, type SovietGuardVisual } from './sovietGuardAsset';
 import { createCardboardCoverVisual, upgradeCardboardCover } from './cardboardBoxAsset';
 import { createDeskCoverVisual, upgradeDeskCover } from './metalDeskAsset';
 
@@ -225,7 +225,8 @@ export class SurvivalFx{
  /** Per-guard role props, hit flash and muzzle glow. */
  syncGuard(i:number,visual:SovietGuardVisual,g:Guard,elapsed:number,shot:boolean,muzzle:THREE.Vector3|null,dt:number){
   visual.root.visible=g.active;
-  visual.root.scale.setScalar(g.role==='heavy'?1.12:g.role==='officer'?1.14:1);
+  // Archetype silhouette × role bulk — outer root only (see guardRootScale).
+  visual.root.scale.copy(guardRootScale(visual.outfit,g.role));
   const k=this.knifeFor(i,visual);if(k)k.visible=g.active&&g.role==='rusher';
   const cap=visual.root.getObjectByName('officerCap');
   if(cap)cap.visible=g.active&&g.role==='officer';
