@@ -1,8 +1,12 @@
-# Painted Abyss — First Dive · 0.24.16
+# Painted Abyss — First Dive · 0.24.17
 
-## Zone lighting (0.24.16)
+## Zone lighting (0.24.17)
 
 Wing moods pushed ~50% further from hall neutral (greener corridor, colder entrance, sparse amber fissure, hot cyan pool, blood-red bone wing). Sconces/fills stay pure zone colour outside hall/neck; dry hemi + key sun also carry the wing tint so the shift reads in motion.
+
+## Skinner cage dress (0.24.16)
+
+The sparse service galleries stay at three room-fitting runs — no bunker-wide catwalks. New Soviet industrial cage language bolts onto those approaches: observation-slit bar panels, side-funnel cages at the west-hall ladder, wire mesh hung under the grated decks (cage ceiling from the floor), floor-grate runways in the chokes, and three harsh cold observation lamps that harden and track when you step into a watched lane. First enter tips once: *Observed. Bars. Grate underfoot.* Hatch, breath flood, and combat numbers are untouched. Zone lighting still owns compartment mood — cage lamps are dress, not sealed-cage fill.
 
 ## Zone lighting (0.24.15)
 
