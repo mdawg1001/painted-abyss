@@ -4,10 +4,13 @@ import { BULB_ORANGE, FLUORESCENT } from './frameGrade';
  * Wall lamps — Poly Haven “Industrial Caged Sconce”.
  * A single self-contained GLB (the "_b" caged variant) lives in
  * `public/assets/industrial_caged_sconce/` and is cloned onto the cave walls.
+ * Colour / intensity follow the compartment's ZONE_LIGHT recipe.
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { cells, world, CELL } from './simulation';
+import { cells, world } from './simulation';
+import { zoneOf, type Zone } from './bunkerLayout';
+import { zoneAt, zoneLight, zoneSconceColor } from './zoneLighting';
 
 export const SCONCE_ASSET_URL='/assets/industrial_caged_sconce/industrial_caged_sconce.glb';
 export const SCONCE_SOURCE='https://polyhaven.com/a/industrial_caged_sconce';
@@ -16,37 +19,45 @@ export const SCONCE_LICENSE='CC0 1.0 Universal (public domain dedication)';
 /** Height of the mounted fixture in metres/world-units, and where its centre sits on the wall. */
 export const SCONCE_TARGET_HEIGHT=1.3;
 export const SCONCE_MOUNT_Y=4.4;
-/** Warm incandescent glow for the caged bulb. */
+/** Warm incandescent glow for the caged bulb (legacy accent). */
 export const SCONCE_LIGHT_COLOR=BULB_ORANGE;
-/** Cold fluorescent fixtures: every flickering one, and two of every three steady ones. */
+/** Cold fluorescent fixtures (legacy hall tube). */
 export const SCONCE_TUBE_COLOR=FLUORESCENT;
-/** Bunker light mix: mostly cold tubes, one warm caged bulb in three as the accent. */
-export function sconceColor(i:number,state:SconceState){return state==='flicker'||i%3!==0?SCONCE_TUBE_COLOR:SCONCE_LIGHT_COLOR;}
-const SCONCE_LIGHT_INTENSITY=11;
-const SCONCE_LIGHT_DISTANCE=12;
+/** Fallback when a mount has no zone: hall tube / warm-accent mix. */
+export function sconceColor(i:number,state:SconceState){return zoneSconceColor('hall',i,state==='flicker');}
 const SCONCE_LIGHT_DECAY=1.6;
 
 const BASE='/assets/industrial_caged_sconce/';
 const GLB='industrial_caged_sconce.glb';
 
-export type SconceMount={x:number;z:number;yaw:number};
-/** Half the sconces are dark, a tenth flicker, the rest burn steady. */
+export type SconceMount={x:number;z:number;yaw:number;zone?:Zone};
+/** Half the sconces are dark, a tenth flicker, the rest burn steady (plus zone flickerBias). */
 export type SconceState='steady'|'flicker'|'off';
 export type SconceLight={light:THREE.PointLight;base:number;phase:number;state:SconceState};
 export type WallSconces={group:THREE.Group;lights:SconceLight[]};
 
+const mountHash=(i:number)=>((i+1)*2654435761)>>>0;
+
 /** Deterministic, spatially spread assignment: ~50% off, ~10% flicker, remainder steady. */
-export function assignSconceStates(n:number):SconceState[]{
+export function assignSconceStates(n:number,zones?:readonly Zone[]):SconceState[]{
  const states:SconceState[]=new Array(n).fill('steady');
  if(n<=0)return states;
  const offCount=Math.round(n*0.5);
  const flickerCount=Math.round(n*0.1);
  // Order indices by a hash so the off/flicker picks are scattered, not clustered by wall order.
- const hash=(i:number)=>((i+1)*2654435761)>>>0;
- const order=[...Array(n).keys()].sort((a,b)=>hash(a)-hash(b));
+ const order=[...Array(n).keys()].sort((a,b)=>mountHash(a)-mountHash(b));
  order.forEach((idx,rank)=>{
   states[idx]=rank<offCount?'off':rank<offCount+flickerCount?'flicker':'steady';
  });
+ // Zone bias: extra failing tubes in fissure / bone wing without touching the global off budget.
+ if(zones){
+  for(let i=0;i<n;i++){
+   if(states[i]!=='steady')continue;
+   const bias=zoneLight(zones[i]??'hall').flickerBias;
+   if(bias<=0)continue;
+   if((mountHash(i+97)%1000)/1000<bias)states[i]='flicker';
+  }
+ }
  return states;
 }
 
@@ -63,7 +74,7 @@ export function wallSconceMounts(minDistance=14,max=26):SconceMount[]{
   for(const [dc,dr] of [[1,0],[-1,0],[0,1],[0,-1]]){
    if(cells.has(`${c+dc},${r+dr}`))continue;
    const nx=-dc,nz=dr,x=p.x+dc*2.5+nx*.5,z=p.z-dr*2.5+nz*.5;
-   const mount:SconceMount={x,z,yaw:Math.atan2(nx,nz)};
+   const mount:SconceMount={x,z,yaw:Math.atan2(nx,nz),zone:zoneOf(c,r)};
    if(chosen.every(k=>Math.hypot(k.x-mount.x,k.z-mount.z)>minDistance))chosen.push(mount);
    if(chosen.length>=max)return chosen;
   }
@@ -88,8 +99,12 @@ export function litSconceMaterials(root:THREE.Object3D){
 
 const inwardVec=(yaw:number)=>new THREE.Vector3(Math.sin(yaw),0,Math.cos(yaw));
 
+function mountZone(m:SconceMount):Zone{
+ return m.zone??zoneAt(m.x,m.z);
+}
+
 /**
- * Warm point light (+ a tiny emissive stub bulb) per mount, added immediately so the
+ * Zone-tinted point light (+ a tiny emissive stub bulb) per mount, added immediately so the
  * cave is lit even before the glTF finishes loading. Returns the group and the lights
  * (for per-frame flicker).
  */
@@ -97,7 +112,8 @@ export function createWallSconces(mounts:SconceMount[]):WallSconces{
  const group=new THREE.Group();
  group.name='wallSconces';
  const lights:SconceLight[]=[];
- const states=assignSconceStates(mounts.length);
+ const zones=mounts.map(mountZone);
+ const states=assignSconceStates(mounts.length,zones);
  const stubGeo=new THREE.SphereGeometry(.09,8,6);
  const litStubMat=new THREE.MeshBasicMaterial({color:PALETTE.amberGlow});
  const tubeStubMat=new THREE.MeshBasicMaterial({color:0xe8f6ff});
@@ -105,11 +121,14 @@ export function createWallSconces(mounts:SconceMount[]):WallSconces{
  const darkStubMat=new THREE.MeshBasicMaterial({color:0x2a2118});
  for(let i=0;i<mounts.length;i++){
   const m=mounts[i],state=states[i],on=state!=='off',inward=inwardVec(m.yaw);
-  const stub=new THREE.Mesh(stubGeo,on?(sconceColor(i,state)===SCONCE_TUBE_COLOR?tubeStubMat:litStubMat):darkStubMat);
+  const zone=zones[i],L=zoneLight(zone);
+  const color=zoneSconceColor(zone,i,state==='flicker');
+  const warm=color===BULB_ORANGE;
+  const stub=new THREE.Mesh(stubGeo,on?(warm?litStubMat:tubeStubMat):darkStubMat);
   stub.name='sconceStub';
   stub.position.set(m.x,SCONCE_MOUNT_Y+.45,m.z).addScaledVector(inward,.28);
   group.add(stub);
-  const light=new THREE.PointLight(sconceColor(i,state),SCONCE_LIGHT_INTENSITY,SCONCE_LIGHT_DISTANCE,SCONCE_LIGHT_DECAY);
+  const light=new THREE.PointLight(color,L.intensity,L.distance,SCONCE_LIGHT_DECAY);
   light.position.set(m.x,SCONCE_MOUNT_Y+.55,m.z).addScaledVector(inward,.5);
   // Off fixtures cast no light (also spares the renderer half the point lights).
   light.visible=on;

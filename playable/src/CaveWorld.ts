@@ -3,7 +3,7 @@ import {onAssetSettled} from './assetRedraw';
 import { CombatFeedbackManager, COMBAT_FEEDBACK } from './combatFeedback';
 import { PropStreaming } from './propStreaming';
 import { PALETTE } from './artPalette';
-import { DRY_DENSITY, DRY_FIELD, FLUORESCENT, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type ClipGradePass, type FrameGrade } from './frameGrade';
+import { DRY_DENSITY, DRY_FIELD, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type ClipGradePass, type FrameGrade } from './frameGrade';
 import { createBloomPass, createImpactFx, resizeBloomPass, type ImpactFx } from './postFx';
 import { PERF } from './perf';
 import { ResolutionGovernor } from './resolutionGovernor';
@@ -43,6 +43,7 @@ import {
  LIFEBUOY_POS, LIFEBUOY_YAW, type LifebuoyVisual,
 } from './lifebuoyAsset';
 import { createWallSconces, upgradeWallSconces, wallSconceMounts, type SconceLight } from './sconceAsset';
+import { zoneAt, zoneBlendK, zoneFillMounts, zoneLight } from './zoneLighting';
 import { createHangingLights, hangingLightMounts, stepHangingLights, upgradeHangingLights, type HangingLights } from './hangingLightAsset';
 import { createWallPosters, upgradeWallPosters, type WallPosters } from './posterAsset';
 import { createCopperPipe, upgradeCopperPipe, upgradeCopperPipeDetail, updateCopperPipe, type CopperPipe } from './copperPipeAsset';
@@ -436,6 +437,10 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
  /** Baked-lighting uniforms (shared by every bunker material), exposed for tuning. */
  bunkerLight=BUNKER_LIGHT;
  _lmTintA=new THREE.Color();_lmTintB=new THREE.Color();_lmTintC=new THREE.Color();
+ /** Soft dry-grade blend toward the compartment the diver is standing in. */
+ _zoneFog=new THREE.Color(DRY_FIELD);_zoneAmb=new THREE.Color(GRADE_LIGHTS.dry.ambient);
+ _zoneHemi=new THREE.Color(GRADE_LIGHTS.dry.sky);_zoneTmp=new THREE.Color();
+ _zoneDensity:number=DRY_DENSITY;_zoneAmbI:number=GRADE_LIGHTS.dry.ambientI;_zoneHemiI:number=GRADE_LIGHTS.dry.hemi;
  /** Settles when the kit meshes have replaced the plain fallback walls. */
  bunkerReady:Promise<void>=Promise.resolve();
  constructor(host:HTMLDivElement,ui:(snapshot:Snapshot)=>void){
@@ -2040,21 +2045,23 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   const poolFill=new THREE.PointLight(WATER_FIELD,34,16,1.1);poolFill.position.set(32,5,-12);poolFill.userData.bakedShadow=true;this.scene.add(poolFill);
   this.addShaft(32,5.2,-12,9,.75,2.9,PALETTE.ivory,.3,0,0,{caustic:true,causticR:5.2});
 
-  // Cavern ceiling fill + floor caustic. No volumetric column — the only god ray is the exit.
+  // Cavern floor caustic only — practical fill comes from the hall zone mount below.
   const cavernX=6,cavernZ=-64,cavernOp=.18,cavernBot=2.6;
   this.addCausticPool(cavernX,cavernZ,cavernBot*2.6,cavernOp);
-  const spot=new THREE.SpotLight(FLUORESCENT,70+cavernOp*520,15,.5,.85,1.15);
-  spot.position.set(cavernX,8.2,cavernZ);spot.target.position.set(cavernX,0,cavernZ);this.scene.add(spot,spot.target);
 
-  // Entrance corridor fill. No god ray in the tight tunnel.
-  const entrance=new THREE.SpotLight(FLUORESCENT,80,13,.48,.8,1.1);
-  entrance.position.set(0,8.5,-22);entrance.target.position.set(0,0,-22);this.scene.add(entrance,entrance.target);
+  // One ceiling practical per compartment (Soviet-bunker mood: each wing reads differently).
   this.gradeSpots=[
    {light:sunlight,rest:PALETTE.ivory},
    {light:poolFill,rest:WATER_FIELD},
-   {light:spot,rest:FLUORESCENT},
-   {light:entrance,rest:FLUORESCENT},
   ];
+  for(const m of zoneFillMounts()){
+   const fill=new THREE.PointLight(m.color,m.intensity,m.distance,1.15);
+   fill.position.set(m.x,m.y,m.z);
+   fill.userData.bakedShadow=true;
+   fill.userData.zone=m.zone;
+   this.scene.add(fill);
+   this.gradeSpots.push({light:fill,rest:m.color});
+  }
  }
  buildComposer(){
   const w=this.host.clientWidth||1,h=this.host.clientHeight||1;
@@ -2859,6 +2866,9 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   this.mission.bankCarriedGold();
   this.backgroundMusic?.reset();this.mission=new Mission(readInventoryTipsSeen());
   resetGradeClock(this.gradeClock);this.frameGrade='dry';
+  this._zoneFog.setHex(DRY_FIELD);this._zoneDensity=DRY_DENSITY;
+  this._zoneAmb.setHex(GRADE_LIGHTS.dry.ambient);this._zoneAmbI=GRADE_LIGHTS.dry.ambientI;
+  this._zoneHemi.setHex(GRADE_LIGHTS.dry.sky);this._zoneHemiI=GRADE_LIGHTS.dry.hemi;
   this.resetSurvivalFx();
   this.position.copy(this.mission.position);this.camera.position.copy(this.position);this.yaw=this.targetYaw=0;this.pitch=this.targetPitch=0;this.lookPointer=null;this.fallbackTurn=0;this.lockDenied=false;this.velocity.set(0,0,0);this.time=0;this.lastSent=0;this.keys.clear();this.style.reset();this.speedFov.reset();
   this.onFoot=true;this.wasOnFoot=true;this.gait.reset();this.tech=makeTech();
@@ -3213,6 +3223,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    this.syncStreakTier();
   }
   // Three fields, assigned. Depth and the exit do not tint the fog.
+  // Dry air soft-blends toward the compartment recipe; water / slam still win hard.
   const fog=this.scene.fog as THREE.FogExp2;
   const corridorAir=breathingFreeAir(this.position,this.mission.breathWaterY);
   if(corridorAir!==this.airborne){
@@ -3220,26 +3231,57 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    this.backgroundMusic?.setDry(corridorAir);
   }
   this.frameGrade=stepFrameGrade(this.gradeClock,this.mission.floodTriggered,corridorAir,this.playing?dt:0);
-  const field=gradeField(this.frameGrade);
-  fog.color.setHex(field);
-  fog.density=gradeDensity(this.frameGrade);
-  (this.scene.background as THREE.Color).copy(fog.color);
-  const lights=GRADE_LIGHTS[this.frameGrade];
-  this.gradeHemi.color.setHex(lights.sky);
-  this.gradeHemi.groundColor.setHex(lights.ground);
-  this.gradeHemi.intensity=lights.hemi;
-  this.gradeAmbient.color.setHex(lights.ambient);
-  this.gradeAmbient.intensity=lights.ambientI;
-  this.gradeSky.color.setHex(lights.sun);
-  this.gradeSky.intensity=lights.sunI;
+  const slam=gradeSlam(this.frameGrade);
+  if(this.frameGrade==='dry'){
+   const zl=zoneLight(zoneAt(this.position.x,this.position.z));
+   const k=this.playing?zoneBlendK(dt):1;
+   this._zoneFog.lerp(this._zoneTmp.setHex(zl.fog),k);
+   this._zoneDensity+=(zl.fogDensity-this._zoneDensity)*k;
+   this._zoneAmb.lerp(this._zoneTmp.setHex(zl.ambient),k);
+   this._zoneAmbI+=(zl.ambientI-this._zoneAmbI)*k;
+   this._zoneHemi.lerp(this._zoneTmp.setHex(zl.ambient),k);
+   this._zoneHemiI+=(zl.hemi-this._zoneHemiI)*k;
+   fog.color.copy(this._zoneFog);
+   fog.density=this._zoneDensity;
+   (this.scene.background as THREE.Color).copy(fog.color);
+   this.gradeHemi.color.copy(this._zoneHemi);
+   this.gradeHemi.groundColor.setHex(GRADE_LIGHTS.dry.ground);
+   this.gradeHemi.intensity=this._zoneHemiI;
+   this.gradeAmbient.color.copy(this._zoneAmb);
+   this.gradeAmbient.intensity=this._zoneAmbI;
+   this.gradeSky.color.setHex(GRADE_LIGHTS.dry.sun);
+   this.gradeSky.intensity=GRADE_LIGHTS.dry.sunI;
+  }else{
+   const field=gradeField(this.frameGrade);
+   fog.color.setHex(field);
+   fog.density=gradeDensity(this.frameGrade);
+   (this.scene.background as THREE.Color).copy(fog.color);
+   const lights=GRADE_LIGHTS[this.frameGrade];
+   this.gradeHemi.color.setHex(lights.sky);
+   this.gradeHemi.groundColor.setHex(lights.ground);
+   this.gradeHemi.intensity=lights.hemi;
+   this.gradeAmbient.color.setHex(lights.ambient);
+   this.gradeAmbient.intensity=lights.ambientI;
+   this.gradeSky.color.setHex(lights.sun);
+   this.gradeSky.intensity=lights.sunI;
+   // Snap soft-blend buffers so returning to dry does not flash the previous wing.
+   if(this.frameGrade==='water'){
+    this._zoneFog.setHex(WATER_FIELD);this._zoneDensity=gradeDensity('water');
+   }else{
+    this._zoneFog.setHex(field);this._zoneDensity=gradeDensity(this.frameGrade);
+   }
+   this._zoneAmb.setHex(lights.ambient);this._zoneAmbI=lights.ambientI;
+   this._zoneHemi.setHex(lights.sky);this._zoneHemiI=lights.hemi;
+  }
   // Baked bounce follows the grade's fill: white in the dry, teal flooded, red on the slam.
   {
    const dry=GRADE_LIGHTS.dry,t=BUNKER_LIGHT.uBkLmTint.value,a=this._lmTintA,b=this._lmTintB;
-   a.setHex(lights.sky).multiplyScalar(lights.hemi).add(b.setHex(lights.ambient).multiplyScalar(lights.ambientI));
+   a.copy(this.gradeHemi.color).multiplyScalar(this.gradeHemi.intensity)
+    .add(b.copy(this.gradeAmbient.color).multiplyScalar(this.gradeAmbient.intensity));
    b.setHex(dry.sky).multiplyScalar(dry.hemi).add(this._lmTintC.setHex(dry.ambient).multiplyScalar(dry.ambientI));
    t.setRGB(a.r/b.r,a.g/b.g,a.b/b.b);
   }
-  const slam=gradeSlam(this.frameGrade);
+  const field=slam?gradeField(this.frameGrade):0;
   for(const spot of this.gradeSpots)spot.light.color.setHex(slam?field:spot.rest);
   if(this.clipPass)this.clipPass.uniforms.uSlam.value=slam;
   this.uniforms.uTime.value=this.time;

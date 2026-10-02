@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.24.14
+# Painted Abyss — First Dive · 0.24.15
+
+## Zone lighting (0.24.15)
+
+Each bunker wing gets its own practical mood (cold tubes in service corridors, warmer entrance enamel, amber fissure, cyan extraction, red emergency in the bone wing). Wall sconces and ceiling fills tint to the compartment; dry fog/ambient soft-blends as you walk. Water and the relic slam still override hard.
 
 ## Bigger bunker footprint (0.24.14)
 
