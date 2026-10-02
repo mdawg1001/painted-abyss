@@ -1,4 +1,4 @@
-# Painted Abyss — First Dive · 0.22.44
+# Painted Abyss — First Dive · 0.23.0
 
 ## Critical heal clutch (0.22.43)
 

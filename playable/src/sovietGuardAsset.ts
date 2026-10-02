@@ -1,6 +1,7 @@
 import { PALETTE } from './artPalette';
 /**
- * Phase 3 corridor guard mesh + locomotion.
+ * Original colourful civilian mesh on the existing combat-compatible skeleton.
+ * Mesh generator: scripts/build-colourful-guard.mjs. The original soldier is preserved.
  *
  * Quaternius Ultimate Animated Character — Soldier_Male (CC0 1.0):
  * https://quaternius.com/packs/ultimateanimatedcharacter.html
@@ -11,6 +12,7 @@ import { PALETTE } from './artPalette';
  * SkeletonUtils.retarget onto that Unreal-style rig also failed — see
  * NOTICE.md and `scripts/retarget-guard-locomotion.mjs`.
  *
+ * Locomotion and skeleton remain Quaternius CC0; the visible mesh is original.
  * Scale: mesh AABB → ~1.90 m, feet on local y=0.
  * Always clone with `SkeletonUtils.clone` so skinned bind stays linked.
  */
@@ -29,7 +31,7 @@ export const SOVIET_GUARD_PACK='Ultimate Animated Character Pack — Soldier_Mal
 /** Prior Sketchfab mesh (CC BY) — Mixamo autorig blocked; retained for credit history only. */
 export const SOVIET_GUARD_SKETCHFAB_PRIOR='https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99';
 /** Public path — must match files under `playable/public/assets/soviet-uniform/`. */
-export const SOVIET_GUARD_GLB='/assets/soviet-uniform/quaternius_soldier_male.glb';
+export const SOVIET_GUARD_GLB='/assets/colourful-guard/civilian.glb';
 /** True when shipped clips are procedural bake (should be false — real Quaternius clips). */
 export const GUARD_LOCO_PROCEDURAL=false;
 /**
@@ -311,7 +313,7 @@ function loadGuardBundle(){
   scene.name='sovietGuardMesh';
   normalizeHumanoid(scene,SOVIET_GUARD_HEIGHT);
   litGuardMaterials(scene);
-  addGuardFaceMorphs(scene);
+  // The approved character is deliberately faceless; no expression morphs.
   const clips=pickLocoClips(gltf.animations);
   if(!clips)throw new Error('Guard GLB missing idle/walk/run clips');
   return{scene,clips};
@@ -440,8 +442,8 @@ export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
   if(visual.ready&&visual.body.name==='sovietGuardMesh')return visual;
   visual.root.remove(visual.body);
   const instance=cloneSkinned(scene);
-  instance.name='sovietGuardMesh';
-  tintGuardOutfit(instance,GUARD_OUTFIT_COLORS[visual.outfit%GUARD_OUTFIT_COLORS.length]);
+  instance.name='sovietGuardMesh';instance.userData.colourfulGuard=true;
+  // Preserve the approved coral jacket, turquoise trousers and cream/yellow shoes.
   visual.root.add(instance);
   visual.body=instance;
   visual.ready=true;
