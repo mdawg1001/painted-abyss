@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.24.13
+# Painted Abyss — First Dive · 0.24.14
+
+## Bigger bunker footprint (0.24.14)
+
+Open floor roughly **doubles** (~5.3k → ~10.5k m²): wider entrance/neck, larger hunting cavern, west annex wing, longer east fissure + extraction pool, and a deeper bone/relic wing. Relic moves further north; leak valve stays on a long blind south cavern lip. Same Quaternius/authored bunker dressing — no Unity factory pack.
 
 ## Enemy guard looks (0.24.13)
 
