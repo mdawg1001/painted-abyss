@@ -27,9 +27,19 @@ for(const o of old)o.removeFromParent();
 const C={skin:0xecd5ad,jacket:0xff0000,trim:0x0000ff,trousers:0x0000ff,shoe:0xfff2a8,sole:0xffcc00,zip:0xffffff};
 const rigid=n=>()=>[[n,1]];
 
-function skinGeo(geo,color,weights){
+function skinGeo(geo,color,weights,{keepUv=false}={}){
  geo=geo.clone();
- geo.deleteAttribute('uv');
+ // Body stays vertex-colour only; hair kits keep UVs for strand PBR maps.
+ if(!keepUv)geo.deleteAttribute('uv');
+ else if(!geo.getAttribute('uv')){
+  // Fallback cylindrical UV from position if a part lost its UVs.
+  const p=geo.attributes.position,uvs=[];
+  for(let i=0;i<p.count;i++){
+   const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
+   uvs.push(0.5+Math.atan2(z,x)/(Math.PI*2),(y-1.0)/1.6);
+  }
+  geo.setAttribute('uv',new T.Float32BufferAttribute(uvs,2));
+ }
  geo=mergeVertices(geo,1e-4);
  geo.computeVertexNormals();
  const p=geo.attributes.position,n=p.count,c=new T.Color(color),cols=[],ids=[],ws=[];
@@ -59,15 +69,17 @@ function segmentGeo(a,b,r1,r2){
  return{g,delta,length,a};
 }
 
-function cartoonMat(name){
- // Toy-like: matte, saturated vertex colours — not cloth PBR.
- return new T.MeshStandardMaterial({name,vertexColors:true,roughness:.88,metalness:0,flatShading:false,color:0xffffff});
+function cartoonMat(name,{textured=false}={}){
+ // Body: vertex colours. Hair/facial: UVs ready for runtime strand maps (tint via color).
+ return new T.MeshStandardMaterial({
+  name,vertexColors:!textured,roughness:textured?.62:.88,metalness:0,flatShading:false,color:0xffffff,
+ });
 }
 
-function bindMesh(parts,name){
+function bindMesh(parts,name,{textured=false}={}){
  const geometry=mergeGeometries(parts);
  geometry.computeBoundingBox();geometry.computeBoundingSphere();
- const mesh=new T.SkinnedMesh(geometry,cartoonMat(name));
+ const mesh=new T.SkinnedMesh(geometry,cartoonMat(name,{textured}));
  mesh.name=name;mesh.frustumCulled=false;
  scene.add(mesh);scene.updateMatrixWorld(true);mesh.bind(skeleton);
  return mesh;
@@ -132,13 +144,13 @@ for(const side of ['L','R']){
 const bodyMesh=bindMesh(body,'ColourfulCivilian');
 
 // ——— Hair / facial / cap kits (Head-bound). Exaggerated silhouettes — must read at range. ———
-function kitParts(builder,vertColor=0xffffff){
+function kitParts(builder,vertColor=0xffffff,{keepUv=false}={}){
  const parts=[];
- const add=(geo)=>parts.push(skinGeo(geo,vertColor,rigid('Head')));
+ const add=(geo)=>parts.push(skinGeo(geo,vertColor,rigid('Head'),{keepUv}));
  builder(add);
  return parts;
 }
-const hairParts=(builder)=>kitParts(builder,0xffffff);
+const hairParts=(builder)=>kitParts(builder,0xffffff,{keepUv:true});
 
 const hairs={
  // Hedgehog: short scalp + tall upright spikes (unmistakable from bob/buzz).
@@ -212,13 +224,13 @@ const hairs={
 
 const hairNames=[];
 for(const [id,parts] of Object.entries(hairs)){
- const m=bindMesh(parts,`Hair_${id}`);
+ const m=bindMesh(parts,`Hair_${id}`,{textured:true});
  m.visible=false;
  m.frustumCulled=false;
  hairNames.push(m.name);
 }
 
-// Thick handlebar — sits clearly in front of the face.
+// Thick handlebar — sits clearly in front of the face (strand-textured).
 {
  const parts=kitParts(add=>{
   add(ellipsoidGeo([0,2.06,.30],[.06,.035,.04],8));
@@ -228,8 +240,8 @@ for(const [id,parts] of Object.entries(hairs)){
    add(ellipsoidGeo([side*.22,2.10,.28],[.07,.055,.05],8));
    add(ellipsoidGeo([side*.26,2.16,.24],[.05,.06,.045],8)); // curl up
   }
- },0xffffff);
- const m=bindMesh(parts,'Facial_handlebar');
+ },0xffffff,{keepUv:true});
+ const m=bindMesh(parts,'Facial_handlebar',{textured:true});
  m.visible=false;m.frustumCulled=false;
 }
 
@@ -244,7 +256,7 @@ for(const [id,parts] of Object.entries(hairs)){
   // Bill curve hint
   add(ellipsoidGeo([0,2.30,.48],[.22,.04,.10],8));
   add(ellipsoidGeo([0,2.58,.02],[.08,.04,.08],8)); // button
- },CAP);
+ },CAP,{keepUv:false});
  const m=bindMesh(parts,'Cap_baseball');
  m.visible=false;m.frustumCulled=false;
 }
