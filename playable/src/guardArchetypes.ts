@@ -1,9 +1,9 @@
 /**
- * Six deliberately designed cartoon civilians (stickman-civilian inspiration).
- * Shared coral jacket / turquoise trousers / cream shoes; identity from
+ * Designed cartoon enemy guards (stickman-civilian inspiration for the mesh).
+ * Shared pure-red jacket / pure-blue trousers / cream shoes; identity from
  * silhouette, hair and skin. Blank faces. Accessories deferred.
  */
-export type GuardHairId='sidePart'|'curls'|'bob'|'messy'|'ponytail'|'bald';
+export type GuardHairId='sidePart'|'curls'|'bob'|'messy'|'ponytail'|'pigtails'|'bald';
 
 export type GuardArchetype={
  id:string;
@@ -28,18 +28,21 @@ export type GuardArchetype={
  posture:{spinePitch:number;slouch:number;swagger:number};
 };
 
-/** Coral / cyan / cream — the shared uniform; not olive squad dyes. */
+/** Stark toy primary colours — pure red / pure blue / cream; not olive squad dyes. */
 export const GUARD_UNIFORM={
- jacket:0xe95b49,
- trim:0x3bbbc5,
- trousers:0x268d9a,
- shoe:0xf0e6cf,
- sole:0xe2b43c,
+ jacket:0xff0000,
+ trim:0x0000ff,
+ trousers:0x0000ff,
+ shoe:0xfff2a8,
+ sole:0xffcc00,
 } as const;
+
+/** Bright toy-blue hair for female enemy guards. */
+export const GUARD_BLUE_HAIR=0x3d9bff;
 
 /**
  * Index = guard outfit / slot % length. Designed, not randomly mixed.
- * 0 lanky · 1 sturdy · 2 broad · 3 slim · 4 scruffy · 5 athletic
+ * Female blue-pigtail enemies sit at slots 1 and 4 so the opening six always include them.
  */
 export const GUARD_ARCHETYPES:readonly GuardArchetype[]=[
  {
@@ -47,6 +50,12 @@ export const GUARD_ARCHETYPES:readonly GuardArchetype[]=[
   hair:'sidePart',hairColor:0x2c2418,skin:0xf0d0a8,
   width:.88,height:1.08,depth:.90,head:.92,headY:1.12,shoulders:.88,belly:.85,
   posture:{spinePitch:.02,slouch:-.02,swagger:.04},
+ },
+ {
+  id:'pigtail',label:'Female — blue pigtails',
+  hair:'pigtails',hairColor:GUARD_BLUE_HAIR,skin:0xffd2b0,
+  width:.90,height:.96,depth:.88,head:1.02,headY:1.04,shoulders:.86,belly:.86,
+  posture:{spinePitch:-.02,slouch:-.03,swagger:.05},
  },
  {
   id:'sturdy',label:'Short and sturdy',
@@ -59,6 +68,12 @@ export const GUARD_ARCHETYPES:readonly GuardArchetype[]=[
   hair:'bald',hairColor:0x1a1210,skin:0xc68642,
   width:1.18,height:1.02,depth:1.14,head:1.08,headY:.95,shoulders:1.22,belly:1.05,
   posture:{spinePitch:-.01,slouch:-.04,swagger:.01},
+ },
+ {
+  id:'pigtailTall',label:'Female — tall blue pigtails',
+  hair:'pigtails',hairColor:GUARD_BLUE_HAIR,skin:0xf0c098,
+  width:.86,height:1.04,depth:.86,head:.98,headY:1.08,shoulders:.84,belly:.82,
+  posture:{spinePitch:-.01,slouch:-.04,swagger:.04},
  },
  {
   id:'slim',label:'Slim and upright',

@@ -18,18 +18,24 @@ async function load(){
  return new GLTFLoader().parseAsync(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength),'');
 }
 
-test('six designed archetypes keep a shared coral kit',()=>{
- assert.equal(GUARD_ARCHETYPES.length,6);
- assert.equal(GUARD_UNIFORM.jacket,0xe95b49);
- assert.equal(new Set(GUARD_ARCHETYPES.map(a=>a.id)).size,6);
- assert.equal(guardArchetype(6).id,guardArchetype(0).id);
+test('eight enemy-guard archetypes keep a shared stark red/blue kit',()=>{
+ assert.equal(GUARD_ARCHETYPES.length,8);
+ assert.equal(GUARD_UNIFORM.jacket,0xff0000);
+ assert.equal(GUARD_UNIFORM.trousers,0x0000ff);
+ assert.equal(GUARD_UNIFORM.trim,0x0000ff);
+ assert.equal(new Set(GUARD_ARCHETYPES.map(a=>a.id)).size,8);
+ assert.equal(guardArchetype(8).id,guardArchetype(0).id);
+ // Opening slots 1 and 4 are female blue-pigtail enemies.
+ assert.equal(guardArchetype(1).hair,'pigtails');
+ assert.equal(guardArchetype(4).hair,'pigtails');
+ assert.equal(guardArchetype(1).hairColor,0x3d9bff);
 });
 
-test('GLB ships five hair kits on the shared skeleton',async()=>{
+test('GLB ships six hair kits on the shared skeleton (incl. pigtails)',async()=>{
  const g=await load();
  const names:string[]=[];
  g.scene.traverse(o=>{if(o.name.startsWith('Hair_'))names.push(o.name);});
- assert.deepEqual(names.sort(),['Hair_bob','Hair_curls','Hair_messy','Hair_ponytail','Hair_sidePart'].sort());
+ assert.deepEqual(names.sort(),['Hair_bob','Hair_curls','Hair_messy','Hair_pigtails','Hair_ponytail','Hair_sidePart'].sort());
  assert.ok(g.scene.getObjectByName('ColourfulCivilian'));
 });
 
@@ -49,9 +55,9 @@ test('archetype shows one hair kit, remaps skin, leaves skinned scale alone',asy
  assert.ok(scene.getObjectByName('Hair_sidePart')?.visible);
  assert.equal(scene.getObjectByName('Hair_curls')?.visible,false);
  assert.equal(scene.getObjectByName('Hair_ponytail')?.visible,false);
- // Broad is bald — every hair kit stays hidden.
+ // Broad (outfit 3) is bald — every hair kit stays hidden.
  const broad=clone(g.scene);
- applyGuardArchetype(broad,buildGuardRig(broad),makeGuardCombatState(2),2);
+ applyGuardArchetype(broad,buildGuardRig(broad),makeGuardCombatState(3),3);
  broad.traverse(o=>{if(o.name.startsWith('Hair_'))assert.equal(o.visible,false,`${o.name} hidden when bald`);});
  const body=scene.getObjectByName('ColourfulCivilian') as THREE.Mesh;
  const col=body.geometry.getAttribute('color');
@@ -66,13 +72,34 @@ test('archetype shows one hair kit, remaps skin, leaves skinned scale alone',asy
 
 test('guardRootScale encodes tall/narrow vs short/stocky on the outer root',()=>{
  const lanky=guardRootScale(0);
- const sturdy=guardRootScale(1);
+ const sturdy=guardRootScale(2);
  assert.ok(lanky.y>sturdy.y,'lanky taller');
  assert.ok(lanky.x<sturdy.x,'lanky narrower');
  const officer=guardRootScale(5,'officer');
  assert.ok(officer.y>guardRootScale(5).y);
  assert.equal(hairObjectName('bald'),null);
  assert.equal(hairObjectName('ponytail'),'Hair_ponytail');
+ assert.equal(hairObjectName('pigtails'),'Hair_pigtails');
+});
+
+test('female enemy guards show blue pigtails only',async()=>{
+ const g=await load();
+ hideGuardHairKits(g.scene);
+ normalizeHumanoid(g.scene,SOVIET_GUARD_HEIGHT);
+ for(const outfit of [1,4]){
+  const scene=clone(g.scene);
+  scene.traverse(o=>{if(o instanceof THREE.Mesh)o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();});
+  const pose=makeGuardCombatState(outfit,guardArchetype(outfit).posture);
+  applyGuardArchetype(scene,buildGuardRig(scene),pose,outfit);
+  assert.ok(scene.getObjectByName('Hair_pigtails')?.visible,`${guardArchetype(outfit).id} pigtails visible`);
+  scene.traverse(o=>{
+   if(!o.name.startsWith('Hair_')||o.name==='Hair_pigtails')return;
+   assert.equal(o.visible,false,`${o.name} hidden`);
+  });
+  const hair=scene.getObjectByName('Hair_pigtails') as THREE.Mesh;
+  const mat=hair.material as THREE.MeshStandardMaterial;
+  assert.equal(mat.color.getHex(),0x3d9bff);
+ }
 });
 
 test('walk + combat pose keeps feet near the floor for every archetype',async()=>{
@@ -81,7 +108,7 @@ test('walk + combat pose keeps feet near the floor for every archetype',async()=
  normalizeHumanoid(g.scene,SOVIET_GUARD_HEIGHT);
  const clips:Record<string,THREE.AnimationClip>={};
  for(const a of g.animations)clips[a.name.toLowerCase()]=a;
- for(let outfit=0;outfit<6;outfit++){
+ for(let outfit=0;outfit<GUARD_ARCHETYPES.length;outfit++){
   const scene=clone(g.scene);
   scene.traverse(o=>{if(o instanceof THREE.Mesh)o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();});
   const pose=makeGuardCombatState(outfit,guardArchetype(outfit).posture);

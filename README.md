@@ -1,10 +1,10 @@
-# Painted Abyss — First Dive · 0.24.7
+# Painted Abyss — First Dive · 0.24.9
 
-## Six cartoon civilian archetypes (0.24.7)
+## Enemy guard looks (0.24.9)
 
-Distinct looks again: five `Hair_*` kits + skin tones, with tall/narrow↔short/stocky via **outer-root** scale only (never bone/mesh scale — that melted the Quaternius rig). Bald = no hair kit. Mild idle posture after the mixer.
+Stark toy kit: **pure red** jacket and **pure blue** trousers/trim. Female enemy guards with **blue pigtails** in the opening squad (slots 1 & 4).
 
-Shared coral jacket / turquoise trousers / cream shoes; blank faces. Six designed characters cycle by slot — tall/lanky, short/sturdy, broad/bald, slim/bob, scruffy/messy, athletic/ponytail — via silhouette scale, hair kit, skin tone and idle posture. Stickman-civilian packs are art reference only (not imported).
+Distinct looks: six `Hair_*` kits (incl. pigtails) + skin tones, with tall/narrow↔short/stocky via **outer-root** scale only (never bone/mesh scale — that melted the Quaternius rig). Bald = no hair kit. Mild idle posture after the mixer.
 
 ## Sharper render path (0.24.3)
 

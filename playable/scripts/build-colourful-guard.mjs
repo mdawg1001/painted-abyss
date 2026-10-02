@@ -1,7 +1,7 @@
 /** Cartoon faceless civilians. Reuses CC0 Quaternius skeleton + gait clips.
  * Run: node scripts/build-colourful-guard.mjs
  *
- * Body mesh is shared coral/turquoise/cream kit. Hair styles are separate
+ * Body mesh is shared pure-red / pure-blue / cream kit. Hair styles are separate
  * SkinnedMeshes (`Hair_*`) bound to the same skeleton — runtime shows one.
  * Stickman-civilian inspiration; original geometry (no Unity asset).
  */
@@ -24,7 +24,7 @@ const skeleton=original.skeleton;
 const bones=new Map(skeleton.bones.map((b,i)=>[b.name,{b,i,p:b.getWorldPosition(new T.Vector3())}]));
 for(const o of old)o.removeFromParent();
 
-const C={skin:0xecd5ad,jacket:0xe95b49,trim:0x3bbbc5,trousers:0x268d9a,shoe:0xf0e6cf,sole:0xe2b43c,zip:0xa1a6a2};
+const C={skin:0xecd5ad,jacket:0xff0000,trim:0x0000ff,trousers:0x0000ff,shoe:0xfff2a8,sole:0xffcc00,zip:0xffffff};
 const rigid=n=>()=>[[n,1]];
 
 function skinGeo(geo,color,weights){
@@ -171,6 +171,19 @@ const hairs={
   tail.translate(0,2.05,-.32);tail.rotateX(.55);
   add(tail);
   add(ellipsoidGeo([0,1.92,-.42],[.06,.07,.06],8));
+ }),
+ // Twin pigtails — clear female read for enemy guards.
+ pigtails:hairParts(add=>{
+  add(ellipsoidGeo([0,2.34,0],[.33,.28,.30],12)); // crown
+  add(ellipsoidGeo([0,2.48,.08],[.22,.10,.18],10)); // bangs
+  for(const side of [-1,1]){
+   add(ellipsoidGeo([side*.28,2.36,.02],[.09,.09,.09],8)); // ear bun / knot
+   const strand=new T.CylinderGeometry(.055,.04,.42,10,5);
+   strand.translate(side*.34,2.08,.02);
+   strand.rotateZ(side*-.35);
+   add(strand);
+   add(ellipsoidGeo([side*.42,1.82,.04],[.07,.09,.07],8)); // tip puff
+  }
  }),
 };
 
