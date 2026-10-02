@@ -143,7 +143,7 @@ for(const side of ['L','R']){
 }
 const bodyMesh=bindMesh(body,'ColourfulCivilian');
 
-// ——— Hair / facial / cap kits (Head-bound). Exaggerated silhouettes — must read at range. ———
+// ——— Hair / facial / cap kits (Head-bound). Alpha hair-cards, not plastic blobs. ———
 function kitParts(builder,vertColor=0xffffff,{keepUv=false}={}){
  const parts=[];
  const add=(geo)=>parts.push(skinGeo(geo,vertColor,rigid('Head'),{keepUv}));
@@ -152,72 +152,120 @@ function kitParts(builder,vertColor=0xffffff,{keepUv=false}={}){
 }
 const hairParts=(builder)=>kitParts(builder,0xffffff,{keepUv:true});
 
+/** Thin strand card (plane) with authored UVs — alpha maps cut fibres at runtime. */
+function hairCard(at,size,rot=[0,0,0],segs=[1,4]){
+ const [w,h]=size;
+ const g=new T.PlaneGeometry(w,h,segs[0],segs[1]);
+ g.rotateX(rot[0]);g.rotateY(rot[1]);g.rotateZ(rot[2]);
+ g.translate(at[0],at[1],at[2]);
+ return g;
+}
+
+/** Crown shell of outward-facing cards (reads as hair volume, not a solid ball). */
+function scalpCards(add,{y=2.40,rx=.30,rz=.28,count=14,w=.15,h=.24,tilt=-.95}={}){
+ for(let i=0;i<count;i++){
+  const a=i/count*Math.PI*2;
+  const x=Math.sin(a)*rx*.85,z=Math.cos(a)*rz*.85;
+  add(hairCard([x,y,z],[w,h],[tilt,a,0]));
+ }
+ // Top lid — cards lying flat so the crown isn't hollow from above.
+ for(let i=0;i<8;i++){
+  const a=i/8*Math.PI*2;
+  add(hairCard([Math.sin(a)*.10,y+.14,Math.cos(a)*.09],[.17,.17],[-Math.PI/2,a*.5,0],[1,1]));
+ }
+}
+
+/** Vertical ribbon of overlapping cards (pigtail / mullet hang). */
+function hangRibbon(add,x,zTop,yTop,yBot,{w=.10,layers=3,twist=0}={}){
+ const n=8;
+ for(let layer=0;layer<layers;layer++){
+  const yaw=twist+layer*(Math.PI/layers);
+  const ox=Math.sin(yaw)*.012,oz=Math.cos(yaw)*.012;
+  for(let i=0;i<n;i++){
+   const t=i/(n-1);
+   const y=T.MathUtils.lerp(yTop,yBot,t);
+   const taper=T.MathUtils.lerp(w,w*.55,t);
+   const lean=T.MathUtils.lerp(0,-.12,t);
+   add(hairCard([x+ox,y,zTop+oz+lean],[taper,.20],[0,yaw+Math.PI*.5,0]));
+  }
+ }
+}
+
 const hairs={
- // Hedgehog: short scalp + tall upright spikes (unmistakable from bob/buzz).
+ // Hedgehog: card scalp + tall upright spike cards.
  spiky:hairParts(add=>{
-  add(ellipsoidGeo([0,2.30,0],[.32,.16,.30],12));
+  scalpCards(add,{y:2.34,rx:.28,rz:.26,count:12,w:.13,h:.18,tilt:-1.05});
   for(let i=0;i<12;i++){
    const a=i/12*Math.PI*2;
-   const h=.42+(i%3)*.08;
-   const spike=new T.ConeGeometry(.06,h,7);
-   spike.translate(Math.sin(a)*.17,2.48+h*.5,Math.cos(a)*.15);
-   add(spike);
+   const h=.40+(i%3)*.08;
+   add(hairCard([Math.sin(a)*.14,2.48+h*.45,Math.cos(a)*.12],[.07,h],[-.15,a,0],[1,5]));
   }
-  for(const [x,z,h] of [[0,0,.55],[.1,.06,.48],[-.1,.06,.48],[0,-.08,.5]]){
-   const spike=new T.ConeGeometry(.055,h,7);
-   spike.translate(x,2.50+h*.5,z);
-   add(spike);
+  for(const [x,z,h] of [[0,0,.52],[.09,.05,.46],[-.09,.05,.46],[0,-.07,.48]]){
+   add(hairCard([x,2.50+h*.45,z],[.065,h],[-.1,0,0],[1,5]));
   }
  }),
- // Short cropped top + long curtain down the back (party in the back).
+ // Short cropped top + long rear curtain of cards.
  mullet:hairParts(add=>{
-  add(ellipsoidGeo([0,2.36,.06],[.28,.16,.24],12)); // flat top
-  add(ellipsoidGeo([0,2.44,.18],[.20,.07,.10],10)); // short fringe
-  // Long rear sheet — hangs well below the neck.
-  add(ellipsoidGeo([0,1.95,-.30],[.34,.45,.20],14));
-  add(ellipsoidGeo([0,1.55,-.34],[.30,.28,.16],12));
-  add(ellipsoidGeo([0,1.25,-.30],[.22,.16,.12],10)); // tip near mid-back
-  for(const side of [-1,1])add(ellipsoidGeo([side*.22,1.70,-.28],[.12,.30,.12],10)); // side licks
+  scalpCards(add,{y:2.38,rx:.27,rz:.24,count:12,w:.13,h:.18,tilt:-1.0});
+  // Fringe cards.
+  for(let i=-2;i<=2;i++)add(hairCard([i*.07,2.42,.22],[.10,.14],[-1.15,0,i*.08]));
+  // Long rear sheet.
+  for(let i=-3;i<=3;i++){
+   hangRibbon(add,i*.07,-.28-Math.abs(i)*.01,2.20,1.15,{w:.11,layers:2,twist:i*.05});
+  }
+  for(const side of [-1,1])hangRibbon(add,side*.20,-.26,2.05,1.35,{w:.10,layers:2,twist:side*.2});
  }),
- // Enormous toy afro — biggest kit by far.
+ // Enormous afro — dense spherical card shell (classic hair-card volume).
  afro:hairParts(add=>{
-  add(ellipsoidGeo([0,2.55,0],[.62,.58,.62],18));
-  // Slight lobes so it isn't a perfect ball.
-  for(const [x,y,z] of [[.35,2.45,.2],[-.35,2.45,.2],[.2,2.7,-.15],[-.2,2.7,-.15]]){
-   add(ellipsoidGeo([x,y,z],[.28,.28,.28],10));
-  }
- }),
- // Twin pigtails: scalp + bangs + TWO clear tails hanging DOWN (not out).
- pigtails:hairParts(add=>{
-  add(ellipsoidGeo([0,2.36,0],[.34,.26,.30],14)); // scalp
-  add(ellipsoidGeo([0,2.50,.14],[.24,.10,.14],10)); // bangs
-  for(const side of [-1,1]){
-   // High ear bun
-   add(ellipsoidGeo([side*.32,2.40,.02],[.11,.11,.11],10));
-   // Strand beads stacked downward — reads as a pigtail in silhouette.
-   const xs=side*.36;
-   for(const [y,r] of [[2.20,.075],[2.00,.07],[1.80,.065],[1.60,.06],[1.42,.055],[1.26,.05]]){
-    add(ellipsoidGeo([xs,y,.04],[r,r*1.15,r],8));
+  const R=.58;
+  for(let ring=0;ring<6;ring++){
+   const elev=(-.2+ring/5*1.35);
+   const rr=Math.cos(elev-Math.PI*.15)*R;
+   const y=2.52+Math.sin(elev-Math.PI*.15)*R*.95;
+   const count=10+ring*2;
+   for(let i=0;i<count;i++){
+    const a=i/count*Math.PI*2+ring*.15;
+    add(hairCard([Math.sin(a)*rr,y,Math.cos(a)*rr],[.20,.22],[elev-1.1,a,0]));
    }
-   // Soft tip puff
-   add(ellipsoidGeo([xs,1.12,.04],[.07,.09,.07],8));
   }
  }),
- // Skin-tight buzz — almost bald, tiny fuzz only.
- buzz:hairParts(add=>{
-  add(ellipsoidGeo([0,2.32,0],[.305,.16,.275],12));
+ // Twin pigtails: card scalp + bangs + hanging fibre ribbons (not stacked plastic beads).
+ pigtails:hairParts(add=>{
+  scalpCards(add,{y:2.38,rx:.32,rz:.28,count:14,w:.14,h:.22,tilt:-.98});
+  // Bangs — short frontal cards, not a solid disc.
+  for(let i=-3;i<=3;i++){
+   add(hairCard([i*.055,2.42,.24],[.09,.13],[-1.2,0,i*.06]));
+  }
+  for(const side of [-1,1]){
+   // High ear bun — small card cluster, not a blue ball.
+   for(let k=0;k<5;k++){
+    const a=k/5*Math.PI*2;
+    add(hairCard([side*.30+Math.sin(a)*.04,2.40+Math.cos(a)*.03,.02],[.08,.09],[ -.4,a+side,0],[1,2]));
+   }
+   // Hanging pigtail ribbons — clear downward silhouette.
+   hangRibbon(add,side*.34,.05,2.28,1.10,{w:.095,layers:3,twist:side*.35});
+   // Tip wisps
+   for(let k=0;k<3;k++){
+    add(hairCard([side*.34+(k-1)*.02,1.08,.04],[.06,.12],[.15,side*.4+k*.2,0]));
+   }
+  }
  }),
- // Tall centre fin mohawk — solid slab so it never collapses in the weld.
+ // Skin-tight buzz — short tight cards only.
+ buzz:hairParts(add=>{
+  scalpCards(add,{y:2.32,rx:.29,rz:.26,count:12,w:.12,h:.14,tilt:-1.15});
+ }),
+ // Tall centre fin — layered side-facing cards (ridge, not a solid box).
  mohawk:hairParts(add=>{
-  const fin=new T.BoxGeometry(.10,.70,.55);
-  fin.translate(0,2.65,-.02);
-  add(fin);
-  // Jagged top nubs.
+  for(let i=0;i<9;i++){
+   const z=-.22+i*.055;
+   const h=.55+(i%2)*.08;
+   add(hairCard([0,2.40+h*.45,z],[.09,h],[0,Math.PI*.5,0],[1,5]));
+   add(hairCard([.02,2.40+h*.42,z],[.07,h*.95],[0,Math.PI*.5+.12,0],[1,4]));
+   add(hairCard([-.02,2.40+h*.42,z],[.07,h*.95],[0,Math.PI*.5-.12,0],[1,4]));
+  }
   for(let i=0;i<5;i++){
    const z=-.18+i*.09;
-   const nub=new T.ConeGeometry(.06,.18,6);
-   nub.translate(0,3.05,z);
-   add(nub);
+   add(hairCard([0,3.02,z],[.07,.16],[0,Math.PI*.5,0]));
   }
  }),
 };

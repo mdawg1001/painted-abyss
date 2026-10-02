@@ -356,7 +356,8 @@ function tintKitMesh(o:THREE.Object3D,hex:number){
   // Keep strand maps; only tint. No emissive wash (that flattened hair to plastic).
   sm.color.setHex(hex);
   if(sm.emissive){sm.emissive.setHex(0x000000);sm.emissiveIntensity=0;}
-  if(!sm.map&&(o.name.startsWith('Hair_')||o.name.startsWith('Facial_')))applyHairStrandMaps(sm);
+  // Always re-bind after material.clone() — clones can drop DataTexture links.
+  if(o.name.startsWith('Hair_')||o.name.startsWith('Facial_'))applyHairStrandMaps(sm);
   sm.needsUpdate=true;
  }
 }
@@ -569,7 +570,17 @@ export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
   const instance=cloneSkinned(scene);
   instance.name='sovietGuardMesh';instance.userData.colourfulGuard=true;
   // Private materials (and body geometry later) so hit-flash / skin stay per-guard.
-  instance.traverse(o=>{if(o instanceof THREE.Mesh)o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();});
+  instance.traverse(o=>{
+   if(!(o instanceof THREE.Mesh))return;
+   o.material=Array.isArray(o.material)?o.material.map(m=>m.clone()):o.material.clone();
+   // Re-apply strand maps after clone so hair-cards keep alpha/normal in Safari.
+   if(o.name.startsWith('Hair_')||o.name.startsWith('Facial_')){
+    const mats=Array.isArray(o.material)?o.material:[o.material];
+    for(const m of mats){
+     if(m&&'roughness' in m)applyHairStrandMaps(m as THREE.MeshStandardMaterial);
+    }
+   }
+  });
   visual.root.add(instance);
   visual.body=instance;
   visual.ready=true;
