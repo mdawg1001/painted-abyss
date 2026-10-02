@@ -6,8 +6,6 @@ Stark toy kit: **pure red** jacket and **pure blue** trousers/trim. Female enemy
 
 Distinct looks: six `Hair_*` kits (incl. pigtails) + skin tones, with tall/narrow↔short/stocky via **outer-root** scale only (never bone/mesh scale — that melted the Quaternius rig). Bald = no hair kit. Mild idle posture after the mixer.
 
-Shared coral jacket / turquoise trousers / cream shoes; blank faces. Six designed characters cycle by slot — tall/lanky, short/sturdy, broad/bald, slim/bob, scruffy/messy, athletic/ponytail — via silhouette scale, hair kit, skin tone and idle posture. Stickman-civilian packs are art reference only (not imported).
-
 ## Sharper render path (0.24.3)
 
 Framebuffer density cap rises to **1.5×** with **2× MSAA** on the composer scene target (was 1× / off). The resolution governor still boots on the cheap **1× / no-MSAA** floor and only probes up when frames stay on budget, so Safari cannot get stuck on the old Retina 2× + 4× crush path. Post pixel-crunch eases from 1.75→1.2; rock/sand anisotropy is 8 for cleaner wall/floor filtering.
