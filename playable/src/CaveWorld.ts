@@ -49,6 +49,7 @@ import { createCopperPipe, upgradeCopperPipe, upgradeCopperPipeDetail, updateCop
 import { createWallRadiators, upgradeWallRadiators, type WallRadiators } from './radiatorAsset';
 import { createCatwalk, upgradeCatwalk, type WestCatwalks } from './catwalkAsset';
 import { CATWALK_DECK_RISE, nearestCatwalkLadder } from './catwalkLayout';
+import { createCageDress, stepCageDress, CAGE_WATCHED_TIP, type CageDress } from './cageDressAsset';
 import { createWallPipe, upgradeWallPipe, setPipeWheel, PIPE_MOUNT, type WallPipe } from './pipeAsset';
 import { startStroke, stepStroke, handPoses, smootherstep, VALVE_STAND, WHEEL_CENTRE, BREAKAWAY_TIME, REGRIP_TIME, type ValveStroke } from './valve';
 import { createValveHands, poseValveHands, resetValveHands, type ValveHandsRig } from './valveHands';
@@ -333,6 +334,10 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
  wallRadiators:WallRadiators|null=null;
  /** Sparse bunker service galleries (stub → modular industrial-catwalk GLBs). */
  westCatwalk:WestCatwalks|null=null;
+ /** Skinner cage dress: bars / mesh / floor grates / observation lamps on gallery approaches. */
+ cageDress:CageDress|null=null;
+ /** One tip per dive when first entering a watched choke. */
+ cageWatchedTipShown=false;
  /** Both arms, shown only while the leak valve is being worked. */
  valveHands:ValveHandsRig|null=null;
  /** Active hand-over-hand turn on the leak valve (null when not at the wheel). */
@@ -546,6 +551,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   this.mountWallPosters();
   this.mountWallRadiators();
   this.mountWestCatwalk();
+  this.mountCageDress();
   this.mountWallPipe();
   this.mountCopperPipe();
   for(const job of this.fx.coverJobs){
@@ -706,6 +712,30 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    }
    return ok;
   },52);
+ }
+ /**
+  * Skinner rat-cage dress on gallery approaches: observation slits, bar funnels,
+  * mesh under grates, floor grate runways, harsh lab lamps. Immediate (no GLB stream).
+  */
+ mountCageDress(){
+  const dress=createCageDress();
+  this.scene.add(dress.group);
+  this.cageDress=dress;
+  // Soft idle so the lamps exist before the first watched enter.
+  for(const L of dress.lights)L.spot.intensity=L.base*.18;
+  // Per-child cull — the dress spans three galleries; one fat AABB would never hide.
+  for(const child of dress.group.children){
+   this.adoptPointCull(child,this.worldBox(child),true,true);
+  }
+ }
+ /** Harden observation lamps in watched chokes; one tip the first time. */
+ stepCage(dt:number){
+  const d=this.cageDress;if(!d||!this.playing)return;
+  const {entered}=stepCageDress(d,dt,{x:this.position.x,z:this.position.z});
+  if(entered&&!this.cageWatchedTipShown&&this.mission.noticeUntil<=this.mission.elapsed){
+   this.cageWatchedTipShown=true;
+   this.mission.say(CAGE_WATCHED_TIP,'select');
+  }
  }
  /** Repeat the Sketchfab copper section along the hand-wheel wall. */
  mountCopperPipe(){
@@ -2866,6 +2896,11 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   this.combatFeedback.reset();this.shakeClock=0;this.knifeFlashUntil=0;this.knifeEquipAt=null;this.stabQueue=0;
   this.impactFx.reset();this.fxHealthSeen=this.mission.health;this.fxBursting=false;
   this.egoSaveSeqSeen=this.mission.egoSaveSeq;
+  this.cageWatchedTipShown=false;
+  if(this.cageDress){
+   this.cageDress.watchLevel=0;
+   for(const L of this.cageDress.lights)L.spot.intensity=L.base*.18;
+  }
   this.audioProbe?.setCritical(0);
   if(this.knifeVisual){poseKnife(this.knifeVisual);this.knifeVisual.visible=this.holdingKnife()&&knifeMeshReady(this.knifeVisual);}
   if(this.gunVisual)this.gunVisual.visible=this.holdingGun();
@@ -3244,6 +3279,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   if(this.clipPass)this.clipPass.uniforms.uSlam.value=slam;
   this.uniforms.uTime.value=this.time;
   this.stepHanging(this.playing?dt:0,slam?field:null);
+  this.stepCage(this.playing?dt:0);
   for(const s of this.wallSconceLights){
    if(s.state==='off')continue;
    if(s.state==='flicker'){

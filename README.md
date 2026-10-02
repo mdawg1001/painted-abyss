@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.24.14
+# Painted Abyss — First Dive · 0.24.15
+
+## Skinner cage dress (0.24.15)
+
+The sparse service galleries stay at three room-fitting runs — no bunker-wide catwalks. New Soviet industrial cage language bolts onto those approaches: observation-slit bar panels, side-funnel cages at the west-hall ladder, wire mesh hung under the grated decks (cage ceiling from the floor), floor-grate runways in the chokes, and three harsh cold observation lamps that harden and track when you step into a watched lane. First enter tips once: *Observed. Bars. Grate underfoot.* Hatch, breath flood, and combat numbers are untouched.
 
 ## Bigger bunker footprint (0.24.14)
 
