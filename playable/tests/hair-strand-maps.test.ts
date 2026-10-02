@@ -21,7 +21,7 @@ test('applyHairStrandMaps wires albedo/normal/roughness and hair-card alpha',()=
  assert.ok(mat.map);
  assert.ok(mat.normalMap);
  assert.ok(mat.roughnessMap);
- assert.ok(mat.alphaTest>.3,'alpha cutouts for hair-cards');
+ assert.ok(mat.alphaTest>=.2&&mat.alphaTest<.5,'alpha cutouts for hair-cards');
  assert.equal(mat.side,THREE.DoubleSide);
  assert.equal(mat.color.getHex(),0xff0000,'tint colour preserved');
 });

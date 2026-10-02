@@ -46,12 +46,15 @@ export function getHairStrandMaps(size=256){
    const flow=noise(u*3.2,v*10);
    const h=THREE.MathUtils.clamp(strand*.55+clump*.28+flow*.17,.06,.98);
    height[y*size+x]=h;
-   // Soft-edged fibre mask — transparent gaps between strands.
-   const fibre=Math.pow(Math.max(0,Math.sin(u*Math.PI*56+noise(u*6,v)*.8*Math.PI)),.42);
-   const clumpMask=Math.pow(Math.max(0,Math.sin(u*Math.PI*13+noise(u*2,v)*.4*Math.PI)),.55);
-   const mask=THREE.MathUtils.clamp(fibre*.72+clumpMask*.38+flow*.08,.0,1);
-   const tipFade=THREE.MathUtils.smoothstep(v,0.02,0.12)*THREE.MathUtils.smoothstep(v,.98,.88);
-   const a=THREE.MathUtils.clamp(mask*tipFade*1.15,0,1);
+   // Soft-edged fibre mask — opaque ribbons with clear gaps (not nearly-empty).
+   // Raised cosine bands keep ~55% coverage so cards read as hair, not vanish.
+   const phase=u*56+noise(u*6,v)*.7;
+   const fibre=.55+.45*Math.cos(phase*Math.PI*2); // [0.1..1]
+   const clumpMask=.65+.35*Math.cos((u*13+noise(u*2,v)*.4)*Math.PI*2);
+   const mask=THREE.MathUtils.clamp(fibre*clumpMask+.08*flow,.0,1);
+   // Only feather the very tips; keep mid-card solid.
+   const tipFade=THREE.MathUtils.smoothstep(v,0.0,0.04)*THREE.MathUtils.smoothstep(v,1.0,0.96);
+   const a=THREE.MathUtils.clamp(mask*Math.max(tipFade,.85),0,1);
    const i=(y*size+x)*4;
    const g=Math.round(28+h*210);
    albedo[i]=albedo[i+1]=albedo[i+2]=g;
@@ -109,7 +112,7 @@ export function applyHairStrandMaps(mat:THREE.MeshStandardMaterial){
  mat.envMapIntensity=.4;
  // Alpha cutouts turn card planes into fibre ribbons (not plastic shells).
  mat.transparent=false;
- mat.alphaTest=.42;
+ mat.alphaTest=.28;
  mat.depthWrite=true;
  mat.side=THREE.DoubleSide;
  mat.needsUpdate=true;
