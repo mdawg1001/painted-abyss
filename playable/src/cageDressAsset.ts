@@ -45,12 +45,14 @@ const grateMat = () => new THREE.MeshStandardMaterial({
 });
 
 const meshMat = () => new THREE.MeshStandardMaterial({
- color: 0x2e3430,
- roughness: .9,
- metalness: .35,
+ color: 0x4a524c,
+ roughness: .86,
+ metalness: .4,
+ emissive: 0x121614,
+ emissiveIntensity: .18,
  transparent: true,
- opacity: .55,
- depthWrite: false,
+ opacity: .82,
+ depthWrite: true,
  side: THREE.DoubleSide,
 });
 
@@ -89,9 +91,9 @@ function buildBarPanel(p: CageBarPanel, mat: THREE.Material): THREE.Group {
 function buildMeshApron(a: CageMeshApron, mat: THREE.Material): THREE.Group {
  const root = new THREE.Group();
  root.name = `cageMesh_${a.label}`;
- // Crossed thin bars — reads as wire mesh under the grate without a texture.
- const cell = .22;
- const barT = .018;
+ // Crossed bars — reads as wire mesh under the grate (cage ceiling from the floor).
+ const cell = .2;
+ const barT = .028;
  for (let x = -a.w * .5; x <= a.w * .5 + .001; x += cell) {
   const v = new THREE.Mesh(new THREE.BoxGeometry(barT, barT, a.d), mat);
   v.position.set(x, 0, 0);
