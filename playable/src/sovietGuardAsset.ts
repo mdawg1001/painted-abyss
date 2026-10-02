@@ -306,12 +306,40 @@ function remapSkinColors(mesh:THREE.Mesh,hex:number){
  col.needsUpdate=true;
 }
 
+/** Bounds from the body mesh only — hair kits must not affect height normalisation. */
+function bodyWorldBox(root:THREE.Object3D):THREE.Box3{
+ const body=root.getObjectByName('ColourfulCivilian');
+ if(body){root.updateMatrixWorld(true);return new THREE.Box3().setFromObject(body);}
+ return meshWorldBox(root);
+}
+
+/** Uniform height only. Non-uniform / bone scales break Quaternius skinning (melt + wild legs). */
+function normalizeGuardHeight(root:THREE.Object3D,targetHeight:number){
+ root.scale.set(1,1,1);
+ root.position.set(0,0,0);
+ root.rotation.set(0,0,0);
+ const box=bodyWorldBox(root);
+ const height=Math.max(box.max.y-box.min.y,.001);
+ root.scale.setScalar(targetHeight/height);
+ const box2=bodyWorldBox(root);
+ const center=box2.getCenter(new THREE.Vector3());
+ root.position.x-=center.x;
+ root.position.z-=center.z;
+ root.position.y-=box2.min.y;
+ root.updateMatrixWorld(true);
+}
+
+/** Hide every hair kit (GLTF load does not preserve `visible:false` from the builder). */
+export function hideGuardHairKits(root:THREE.Object3D){
+ root.traverse(o=>{if(o.name.startsWith('Hair_'))o.visible=false;});
+}
+
 /** Silhouette + hair + skin for one of the six cartoon archetypes. */
 export function applyGuardArchetype(root:THREE.Object3D,rig:GuardRig|null,pose:GuardCombatState,outfit:number){
  const arch=guardArchetype(outfit);
  root.userData.archetype=arch.id;
  root.userData.colourfulGuard=true;
- // Hair: show exactly one style (or none when bald).
+ // Hair: show exactly one style (or none when bald). Never leave all kits stacked.
  const want=hairObjectName(arch.hair);
  root.traverse(o=>{
   if(!o.name.startsWith('Hair_'))return;
@@ -335,22 +363,10 @@ export function applyGuardArchetype(root:THREE.Object3D,rig:GuardRig|null,pose:G
   }
   remapSkinColors(body,arch.skin);
  }
- // Cartoon silhouette: height first, then width/depth squash, feet back on y=0.
- normalizeHumanoid(root,SOVIET_GUARD_HEIGHT*arch.height);
- root.scale.x*=arch.width;
- root.scale.z*=arch.depth;
- {
-  const box=meshWorldBox(root);
-  root.position.y-=box.min.y;
-  root.updateMatrixWorld(true);
- }
- if(rig){
-  rig.head.scale.set(arch.head,arch.head*arch.headY,arch.head);
-  rig.torso.scale.set(arch.shoulders,1,Math.max(.85,arch.shoulders*.95));
-  rig.abdomen.scale.set(arch.belly,1,arch.belly);
-  // Broad necks: nudge the neck bone a touch.
-  rig.neck.scale.setScalar(.95+(arch.shoulders-1)*.4);
- }
+ // Uniform height only — width/belly/bone scales melt skinned verts under this rig's scale tracks.
+ normalizeGuardHeight(root,SOVIET_GUARD_HEIGHT*arch.height);
+ // Do not touch bone.scale: locomotion clips key *.scale every frame and non-uniform bone
+ // scale after bind destroys the skinned bind pose (characters sink / flail).
  pose.posturePitch=arch.posture.spinePitch;
  pose.postureSlouch=arch.posture.slouch;
  pose.postureSwagger=arch.posture.swagger;
@@ -372,7 +388,8 @@ function loadGuardBundle(){
   const gltf=await new GLTFLoader().loadAsync(SOVIET_GUARD_GLB);
   const scene=gltf.scene;
   scene.name='sovietGuardMesh';
-  normalizeHumanoid(scene,SOVIET_GUARD_HEIGHT);
+  hideGuardHairKits(scene);
+  normalizeGuardHeight(scene,SOVIET_GUARD_HEIGHT);
   litGuardMaterials(scene);
   // The approved character is deliberately faceless; no expression morphs.
   const clips=pickLocoClips(gltf.animations);
