@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.24.17
+# Painted Abyss — First Dive · 0.24.18
+
+## Kill loot / shop / jackpot (0.24.18)
+
+Ammo kill weight 10% (dry −5). Hatch shop shows a loud **BUY GUN** row when you have no rifle. Kill JACKPOT holds longer with casino flash + coin burst + louder sting.
 
 ## Zone lighting (0.24.17)
 

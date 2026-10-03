@@ -406,6 +406,22 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 }
 .stash-shop-item.afford{border-color:rgba(255,200,80,.65)}
 .stash-shop-item.almost{border-color:rgba(255,170,60,.85);box-shadow:0 0 16px rgba(255,160,40,.22) inset;animation:afford 1.4s ease-in-out infinite}
+/* No-gun shop: one loud BUY GUN row — not buried under upgrade copy. */
+.stash-shop-item.buy-gun{
+  order:-1;padding:16px 14px 14px;
+  border:2px solid rgba(255,210,90,.85);
+  background:linear-gradient(180deg,rgba(70,48,12,.96),rgba(22,16,8,.96));
+  box-shadow:0 0 22px rgba(255,180,40,.28) inset,0 0 18px rgba(255,160,40,.18);
+}
+.stash-shop-item.buy-gun .stash-shop-name{
+  font-size:28px;letter-spacing:.14em;color:#ffe08a;text-transform:uppercase;
+}
+.stash-shop-item.buy-gun .stash-shop-detail{font-size:13px;color:rgba(255,230,180,.78)}
+.stash-shop-item.buy-gun .stash-shop-buy-btn{
+  margin-top:8px;padding:16px 14px;font-size:24px;letter-spacing:.2em;
+  background:#ffd24a;box-shadow:0 0 16px rgba(255,200,60,.35);
+}
+.stash-shop-item.buy-gun.afford{animation:afford 1.2s ease-in-out infinite}
 .stash-shop-row{display:flex;align-items:baseline;gap:12px}
 .stash-shop-name{
   font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;letter-spacing:.03em;color:#ffd46a;
@@ -792,10 +808,57 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .kill-loot-flash.kind-prize{
   background:radial-gradient(ellipse at center,rgba(255,240,200,.08) 28%,rgba(255,200,80,.55) 72%,rgba(160,100,20,.65) 100%)}
 .kill-loot-flash.kind-prize span{color:#fff1c2;font-size:32px}
+/* Jackpot — casino slot win: longer hold, flash wash, coin burst. */
 .kill-loot-flash.kind-jackpot{
-  background:radial-gradient(ellipse at center,rgba(255,250,220,.16) 22%,rgba(255,210,80,.7) 68%,rgba(180,110,20,.75) 100%)}
-.kill-loot-flash.kind-jackpot span{color:#fff8e0;font-size:36px;letter-spacing:.24em;
-  text-shadow:0 0 18px rgba(255,180,40,.9),0 1px 12px rgba(0,0,0,.9)}
+  animation:kill-loot-jackpot 2.4s cubic-bezier(.2,.9,.3,1) forwards;
+  background:
+    radial-gradient(ellipse at center,rgba(255,250,220,.28) 16%,rgba(255,210,80,.78) 58%,rgba(180,90,10,.82) 100%),
+    repeating-linear-gradient(90deg,rgba(255,220,100,.12) 0 8px,transparent 8px 16px)}
+.kill-loot-flash.kind-jackpot span{color:#fff8e0;font-size:48px;letter-spacing:.28em;
+  text-shadow:0 0 28px rgba(255,200,60,1),0 0 8px rgba(255,255,200,.9),0 1px 12px rgba(0,0,0,.95);
+  animation:kill-loot-jackpot-label 2.4s ease-out forwards}
+.kill-loot-coins{position:absolute;left:50%;top:52%;width:0;height:0;pointer-events:none}
+.kill-loot-coins::before,.kill-loot-coins::after{
+  content:"";position:absolute;left:0;top:0;width:14px;height:14px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#fff6c8,#ffc94a 55%,#b8860b);
+  box-shadow:
+    -70px -40px 0 0 #ffd46a,-40px -70px 0 2px #ffe08a,10px -80px 0 0 #ffc94a,
+    55px -55px 0 1px #ffd978,80px -20px 0 0 #e2c14e,70px 20px 0 2px #ffd46a,
+    30px 55px 0 0 #ffe08a,-20px 65px 0 1px #ffc94a,-65px 30px 0 0 #e2c14e,
+    -90px -5px 0 1px #ffd978,0 -95px 0 0 #ffd46a,95px 5px 0 0 #ffe08a;
+  animation:kill-loot-coin-burst 2.4s cubic-bezier(.15,.85,.25,1) forwards;
+}
+.kill-loot-coins::after{
+  width:10px;height:10px;
+  box-shadow:
+    -50px -55px 0 0 #fff1c2,-15px -90px 0 1px #ffd46a,45px -75px 0 0 #ffe08a,
+    85px -35px 0 0 #ffc94a,60px 45px 0 1px #e2c14e,-35px 75px 0 0 #ffd978,
+    -85px 40px 0 0 #ffd46a,15px 85px 0 0 #ffe08a;
+  animation-delay:.04s;
+}
+@keyframes kill-loot-jackpot{
+  0%{opacity:0;filter:brightness(1.8)}
+  6%{opacity:1;filter:brightness(2.2)}
+  12%{filter:brightness(1)}
+  18%{filter:brightness(1.7)}
+  28%{filter:brightness(1)}
+  75%{opacity:1;filter:brightness(1.05)}
+  100%{opacity:0;filter:brightness(1)}
+}
+@keyframes kill-loot-jackpot-label{
+  0%{opacity:0;transform:translate(-50%,-30%) scale(.4) rotate(-4deg)}
+  10%{opacity:1;transform:translate(-50%,-50%) scale(1.35) rotate(2deg)}
+  18%{transform:translate(-50%,-50%) scale(.92) rotate(-1deg)}
+  26%{transform:translate(-50%,-50%) scale(1.08) rotate(0)}
+  78%{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  100%{opacity:0;transform:translate(-50%,-78%) scale(1.12)}
+}
+@keyframes kill-loot-coin-burst{
+  0%{opacity:0;transform:translate(-50%,-50%) scale(.2)}
+  12%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}
+  70%{opacity:.95;transform:translate(-50%,-40%) scale(1.35)}
+  100%{opacity:0;transform:translate(-50%,-10%) scale(1.55)}
+}
 /* Ultra-rare mega lottery — loud multicolour wash, longer hold. */
 .kill-loot-flash.kind-mega{
   animation:kill-loot-mega 1.6s cubic-bezier(.2,.9,.3,1) forwards;
@@ -820,6 +883,7 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   .kill-loot-flash{animation-duration:.2s}
   .kill-loot-flash span{animation-duration:.2s}
   .kill-loot-flash.kind-mega,.kill-loot-flash.kind-mega span{animation-duration:.25s}
+  .kill-loot-flash.kind-jackpot,.kill-loot-flash.kind-jackpot span,.kill-loot-coins::before,.kill-loot-coins::after{animation-duration:.25s}
 }
 
 /* Rifle stoppage: the ammo label turns red and pulses until R clears it. */
