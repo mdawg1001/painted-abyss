@@ -609,6 +609,8 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 .ammo{position:fixed;right:28px;bottom:28px;display:flex;align-items:baseline;gap:6px;color:#efe9da;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(0,0,0,.8);pointer-events:none;z-index:5}
 .ammo strong{font-size:30px;font-weight:600;min-width:22px;text-align:right}
 .ammo span{font-size:15px;opacity:.75}
+.ammo-reserve{font-size:13px;font-weight:600;opacity:.55;margin-left:2px}
+.ammo-reserve::before{content:'· ';opacity:.7}
 .ammo em{font-style:normal;font-size:10px;letter-spacing:.14em;opacity:.7;margin-left:6px}
 .ammo.empty strong{color:#ff6a55}
 .ammo.reloading em{color:#ffd27a;opacity:1}
@@ -683,6 +685,7 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
 }
 .ammo strong{font-size:48px;font-weight:800;line-height:1}
 .ammo span{font-size:22px;font-weight:700;opacity:.8}
+.ammo-reserve{font-size:16px;font-weight:700;opacity:.55}
 .ammo em{font-size:12px;font-weight:700;opacity:.8}
 .ammo.empty strong{color:var(--bad)}
 .ammo.reloading em{color:var(--accent)}
