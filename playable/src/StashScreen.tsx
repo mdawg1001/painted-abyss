@@ -102,29 +102,29 @@ function shopOffers(m:StashMissionApi):ShopOffer[]{
  const hasGun=m.inventory.includes('gun');
  const gold=m.bankedGold;
  const offers:ShopOffer[]=[];
- {
+ // No gun → only the BUY GUN row (upgrades stay hidden so they can't bury it).
+ if(!hasGun){
   const price=SHOP_RIFLE_PRICE;
   let blocked:string|undefined;
-  if(hasGun)blocked='Already owned';
-  else if(m.inventory.every(x=>x!==null))blocked='Bag full';
+  if(m.inventory.every(x=>x!==null))blocked='Bag full';
   else if(gold<price)blocked=`Need ${fmtShopGold(price)}`;
   offers.push({
    id:'rifle',
-   name:'AK-74U',
+   name:'BUY GUN',
    price,
-   detail:'A rifle for your bag. Upgrades stick to this gun.',
+   detail:`AK-74U for your bag · ${fmtShopGold(price)}. Upgrades unlock after you own it.`,
    canBuy:!blocked,
    blocked,
    run:()=>m.buyShopRifle(),
   });
+  return offers;
  }
  for(const t of MOD_TRACKS){
   const lv=m.gunMods[t];
   const price=upgradeCost(lv);
   const maxed=lv>=UPGRADE.maxLevel;
   let blocked:string|undefined;
-  if(!hasGun)blocked='Need a rifle in your bag';
-  else if(maxed)blocked='Owned (max)';
+  if(maxed)blocked='Owned (max)';
   else if(gold<price)blocked=`Need ${fmtShopGold(price)}`;
   offers.push({
    id:t,
@@ -307,13 +307,16 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
       </div>
       <div className="stash-shop-list">
        {offers.map(offer=>{
+        const buyGun=offer.id==='rifle';
         const owned=offer.blocked==='Owned (max)'||offer.blocked==='Already owned';
-        const title=owned
-         ?`${offer.name}: ${offer.blocked}`
-         :`${offer.name}: ${fmtShopGold(offer.price)}`;
+        const title=buyGun
+         ?`${offer.name} · ${fmtShopGold(offer.price)}`
+         :owned
+          ?`${offer.name}: ${offer.blocked}`
+          :`${offer.name}: ${fmtShopGold(offer.price)}`;
         const short=Math.max(0,offer.price-m.bankedGold);
         const almost=!offer.canBuy&&!owned&&offer.price>0&&isAlmostShort(short,offer.price);
-        return <div key={offer.id} className={`stash-shop-item${offer.canBuy?' afford':''}${almost?' almost':''}`}>
+        return <div key={offer.id} className={`stash-shop-item${buyGun?' buy-gun':''}${offer.canBuy?' afford':''}${almost?' almost':''}`}>
          <div className="stash-shop-row">
           <strong className="stash-shop-name">{title}</strong>
          </div>
@@ -324,7 +327,7 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
          <button type="button" className="stash-shop-buy-btn"
           disabled={!offer.canBuy}
           onClick={()=>setConfirm(offer)}
-         >BUY</button>
+         >{buyGun?'BUY GUN':'BUY'}</button>
         </div>;
        })}
       </div>

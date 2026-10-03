@@ -35,10 +35,10 @@ const kill=(m:Mission,g:Mission['guards'][number])=>{while(g.hp>0)m.guardTakeDam
 test('bucket weights sum to 100 and cover the full unit interval (lean VR + mega)',()=>{
  const sum=KILL_LOOT_BUCKETS.reduce((s,b)=>s+KILL_LOOT.weights[b],0);
  assert.equal(sum,100);
- // dry 84.5 · ammo 5 · scrap 6 · field 2 · prize 1 · jackpot 1 · mega 0.5
+ // dry 79.5 · ammo 10 · scrap 6 · field 2 · prize 1 · jackpot 1 · mega 0.5
  assert.equal(selectKillLootBucket(0),'dry');
- assert.equal(selectKillLootBucket(0.844),'dry');
- assert.equal(selectKillLootBucket(0.846),'ammo');
+ assert.equal(selectKillLootBucket(0.794),'dry');
+ assert.equal(selectKillLootBucket(0.796),'ammo');
  assert.equal(selectKillLootBucket(0.894),'ammo');
  assert.equal(selectKillLootBucket(0.896),'scrap');
  assert.equal(selectKillLootBucket(0.956),'field');
@@ -46,6 +46,8 @@ test('bucket weights sum to 100 and cover the full unit interval (lean VR + mega
  assert.equal(selectKillLootBucket(0.986),'jackpot');
  assert.equal(selectKillLootBucket(0.996),'mega');
  assert.equal(selectKillLootBucket(0.999),'mega');
+ assert.equal(KILL_LOOT.weights.ammo,10,'ammo theater strip');
+ assert.equal(KILL_LOOT.weights.dry,79.5,'dry reduced by 5 from prior 84.5');
  const real=
   KILL_LOOT.weights.scrap+KILL_LOOT.weights.field+KILL_LOOT.weights.prize+KILL_LOOT.weights.jackpot;
  assert.equal(real,10,'~VR10 on real pellets');
@@ -141,6 +143,7 @@ test('HUD flash fires on every kill result including empty',()=>{
  assert.equal(killLootHudLabel('dry'),'EMPTY');
  assert.equal(killLootFeedback('dry'),'blocked');
  assert.ok(KILL_LOOT.hudFlashSeconds>0&&KILL_LOOT.hudFlashSeconds<=1);
+ assert.ok(KILL_LOOT.jackpotHudFlashSeconds>KILL_LOOT.hudFlashSeconds,'jackpot holds longer on screen');
  const kinds:KillLootCue[]=['dry','ammo','scrap','near_miss','field','prize','jackpot','mega'];
  for(const k of kinds){
   assert.ok(KILL_LOOT_HUD_LABEL[k].length>=4,`${k} has a readable HUD label`);

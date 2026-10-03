@@ -1490,6 +1490,10 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
    if(this.sound&&ctx3&&master3&&ctx3.state==='running'){
     playKillLoot(ctx3,master3,evt.kind,evt.goldGrams??0);
    }
+   // Jackpot: brief coin-burst shake so the slot win hits in-world too.
+   if(evt.kind==='jackpot'&&evt.x!==undefined&&evt.z!==undefined){
+    this.combatFeedback.triggerScreenShake(COMBAT_FEEDBACK.gunFireHeavy.intensity*1.15,COMBAT_FEEDBACK.gunFireHeavy.duration*1.1);
+   }
    // Mega lottery: colourful slime burst at the corpse + a hard screen shake.
    if(evt.kind==='mega'&&evt.x!==undefined&&evt.z!==undefined){
     this.spawnBlood({x:evt.x,y:(evt.y??FLOOR_Y)+1.1,z:evt.z},'slime');
