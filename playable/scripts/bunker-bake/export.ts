@@ -17,6 +17,7 @@ import { parseBunkerKit } from '../../src/bunkerKit';
 import { bakeBunker, mergeBucket, bunkerBucketOf, bunkerSignature } from '../../src/bunkerGeometry';
 import { stencilRects } from '../../src/bunkerDecals';
 import { hangingLightMounts, HANGING_LIGHT } from '../../src/hangingLightAsset';
+import { zoneAt, zoneLight } from '../../src/zoneLighting';
 import { SURVIVAL_COVER } from '../../src/survivalConfig';
 import { radiatorMounts } from '../../src/radiatorAsset';
 import { createDiveChests, FLOOR_Y, RELIC_PLINTH, cells, CELL } from '../../src/simulation';
@@ -72,10 +73,13 @@ type Light = { type: 'point' | 'spot'; pos: number[]; color: string; intensity: 
 const dump = JSON.parse(readFileSync(resolve(import.meta.dirname, 'lights.json'), 'utf8')) as { type: string; name: string; path: string; pos: number[]; color: string; intensity: number; distance: number; decay: number; angle?: number }[];
 const lights: Light[] = [];
 for (const l of dump) {
- if (l.path.includes('PerspectiveCamera') || l.name === 'pickupGlow' || l.name === 'hangingSpot') continue;
+ // Moving or player-held lights stay real time only: held torch/flash, loot glows, the swinging
+ // tube spots (baked below from their mounts), and the cage observation spots.
+ if (l.path.includes('PerspectiveCamera') || l.name === 'pickupGlow' || l.name === 'hangingSpot' || l.path.includes('skinnerCageDress')) continue;
  if (l.type !== 'PointLight' && l.type !== 'SpotLight') continue;
  const sconce = l.path.includes('wallSconces');
- const intensity = sconce ? 11 : l.intensity;
+ // Sconces bake at their wing's steady output (a flickering one may be caught mid-dip).
+ const intensity = sconce ? zoneLight(zoneAt(l.pos[0], l.pos[2])).intensity : l.intensity;
  if (!(intensity > 0) || (l.pos[0] === 0 && l.pos[1] === 0 && l.pos[2] === 0)) continue;
  lights.push({ type: l.type === 'SpotLight' ? 'spot' : 'point', pos: l.pos, color: l.color, intensity, distance: l.distance, decay: l.decay, angle: l.angle, penumbra: l.type === 'SpotLight' ? .8 : undefined, mask: l.type === 'PointLight' });
 }

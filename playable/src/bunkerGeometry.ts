@@ -63,6 +63,76 @@ function kitGeometry(prim: KitPrim, matrix: THREE.Matrix4, surf: Surf) {
 
 /** Draw groups in a bucket. Cables are thin and near black: they skip the lightmap. */
 export type BakeKey = Sheet | 'decal' | 'cable';
+/**
+ * A box with chamfered edges whose normals blend across the chamfer, so every edge reads as a
+ * softly rounded edge catching a line of light, for 44 triangles: 6 inset faces, 12 edge strips
+ * and 8 corner triangles. Centred on the origin.
+ */
+export function chamferBox(w: number, h: number, d: number, bevel: number) {
+ const L = [w, h, d];
+ const b = Math.max(0, Math.min(bevel, .45 * Math.min(w, h, d)));
+ const pos: number[] = [], nor: number[] = [], uv: number[] = [], idx: number[] = [];
+ const vert = (p: number[], n: number[]) => {
+  pos.push(p[0], p[1], p[2]); nor.push(n[0], n[1], n[2]);
+  // Planar UVs in metres on the dominant axis (only the flat 'none' sheet samples them).
+  const a = Math.abs(n[0]) >= Math.abs(n[1]) && Math.abs(n[0]) >= Math.abs(n[2]) ? 0 : Math.abs(n[1]) >= Math.abs(n[2]) ? 1 : 2;
+  uv.push(p[(a + 1) % 3], p[(a + 2) % 3]);
+  return pos.length / 3 - 1;
+ };
+ const outward = (i: number[]) => {
+  // Wind every polygon so it faces away from the centre.
+  const P = (k: number) => [pos[k * 3], pos[k * 3 + 1], pos[k * 3 + 2]];
+  const [A, B, C] = i.slice(0, 3).map(P);
+  const u = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], v = [C[0] - A[0], C[1] - A[1], C[2] - A[2]];
+  const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+  const c = i.map(P).reduce((m, q) => [m[0] + q[0], m[1] + q[1], m[2] + q[2]], [0, 0, 0]);
+  return n[0] * c[0] + n[1] * c[1] + n[2] * c[2] >= 0 ? i : [...i].reverse();
+ };
+ const quad = (q: number[]) => { const [a, b2, c, e] = outward(q); idx.push(a, b2, c, a, c, e); };
+ const tri = (t: number[]) => { const [a, b2, c] = outward(t); idx.push(a, b2, c); };
+ const axisN = (a: number, sgn: number) => { const n = [0, 0, 0]; n[a] = sgn; return n; };
+ const half = (a: number) => L[a] / 2, inset = (a: number) => L[a] / 2 - b;
+ // Faces.
+ for (let a = 0; a < 3; a++) for (const sa of [-1, 1]) {
+  const u = (a + 1) % 3, v = (a + 2) % 3, n = axisN(a, sa), q: number[] = [];
+  for (const [su, sv] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { const p = [0, 0, 0]; p[a] = sa * half(a); p[u] = su * inset(u); p[v] = sv * inset(v); q.push(vert(p, n)); }
+  quad(q);
+ }
+ if (b > 1e-5) {
+  // Edge strips: the normal turns from one face's to the other's across the chamfer.
+  for (let A = 0; A < 3; A++) for (let B = A + 1; B < 3; B++) for (const sA of [-1, 1]) for (const sB of [-1, 1]) {
+   const C = 3 - A - B, q: number[] = [];
+   for (const [face, sc] of [[A, -1], [A, 1], [B, 1], [B, -1]] as const) {
+    const p = [0, 0, 0];
+    p[C] = sc * inset(C);
+    if (face === A) { p[A] = sA * half(A); p[B] = sB * inset(B); } else { p[B] = sB * half(B); p[A] = sA * inset(A); }
+    q.push(vert(p, axisN(face, face === A ? sA : sB)));
+   }
+   quad(q);
+  }
+  // Corners.
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) for (const sz of [-1, 1]) {
+   const S = [sx, sy, sz], t: number[] = [];
+   for (let a = 0; a < 3; a++) { const p = S.map((sg, k) => sg * (k === a ? half(k) : inset(k))); t.push(vert(p, axisN(a, S[a]))); }
+   tri(t);
+  }
+ }
+ const g = new THREE.BufferGeometry();
+ g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+ g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+ g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+ g.setIndex(idx);
+ return g;
+}
+
+/** Default chamfer: a couple of centimetres, never more than a fifth of the thinnest side. */
+export function defaultBevel(sx: number, sy: number, sz: number) {
+ return Math.min(.02, .2 * Math.min(sx, sy, sz));
+}
+
+/** Pipes and fittings: sides round the bore (smooth normals). */
+export const PIPE_SIDES = 20;
+
 export type BakedBucket = Map<BakeKey, THREE.BufferGeometry[]>;
 export type BakeOptions = {
  kit: BunkerKit | null;
@@ -98,7 +168,7 @@ export function bakeBunker(placements: Placement[], opts: BakeOptions) {
     push(key, surf.finish === FINISH.rubber ? 'cable' : opts.kit ? prim.sheet : 'none', kitGeometry(prim, _m, surf));
    }
   } else if (p.kind === 'box') {
-   const g = new THREE.BoxGeometry(p.sx, p.sy, p.sz);
+   const g = chamferBox(p.sx, p.sy, p.sz, p.bevel ?? defaultBevel(p.sx, p.sy, p.sz));
    if (p.yaw) g.rotateY(p.yaw);
    g.translate(p.x, p.y, p.z);
    push(key, 'none', finish(g, p.surf));
@@ -106,13 +176,19 @@ export function bakeBunker(placements: Placement[], opts: BakeOptions) {
    const a = new THREE.Vector3(...p.a), b = new THREE.Vector3(...p.b);
    const len = a.distanceTo(b);
    if (len < 1e-3) continue;
-   const g = new THREE.CylinderGeometry(p.radius, p.radius, len, 12, 1, true);
+   const g = new THREE.CylinderGeometry(p.radius, p.radius, len, p.sides ?? PIPE_SIDES, 1, !p.capped);
    _q.setFromUnitVectors(UP, _v.subVectors(b, a).normalize());
    g.applyMatrix4(_m.compose(a.add(b).multiplyScalar(.5), _q, _s.set(1, 1, 1)));
    push(key, 'none', finish(g, p.surf));
   } else if (p.kind === 'ball') {
    const g = new THREE.SphereGeometry(p.radius, 10, 6);
    g.translate(p.x, p.y, p.z);
+   push(key, 'none', finish(g, p.surf));
+  } else if (p.kind === 'elbow') {
+   // Quarter torus: local +X points from the centre to the arc start, +Y is the tangent there.
+   const X = new THREE.Vector3(...p.x), Y = new THREE.Vector3(...p.y), Z = new THREE.Vector3().crossVectors(X, Y);
+   const g = new THREE.TorusGeometry(p.bend, p.radius, PIPE_SIDES, 6, Math.PI / 2);
+   g.applyMatrix4(new THREE.Matrix4().makeBasis(X, Y, Z).setPosition(...p.centre));
    push(key, 'none', finish(g, p.surf));
   } else if (p.kind === 'torus') {
    const g = new THREE.TorusGeometry(p.radius, p.tube, 8, 28);

@@ -4,6 +4,8 @@ import {readFileSync} from 'node:fs';
 import {BUNKER,FINISH,STENCILS,SWIM_CEILING,buildBunkerLayout,wallEdges,type Placement} from '../src/bunkerLayout';
 import {parseBunkerKit,sheetOf} from '../src/bunkerKit';
 import {cells,world,CELL,FLOOR_Y,SURFACE_Y,fits} from '../src/simulation';
+import * as THREE from 'three';
+import {chamferBox,defaultBevel} from '../src/bunkerGeometry';
 
 const buf=readFileSync(new URL('../public/assets/soviet-bunker-kit/kit.bin',import.meta.url));
 const kit=parseBunkerKit(buf.buffer.slice(buf.byteOffset,buf.byteOffset+buf.byteLength));
@@ -58,12 +60,19 @@ test('anything spanning a room keeps its underside above the highest swimming ey
 });
 
 /** World-space footprint (xz AABB) and height span of a placement, or null for decals and slabs. */
-function volume(p:Placement):{x0:number;x1:number;z0:number;z1:number;y0:number;y1:number;round?:{x:number;z:number;r:number}}|null{
+function volume(p:Placement):{x0:number;x1:number;z0:number;z1:number;y0:number;y1:number;round?:{x:number;z:number;r:number};arc?:{pts:number[][];r:number}}|null{
  if(p.kind==='decal')return null;
  if(p.kind==='box'){const c=Math.abs(Math.cos(p.yaw)),s=Math.abs(Math.sin(p.yaw));const hx=(p.sx*c+p.sz*s)/2,hz=(p.sx*s+p.sz*c)/2;return {x0:p.x-hx,x1:p.x+hx,z0:p.z-hz,z1:p.z+hz,y0:p.y-p.sy/2,y1:p.y+p.sy/2};}
  if(p.kind==='cyl')return {x0:Math.min(p.a[0],p.b[0])-p.radius,x1:Math.max(p.a[0],p.b[0])+p.radius,z0:Math.min(p.a[2],p.b[2])-p.radius,z1:Math.max(p.a[2],p.b[2])+p.radius,y0:Math.min(p.a[1],p.b[1])-p.radius,y1:Math.max(p.a[1],p.b[1])+p.radius};
  if(p.kind==='ball')return {x0:p.x-p.radius,x1:p.x+p.radius,z0:p.z-p.radius,z1:p.z+p.radius,y0:p.y-p.radius,y1:p.y+p.radius};
  if(p.kind==='torus'){const hx=Math.abs(p.nz)*p.radius+p.tube,hz=Math.abs(p.nx)*p.radius+p.tube;return {x0:p.x-hx,x1:p.x+hx,z0:p.z-hz,z1:p.z+hz,y0:p.y-p.radius-p.tube,y1:p.y+p.radius+p.tube};}
+ if(p.kind==='elbow'){
+  const pts=[0,.25,.5,.75,1].map(f=>{const a=f*Math.PI/2;return [0,1,2].map(i=>p.centre[i]+p.bend*(Math.cos(a)*p.x[i]+Math.sin(a)*p.y[i]));});
+  const lo=[0,1,2].map(i=>Math.min(...pts.map(q=>q[i]))-p.radius),hi=[0,1,2].map(i=>Math.max(...pts.map(q=>q[i]))+p.radius);
+  // Tested against the tube itself (arc sampled every few degrees), not its box.
+  const arc=Array.from({length:31},(_,i)=>{const a=i/30*Math.PI/2;return [0,2].map(k=>p.centre[k]+p.bend*(Math.cos(a)*p.x[k]+Math.sin(a)*p.y[k]));});
+  return {x0:lo[0],x1:hi[0],z0:lo[2],z1:hi[2],y0:lo[1],y1:hi[1],arc:{pts:arc,r:p.radius}};
+ }
  const k=kit.get(p.piece)!;
  if(p.flip||(k.max[1]-k.min[1])<.05)return null; // floor and ceiling plates
  const quarter=Math.abs(Math.sin(2*p.yaw))<1e-6;
@@ -93,19 +102,44 @@ test('the diver\'s eye can never end up inside the dressing',()=>{
   for(let x=p.x-CELL/2;x<=p.x+CELL/2;x+=.1)for(let z=p.z-CELL/2;z<=p.z+CELL/2;z+=.1){
    if(!fits({x,y:3,z}))continue;
    checked++;
-   for(const v of grid.get(Math.floor(x)+','+Math.floor(z))??[])assert.ok(v.round?Math.hypot(x-v.round.x,z-v.round.z)>v.round.r+.01:!(x>v.x0+.02&&x<v.x1-.02&&z>v.z0+.02&&z<v.z1-.02),`eye at (${x.toFixed(2)}, ${z.toFixed(2)}) inside dressing [${v.x0.toFixed(2)}..${v.x1.toFixed(2)}]x[${v.z0.toFixed(2)}..${v.z1.toFixed(2)}] y ${v.y0.toFixed(2)}..${v.y1.toFixed(2)}`);
+   for(const v of grid.get(Math.floor(x)+','+Math.floor(z))??[])assert.ok(v.arc?v.arc.pts.every(q=>Math.hypot(x-q[0],z-q[1])>v.arc!.r+.01):v.round?Math.hypot(x-v.round.x,z-v.round.z)>v.round.r+.01:!(x>v.x0+.02&&x<v.x1-.02&&z>v.z0+.02&&z<v.z1-.02),`eye at (${x.toFixed(2)}, ${z.toFixed(2)}) inside dressing [${v.x0.toFixed(2)}..${v.x1.toFixed(2)}]x[${v.z0.toFixed(2)}..${v.z1.toFixed(2)}] y ${v.y0.toFixed(2)}..${v.y1.toFixed(2)}`);
   }
  }
  assert.ok(checked>10000);
 });
 
-test('pipes run continuously: every turn gets a fitting',()=>{
+test('pipes run continuously: a bend at every corner, meeting both pipes end to end',()=>{
  const edges=wallEdges(cells);
- const turns=edges.reduce((n,e)=>n+(e.endPlus!=='straight'?1:0)+(e.endMinus!=='straight'?1:0),0);
- const balls=layout.placements.filter(p=>p.kind==='ball'&&p.radius>.07&&p.radius<.13).length;
- assert.equal(balls,turns*BUNKER.pipes.length);
- const pipes=layout.placements.filter(p=>p.kind==='cyl'&&p.radius>=.06);
+ const corners=edges.filter(e=>e.endPlus!=='straight').length;
+ assert.equal(corners,edges.filter(e=>e.endMinus!=='straight').length,'each corner joins one +t end to one −t end');
+ const elbows=layout.placements.filter(p=>p.kind==='elbow') as Extract<Placement,{kind:'elbow'}>[];
+ assert.equal(elbows.length,corners*BUNKER.pipes.length);
+ const pipes=layout.placements.filter(p=>p.kind==='cyl'&&!p.capped&&p.radius>=.06) as Extract<Placement,{kind:'cyl'}>[];
  assert.equal(pipes.length,edges.length*BUNKER.pipes.length);
+ // Both ends of every bend land exactly on a pipe end: no gaps, no overlaps.
+ const ends=pipes.flatMap(p=>[p.a,p.b]);
+ const near=(q:number[])=>ends.some(e=>Math.hypot(e[0]-q[0],e[1]-q[1],e[2]-q[2])<1e-6);
+ for(const el of elbows){
+  const start=[0,1,2].map(i=>el.centre[i]+el.bend*el.x[i]);
+  const end=[0,1,2].map(i=>el.centre[i]+el.bend*el.y[i]);
+  assert.ok(near(start)&&near(end),'bend meets its pipes');
+ }
+ assert.ok(!layout.placements.some(p=>p.kind==='ball'&&p.radius>.07),'no ball joints left');
+});
+
+test('every box has chamfered edges',()=>{
+ const g=chamferBox(1,2,3,.05);
+ assert.equal(g.index!.count/3,44);
+ const box=new THREE.Box3().setFromBufferAttribute(g.attributes.position as THREE.BufferAttribute);
+ assert.ok(box.min.distanceTo(new THREE.Vector3(-.5,-1,-1.5))<1e-9&&box.max.distanceTo(new THREE.Vector3(.5,1,1.5))<1e-9,'same outer size');
+ // Every triangle faces outward.
+ const P=g.attributes.position,ix=g.index!;
+ for(let t=0;t<ix.count;t+=3){
+  const a=new THREE.Vector3().fromBufferAttribute(P as THREE.BufferAttribute,ix.getX(t)),b=new THREE.Vector3().fromBufferAttribute(P as THREE.BufferAttribute,ix.getX(t+1)),c=new THREE.Vector3().fromBufferAttribute(P as THREE.BufferAttribute,ix.getX(t+2));
+  const n=b.clone().sub(a).cross(c.clone().sub(a));
+  assert.ok(n.dot(a.clone().add(b).add(c))>0,'outward winding');
+ }
+ assert.ok(defaultBevel(.05,.6,.3)<.0101,'thin brackets get a proportionate chamfer');
 });
 
 test('dressing stays clear of wall props and loot',()=>{

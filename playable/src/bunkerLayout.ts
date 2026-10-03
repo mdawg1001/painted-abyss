@@ -32,6 +32,10 @@ export const BUNKER = {
  /** Two service pipes on brackets under the cable tray (m above the floor / off the wall / radius). */
  pipes: [{ y: 5.3, off: .24, r: .1 }, { y: 5.62, off: .19, r: .065 }],
  bracketEvery: 2,
+ /** Pipe bend radius, in pipe radii. */
+ bendRadius: 2.5,
+ /** Flange collar: thickness (m) and diameter over the pipe's. */
+ flange: { width: .045, ratio: 1.45 },
  /** Nothing below the ceiling zone may stand further than this off a wall (m). */
  maxProtrusion: .4,
  /** Clear space between the highest swimming eye and anything spanning a room (m). */
@@ -111,11 +115,13 @@ export type KitPlacement = {
  slots: Record<string, Surf>;
 };
 export type BoxPlacement = { kind: 'box'; c: number; r: number; x: number; y: number; z: number; sx: number; sy: number; sz: number; yaw: number; surf: Surf; bevel?: number };
-export type CylPlacement = { kind: 'cyl'; c: number; r: number; a: [number, number, number]; b: [number, number, number]; radius: number; surf: Surf };
+export type CylPlacement = { kind: 'cyl'; c: number; r: number; a: [number, number, number]; b: [number, number, number]; radius: number; surf: Surf; sides?: number; capped?: boolean };
+/** Quarter-torus pipe bend. `x` points from `centre` to the arc start, `y` is the flow direction there. */
+export type ElbowPlacement = { kind: 'elbow'; c: number; r: number; centre: [number, number, number]; x: [number, number, number]; y: [number, number, number]; bend: number; radius: number; surf: Surf };
 export type BallPlacement = { kind: 'ball'; c: number; r: number; x: number; y: number; z: number; radius: number; surf: Surf };
 export type TorusPlacement = { kind: 'torus'; c: number; r: number; x: number; y: number; z: number; nx: number; nz: number; radius: number; tube: number; surf: Surf };
 export type DecalPlacement = { kind: 'decal'; c: number; r: number; id: string; x: number; y: number; z: number; nx: number; nz: number; w: number; h: number };
-export type Placement = KitPlacement | BoxPlacement | CylPlacement | BallPlacement | TorusPlacement | DecalPlacement;
+export type Placement = KitPlacement | BoxPlacement | CylPlacement | ElbowPlacement | BallPlacement | TorusPlacement | DecalPlacement;
 
 export type BunkerLayout = {
  edges: WallEdge[];
@@ -283,17 +289,41 @@ export function buildBunkerLayout(opts: LayoutOptions = {}): BunkerLayout {
   }
  }
 
- // ── Service pipes on brackets, continuous round corners ─────────────────────
+ // ── Service pipes on brackets: bends round every corner, flanged joints ─────
+ // Each wall's pipe runs its cell; a corner is a quarter bend (made by the edge that reaches it
+ // on its +t end), a straight hand-over is a bolted flange pair.
  for (const e of edges) {
   const st = ZONE_STYLE[e.zone];
   BUNKER.pipes.forEach((pipe, k) => {
+   const R = pipe.r * BUNKER.bendRadius;
    const ext = (end: 'straight' | 'in' | 'out') => end === 'straight' ? CELL / 2 : end === 'in' ? CELL / 2 - pipe.off : CELL / 2 + pipe.off;
-   const t1 = ext(e.endPlus), t0 = -ext(e.endMinus);
+   const t1 = ext(e.endPlus) - (e.endPlus === 'straight' ? 0 : R), t0 = -ext(e.endMinus) + (e.endMinus === 'straight' ? 0 : R);
    const ox = e.x + e.nx * pipe.off, oz = e.z + e.nz * pipe.off, y = FLOOR_Y + pipe.y;
+   const at = (t: number): [number, number, number] => [ox + e.tx * t, y, oz + e.tz * t];
    const surf: Surf = { tint: st.pipe[k], finish: FINISH.enamel };
-   placements.push({ kind: 'cyl', c: e.c, r: e.r, a: [ox + e.tx * t0, y, oz + e.tz * t0], b: [ox + e.tx * t1, y, oz + e.tz * t1], radius: pipe.r, surf });
-   if (e.endPlus !== 'straight') placements.push({ kind: 'ball', c: e.c, r: e.r, x: ox + e.tx * t1, y, z: oz + e.tz * t1, radius: pipe.r * 1.18, surf });
-   if (e.endMinus !== 'straight') placements.push({ kind: 'ball', c: e.c, r: e.r, x: ox + e.tx * t0, y, z: oz + e.tz * t0, radius: pipe.r * 1.18, surf });
+   placements.push({ kind: 'cyl', c: e.c, r: e.r, a: at(t0), b: at(t1), radius: pipe.r, surf });
+   if (e.endPlus !== 'straight') {
+    // The next wall's pipe leaves the corner along the inward normal (concave) or against it (convex).
+    const s = e.endPlus === 'in' ? 1 : -1;
+    const dB: [number, number, number] = [e.nx * s, 0, e.nz * s];
+    const start = at(t1);
+    placements.push({ kind: 'elbow', c: e.c, r: e.r, centre: [start[0] + dB[0] * R, y, start[2] + dB[2] * R], x: [-dB[0], 0, -dB[2]], y: [e.tx, 0, e.tz], bend: R, radius: pipe.r, surf });
+   }
+   const flange = (t: number, bolts: boolean) => {
+    const w = BUNKER.flange.width / 2, p0 = at(t - w), p1 = at(t + w);
+    placements.push({ kind: 'cyl', c: e.c, r: e.r, a: p0, b: p1, radius: pipe.r * BUNKER.flange.ratio, surf, capped: true });
+    if (!bolts) return;
+    for (let i = 0; i < 6; i++) {
+     const a = (i + .5) / 6 * Math.PI * 2, rr = pipe.r * (1 + BUNKER.flange.ratio) / 2;
+     const dx = e.nx * Math.cos(a) * rr, dy = Math.sin(a) * rr, dz = e.nz * Math.cos(a) * rr;
+     const b0 = at(t - w - .018), b1 = at(t + w + .018);
+     placements.push({ kind: 'cyl', c: e.c, r: e.r, a: [b0[0] + dx, b0[1] + dy, b0[2] + dz], b: [b1[0] + dx, b1[1] + dy, b1[2] + dz], radius: .011, surf: { tint: ENAMEL_DARK, finish: FINISH.enamel }, sides: 6, capped: true });
+    }
+   };
+   // A straight hand-over is flanged once (on the +t end); bends are flanged on both of their ends.
+   if (e.endPlus === 'straight') flange(t1, k === 0);
+   else flange(t1 - BUNKER.flange.width / 2, false);
+   if (e.endMinus !== 'straight') flange(t0 + BUNKER.flange.width / 2, false);
    if (k === 0) for (let t = -1; t <= 1; t += BUNKER.bracketEvery) {
     const bx = e.x + e.nx * (pipe.off / 2) + e.tx * t, bz = e.z + e.nz * (pipe.off / 2) + e.tz * t;
     placements.push({ kind: 'box', c: e.c, r: e.r, x: bx, y: y + .16, z: bz, sx: e.nx ? pipe.off + .02 : .05, sy: .6, sz: e.nx ? .05 : pipe.off + .02, yaw: 0, surf: { tint: ENAMEL_DARK, finish: FINISH.enamel } });
