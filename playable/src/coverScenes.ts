@@ -14,6 +14,8 @@
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { TeapotGeometry } from 'three/examples/jsm/geometries/TeapotGeometry.js';
+import { OPERATOR_STOOL } from './guardScenes';
 
 export const COVER_DRESS_URL = '/assets/cover-props/cover_dress.gltf';
 export type DressPart = 'radio' | 'clipboard' | 'gasMask' | 'crowbar' | 'toolbox' | 'oilTin' | 'multimeter';
@@ -23,14 +25,14 @@ export const DRESS_SIZE: Record<DressPart, readonly [number, number, number]> = 
  toolbox: [.4, .305, .271], oilTin: [.115, .205, .154], multimeter: [.216, .279, .203],
 };
 
-export type CrateScene = 'issue' | 'workshop' | 'abandoned';
+export type CrateScene = 'issue' | 'workshop' | 'abandoned' | 'tea';
 export type RackScene = 'stores' | 'masks' | 'fuel' | 'workshop';
 /** The scene each cover site plays, keyed by its position. */
 export const SCENE_AT: Record<string, CrateScene | RackScene | 'radio'> = {
  // Entrance chamber: the radio post, the issue point, the gas-mask store.
  '-10,-18': 'radio', '-6,-10': 'issue', '6,-14': 'masks',
- // Main cavern: stores in use, then the panic.
- '-2,-50': 'issue', '-18,-50': 'abandoned', '14,-50': 'fuel', '18,-70': 'workshop', '-22,-70': 'stores',
+ // Main cavern: the tea break, stores in use, then the panic.
+ '-2,-50': 'issue', '-18,-50': 'abandoned', '14,-50': 'fuel', '18,-70': 'tea', '-22,-70': 'stores',
  '-15,-82': 'abandoned', '10,-90': 'fuel',
  // West annex: the workshop.
  '-40,-56': 'workshop', '-38,-96': 'workshop',
@@ -165,7 +167,7 @@ const mats: Record<string, THREE.Material> = {};
 const mat = (k: string, make: () => THREE.Material) => (mats[k] ??= make());
 
 /** Enamelled steel mug, white with a blue rim and chips. */
-function enamelMug() {
+export function enamelMug() {
  const g = new THREE.Group();
  const prof = [[0, 0], [.04, 0], [.042, .004], [.042, .09], [.044, .092], [.04, .092], [.038, .006], [0, .006]].map(([x, y]) => new THREE.Vector2(x, y));
  const body = new THREE.Mesh(new THREE.LatheGeometry(prof, 24), mat('enamel', () => new THREE.MeshStandardMaterial({ color: 0xe8e6dc, roughness: .25, emissive: 0x1e1e1c, emissiveIntensity: .25 })));
@@ -176,6 +178,15 @@ function enamelMug() {
  const tea = new THREE.Mesh(new THREE.CircleGeometry(.038, 20), mat('tea', () => new THREE.MeshStandardMaterial({ color: 0x2a160a, roughness: .05 })));
  tea.rotation.x = -Math.PI / 2; tea.position.y = .07;
  g.add(body, rim, handle, tea);
+ g.traverse(o => { o.castShadow = true; });
+ return g;
+}
+/** Enamelled tea kettle (chainik): white with a blue rim, like every Soviet barracks had. */
+function chainik() {
+ const g = new THREE.Group();
+ const body = new THREE.Mesh(new TeapotGeometry(.07, 8, true, true, true, false, true), mat('enamel', () => new THREE.MeshStandardMaterial({ color: 0xe8e6dc, roughness: .25, emissive: 0x1e1e1c, emissiveIntensity: .25 })));
+ body.position.y = .07;
+ g.add(body);
  g.traverse(o => { o.castShadow = true; });
  return g;
 }
@@ -213,7 +224,7 @@ function taburet() {
  g.traverse(o => { o.castShadow = o.receiveShadow = true; });
  return g;
 }
-function pencil() {
+export function pencil() {
  const m = new THREE.Mesh(new THREE.CylinderGeometry(.0035, .0035, .16, 6), mat('pencil', () => new THREE.MeshStandardMaterial({ color: 0x9c2a1c, roughness: .5 })));
  m.rotation.z = Math.PI / 2; m.position.y = .004;
  return m;
@@ -252,15 +263,16 @@ export async function dressRadioDesk(root: THREE.Object3D) {
  put(g, clone(p, 'radio'), -.52, top, -.18, .12);
  const log = put(g, sheet('log', 1, .3, .21), -.02, top, .12, -.06);
  log.rotation.y = Math.PI / 2 - .06;
- put(g, pencil(), .02, top + .003, .16, .5);
  put(g, sheet('telegram', 2), .33, top, .02, .22);
  put(g, sheet('blank', 3), .4, top - .0005, -.1, -.4);
  const clip = put(g, clone(p, 'clipboard'), .74, top, -.16, .18);
  put(clip, sheet('manifest', 4, .2, .28), 0, .03, .02);
  put(g, enamelMug(), .56, top, .24, 1.1);
  put(g, ashtray(), .82, top, .27);
- // Stool pushed back from the desk where the operator stood up, still inside the desk's footprint.
- put(g, taburet(), -.12, 0, .26, .35);
+ // The operator's stool, pulled out where he sits writing up the log (guardSceneVisual knocks
+ // it over when he jumps up).
+ const stool = put(g, taburet(), OPERATOR_STOOL.x, 0, OPERATOR_STOOL.z, .08);
+ stool.name = 'operatorStool';
  // A gas mask dropped on the floor by the desk; papers that slid off.
  const mask = put(g, clone(p, 'gasMask'), -.75, .07, .5, 0);
  mask.rotation.set(-Math.PI / 2, 0, 2.1);
@@ -288,7 +300,14 @@ export async function dressCrateStack(root: THREE.Object3D, scene: CrateScene, s
   const c = Math.cos(lid.yaw), s = Math.sin(lid.yaw);
   return put(g, o, lid.x + dx * c + dz * s, lid.top, lid.z - dx * s + dz * c, lid.yaw + yaw);
  };
- if (scene === 'issue') {
+ if (scene === 'tea') {
+  // The quartermaster's tea break: kettle and the manifest on the stack, his bench beside it
+  // (crateStackAsset), his mug in his hand (guardSceneVisual).
+  const clip = onLid(clone(p, 'clipboard'), -.1, .02, .25);
+  put(clip, sheet('manifest', seed, .2, .28), 0, .03, .02);
+  onLid(chainik(), .2, -.05, .6);
+  onLid(enamelMug(), .24, .16, 2.2);
+ } else if (scene === 'issue') {
   const clip = onLid(clone(p, 'clipboard'), -.08, 0, .2);
   put(clip, sheet('manifest', seed, .2, .28), 0, .03, .02);
   onLid(enamelMug(), .22, .08, 1.4);

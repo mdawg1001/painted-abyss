@@ -8,6 +8,7 @@ import { ITEM_BODY, stepBody, submergedFraction, type BodyState } from './propPh
 import { catwalkSupportY } from './catwalkLayout';
 import { steerToward, faceStanding, yawToward, wrapAngle, turnToward, forwardOf, GUARD_STEER_WALK, GUARD_STEER_RUN } from './guardSteering';
 import { SURVIVAL, SURVIVAL_COVER, type GuardRole } from './survivalConfig';
+import { guardScene, sceneGetUp, SCENE_SENSES, type GuardSceneId } from './guardScenes';
 import { Director, patrolPosts, nearestFree, pistolDamage, rayWallPoint, smokeBlocks, smokeAlive, smokeLanding, survivalDoors, makeCaches, type SmokeCloud, type SmokeGrenade, type SupplyCache, type SupplyKind } from './survival';
 import {
  PISTOL, makePistol, tickPistol, startReload, canFire, spendRound, takeDamage, hitscan,
@@ -1416,6 +1417,8 @@ export type Guard={
  downFor:number;
  /** Mission time of your last hit on him (hit flash) and his last melee strike. */
  hitAt:number;strikeAt:number;
+ /** Staged scene he is playing at mission start (radio desk, tea on the crates); null for posts and reinforcements. */
+ scene:{id:GuardSceneId;broken:boolean;brokeAt:number}|null;
  /** Damage the player has dealt him this life (fresh-blood heal is a share of it). */
  dealtByPlayer?:number;
  /** Fresh-blood HP already returned from non-lethal hits this life (subtracted from kill payout). */
@@ -1450,7 +1453,7 @@ export function makeGuard(outfit=0):Guard{
   active:true,role:'assault',windup:0,windupTotal:0,fireToken:false,meleeToken:false,
   burstLeft:0,burstIndex:0,tokenCool:0,reactT:0,prevSees:false,slot:0,slotDrift:0,
   post:-1,home:null,progressAt:0,progressPos:{x:0,z:0},stuckT:0,detour:null,detourUntil:0,
-  navGoal:{x:1e9,z:1e9},navStep:{x:0,z:0,final:true},navAt:-1,downFor:0,hitAt:-1,strikeAt:-1,dropId:-1,
+  navGoal:{x:1e9,z:1e9},navStep:{x:0,z:0,final:true},navAt:-1,downFor:0,hitAt:-1,strikeAt:-1,dropId:-1,scene:null,
   pauseTotal:0,strafing:false,slotFlipAt:4,stuckCount:0,life:0,slotSet:false,
  };
 }
@@ -1466,9 +1469,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   g.lastKnown={...g.position};
   g.state='patrol';g.pause=1e9;g.speed=0;g.turnRate=0;
   g.meleeCool=1e9;g.shootCool=1e9;g.gun=false;
-  g.active=false;
+  g.active=false;g.scene=null;
  }
- if(keep>=0&&m.guards[keep]){const g=m.guards[keep];g.active=true;if(g.hp<=0)g.hp=g.maxHp;}
+ if(keep>=0&&m.guards[keep]){const g=m.guards[keep];g.active=true;g.scene=null;if(g.hp<=0)g.hp=g.maxHp;}
  // Tests that isolate guards want a quiet bunker: no reinforcements.
  const d=(m as {director?:{enabled:boolean}}).director;if(d)d.enabled=false;
 }
@@ -3027,16 +3030,24 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   g.prevSees=canSee;
   // He sees what is in front of him (a lit torch from further), hears running, and
   // notices anyone right beside him whichever way he faces.
+  // Anything that has him on alert ends his scene: he gets up and the normal AI takes over.
+  if(g.scene&&!g.scene.broken&&(g.state!=='patrol'||g.hitAt>=0))this.breakScene(g);
+  const busy=!!g.scene&&!g.scene.broken;
+  // Just jumped up from his tea or the log: mug dropped, rifle still on his shoulder.
+  const gettingUp=!!g.scene&&g.scene.broken?Math.max(0,sceneGetUp(g.scene.id)-(this.elapsed-g.scene.brokeAt)):0;
+  if(gettingUp>0)g.reactT=Math.max(g.reactT,gettingUp);
   const toward=Math.atan2(this.position.x-g.position.x,this.position.z-g.position.z);
-  const inView=Math.abs(wrapAngle(toward-g.heading))<=GUARD_FOV_HALF;
+  const inView=Math.abs(wrapAngle(toward-g.heading))<=(busy?SCENE_SENSES.fovHalf:GUARD_FOV_HALF);
   // Crouched you are a smaller, lower shape: every pick-up distance shrinks (Hitman-style sneak).
-  const k=stealthSightFactor(this.crouching);
-  const sense=canSee&&(d<2.5*k||(inView&&d<(this.torch?18:10)*k)||(sprinting&&!this.crouching&&d<13));
+  // Busy with the log or his tea, he notices less and later.
+  const k=stealthSightFactor(this.crouching)*(busy?SCENE_SENSES.sight:1);
+  const sense=canSee&&(d<2.5*k||(inView&&d<(this.torch?18:10)*k)||(sprinting&&!this.crouching&&d<(busy?SCENE_SENSES.hearSprint:13)));
   const tracking=canSee&&d<GUARD_GUN_RANGE+8;
   // A guard who has lost you has to find you again: crouching counts against that too.
   const reacquire=canSee&&d<(GUARD_GUN_RANGE+8)*k;
   if(g.state==='patrol'&&sense){
    g.state='alert';g.timer=0;g.lastKnown={...this.position};g.firstShot=true;
+   if(busy)this.breakScene(g);
    this.squadAlert(g,'spotted');
   }else if(g.state==='alert'){
    if(sense||tracking)g.lastKnown={...this.position};
@@ -3200,6 +3211,9 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  private steerGuard(dt:number,g:Guard){
   if(g.lastState!==g.state){g.lastState=g.state;g.arrived=false;g.scanTime=0;g.slotSet=false;}
   g.strafing=false;
+  // Playing his scene: he stays put, facing his work.
+  if(g.scene&&!g.scene.broken&&g.state==='patrol'){g.speed=0;g.turnRate=0;g.heading=guardScene(g.scene.id).heading;return;}
+  if(g.scene&&g.scene.broken&&this.elapsed-g.scene.brokeAt<sceneGetUp(g.scene.id)){g.speed=0;g.turnRate=0;return;}
   const water=this.breathWaterY;
   const dry=water<BREATH_WALK_WATER;
   const canMove=(x:number,z:number)=>dry&&fits({x,y:3,z},GUARD_BODY_RADIUS);
@@ -3335,6 +3349,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   const live=this.guards.filter(liveGuard);
   for(let i=0;i<live.length;i++)for(let j=i+1;j<live.length;j++){
    const a=live[i],b=live[j];
+   // Guards playing a scene stand where the scene puts them.
+   if((a.scene&&!a.scene.broken)||(b.scene&&!b.scene.broken))continue;
    const dx=b.position.x-a.position.x,dz=b.position.z-a.position.z,d=Math.hypot(dx,dz);
    if(d>=r)continue;
    const ux=d>1e-4?dx/d:Math.cos(i*2.4),uz=d>1e-4?dz/d:Math.sin(i*2.4);
@@ -3383,6 +3399,13 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   g.coat=role==='heavy'||role==='officer';
   return g;
  }
+ /** End a guard's staged scene: he stands up off the seat and steps onto open floor. */
+ breakScene(g:Guard){
+  if(!g.scene||g.scene.broken)return;
+  g.scene.broken=true;g.scene.brokeAt=this.elapsed;
+  const free=nearestFree(g.position,GUARD_BODY_RADIUS);
+  if(free){g.position.x=free.x;g.position.z=free.z;}
+ }
  deactivateGuard(g:Guard){
   g.active=false;g.hp=0;g.fireToken=false;g.meleeToken=false;g.windup=0;g.post=-1;
   g.position={x:500,y:WALK_EYE_Y,z:500};g.speed=0;g.vx=0;g.vz=0;
@@ -3407,20 +3430,30 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   */
  spawnGuards(){
   for(const g of this.guards)this.deactivateGuard(g);
-  const rooms:{x0:number;x1:number;z0:number;z1:number;role:GuardRole}[]=[
+  const rooms:{x0:number;x1:number;z0:number;z1:number;role:GuardRole;scene?:GuardSceneId}[]=[
+   // Caught mid-shift: the radio operator at the entrance desk; in the main cavern the
+   // quartermaster with his tea on the crates and (last slot) the conscript smoking and
+   // talking at him. Slot order matches the Soviet cast (guardArchetypes).
+   {x0:-16,x1:16,z0:-20,z1:-4,role:'assault',scene:'radio'},
+   {x0:-44,x1:40,z0:-120,z1:-44,role:'assault',scene:'teaSit'},
    {x0:-16,x1:16,z0:-20,z1:-4,role:'assault'},
-   {x0:-16,x1:16,z0:-20,z1:-4,role:'assault'},
-   {x0:-44,x1:40,z0:-120,z1:-44,role:'assault'},
    {x0:-44,x1:40,z0:-120,z1:-44,role:'rusher'},
-   {x0:-44,x1:40,z0:-120,z1:-44,role:'flanker'},
    // Main officer beat: west mid-cavern / annex — seek him for the key.
    {x0:-44,x1:-4,z0:-112,z1:-52,role:'officer'},
+   {x0:-44,x1:40,z0:-120,z1:-44,role:'flanker',scene:'teaTalk'},
   ];
   const posts=patrolPosts();
   const used:number[]=[];
   const n=Math.min(SURVIVAL.director.initial,rooms.length,this.guards.length);
   for(let i=0;i<n;i++){
    const room=rooms[i];
+   if(room.scene){
+    const sc=guardScene(room.scene);
+    const g=this.activateGuard(this.guards[i],{x:sc.x,z:sc.z},sc.heading,room.role);
+    g.home={x0:room.x0,x1:room.x1,z0:room.z0,z1:room.z1};g.post=-1;
+    g.scene={id:room.scene,broken:false,brokeAt:-1};
+    continue;
+   }
    const inRoom=posts.map((p,k)=>({p,k})).filter(({p,k})=>p.x>=room.x0&&p.x<=room.x1&&p.z>=room.z0&&p.z<=room.z1&&!used.includes(k)
     &&Math.hypot(p.x-this.position.x,p.z-this.position.z)>=24&&used.every(u=>Math.hypot(posts[u].x-p.x,posts[u].z-p.z)>=5));
    if(!inRoom.length)continue;

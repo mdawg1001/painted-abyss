@@ -13,6 +13,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { dressCrateStack, sceneAt, type CrateScene } from './coverScenes';
+import { teaBench, TEA_BENCH } from './guardScenes';
 
 export const CRATE_STACK_URL = '/assets/cover-props/cover_crates.gltf';
 
@@ -165,6 +166,17 @@ export async function upgradeCrateStack(root: THREE.Group): Promise<boolean> {
   });
   // Only lids nothing rests on are free to dress.
   const free = tops.filter(t => !tops.some(o => o !== t && Math.abs(o.y - t.top) < .02 && Math.hypot(o.x - t.x, o.z - t.z) < .35));
+  if (scene === 'tea') {
+   // The quartermaster's bench: a long crate laid along the stack's east face.
+   const b = teaBench(), yaw = root.rotation.y, dx = b.x - site.x, dz = b.z - site.z;
+   const bench = new THREE.Mesh(p.longCrate.geometry, p.longCrate.material);
+   bench.name = 'teaBench';
+   bench.castShadow = bench.receiveShadow = true;
+   bench.position.set(dx * Math.cos(yaw) - dz * Math.sin(yaw), 0, dx * Math.sin(yaw) + dz * Math.cos(yaw));
+   bench.rotation.y = -yaw;
+   bench.scale.set(1, TEA_BENCH.height / CRATE_SIZE.longCrate[1], 1);
+   root.add(bench);
+  }
   await dressCrateStack(root, scene, free.length ? free : tops, crateStackExtent(slots, 0), Math.abs(site.x * 3 + site.z));
   return true;
  } catch {

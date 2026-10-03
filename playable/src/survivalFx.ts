@@ -233,10 +233,11 @@ export class SurvivalFx{
  syncGuard(i:number,visual:SovietGuardVisual,g:Guard,elapsed:number,shot:boolean,muzzle:THREE.Vector3|null,dt:number){
   visual.root.visible=g.active;
   // Archetype silhouette × role bulk — outer root only (see guardRootScale).
-  visual.root.scale.copy(guardRootScale(visual.outfit,g.role));
+  visual.root.scale.copy(guardRootScale(visual.outfit,g.role,visual.root.userData.guardStyle));
   const k=this.knifeFor(i,visual);if(k)k.visible=g.active&&g.role==='rusher';
   const cap=visual.root.getObjectByName('officerCap');
-  if(cap)cap.visible=g.active&&g.role==='officer';
+  // The Soviet cartoon officer wears his own furazhka kit.
+  if(cap)cap.visible=g.active&&g.role==='officer'&&visual.root.userData.guardStyle!=='soviet';
   // Hit flash: a hard red pulse on his kit for a tenth of a second.
   const since=elapsed-g.hitAt;
   this.flash(visual,g.hitAt>=0&&since>=0&&since<.12?1-since/.12:0);

@@ -1,4 +1,16 @@
-# Painted Abyss — First Dive · 0.24.22
+# Painted Abyss — First Dive · 0.24.23
+
+## Guards caught mid-shift, in Soviet cartoon style (0.24.23, test)
+
+Three of the opening garrison are now playing a scene when you arrive, the way Hitman and Call of Duty stage their NPCs.
+
+- **Radio post (entrance chamber).** The operator sits on his stool hunched over the log, pencil scratching across the page. Every so often he straightens, presses a headphone cup to his ear and answers.
+- **Tea break (main cavern, by the supply stack at 18, -70).** The quartermaster sits on a long crate with his enamel mug, sipping, laughing, nodding. The young conscript stands in front of him with a papirosa, hand on his belt, talking with big gestures; the ember flares when he drags.
+- **Busy guards notice less.** While the scene runs they see 45% less far, over a narrower arc, and hear a sprinting diver from 9 m instead of 13. Right beside them they still notice you.
+- **Breaking a scene.** Seeing you, a squad call, a shot or a hit ends it for good. The pose blends out as he stands up, the mug and papirosa drop, the operator's stool goes over, and for about a second (half a second for the standing conscript) he cannot move or shoot while he gets his rifle off his shoulder. Ambushing a scene pays.
+- **Soviet cartoon guards (test of a new look).** The guards are now 1970s Soviet animation / propaganda poster characters in period kit: khaki gymnastyorka with stand collar, pockets, shoulder boards and brass buttons, belt with a star buckle, flared galife breeches, kirza boots, big expressive faces. Each slot has a character: the lanky radio operator with specs and headphones, the round quartermaster in an ushanka with a walrus moustache, the officer in a peaked cap and cross strap, the small conscript in an oversized helmet, and more. Add `?guards=toy` to the URL to see the previous red and blue toy guards for comparison.
+
+The poses are procedural (the rig only has idle, walk and run): a small solver turns hand, foot and lean targets into bone rotations with two-bone IK, blended over the idle clip so the guards keep breathing.
 
 ## Hatch shop ammo packs (0.24.22)
 
