@@ -1,4 +1,13 @@
-# Painted Abyss — First Dive · 0.24.19
+# Painted Abyss — First Dive · 0.24.20
+
+## Real cover, staged scenes and a new guardian (0.24.20)
+
+The green placeholder blocks and the concrete walls are gone. Every piece of cover is now something a Soviet civil-defence shelter would actually hold, set up as a scene someone was using when the water came in.
+
+- **Crate stacks**: real wooden ammunition and supply crates (four Poly Haven models, cut down in Blender), cross-stacked the way a quartermaster piles them, about 1.9 m tall so they hide a standing diver just as the sight test says. The English stencils on the crates have been painted over with Soviet markings ("7,62 ПС ГЖ 880 ШТ", "ОСТОРОЖНО", "ЯЩИК № 17").
+- **Storage racks** replace the blast walls: two olive steel racks end to end, packed shelf by shelf with jerrycans, green field medical boxes and crates.
+- **Each site plays a fixed scene.** The entrance desk is the radio post: the transceiver with its antenna and morse key, the radio log open at the last entry ("Оно в воде"), a lightning telegram, the issue manifest on a clipboard, an enamel mug, an ashtray, a stool pushed back, the drawer left open, a gas mask dropped on the floor, papers that slid off. Elsewhere there is a gas-mask store with masks hung on the rack, a fuel store, a workshop with the tool box and tester, issue points with the manifest and a crowbar, and in the deep wing abandoned stacks with a dropped mask, scattered papers and spent cases. Paperwork is in Russian and drawn in game. Anything outside a cover box is flat, so nothing can be walked through.
+- **The guardian is a real ichthyosaur**: a tuna-shaped body with no neck, a long toothed rostrum with a lower jaw that gapes and snaps on the hunt, a huge eye in its bony ring, two pairs of paddle flippers, a fleshy dorsal fin and a crescent tail, dark above and pale below. It is one skinned body on a six-bone spine and swims thunniform style: a wave travelling down the body, faster when it chases, gliding when it slows, banking into turns, going slack when it dies.
 
 ## Rounded edges, pipe bends and flanges (0.24.19)
 
