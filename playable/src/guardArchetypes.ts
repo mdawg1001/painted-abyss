@@ -117,3 +117,65 @@ export function facialObjectName(facial:GuardFacialId):string|null{
 export function capObjectName(cap:GuardCapId):string|null{
  return cap?`Cap_${cap}`:null;
 }
+
+// ── Soviet cartoon style ─────────────────────────────────────────────────────────
+/**
+ * Which guard look the game uses. `soviet` (default): 1970s Soviet animation / propaganda
+ * poster characters in period kit (`public/assets/soviet-cartoon-guard/`). `toy`: the stark
+ * red/blue civilians above, kept for comparison with `?guards=toy`.
+ */
+export type GuardStyle='toy'|'soviet';
+export function activeGuardStyle():GuardStyle{
+ // Outside a browser (unit tests) the toy kit stays the reference; the game defaults to Soviet.
+ if(typeof location==='undefined')return 'toy';
+ return /[?&]guards=toy\b/.test(location.search)?'toy':'soviet';
+}
+
+export type SovietKit='Hat_pilotka'|'Hat_ushanka'|'Hat_helmet'|'Hat_helmetBig'|'Hat_furazhka'|'Kit_headphones'|'Face_moustache'|'Face_specs'|'Hair_crop'|'Kit_belly'|'Kit_strap';
+export const SOVIET_KITS:readonly SovietKit[]=['Hat_pilotka','Hat_ushanka','Hat_helmet','Hat_helmetBig','Hat_furazhka','Kit_headphones','Face_moustache','Face_specs','Hair_crop','Kit_belly','Kit_strap'];
+
+export type SovietArchetype={
+ id:string;label:string;
+ kits:readonly SovietKit[];
+ hairColor:number;skin:number;
+ /** Outer-root silhouette scales, as for the toy archetypes. */
+ height:number;width:number;depth:number;
+ posture:{spinePitch:number;slouch:number;swagger:number};
+};
+
+/**
+ * Index = guard slot. The opening garrison fills slots in spawn order, so the staged scenes
+ * get their cast: 0 the radio operator, 1 the quartermaster at his tea, 4 the officer,
+ * 5 the young conscript with the oversized helmet.
+ */
+export const SOVIET_ARCHETYPES:readonly SovietArchetype[]=[
+ {id:'operator',label:'Radio operator — lanky, specs, headphones',kits:['Kit_headphones','Face_specs','Hair_crop'],hairColor:0x2c2014,skin:0xf0d0a8,
+  height:1.06,width:.88,depth:.9,posture:{spinePitch:.06,slouch:.05,swagger:0}},
+ {id:'quartermaster',label:'Quartermaster — round, ushanka, walrus moustache',kits:['Hat_ushanka','Face_moustache','Kit_belly'],hairColor:0x3a2a18,skin:0xe8b890,
+  height:.95,width:1.16,depth:1.12,posture:{spinePitch:-.03,slouch:.04,swagger:.02}},
+ {id:'sergeant',label:'Sergeant — pilotka, moustache',kits:['Hat_pilotka','Face_moustache','Hair_crop'],hairColor:0x1e1610,skin:0xd9a87c,
+  height:1.02,width:1.06,depth:1.02,posture:{spinePitch:-.02,slouch:-.04,swagger:.03}},
+ {id:'heavy',label:'Big rifleman — helmet',kits:['Hat_helmet'],hairColor:0x2a2018,skin:0xe0b088,
+  height:1.04,width:1.18,depth:1.12,posture:{spinePitch:.02,slouch:.02,swagger:.01}},
+ {id:'officer',label:'Officer — furazhka, cross strap, moustache',kits:['Hat_furazhka','Kit_strap','Face_moustache','Hair_crop'],hairColor:0x1a1410,skin:0xe8c098,
+  height:1.05,width:1.04,depth:1.0,posture:{spinePitch:-.05,slouch:-.06,swagger:.02}},
+ {id:'conscript',label:'Conscript — small, oversized helmet',kits:['Hat_helmetBig','Hair_crop'],hairColor:0xb07a3a,skin:0xf6dcc0,
+  height:.9,width:.9,depth:.9,posture:{spinePitch:.03,slouch:.06,swagger:0}},
+ {id:'rifleman',label:'Rifleman — pilotka',kits:['Hat_pilotka','Hair_crop'],hairColor:0x6a4a28,skin:0xf2d4b0,
+  height:1.0,width:.98,depth:.96,posture:{spinePitch:0,slouch:-.02,swagger:.04}},
+ {id:'winter',label:'Sentry — ushanka',kits:['Hat_ushanka','Hair_crop'],hairColor:0x2a2018,skin:0xd4a070,
+  height:1.0,width:1.04,depth:1.0,posture:{spinePitch:0,slouch:0,swagger:.02}},
+ {id:'helmetSpecs',label:'Signaller — helmet, specs',kits:['Hat_helmet','Face_specs'],hairColor:0x2a2018,skin:0xf0cca4,
+  height:.98,width:.94,depth:.94,posture:{spinePitch:.04,slouch:.03,swagger:0}},
+ {id:'veteran',label:'Veteran — ushanka, moustache',kits:['Hat_ushanka','Face_moustache'],hairColor:0x8a8a84,skin:0xdcae86,
+  height:1.03,width:1.1,depth:1.06,posture:{spinePitch:.02,slouch:.05,swagger:.01}},
+];
+
+export function sovietArchetype(outfit:number):SovietArchetype{
+ const n=SOVIET_ARCHETYPES.length;
+ return SOVIET_ARCHETYPES[((outfit%n)+n)%n];
+}
+/** Idle posture for a slot in the given style. */
+export function guardPosture(outfit:number,style:GuardStyle=activeGuardStyle()){
+ return style==='soviet'?sovietArchetype(outfit).posture:guardArchetype(outfit).posture;
+}

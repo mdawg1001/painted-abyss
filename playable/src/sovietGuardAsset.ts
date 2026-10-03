@@ -21,10 +21,11 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { createCivilianRifle } from './civilianRifle';
 import { buildGuardRig, makeGuardCombatState, type GuardRig, type GuardCombatState } from './guardCombatPose';
-import { guardArchetype, GUARD_UNIFORM, hairObjectName, facialObjectName, capObjectName, type GuardArchetype } from './guardArchetypes';
+import { guardArchetype, GUARD_UNIFORM, hairObjectName, facialObjectName, capObjectName, type GuardArchetype, activeGuardStyle, sovietArchetype, guardPosture, SOVIET_KITS, type GuardStyle } from './guardArchetypes';
 import { applyHairStrandMaps } from './hairStrandMaps';
 import { createOfficerCap } from './sovietKeyAsset';
-export { GUARD_ARCHETYPES, guardArchetype, GUARD_UNIFORM, hairObjectName, facialObjectName, capObjectName } from './guardArchetypes';
+import { captureSceneRig } from './guardSceneVisual';
+export { GUARD_ARCHETYPES, guardArchetype, GUARD_UNIFORM, hairObjectName, facialObjectName, capObjectName, activeGuardStyle, sovietArchetype, guardPosture, SOVIET_ARCHETYPES } from './guardArchetypes';
 
 /** Attribution for the reused skeleton and gait clips; original mesh credit is in its NOTICE. */
 export const SOVIET_GUARD_SOURCE='https://quaternius.com/packs/ultimateanimatedcharacter.html';
@@ -35,6 +36,8 @@ export const SOVIET_GUARD_PACK='Ultimate Animated Character Pack — Soldier_Mal
 export const SOVIET_GUARD_SKETCHFAB_PRIOR='https://sketchfab.com/3d-models/ww2-soviet-uniform-f85a4ed8c33a43eca1a7caa45f7acf99';
 /** Original mesh; legacy SOVIET names retained for the gameplay API. */
 export const SOVIET_GUARD_GLB='/assets/colourful-guard/civilian.glb';
+/** Soviet cartoon guards (default style): scripts/build-soviet-cartoon-guard.mjs. */
+export const SOVIET_CARTOON_GLB='/assets/soviet-cartoon-guard/guard.glb';
 /** True when shipped clips are procedural bake (should be false — real Quaternius clips). */
 export const GUARD_LOCO_PROCEDURAL=false;
 /**
@@ -102,7 +105,7 @@ type GuardGltfBundle={
  clips:Record<GuardLocomotionKind,THREE.AnimationClip>;
 };
 
-let loadPromise:Promise<GuardGltfBundle>|null=null;
+const loadPromises:Partial<Record<GuardStyle,Promise<GuardGltfBundle>>>={};
 
 function clothMat(color:number,rough=.82){
  return new THREE.MeshStandardMaterial({
@@ -112,16 +115,17 @@ function clothMat(color:number,rough=.82){
 }
 
 /** Capsule stand-in while the glTF loads (or if it fails) — stark red/blue toy kit. */
-export function buildSovietGuardStub(arch?:GuardArchetype){
+export function buildSovietGuardStub(arch?:GuardArchetype,style:GuardStyle='toy'){
  const a=arch??guardArchetype(0);
+ const soviet=style==='soviet';
  const body=new THREE.Group();
  body.name='sovietGuardBody';
  const h=SOVIET_GUARD_HEIGHT*a.height;
- const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.28*a.width,h*.42,6,10),clothMat(GUARD_UNIFORM.jacket));
+ const torso=new THREE.Mesh(new THREE.CapsuleGeometry(.28*a.width,h*.42,6,10),clothMat(soviet?0xa39a5c:GUARD_UNIFORM.jacket));
  torso.position.y=h*.58;
  torso.castShadow=true;torso.receiveShadow=true;
  body.add(torso);
- const legs=new THREE.Mesh(new THREE.CapsuleGeometry(.22*a.width,h*.28,4,8),clothMat(GUARD_UNIFORM.trousers));
+ const legs=new THREE.Mesh(new THREE.CapsuleGeometry(.22*a.width,h*.28,4,8),clothMat(soviet?0x847b4a:GUARD_UNIFORM.trousers));
  legs.position.y=h*.28;body.add(legs);
  const head=new THREE.Mesh(new THREE.SphereGeometry(.17*a.head,12,10),clothMat(a.skin,.55));
  head.position.y=h*.92;
@@ -209,7 +213,7 @@ export function meshWorldBox(root:THREE.Object3D):THREE.Box3{
 
 /** Body mesh only — hair/cap/facial kits must not drive height normalisation. */
 function bodyWorldBox(root:THREE.Object3D):THREE.Box3{
- const body=root.getObjectByName('ColourfulCivilian');
+ const body=root.getObjectByName('ColourfulCivilian')??root.getObjectByName('SovietCartoon');
  if(body){root.updateMatrixWorld(true);return new THREE.Box3().setFromObject(body);}
  return meshWorldBox(root);
 }
@@ -308,7 +312,7 @@ function findSkinnedMesh(root:THREE.Object3D):THREE.SkinnedMesh|null{
  root.traverse(o=>{
   if(!(o as THREE.SkinnedMesh).isSkinnedMesh)return;
   const sm=o as THREE.SkinnedMesh;
-  if(sm.name==='ColourfulCivilian')body=sm;
+  if(sm.name==='ColourfulCivilian'||sm.name==='SovietCartoon')body=sm;
   if(!skin)skin=sm;
  });
  return body??skin;
@@ -341,8 +345,8 @@ export function hideGuardHairKits(root:THREE.Object3D){
  * Applied on `visual.root` (not the skinned mixer target) so Quaternius scale
  * tracks cannot melt the bind pose. Never touch bone.scale / body.scale.
  */
-export function guardRootScale(outfit:number,role?:string):THREE.Vector3{
- const arch=guardArchetype(outfit);
+export function guardRootScale(outfit:number,role?:string,style:GuardStyle='toy'):THREE.Vector3{
+ const arch=style==='soviet'?sovietArchetype(outfit):guardArchetype(outfit);
  const roleMul=role==='heavy'?1.12:role==='officer'?1.14:1;
  return new THREE.Vector3(arch.width*roleMul,arch.height*roleMul,arch.depth*roleMul);
 }
@@ -413,6 +417,38 @@ export function applyGuardArchetype(root:THREE.Object3D,_rig:GuardRig|null,pose:
  pose.postureSwagger=arch.posture.swagger;
 }
 
+/**
+ * Soviet cartoon kit for a slot: headgear and character kits on, skin tone, hair tint, posture.
+ * Kits keep vertex colours; only `Hair_crop` is tinted (white vertices × material colour).
+ */
+export function applySovietArchetype(root:THREE.Object3D,pose:GuardCombatState,outfit:number){
+ const arch=sovietArchetype(outfit);
+ root.userData.archetype=arch.id;
+ root.userData.guardOutfit=outfit;
+ const on=new Set<string>(arch.kits);
+ root.traverse(o=>{
+  if(!(SOVIET_KITS as readonly string[]).includes(o.name))return;
+  o.visible=on.has(o.name);
+  if(o.visible&&o.name==='Hair_crop'&&o instanceof THREE.Mesh){
+   const m=o.material as THREE.MeshStandardMaterial;
+   m.color.setHex(arch.hairColor);m.emissive?.setHex(0);m.emissiveIntensity=0;m.needsUpdate=true;
+  }
+ });
+ // Painted, not glowing: the toy kit's emissive lift washes khaki out to lime under bunker light.
+ root.traverse(o=>{
+  const m=(o as THREE.Mesh).material as THREE.MeshStandardMaterial|undefined;
+  if(m?.isMeshStandardMaterial&&m.vertexColors){m.emissiveIntensity=.012;m.roughness=.78;m.needsUpdate=true;}
+ });
+ const body=root.getObjectByName('SovietCartoon') as THREE.Mesh|undefined;
+ if(body?.isMesh){
+  if(!body.geometry.userData.skinClone){body.geometry=body.geometry.clone();body.geometry.userData.skinClone=true;}
+  remapSkinColors(body,arch.skin);
+ }
+ pose.posturePitch=arch.posture.spinePitch;
+ pose.postureSlouch=arch.posture.slouch;
+ pose.postureSwagger=arch.posture.swagger;
+}
+
 function pickLocoClips(anims:THREE.AnimationClip[]):Record<GuardLocomotionKind,THREE.AnimationClip>|null{
  const by=new Map(anims.map(a=>[a.name.toLowerCase(),a]));
  const idle=by.get('idle');
@@ -423,14 +459,16 @@ function pickLocoClips(anims:THREE.AnimationClip[]):Record<GuardLocomotionKind,T
  return{idle,walk,run};
 }
 
-function loadGuardBundle(){
- if(loadPromise)return loadPromise;
- loadPromise=(async()=>{
-  const gltf=await new GLTFLoader().loadAsync(SOVIET_GUARD_GLB);
+function loadGuardBundle(style:GuardStyle=activeGuardStyle()){
+ const cached=loadPromises[style];
+ if(cached)return cached;
+ const loadPromise=(async()=>{
+  const gltf=await new GLTFLoader().loadAsync(style==='soviet'?SOVIET_CARTOON_GLB:SOVIET_GUARD_GLB);
   const scene=gltf.scene;
   scene.name='sovietGuardMesh';
   // Exporter ignores authored visible:false — hide kits on the shared template.
   hideGuardHairKits(scene);
+  scene.traverse(o=>{if((SOVIET_KITS as readonly string[]).includes(o.name))o.visible=false;});
   // One shared adult height; per-guard tall/short is `visual.root` scale only.
   normalizeHumanoid(scene,SOVIET_GUARD_HEIGHT);
   litGuardMaterials(scene);
@@ -440,9 +478,10 @@ function loadGuardBundle(){
   return{scene,clips};
  })().catch(err=>{
   console.warn('Soviet guard mesh failed to load; using stub.',err);
-  loadPromise=null;
+  delete loadPromises[style];
   throw err;
  });
+ loadPromises[style]=loadPromise;
  return loadPromise;
 }
 
@@ -538,8 +577,9 @@ export function updateGuardLocomotion(
 export function createSovietGuardVisual(outfit=0):SovietGuardVisual{
  const root=new THREE.Group();
  root.name=`sovietGuard:${outfit}`;
+ const style=activeGuardStyle();
  const arch=guardArchetype(outfit);
- const body=buildSovietGuardStub(arch);
+ const body=buildSovietGuardStub(arch,style);
  root.add(body);
  const props=makeGearProps(root);
  // Key: in front of his chest, like a lamp clipped to the webbing (he faces +Z).
@@ -551,9 +591,10 @@ export function createSovietGuardVisual(outfit=0):SovietGuardVisual{
  const officerCap=createOfficerCap(SOVIET_GUARD_HEIGHT);
  officerCap.visible=false; // civilians — only survivalFx may show for officer role
  root.add(officerCap);
- const pose=makeGuardCombatState(outfit,arch.posture);
+ const pose=makeGuardCombatState(outfit,guardPosture(outfit,style));
  // Silhouette on the outer root (safe). Skinned body stays at unit scale.
- root.scale.copy(guardRootScale(outfit));
+ root.scale.copy(guardRootScale(outfit,undefined,style));
+ root.userData.guardStyle=style;
  return{root,body,ready:false,loco:null,fill,rim,outfit,rig:null,pose,...props};
 }
 
@@ -568,6 +609,8 @@ export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
   if(visual.ready&&visual.body.name==='sovietGuardMesh')return visual;
   visual.root.remove(visual.body);
   const instance=cloneSkinned(scene);
+  // Bind pose for the staged-scene solver, before the mixer first moves a bone.
+  captureSceneRig(instance);
   instance.name='sovietGuardMesh';instance.userData.colourfulGuard=true;
   // Private materials (and body geometry later) so hit-flash / skin stay per-guard.
   instance.traverse(o=>{
@@ -587,7 +630,8 @@ export async function upgradeSovietGuardVisual(visual:SovietGuardVisual){
   mountGuardGunOnHand(instance,visual.gun);
   visual.loco=attachGuardLocomotion(instance,clips);
   visual.rig=buildGuardRig(instance);
-  applyGuardArchetype(instance,visual.rig,visual.pose,visual.outfit);
+  if(instance.getObjectByName('SovietCartoon'))applySovietArchetype(instance,visual.pose,visual.outfit);
+  else applyGuardArchetype(instance,visual.rig,visual.pose,visual.outfit);
   return visual;
  }catch{
   return visual;

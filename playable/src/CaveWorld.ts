@@ -3,6 +3,7 @@ import {onAssetSettled} from './assetRedraw';
 import { CombatFeedbackManager, COMBAT_FEEDBACK } from './combatFeedback';
 import { PropStreaming } from './propStreaming';
 import { createIchthyosaur, type GuardianModel } from './ichthyosaurModel';
+import { GuardSceneDirector } from './guardSceneVisual';
 import { PALETTE } from './artPalette';
 import { DRY_DENSITY, DRY_FIELD, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type ClipGradePass, type FrameGrade } from './frameGrade';
 import { createBloomPass, createImpactFx, resizeBloomPass, type ImpactFx } from './postFx';
@@ -68,7 +69,7 @@ const STYLE_MODS_AERIAL: StyleModifier[] = ['aerial'];
 import { makeTech, stepTech, requestJump, requestSlide, techOwnsMovement, STAND_HEIGHT, type TechState } from './movementTech';
 import {
  createSovietGuardVisual, upgradeSovietGuardVisual, syncGuardGear, updateGuardLocomotion, applyGuardAim,
- guardArchetype, type SovietGuardVisual,
+ guardArchetype, guardPosture, type SovietGuardVisual,
 } from './sovietGuardAsset';
 import {
  mountAk74u, prefetchAk74u, updateAk74u, drawAk74u, shootAk74u, reloadAk74u, inspectAk74u, ak74uMuzzle, ak74uAimOffset,
@@ -289,6 +290,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
  /** Every material compiled once up front (prewarmShaders). */
  shadersWarm=false;
  /** Set when something may have brought an uncompiled material into view (see guardNewShaders). */
+ guardSceneDirector!:GuardSceneDirector;
  shaderGuardDirty=false;_guardSweep=-1;_guardSelected=-1;warmKeep:THREE.Material[]=[];_glowRank:{g:THREE.Group;score:number}[]=[];
  /** Muzzle on the carbine's barrel bone, measured once the glTF mounts. */
  _muzzleAt=new THREE.Vector3();
@@ -478,6 +480,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   // Caustic atlas + blood maps wait for Begin dive (see bootEssentials).
   this.guardian=createIchthyosaur(.9);this.scene.add(this.guardian.group);
   this.sovietGuards=Array.from({length:GUARD_COUNT},(_,i)=>createSovietGuardVisual(i));
+  this.guardSceneDirector=new GuardSceneDirector(this.scene);
   for(const visual of this.sovietGuards)this.scene.add(visual.root);
   this.guardRecoil=this.sovietGuards.map(()=>0);
   this.guardShotsSeen=this.sovietGuards.map(()=>0);
@@ -1536,7 +1539,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
     this.guardCadence.reset(i);
     this.guardLifeSeen[i]=g.life;this.guardFall[i]=0;this.guardRecoil[i]=0;this.guardJolt[i]=0;
     this.guardShotsSeen[i]=g.shots;this.guardStrikeSeen[i]=g.strikeAt;
-    visual.pose=makeGuardCombatState(i,guardArchetype(i).posture);
+    visual.pose=makeGuardCombatState(i,guardPosture(i));
     const fresh=this.guardActs[i];if(fresh)clearGuardAction(fresh);
    }
    if(!g.active){visual.root.visible=false;continue;}
@@ -1645,6 +1648,8 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
      });
     }else applyGuardAim(visual,this._aimTarget,g.aim,kick);
    }
+   // Staged scenes (radio desk, tea on the crates): seat, pose and props over the clip.
+   this.guardSceneDirector.sync(i,visual,g,this.mission.elapsed,dt,poseDt!==null);
    let muzzle:THREE.Vector3|null=null;
    if(g.gun&&this.guardShotsSeen[i]===g.shots&&flashFrom===i){
     const tip=visual.gun.getObjectByName('guardMuzzle');
