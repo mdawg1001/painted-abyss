@@ -38,6 +38,10 @@ def push_pull(img, mask):
     fill = cur / np.maximum(cw, 1e-6)[..., None]
     for c, cw_ in reversed(levels):
         up = np.repeat(np.repeat(fill, 2, 0), 2, 1)[:c.shape[0], :c.shape[1]]
+        # Odd sizes (non power of two atlases) leave the last row / column one short: extend the edge.
+        ph, pw = c.shape[0] - up.shape[0], c.shape[1] - up.shape[1]
+        if ph or pw:
+            up = np.pad(up, ((0, ph), (0, pw), (0, 0)), mode='edge')
         have = cw_ > 1e-6
         fill = np.where(have[..., None], c / np.maximum(cw_, 1e-6)[..., None], up)
     return fill
