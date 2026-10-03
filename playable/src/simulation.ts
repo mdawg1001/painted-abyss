@@ -1,5 +1,5 @@
 // Shared, deterministic gameplay rules. Rendering and input live in CaveWorld.
-import { GOLD, UPGRADE, SHOP_RIFLE_PRICE, fmtGold, goldStaminaFactor, goldWalkFactor, noMods, modLevel, modTag, modValue, magBonus, damageMult, spreadMult, jamMult, cycleMult, upgradeCost, readBankedGold, writeBankedGold, nextUpgradeTarget, almostUpgradeLine, type RifleMods, type ModTrack } from './gold';
+import { GOLD, UPGRADE, SHOP_RIFLE_PRICE, SHOP_RIFLE_COND, fmtGold, goldStaminaFactor, goldWalkFactor, noMods, modLevel, modTag, modValue, magBonus, damageMult, spreadMult, jamMult, cycleMult, upgradeCost, readBankedGold, writeBankedGold, nextUpgradeTarget, almostUpgradeLine, type RifleMods, type ModTrack } from './gold';
 import { RIFLE, lootStream, jamChance, spreadSigma, scatter, rollDropRounds, rifleIsPrize, rifleName } from './rifleCondition';
 import { rollKillLoot, killLootCueFor, isEmptyKillLoot, killLootFeedback, type KillLootCue } from './killLoot';
 export type { KillLootCue } from './killLoot';
@@ -1952,10 +1952,21 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  /** Put a rifle in your hands: its wear, its upgrades, its magazine size. */
  equipRifle(cond:number,mods?:RifleMods){
   this.gunCond=cond;this.jammed=false;
+  const prevMax=this.pistol.maxMag;
   this.gunMods=mods?{...mods}:noMods();
   const max=PISTOL.magazine+magBonus(this.gunMods);
   this.pistol.maxMag=max;
   if(this.pistol.mag>max){this.pistol.reserve+=this.pistol.mag-max;this.pistol.mag=max;}
+  else if(max>prevMax){
+   // Bigger magazine must change the gun immediately: fill new slots from reserve, then
+   // load the rest so the ammo chip jumps even when spare rounds are empty.
+   const need=max-this.pistol.mag;
+   const fromReserve=Math.min(need,Math.max(0,this.pistol.reserve));
+   this.pistol.reserve-=fromReserve;
+   this.pistol.mag+=fromReserve;
+   const still=max-this.pistol.mag;
+   if(still>0)this.pistol.mag+=still;
+  }
  }
  /** Pocket a gold pickup. */
  takeGold(p:Pickup){
@@ -2023,7 +2034,8 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.bankedGold-=price;writeBankedGold(this.bankedGold);
   this.inventory[empty]='gun';
   this.selected=empty;
-  this.equipRifle(RIFLE.kitCond,noMods());
+  // Field piece (not perfect kit): jams/scatter exist so hatch upgrades can change the gun.
+  this.equipRifle(SHOP_RIFLE_COND,noMods());
   this.pistol.mag=Math.min(this.pistol.maxMag,30);
   this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'upgrade',grams:price,at:this.elapsed};
   this.stashCue='deposit';
@@ -2296,7 +2308,15 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   let slot=this.inventory.indexOf(null);
   if(slot<0)slot=this.selected;
   const old=this.inventory[slot];this.inventory[slot]=pickup.item;this.selected=slot;
-  this.pickups=this.pickups.filter(p=>p.id!==pickup.id);if(old)this.pickups.push({id:this.nextId++,item:old,settling:true,position:{...this.position,y:this.dropY()}});
+  this.pickups=this.pickups.filter(p=>p.id!==pickup.id);
+  if(old){
+   const left:Pickup={id:this.nextId++,item:old,settling:true,position:{...this.position,y:this.dropY()}};
+   if(old==='gun'){
+    left.cond=this.gunCond;
+    if(modLevel(this.gunMods)>0)left.mods={...this.gunMods};
+   }
+   this.pickups.push(left);
+  }
   // A downed guard's pistol still has his rounds in it.
   if(pickup.item==='gun'&&pickup.rounds)this.pistol.reserve=Math.min(PISTOL.reserveMax,this.pistol.reserve+pickup.rounds);
   if(pickup.item==='gun'){this.equipRifle(pickup.cond??RIFLE.kitCond,pickup.mods);if(pickup.cond!==undefined&&pickup.cond<RIFLE.kitCond&&this.noticeUntil<=this.elapsed)this.say(`${rifleName(pickup.cond)}. It will jam and pull wide.`,'ok');}
@@ -2315,7 +2335,13 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
  drop(){
   const item=this.inventory[this.selected];
   if(!item){this.pulse('blocked');return;}
-  this.pickups.push({id:this.nextId++,item,position:{...this.position,y:this.dropY()}});
+  const drop:Pickup={id:this.nextId++,item,position:{...this.position,y:this.dropY()}};
+  // Rifle upgrades live on the gun — G-drop must not strip them.
+  if(item==='gun'){
+   drop.cond=this.gunCond;
+   if(modLevel(this.gunMods)>0)drop.mods={...this.gunMods};
+  }
+  this.pickups.push(drop);
   this.inventory[this.selected]=null;this.pending=null;this.pulse('ok');
  }
  use(){

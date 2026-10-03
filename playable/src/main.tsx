@@ -227,8 +227,8 @@ function App(){
    <div className={`interaction${snap?.atWheel?' at-wheel':''}`} role="status">{prompt&&<div className="prompt">{prompt}</div>}{m.elapsed<m.noticeUntil&&<p key={m.feedbackPulse} className={`notice ${m.feedbackKind}`}>{m.notice}</p>}</div>
    {m.inventory[m.selected]==='gun'&&<>
     <div className={`crosshair${m.lastPistolHit&&m.elapsed-m.lastPistolHit.at<.22?(m.lastPistolHit.killed?' hit kill':m.lastPistolHit.headshot?' hit head':' hit'):''}`} aria-hidden="true"><i/><i/><i/><i/><b/></div>
-    <div className={`ammo${m.pistol.mag===0?' empty':''}${m.pistol.reload>0?' reloading':''}`} aria-label={`Pistol ${m.pistol.mag} in magazine, ${m.pistol.reserve} spare`}>
-     <strong>{m.pistol.reload>0?'—':m.pistol.mag}</strong><span>/ {m.pistol.reserve}</span><em className={m.jammed?'jam':''}>{m.jammed?'JAMMED · R':m.pistol.reload>0?'RELOADING':m.pistol.mag===0?(m.pistol.reserve>0?'R · RELOAD':'NO ROUNDS'):`${rifleName(m.gunCond)}${modTag(m.gunMods)}`}</em>
+    <div className={`ammo${m.pistol.mag===0?' empty':''}${m.pistol.reload>0?' reloading':''}`} aria-label={`Pistol ${m.pistol.mag} of ${m.pistol.maxMag} in magazine, ${m.pistol.reserve} spare`}>
+     <strong>{m.pistol.reload>0?'—':m.pistol.mag}</strong><span>/ {m.pistol.maxMag}</span><b className="ammo-reserve">{m.pistol.reserve}</b><em className={m.jammed?'jam':''}>{m.jammed?'JAMMED · R':m.pistol.reload>0?'RELOADING':m.pistol.mag===0?(m.pistol.reserve>0?'R · RELOAD':'NO ROUNDS'):`${rifleName(m.gunCond)}${modTag(m.gunMods)}`}</em>
     </div>
    </>}
    {!m.stashOpen&&<div className="inventory" aria-label="Inventory">

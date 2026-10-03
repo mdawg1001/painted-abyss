@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.24.20
+# Painted Abyss — First Dive · 0.24.21
+
+## Hatch shop upgrades actually change the gun (0.24.21)
+
+Buying Harder hits / Fewer jams / Bigger magazine at the hatch now changes the equipped rifle for real. Catalog guns are field pieces (not perfect kit), so jams and scatter exist for those upgrades to cut; Bigger magazine fills the new rounds immediately and the ammo chip shows capacity; G-drop keeps upgrades on the floor gun.
 
 ## Real cover, staged scenes and a new guardian (0.24.20)
 

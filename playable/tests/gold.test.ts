@@ -118,9 +118,11 @@ test('dive-again banks leftover pocket gold before a fresh mission',()=>{
 test('workbench: upgrades cost banked gold, live on the rifle, and stop at level 3',()=>{
  const m=setup();m.stashOpen=true;m.bankedGold=UPGRADE.cost[0]+UPGRADE.cost[1]+UPGRADE.cost[2]+UPGRADE.cost[0]-1;
  m.inventory=['gun',null,null,null,null];m.selected=0;
+ const startMag=m.pistol.mag;
  assert.ok(m.buyUpgrade('mag'));assert.ok(m.buyUpgrade('mag'));assert.ok(m.buyUpgrade('mag'));
  assert.equal(m.gunMods.mag,3);
  assert.equal(m.pistol.maxMag,PISTOL.magazine+12,'drum magazine');
+ assert.equal(m.pistol.mag,startMag+12,'drum loads immediately');
  assert.ok(!m.buyUpgrade('mag'),'maxed');
  assert.ok(!m.buyUpgrade('barrel'),'one gram short');
  assert.equal(m.bankedGold,UPGRADE.cost[0]-1);

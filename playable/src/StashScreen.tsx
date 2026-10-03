@@ -130,9 +130,10 @@ function shopOffers(m:StashMissionApi):ShopOffer[]{
   let blocked:string|undefined;
   if(maxed)blocked='Owned (max)';
   else if(gold<price)blocked=`Need ${fmtShopGold(price)}`;
+  const rank=lv>0?' '+'I'.repeat(lv):'';
   offers.push({
    id:t,
-   name:UPGRADE.shopNames[t],
+   name:`${UPGRADE.shopNames[t]}${rank}`,
    price:maxed?0:price,
    detail:maxed?UPGRADE.blurbs[t][2]:UPGRADE.blurbs[t][lv],
    canBuy:!blocked,

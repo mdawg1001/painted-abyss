@@ -91,6 +91,12 @@ export const noMods = (): RifleMods => ({ barrel: 0, action: 0, mag: 0 });
 
 /** Default hatch BUY GUN price (must stay ≥ 1000). */
 export const SHOP_RIFLE_PRICE = 1200;
+/**
+ * Condition of a hatch-catalog rifle. Below kit so wear (jams / scatter) exists —
+ * Harder hits / Fewer jams have a surface to improve. Perfect kit guns never jam,
+ * which made two of the three upgrade tracks feel like gold sinks after BUY GUN.
+ */
+export const SHOP_RIFLE_COND = .72;
 
 /**
  * Short hatch gun catalog (Unity Guns Pack 192553 names).
@@ -113,21 +119,21 @@ export const SHOP_GUNS: readonly ShopGunOffer[] = [
     name: 'BUY GUN — Assault',
     packMesh: 'assault1',
     price: SHOP_RIFLE_PRICE,
-    detail: 'A rifle for your bag. Upgrades stick to this gun.',
+    detail: 'Field rifle for your bag. Upgrades (hits, jams, mag) stick to this gun.',
   },
   {
     id: 'smg1',
     name: 'BUY GUN — SMG',
     packMesh: 'smg1',
     price: 1000,
-    detail: 'Compact bunker SMG. Same usable rifle once it is in your bag.',
+    detail: 'Compact bunker SMG. Same field rifle once it is in your bag — upgrades stick.',
   },
   {
     id: 'shotgun2',
     name: 'BUY GUN — Shotgun',
     packMesh: 'shotgun2',
     price: 1400,
-    detail: 'Heavy close-range piece. Same usable rifle once it is in your bag.',
+    detail: 'Heavy close-range piece. Same field rifle once it is in your bag — upgrades stick.',
   },
 ] as const;
 

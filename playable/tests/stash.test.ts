@@ -4,7 +4,12 @@ import {
  Mission, STASH_CAPACITY, STASH_POSITION, STASH_AMMO_PACK, WALK_EYE_Y,
  breathHatchSpawn, writeStash, readStash, emptyStash, stashInteractPrompt,
 } from '../src/simulation';
-import {writeBankedGold,SHOP_GUNS,SHOP_RIFLE_PRICE} from '../src/gold';
+import {
+ writeBankedGold,SHOP_GUNS,SHOP_RIFLE_PRICE,SHOP_RIFLE_COND,
+ damageMult,jamMult,magBonus,spreadMult,
+} from '../src/gold';
+import {jamChance,spreadSigma} from '../src/rifleCondition';
+import {PISTOL} from '../src/playerPistol';
 
 /** In-memory localStorage stand-in for Node tests. */
 function mockStorage(){
@@ -70,6 +75,45 @@ test('shop buys a rifle and an upgrade with banked gold',()=>{
  assert.ok(m.buyUpgrade('barrel'));
  assert.ok(m.bankedGold<afterRifle);
  assert.equal(m.gunMods.barrel,1);
+});
+
+test('BUY GUN then each upgrade changes gunMods and gameplay knobs',()=>{
+ mockStorage();
+ writeStash(emptyStash());
+ writeBankedGold(0);
+ const m=new Mission(true);
+ atStash(m);
+ m.gold=0;m.bankedGold=8000;
+ m.inventory=[null,null,null,null,null];
+ m.interact();
+ assert.ok(m.buyShopRifle(SHOP_GUNS[0].price,'Assault'));
+ assert.equal(m.gunCond,SHOP_RIFLE_COND,'field piece — not perfect kit');
+ assert.ok(jamChance(m.gunCond)>0,'shop rifle can jam so Fewer jams matters');
+ assert.ok(spreadSigma(m.gunCond)>0,'shop rifle has scatter so Harder hits tightens groups');
+ const baseJam=jamChance(m.gunCond);
+ const baseDmg=damageMult(m.gunMods);
+ const baseMax=m.pistol.maxMag;
+ const baseMag=m.pistol.mag;
+ assert.equal(baseMax,PISTOL.magazine);
+ assert.ok(m.buyUpgrade('barrel'));
+ assert.equal(m.gunMods.barrel,1);
+ assert.ok(damageMult(m.gunMods)>baseDmg);
+ assert.ok(spreadSigma(m.gunCond)*spreadMult(m.gunMods)<spreadSigma(m.gunCond));
+ assert.ok(m.buyUpgrade('action'));
+ assert.equal(m.gunMods.action,1);
+ assert.equal(jamMult(m.gunMods),.5);
+ assert.ok(baseJam*jamMult(m.gunMods)<baseJam);
+ assert.ok(m.buyUpgrade('mag'));
+ assert.equal(m.gunMods.mag,1);
+ assert.equal(m.pistol.maxMag,PISTOL.magazine+magBonus(m.gunMods));
+ assert.equal(m.pistol.mag,baseMag+4,'Bigger magazine loads the extra rounds immediately');
+ // G-drop must keep upgrades on the floor gun.
+ m.selected=m.inventory.indexOf('gun');
+ m.drop();
+ const floor=m.pickups.find(p=>p.item==='gun');
+ assert.ok(floor);
+ assert.equal(floor!.cond,SHOP_RIFLE_COND);
+ assert.deepEqual(floor!.mods,{barrel:1,action:1,mag:1});
 });
 
 test('drag bag item into chest and take it back out',()=>{
