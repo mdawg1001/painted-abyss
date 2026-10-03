@@ -1,4 +1,14 @@
-# Painted Abyss — First Dive · 0.24.18
+# Painted Abyss — First Dive · 0.24.19
+
+## Rounded edges, pipe bends and flanges (0.24.19)
+
+Nothing in the bunker has a razor edge any more. Real concrete and steel have slightly worn, rounded edges that catch a thin line of light, and that highlight is one of the strongest cues the eye reads as quality.
+
+- **Every box is chamfered**: pilasters, corner guards, ceiling beams, lintels, door leaves and ribs, pipe brackets. Each edge is a small chamfer whose shading blends from one face into the next, so it reads as a rounded edge (44 triangles a box). The chamfer is a couple of centimetres, scaled down on thin parts.
+- **Pipes are smoother and fitted properly**: 20 sides instead of 12. Every corner is now a real quarter bend (bend radius 2.5 pipe radii) in place of a ball joint, and the bends meet their pipes exactly end to end (a test checks every one). Each hand-over between wall runs is a bolted flange collar, six studs on the big pipe, and every bend is flanged at both ends.
+- **Lighting rebaked** for the new geometry and for the expanded map (0.24.14 doubled the floor, which left the old bake unused: the game had fallen back to unbaked lighting). The bake now also takes each wing's own sconce colour and strength and the per-compartment ceiling fills from zone lighting, so bounce light, occlusion and lamp shadows match the wing moods.
+
+The expanded bunker is about 520,000 triangles; frustum culling keeps each view to a fraction of that.
 
 ## Hatch BUY GUN + kill loot juice (0.24.18)
 
