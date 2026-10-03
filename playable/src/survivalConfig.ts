@@ -197,7 +197,7 @@ export const SURVIVAL_DOORS:{name:string;col:number;row:number;side:DoorSide}[]=
 ];
 
 /**
- * Cover: floor-to-head-height blockers (stacked ammo crates, cardboard barricades, metal desk, concrete blast walls).
+ * Cover: floor-to-head-height blockers (stacked supply crates, stocked storage racks ('wall'), cardboard barricades, the radio desk).
  * World-space axis-aligned boxes; they block movement and sight for everyone.
  * Cardboard entries are wide footprints for 3–4 carton stacks clustered into a barricade.
  * Placed off cell centres so every room keeps a way round them.

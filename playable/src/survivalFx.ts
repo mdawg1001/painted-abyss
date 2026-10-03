@@ -15,6 +15,9 @@ import { FLOOR_Y, type Guard, type Point } from './simulation';
 import { GUARD_KEY_INTENSITY, GUARD_RIM_INTENSITY, guardRootScale, type SovietGuardVisual } from './sovietGuardAsset';
 import { createCardboardCoverVisual, upgradeCardboardCover } from './cardboardBoxAsset';
 import { createDeskCoverVisual, upgradeDeskCover } from './metalDeskAsset';
+import { createCrateStack, upgradeCrateStack } from './crateStackAsset';
+import { createStorageRack, upgradeStorageRack } from './storageRackAsset';
+import { dressRadioDesk, sceneAt, type RackScene } from './coverScenes';
 
 const LIGHT_SLOTS=3;
 /** Puff cards per smoke cloud. Each is a big transparent quad: inside a cloud every one covers
@@ -56,8 +59,8 @@ export class SurvivalFx{
  smokeMat:THREE.SpriteMaterial;
  points:THREE.Points;pts:Particle[]=[];next=0;
  flashMats=new WeakMap<THREE.Object3D,{m:THREE.MeshStandardMaterial;e:THREE.Color;i:number}[]>();
- /** Stub → glTF upgrades for cardboard / desk cover; CaveWorld streams these by proximity. */
- coverJobs:{id:string;position:{x:number;z:number};load:()=>Promise<boolean>}[]=[];
+ /** Stub → glTF upgrades for crate, rack, cardboard and desk cover; CaveWorld streams these by proximity. */
+ coverJobs:{id:string;root:THREE.Group;position:{x:number;z:number};load:()=>Promise<boolean>}[]=[];
  constructor(scene:THREE.Scene,visuals:SovietGuardVisual[],glowTex:THREE.Texture,adopt:(o:THREE.Object3D)=>void){
   this.scene=scene;
   // Guard key/rim light pool (replaces each guard's own pair).
@@ -95,13 +98,8 @@ export class SurvivalFx{
   this.points.frustumCulled=false;scene.add(this.points);
   for(let i=0;i<PARTICLES;i++)this.pts.push({v:new THREE.Vector3(),life:0,max:1,grav:0});
  }
- /** Stacked ammo crates, cardboard piles, metal desk, and concrete blast walls, where the sim puts cover. */
+ /** Stacked supply crates, stocked storage racks, cardboard piles and the metal desk, where the sim puts cover. */
  private buildCover(adopt:(o:THREE.Object3D)=>void){
-  // Stylized, saturated prop paint (flat colour, no photo maps): readable cover at a glance.
-  const wood=new THREE.MeshStandardMaterial({color:0x557d2a,roughness:.8});
-  const band=new THREE.MeshStandardMaterial({color:0x2b3320,roughness:.7,metalness:.3});
-  const concrete=new THREE.MeshStandardMaterial({color:0xb9a88c,roughness:.95});
-  const hazard=new THREE.MeshStandardMaterial({map:canvasTex(64,16,g=>{g.fillStyle='#f2c230';g.fillRect(0,0,64,16);g.fillStyle='#1d1d1d';for(let x=-16;x<64;x+=16){g.beginPath();g.moveTo(x,16);g.lineTo(x+8,16);g.lineTo(x+16,0);g.lineTo(x+8,0);g.closePath();g.fill();}}),roughness:.8});
   for(const c of SURVIVAL_COVER){
    let g:THREE.Group;
    if(c.kind==='cardboard'){
@@ -114,6 +112,7 @@ export class SurvivalFx{
     const root=g;
     this.coverJobs.push({
      id:`cardboard-${c.x}-${c.z}`,
+     root,
      position:{x:c.x,z:c.z},
      load:()=>upgradeCardboardCover(root),
     });
@@ -123,23 +122,31 @@ export class SurvivalFx{
     const root=g;
     this.coverJobs.push({
      id:`desk-${c.x}-${c.z}`,
+     root,
      position:{x:c.x,z:c.z},
-     load:()=>upgradeDeskCover(root),
+     // The radio post: the desk streams in with everything left on it.
+     load:async()=>{const ok=await upgradeDeskCover(root);if(ok)await dressRadioDesk(root);return ok;},
+    });
+   }else if(c.kind==='crates'){
+    g=createCrateStack(c.x,c.z);
+    g.position.set(c.x,FLOOR_Y,c.z);
+    const root=g;
+    this.coverJobs.push({
+     id:`crates-${c.x}-${c.z}`,
+     root,
+     position:{x:c.x,z:c.z},
+     load:()=>upgradeCrateStack(root),
     });
    }else{
-    g=new THREE.Group();g.position.set(c.x,FLOOR_Y,c.z);
-    if(c.kind==='crates'){
-     const w=c.hx*2,d=c.hz*2;
-     const lower=new THREE.Mesh(new THREE.BoxGeometry(w,1.0,d),wood);lower.position.y=.5;
-     const upper=new THREE.Mesh(new THREE.BoxGeometry(w*.92,.95,d*.92),wood);upper.position.y=1.48;upper.rotation.y=.08;
-     for(const y of [.2,.8,1.25,1.75]){const b=new THREE.Mesh(new THREE.BoxGeometry(w*1.01,.06,d*1.01),band);b.position.y=y;g.add(b);}
-     g.add(lower,upper);
-    }else{
-     const wall=new THREE.Mesh(new THREE.BoxGeometry(c.hx*2,2.1,c.hz*2),concrete);wall.position.y=1.05;
-     const cap=new THREE.Mesh(new THREE.BoxGeometry(c.hx*2+.08,.12,c.hz*2+.08),concrete);cap.position.y=2.12;
-     const stripe=new THREE.Mesh(new THREE.BoxGeometry(c.hx*2+.02,.22,c.hz*2+.02),hazard);stripe.position.y=.32;
-     g.add(wall,cap,stripe);
-    }
+    g=createStorageRack(c.hx,c.hz,c.x*31+c.z*17,(sceneAt(c.x,c.z)??'stores') as RackScene);
+    g.position.set(c.x,FLOOR_Y,c.z);
+    const root=g;
+    this.coverJobs.push({
+     id:`rack-${c.x}-${c.z}`,
+     root,
+     position:{x:c.x,z:c.z},
+     load:()=>upgradeStorageRack(root),
+    });
    }
    g.traverse(o=>{if((o as THREE.Mesh).isMesh){o.castShadow=true;o.receiveShadow=true;}});
    this.scene.add(g);adopt(g);

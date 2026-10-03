@@ -89,7 +89,7 @@ for (const m of hangingLightMounts()) {
 }
 
 // Solid props that sit in the light: cover, chests, radiators, the relic plinth.
-const coverHeight: Record<string, number> = { crates: 1.45, wall: 1.3, cardboard: 1, desk: .78 };
+const coverHeight: Record<string, number> = { crates: 1.6, wall: 1.9, cardboard: 1, desk: .78 };
 const boxes: { c: number[]; h: number[] }[] = [];
 for (const c of SURVIVAL_COVER) boxes.push({ c: [c.x, FLOOR_Y + coverHeight[c.kind] / 2, c.z], h: [c.hx, coverHeight[c.kind] / 2, c.hz] });
 for (const c of createDiveChests()) boxes.push({ c: [c.position.x, FLOOR_Y + .35, c.position.z], h: [.45, .35, .35] });

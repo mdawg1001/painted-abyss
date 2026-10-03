@@ -2,6 +2,7 @@ import {PresentationCadence} from './presentationCadence';
 import {onAssetSettled} from './assetRedraw';
 import { CombatFeedbackManager, COMBAT_FEEDBACK } from './combatFeedback';
 import { PropStreaming } from './propStreaming';
+import { createIchthyosaur, type GuardianModel } from './ichthyosaurModel';
 import { PALETTE } from './artPalette';
 import { DRY_DENSITY, DRY_FIELD, GRADE_LIGHTS, WATER_FIELD, createClipGradePass, createGradeClock, gradeDensity, gradeField, gradeSlam, practicalColor, practicalGlow, resetGradeClock, stepFrameGrade, waterSheet, waterVeilOpacity, type ClipGradePass, type FrameGrade } from './frameGrade';
 import { createBloomPass, createImpactFx, resizeBloomPass, type ImpactFx } from './postFx';
@@ -258,7 +259,7 @@ killLootSeqHeard=0;
 bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
  /** Rising-edge trackers for impact FX (health drop + Shift sprint/run). */
  fxHealthSeen=100;fxBursting=false;
- guardian!:ReturnType<OceanWorld['ichthyosaur']>;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;decoyLight!:THREE.PointLight;
+ guardian!:GuardianModel;pickupMeshes=new Map<number,THREE.Group>();decoyMesh!:THREE.Mesh;decoyLight!:THREE.PointLight;
  /** Five Soviet guards (Quaternius soldier, dyed kits). */
  sovietGuards:SovietGuardVisual[]=[];
  get sovietGuard(){return this.sovietGuards[0]??null;}
@@ -475,10 +476,7 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   this.scene.add(this.gradeHemi,this.gradeAmbient,this.gradeSky);
   this.buildCave();this.buildBreath();this.buildLights();this.buildComposer();
   // Caustic atlas + blood maps wait for Begin dive (see bootEssentials).
-  this.guardian=this.ichthyosaur(.9);this.scene.add(this.guardian.group);
-  this.guardian.group.traverse(o=>{if(o instanceof THREE.Mesh){o.castShadow=true;o.receiveShadow=true;}});
-  const eyeMat=new THREE.MeshBasicMaterial({color:0xe0a772});
-  for(const side of [-1,1])this.ellipsoid(this.guardian.group,eyeMat,1.8,.27,side*.5,.1,.1,.04);
+  this.guardian=createIchthyosaur(.9);this.scene.add(this.guardian.group);
   this.sovietGuards=Array.from({length:GUARD_COUNT},(_,i)=>createSovietGuardVisual(i));
   for(const visual of this.sovietGuards)this.scene.add(visual.root);
   this.guardRecoil=this.sovietGuards.map(()=>0);
@@ -562,7 +560,12 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   this.mountWallPipe();
   this.mountCopperPipe();
   for(const job of this.fx.coverJobs){
-   this.propStreaming.add(job.id,job.position,job.load,36);
+   // Upgraded cover joins the packed point-light cull like the stub it replaced.
+   this.propStreaming.add(job.id,job.position,async()=>{
+    const ok=await job.load();
+    if(ok&&this.alive)this.adoptPointCull(job.root,this.worldBox(job.root),true,true);
+    return ok;
+   },36);
   }
   this.valveHands=createValveHands();
   this.scene.add(this.valveHands.root);
@@ -3389,16 +3392,12 @@ bloom!:UnrealBloomPass;impactFx:ImpactFx=createImpactFx();
   if(p.state==='dead'){
    // Corpse settles; limp fins, no chase heading lerp.
    this.guardian.group.rotation.z=THREE.MathUtils.lerp(this.guardian.group.rotation.z,.55,Math.min(1,dt*1.4));
-   this.guardian.fins.forEach(f=>f.rotation.x*=Math.exp(-dt*2));
-   this.guardian.tail.rotation.y*=Math.exp(-dt*2);
   }else{
    const diff=Math.atan2(Math.sin(p.heading-this.guardian.group.rotation.y),Math.cos(p.heading-this.guardian.group.rotation.y));
    this.guardian.group.rotation.y+=diff*Math.min(1,dt*5);
    this.guardian.group.rotation.z=THREE.MathUtils.lerp(this.guardian.group.rotation.z,p.flinch>0?.35:0,Math.min(1,dt*8));
-   const thrash=p.raged&&p.state==='chase'?1.55:p.state==='damaged'?.55:1;
-   this.guardian.fins.forEach(f=>f.rotation.x=Math.sin(this.time*2*thrash+(f.userData.phase||0))*.25*(f.userData.side||1)*thrash);
-   this.guardian.tail.rotation.y=Math.sin(this.time*3*thrash)*.22*thrash;
   }
+  this.guardian.update(dt,this.time,p);
   this.syncSovietGuard(dt);
   if(this.fx)this.syncSurvival(dt);
   this.syncBreathProps();
