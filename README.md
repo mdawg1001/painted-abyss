@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.24.17
+# Painted Abyss — First Dive · 0.24.18
+
+## Hatch BUY GUN + kill loot juice (0.24.18)
+
+Hatch shop shows a clear **BUY GUN** catalog (≥ $1000) when you have no rifle — not only Harder hits / Fewer jams / Bigger magazine. Kill ammo chance is 10% per kill. JACKPOT is a longer casino win flash with coin burst and sting.
 
 ## Zone lighting (0.24.17)
 

@@ -2012,22 +2012,22 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.say(`Bought ${label} for $${Math.round(cost)}.`,'ok');
   return true;
  }
- /** Shop: buy an AK-74U into an empty bag slot. */
- buyShopRifle(){
+ /** Shop: buy a usable rifle into an empty bag slot (catalog price ≥ 1000). */
+ buyShopRifle(cost:number=SHOP_RIFLE_PRICE,label='Gun'){
   if(this.outcome!=='playing'||!this.stashOpen){this.pulse('blocked');return false;}
   if(this.inventory.includes('gun')){this.say('You already have a rifle.','blocked');return false;}
   const empty=this.inventory.findIndex(x=>x===null);
   if(empty<0){this.say('Bag is full — free a slot first.','blocked');return false;}
-  const cost=SHOP_RIFLE_PRICE;
-  if(this.bankedGold<cost){this.say(`Need $${cost}. You have $${Math.round(this.bankedGold)}.`,'blocked');return false;}
-  this.bankedGold-=cost;writeBankedGold(this.bankedGold);
+  const price=Math.max(1000,Math.round(cost));
+  if(this.bankedGold<price){this.say(`Need $${price}. You have $${Math.round(this.bankedGold)}.`,'blocked');return false;}
+  this.bankedGold-=price;writeBankedGold(this.bankedGold);
   this.inventory[empty]='gun';
   this.selected=empty;
   this.equipRifle(RIFLE.kitCond,noMods());
   this.pistol.mag=Math.min(this.pistol.maxMag,30);
-  this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'upgrade',grams:cost,at:this.elapsed};
+  this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'upgrade',grams:price,at:this.elapsed};
   this.stashCue='deposit';
-  this.say(`Bought AK-74U for $${cost}.`,'ok');
+  this.say(`Bought ${label} for $${price}.`,'ok');
   return true;
  }
  /**

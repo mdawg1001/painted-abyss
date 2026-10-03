@@ -206,11 +206,17 @@ function App(){
    {/* Kill-loot classical flash: every schedule kill including EMPTY. Keyed on seq so dry still replays. */}
    {(()=>{
     const e=m.killLootEvent;if(!e)return null;
-    const flashSec=e.kind==='mega'?KILL_LOOT.megaHudFlashSeconds:KILL_LOOT.hudFlashSeconds;
+    const flashSec=e.kind==='mega'?KILL_LOOT.megaHudFlashSeconds
+     :e.kind==='jackpot'?KILL_LOOT.jackpotHudFlashSeconds
+     :KILL_LOOT.hudFlashSeconds;
     const age=m.elapsed-e.at;if(age<0||age>=flashSec)return null;
     const kindClass=e.kind.replace('_','-');
-    return <div key={`kl-${e.seq}`} className={`kill-loot-flash kind-${kindClass}`} aria-hidden="true">
+    const casino=e.kind==='jackpot'||e.kind==='mega';
+    return <div key={`kl-${e.seq}`} className={`kill-loot-flash kind-${kindClass}${casino?' casino':''}`} aria-hidden="true">
      <span>{killLootHudLabel(e.kind)}</span>
+     {casino&&<div className="jackpot-coins" aria-hidden="true">
+      {Array.from({length:14},(_,i)=><i key={i} style={{['--i' as string]:i}}/>)}
+     </div>}
     </div>;
    })()}
    {snap?.audioNotice&&<div className="audio-notice" role="status">{snap.audioNotice}</div>}

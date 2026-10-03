@@ -5,7 +5,7 @@
  */
 import React,{useCallback,useRef,useState} from 'react';
 import {
- fmtGold,fmtShopGold,modLevel,upgradeCost,UPGRADE,MOD_TRACKS,SHOP_RIFLE_PRICE,isAlmostShort,
+ fmtGold,fmtShopGold,modLevel,upgradeCost,UPGRADE,MOD_TRACKS,SHOP_GUNS,isAlmostShort,
 } from './gold';
 import {ITEMS,STASH_CAPACITY,type Item,type StashSlot} from './simulation';
 import {KNIFE_THUMB_URL} from './knifeAsset';
@@ -26,7 +26,7 @@ export type StashMissionApi={
  withdrawAmmoPack:(stashI:number)=>boolean;
  bankPocketGold:()=>boolean;
  buyUpgrade:(track:'barrel'|'action'|'mag')=>boolean;
- buyShopRifle:()=>boolean;
+ buyShopRifle:(cost?:number,label?:string)=>boolean;
  closeStash:()=>void;
 };
 
@@ -42,6 +42,8 @@ type ShopOffer={
  detail:string;
  canBuy:boolean;
  blocked?:string;
+ /** Gun catalog row — button must read BUY GUN. */
+ gunBuy?:boolean;
  run:()=>boolean;
 };
 
@@ -102,29 +104,31 @@ function shopOffers(m:StashMissionApi):ShopOffer[]{
  const hasGun=m.inventory.includes('gun');
  const gold=m.bankedGold;
  const offers:ShopOffer[]=[];
- {
-  const price=SHOP_RIFLE_PRICE;
-  let blocked:string|undefined;
-  if(hasGun)blocked='Already owned';
-  else if(m.inventory.every(x=>x!==null))blocked='Bag full';
-  else if(gold<price)blocked=`Need ${fmtShopGold(price)}`;
-  offers.push({
-   id:'rifle',
-   name:'AK-74U',
-   price,
-   detail:'A rifle for your bag. Upgrades stick to this gun.',
-   canBuy:!blocked,
-   blocked,
-   run:()=>m.buyShopRifle(),
-  });
+ // No rifle in the bag → gun catalog only (never bury BUY GUN under upgrades).
+ if(!hasGun){
+  for(const g of SHOP_GUNS){
+   let blocked:string|undefined;
+   if(m.inventory.every(x=>x!==null))blocked='Bag full';
+   else if(gold<g.price)blocked=`Need ${fmtShopGold(g.price)}`;
+   offers.push({
+    id:g.id,
+    name:`${g.name} · ${fmtShopGold(g.price)}`,
+    price:g.price,
+    detail:g.detail,
+    canBuy:!blocked,
+    blocked,
+    gunBuy:true,
+    run:()=>m.buyShopRifle(g.price,g.name.replace(/^BUY GUN — /,'')),
+   });
+  }
+  return offers;
  }
  for(const t of MOD_TRACKS){
   const lv=m.gunMods[t];
   const price=upgradeCost(lv);
   const maxed=lv>=UPGRADE.maxLevel;
   let blocked:string|undefined;
-  if(!hasGun)blocked='Need a rifle in your bag';
-  else if(maxed)blocked='Owned (max)';
+  if(maxed)blocked='Owned (max)';
   else if(gold<price)blocked=`Need ${fmtShopGold(price)}`;
   offers.push({
    id:t,
@@ -310,10 +314,12 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
         const owned=offer.blocked==='Owned (max)'||offer.blocked==='Already owned';
         const title=owned
          ?`${offer.name}: ${offer.blocked}`
-         :`${offer.name}: ${fmtShopGold(offer.price)}`;
+         :offer.gunBuy
+          ?offer.name
+          :`${offer.name}: ${fmtShopGold(offer.price)}`;
         const short=Math.max(0,offer.price-m.bankedGold);
         const almost=!offer.canBuy&&!owned&&offer.price>0&&isAlmostShort(short,offer.price);
-        return <div key={offer.id} className={`stash-shop-item${offer.canBuy?' afford':''}${almost?' almost':''}`}>
+        return <div key={offer.id} className={`stash-shop-item${offer.gunBuy?' gun-buy':''}${offer.canBuy?' afford':''}${almost?' almost':''}`}>
          <div className="stash-shop-row">
           <strong className="stash-shop-name">{title}</strong>
          </div>
@@ -321,10 +327,10 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
          {offer.blocked&&offer.blocked!=='Owned (max)'&&offer.blocked!=='Already owned'&&(
           <p className="stash-shop-blocked">{offer.blocked}</p>
          )}
-         <button type="button" className="stash-shop-buy-btn"
+         <button type="button" className={`stash-shop-buy-btn${offer.gunBuy?' gun':''}`}
           disabled={!offer.canBuy}
           onClick={()=>setConfirm(offer)}
-         >BUY</button>
+         >{offer.gunBuy?`BUY GUN · ${fmtShopGold(offer.price)}`:'BUY'}</button>
         </div>;
        })}
       </div>

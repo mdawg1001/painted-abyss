@@ -820,10 +820,14 @@ export function playKillLoot(
     tone(t0 + n * .035 + .08, 3200, .12, .2, 'triangle');
     return;
   }
-  // jackpot
-  const n = Math.min(8, Math.max(3, Math.round(goldGrams / 200)));
-  for (let i = 0; i < n; i++) tone(t0 + i * .04, 900 + i * 110, .12 + i * .01, .1);
-  tone(t0 + n * .04 + .04, 2100, .2, .16);
+  // jackpot — online-slot win: coin cascade + bright sting, held longer
+  noise(t0, .08, 900, .3);
+  noise(t0 + .03, .1, 2200, .22);
+  const n = Math.min(12, Math.max(6, Math.round(goldGrams / 160)));
+  for (let i = 0; i < n; i++) tone(t0 + i * .045, 880 + i * 95, .13 + i * .01, .12);
+  tone(t0 + n * .045 + .02, 1760, .22, .22);
+  tone(t0 + n * .045 + .08, 2340, .18, .28);
+  tone(t0 + n * .045 + .16, 2960, .12, .34, 'triangle');
 }
 
 export function playGold(ctx: AudioContext, out: AudioNode, kind: 'take' | 'bank' | 'upgrade' | 'ditch' | 'lost', grams = 1000, almost = false) {
