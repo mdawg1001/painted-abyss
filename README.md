@@ -1,4 +1,8 @@
-# Painted Abyss — First Dive · 0.24.21
+# Painted Abyss — First Dive · 0.24.22
+
+## Hatch shop ammo packs (0.24.22)
+
+At the hatch stash shop you can buy spare rifle ammo at a strict **1:1 gold:rounds** rate — **BUY 25 ROUNDS · $25** and **BUY 100 ROUNDS · $100**. Spends banked gold (same vault as upgrades / BUY GUN), adds real spare rounds you can reload and fire. Rows grey out when you lack gold, lack a rifle, or do not have pouch room. Reserve cap raised to 160 so a 100-pack can fit.
 
 ## Hatch shop upgrades actually change the gun (0.24.21)
 

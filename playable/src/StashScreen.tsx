@@ -5,9 +5,10 @@
  */
 import React,{useCallback,useRef,useState} from 'react';
 import {
- fmtGold,fmtShopGold,modLevel,upgradeCost,UPGRADE,MOD_TRACKS,SHOP_GUNS,isAlmostShort,
+ fmtGold,fmtShopGold,modLevel,upgradeCost,UPGRADE,MOD_TRACKS,SHOP_GUNS,SHOP_AMMO_PACKS,isAlmostShort,
 } from './gold';
 import {ITEMS,STASH_CAPACITY,type Item,type StashSlot} from './simulation';
+import {PISTOL} from './playerPistol';
 import {KNIFE_THUMB_URL} from './knifeAsset';
 
 export type StashMissionApi={
@@ -27,6 +28,7 @@ export type StashMissionApi={
  bankPocketGold:()=>boolean;
  buyUpgrade:(track:'barrel'|'action'|'mag')=>boolean;
  buyShopRifle:(cost?:number,label?:string)=>boolean;
+ buyShopAmmo:(rounds:number)=>boolean;
  closeStash:()=>void;
 };
 
@@ -44,6 +46,8 @@ type ShopOffer={
  blocked?:string;
  /** Gun catalog row — button must read BUY GUN. */
  gunBuy?:boolean;
+ /** Ammo pack row — button reads BUY N ROUNDS · $N. */
+ ammoBuy?:boolean;
  run:()=>boolean;
 };
 
@@ -100,11 +104,33 @@ function readDrag(e:React.DragEvent):DragPayload|null{
  }catch{return null;}
 }
 
+function ammoOffers(m:StashMissionApi):ShopOffer[]{
+ const hasGun=m.inventory.includes('gun');
+ const gold=m.bankedGold;
+ const room=Math.max(0,PISTOL.reserveMax-m.pistol.reserve);
+ return SHOP_AMMO_PACKS.map(pack=>{
+  let blocked:string|undefined;
+  if(!hasGun)blocked='Need a rifle';
+  else if(room<pack.rounds)blocked=room<=0?'Spare rounds full':`Need room for ${pack.rounds}`;
+  else if(gold<pack.price)blocked=`Need ${fmtShopGold(pack.price)}`;
+  return {
+   id:pack.id,
+   name:`BUY ${pack.rounds} ROUNDS · ${fmtShopGold(pack.price)}`,
+   price:pack.price,
+   detail:`${pack.rounds} spare rounds for your rifle. ${fmtShopGold(pack.price)} → ${pack.rounds} rounds.`,
+   canBuy:!blocked,
+   blocked,
+   ammoBuy:true,
+   run:()=>m.buyShopAmmo(pack.rounds),
+  };
+ });
+}
+
 function shopOffers(m:StashMissionApi):ShopOffer[]{
  const hasGun=m.inventory.includes('gun');
  const gold=m.bankedGold;
  const offers:ShopOffer[]=[];
- // No rifle in the bag → gun catalog only (never bury BUY GUN under upgrades).
+ // No rifle in the bag → gun catalog first (never bury BUY GUN under upgrades).
  if(!hasGun){
   for(const g of SHOP_GUNS){
    let blocked:string|undefined;
@@ -121,6 +147,7 @@ function shopOffers(m:StashMissionApi):ShopOffer[]{
     run:()=>m.buyShopRifle(g.price,g.name.replace(/^BUY GUN — /,'')),
    });
   }
+  offers.push(...ammoOffers(m));
   return offers;
  }
  for(const t of MOD_TRACKS){
@@ -141,6 +168,7 @@ function shopOffers(m:StashMissionApi):ShopOffer[]{
    run:()=>m.buyUpgrade(t),
   });
  }
+ offers.push(...ammoOffers(m));
  return offers;
 }
 
@@ -315,12 +343,12 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
         const owned=offer.blocked==='Owned (max)'||offer.blocked==='Already owned';
         const title=owned
          ?`${offer.name}: ${offer.blocked}`
-         :offer.gunBuy
+         :offer.gunBuy||offer.ammoBuy
           ?offer.name
           :`${offer.name}: ${fmtShopGold(offer.price)}`;
         const short=Math.max(0,offer.price-m.bankedGold);
         const almost=!offer.canBuy&&!owned&&offer.price>0&&isAlmostShort(short,offer.price);
-        return <div key={offer.id} className={`stash-shop-item${offer.gunBuy?' gun-buy':''}${offer.canBuy?' afford':''}${almost?' almost':''}`}>
+        return <div key={offer.id} className={`stash-shop-item${offer.gunBuy?' gun-buy':''}${offer.ammoBuy?' ammo-buy':''}${offer.canBuy?' afford':''}${almost?' almost':''}`}>
          <div className="stash-shop-row">
           <strong className="stash-shop-name">{title}</strong>
          </div>
@@ -328,10 +356,10 @@ export function StashScreen({open,mission,onClose,onChanged}:Props){
          {offer.blocked&&offer.blocked!=='Owned (max)'&&offer.blocked!=='Already owned'&&(
           <p className="stash-shop-blocked">{offer.blocked}</p>
          )}
-         <button type="button" className={`stash-shop-buy-btn${offer.gunBuy?' gun':''}`}
+         <button type="button" className={`stash-shop-buy-btn${offer.gunBuy?' gun':''}${offer.ammoBuy?' ammo':''}`}
           disabled={!offer.canBuy}
           onClick={()=>setConfirm(offer)}
-         >{offer.gunBuy?`BUY GUN · ${fmtShopGold(offer.price)}`:'BUY'}</button>
+         >{offer.gunBuy?`BUY GUN · ${fmtShopGold(offer.price)}`:offer.ammoBuy?`BUY ${SHOP_AMMO_PACKS.find(p=>p.id===offer.id)?.rounds??''} ROUNDS · ${fmtShopGold(offer.price)}`:'BUY'}</button>
         </div>;
        })}
       </div>

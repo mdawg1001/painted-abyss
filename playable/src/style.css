@@ -404,6 +404,8 @@ kbd{font:inherit;font-size:9px;letter-spacing:.5px;color:#c5d6cb}
   display:flex;flex-direction:column;gap:6px;
   padding:12px;border:1px solid rgba(160,140,90,.4);background:rgba(18,22,18,.9);
 }
+.stash-shop-item.ammo-buy .stash-shop-name{font-size:18px;letter-spacing:.06em}
+.stash-shop-buy-btn.ammo{letter-spacing:.12em}
 .stash-shop-item.gun-buy{
   border-color:rgba(255,200,80,.75);background:rgba(36,28,10,.95);
   box-shadow:0 0 18px rgba(255,180,40,.18) inset;

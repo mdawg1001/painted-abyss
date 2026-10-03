@@ -20,7 +20,8 @@ export const SURVIVAL={
   falloffStart:9,falloffEnd:24,falloffMin:.72,
   magazine:8,
   startReserve:40,
-  reserveMax:64,
+  /** Room for hatch ammo packs (25 / 100) without clipping a buy. */
+  reserveMax:160,
  },
  /**
   * Fresh blood: finish an enemy within `radius` metres while hurt and you instantly
