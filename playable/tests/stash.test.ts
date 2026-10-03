@@ -5,7 +5,7 @@ import {
  breathHatchSpawn, writeStash, readStash, emptyStash, stashInteractPrompt,
 } from '../src/simulation';
 import {
- writeBankedGold,SHOP_GUNS,SHOP_RIFLE_PRICE,SHOP_RIFLE_COND,
+ writeBankedGold,SHOP_GUNS,SHOP_RIFLE_PRICE,SHOP_RIFLE_COND,SHOP_AMMO_PACKS,
  damageMult,jamMult,magBonus,spreadMult,
 } from '../src/gold';
 import {jamChance,spreadSigma} from '../src/rifleCondition';
@@ -57,6 +57,61 @@ test('shop BUY GUN catalog prices stay at or above 1000',()=>{
   assert.ok(g.price>=1000,`${g.id} below 1000`);
   assert.match(g.name,/BUY GUN/i);
  }
+});
+
+test('shop ammo packs are strict 1:1 gold:rounds',()=>{
+ assert.ok(SHOP_AMMO_PACKS.length>=2);
+ for(const p of SHOP_AMMO_PACKS){
+  assert.equal(p.price,p.rounds,`${p.id} must be 1:1`);
+  assert.ok(p.rounds>0);
+ }
+ assert.ok(SHOP_AMMO_PACKS.some(p=>p.rounds===25));
+ assert.ok(SHOP_AMMO_PACKS.some(p=>p.rounds===100));
+ assert.ok(PISTOL.reserveMax>=100,'reserve must fit a 100-pack');
+});
+
+test('shop buy ammo spends banked gold and adds spare rounds',()=>{
+ mockStorage();
+ writeStash(emptyStash());
+ writeBankedGold(0);
+ const m=new Mission(true);
+ atStash(m);
+ m.gold=0;m.bankedGold=200;
+ m.inventory=['gun',null,null,null,null];
+ m.pistol.reserve=10;
+ m.interact();
+ assert.ok(m.buyShopAmmo(25));
+ assert.equal(m.bankedGold,175);
+ assert.equal(m.pistol.reserve,35);
+ assert.ok(m.buyShopAmmo(100));
+ assert.equal(m.bankedGold,75);
+ assert.equal(m.pistol.reserve,135);
+ // No gun → blocked; upgrades / BUY GUN path still intact separately.
+ m.inventory=[null,null,null,null,null];
+ assert.equal(m.buyShopAmmo(25),false);
+ assert.equal(m.bankedGold,75);
+ assert.equal(m.pistol.reserve,135);
+});
+
+test('shop ammo refuses without room or gold; upgrades still buy',()=>{
+ mockStorage();
+ writeStash(emptyStash());
+ writeBankedGold(0);
+ const m=new Mission(true);
+ atStash(m);
+ m.gold=0;m.bankedGold=500;
+ m.inventory=['gun',null,null,null,null];
+ m.pistol.reserve=PISTOL.reserveMax;
+ m.interact();
+ assert.equal(m.buyShopAmmo(25),false,'full reserve');
+ assert.equal(m.bankedGold,500);
+ m.pistol.reserve=0;
+ m.bankedGold=10;
+ assert.equal(m.buyShopAmmo(25),false,'short on gold');
+ assert.equal(m.pistol.reserve,0);
+ m.bankedGold=500;
+ assert.ok(m.buyUpgrade('barrel'),'upgrades still work');
+ assert.equal(m.gunMods.barrel,1);
 });
 
 test('shop buys a rifle and an upgrade with banked gold',()=>{

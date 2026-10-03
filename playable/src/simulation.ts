@@ -2042,6 +2042,24 @@ export function isolateGuards(m:{guards:Guard[]},keep=-1){
   this.say(`Bought ${label} for $${price}.`,'ok');
   return true;
  }
+ /** Shop: spend banked gold 1:1 for spare rifle rounds (needs a gun in the bag). */
+ buyShopAmmo(rounds:number){
+  if(this.outcome!=='playing'||!this.stashOpen){this.pulse('blocked');return false;}
+  const pack=Math.max(0,Math.floor(rounds));
+  if(!(pack>0)){this.pulse('blocked');return false;}
+  if(!this.inventory.includes('gun')){this.say('Put a rifle in your bag first.','blocked');return false;}
+  if(this.pistol.reserve>=PISTOL.reserveMax){this.say('Spare rounds are full.','blocked');return false;}
+  const room=PISTOL.reserveMax-this.pistol.reserve;
+  if(room<pack){this.say(`Need room for ${pack} rounds.`,'blocked');return false;}
+  const price=pack; // strict 1:1 gold:rounds
+  if(this.bankedGold<price){this.say(`Need $${price}. You have $${Math.round(this.bankedGold)}.`,'blocked');return false;}
+  this.bankedGold-=price;writeBankedGold(this.bankedGold);
+  this.pistol.reserve+=pack;
+  this.goldEvent={seq:(this.goldEvent?.seq??0)+1,kind:'upgrade',grams:price,at:this.elapsed};
+  this.stashCue='deposit';
+  this.say(`Bought ${pack} rounds for $${price}.`,'ok');
+  return true;
+ }
  /**
   * Free world bars — disabled (barsPerDive / hoardBars are 0). Gold is earned on
   * kill jackpots and extract payday instead. Kept as a no-op hook so callers stay stable.

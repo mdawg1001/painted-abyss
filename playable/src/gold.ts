@@ -137,6 +137,22 @@ export const SHOP_GUNS: readonly ShopGunOffer[] = [
   },
 ] as const;
 
+/**
+ * Hatch ammo packs — strict 1:1 banked gold (grams as $) → spare rifle rounds.
+ * Price always equals rounds so the shop never discounts or marks up ammo.
+ */
+export type ShopAmmoPack = {
+  id: string;
+  rounds: number;
+  /** Grams of banked gold — always equal to `rounds`. */
+  price: number;
+};
+
+export const SHOP_AMMO_PACKS: readonly ShopAmmoPack[] = [
+  { id: 'ammo25', rounds: 25, price: 25 },
+  { id: 'ammo100', rounds: 100, price: 100 },
+] as const;
+
 export const UPGRADE = {
  maxLevel: 3,
  /** Grams of banked gold for each level (1, 2, 3) of any track. */
