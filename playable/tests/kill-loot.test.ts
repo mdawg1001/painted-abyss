@@ -35,10 +35,10 @@ const kill=(m:Mission,g:Mission['guards'][number])=>{while(g.hp>0)m.guardTakeDam
 test('bucket weights sum to 100 and cover the full unit interval (lean VR + mega)',()=>{
  const sum=KILL_LOOT_BUCKETS.reduce((s,b)=>s+KILL_LOOT.weights[b],0);
  assert.equal(sum,100);
- // dry 84.5 · ammo 5 · scrap 6 · field 2 · prize 1 · jackpot 1 · mega 0.5
+ // dry 79.5 · ammo 10 · scrap 6 · field 2 · prize 1 · jackpot 1 · mega 0.5
  assert.equal(selectKillLootBucket(0),'dry');
- assert.equal(selectKillLootBucket(0.844),'dry');
- assert.equal(selectKillLootBucket(0.846),'ammo');
+ assert.equal(selectKillLootBucket(0.794),'dry');
+ assert.equal(selectKillLootBucket(0.796),'ammo');
  assert.equal(selectKillLootBucket(0.894),'ammo');
  assert.equal(selectKillLootBucket(0.896),'scrap');
  assert.equal(selectKillLootBucket(0.956),'field');
@@ -49,6 +49,7 @@ test('bucket weights sum to 100 and cover the full unit interval (lean VR + mega
  const real=
   KILL_LOOT.weights.scrap+KILL_LOOT.weights.field+KILL_LOOT.weights.prize+KILL_LOOT.weights.jackpot;
  assert.equal(real,10,'~VR10 on real pellets');
+ assert.equal(KILL_LOOT.weights.ammo,10,'ammo ~10% per kill');
  assert.equal(KILL_LOOT.weights.mega,0.5,'ultra-rare lottery');
 });
 

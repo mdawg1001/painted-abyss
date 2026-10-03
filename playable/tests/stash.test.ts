@@ -4,7 +4,7 @@ import {
  Mission, STASH_CAPACITY, STASH_POSITION, STASH_AMMO_PACK, WALK_EYE_Y,
  breathHatchSpawn, writeStash, readStash, emptyStash, stashInteractPrompt,
 } from '../src/simulation';
-import {writeBankedGold} from '../src/gold';
+import {writeBankedGold,SHOP_GUNS,SHOP_RIFLE_PRICE} from '../src/gold';
 
 /** In-memory localStorage stand-in for Node tests. */
 function mockStorage(){
@@ -43,6 +43,15 @@ test('open auto-saves pocket gold into the shop balance',()=>{
  assert.equal(m.gold,0);
  assert.equal(m.bankedGold,2600);
  assert.equal(m.goldEvent?.kind,'bank');
+});
+
+
+test('shop BUY GUN catalog prices stay at or above 1000',()=>{
+ assert.ok(SHOP_RIFLE_PRICE>=1000);
+ for(const g of SHOP_GUNS){
+  assert.ok(g.price>=1000,`${g.id} below 1000`);
+  assert.match(g.name,/BUY GUN/i);
+ }
 });
 
 test('shop buys a rifle and an upgrade with banked gold',()=>{

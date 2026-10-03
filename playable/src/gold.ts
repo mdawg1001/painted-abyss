@@ -89,8 +89,47 @@ export type ModTrack = keyof RifleMods;
 export const MOD_TRACKS: ModTrack[] = ['barrel', 'action', 'mag'];
 export const noMods = (): RifleMods => ({ barrel: 0, action: 0, mag: 0 });
 
-/** Buy an AK-74U from the hatch shop when you don't already carry one. */
+/** Default hatch BUY GUN price (must stay ≥ 1000). */
 export const SHOP_RIFLE_PRICE = 1200;
+
+/**
+ * Short hatch gun catalog (Unity Guns Pack 192553 names).
+ * Buying any entry grants a usable inventory rifle; mesh may still be the AK viewmodel
+ * until pack FBX→glTF lands under `public/assets/shop-guns/`.
+ */
+export type ShopGunOffer = {
+  id: string;
+  /** Plain shop line — always reads as a gun buy. */
+  name: string;
+  /** Pack folder / mesh id from Guns Pack 192553. */
+  packMesh: string;
+  price: number;
+  detail: string;
+};
+
+export const SHOP_GUNS: readonly ShopGunOffer[] = [
+  {
+    id: 'assault1',
+    name: 'BUY GUN — Assault',
+    packMesh: 'assault1',
+    price: SHOP_RIFLE_PRICE,
+    detail: 'A rifle for your bag. Upgrades stick to this gun.',
+  },
+  {
+    id: 'smg1',
+    name: 'BUY GUN — SMG',
+    packMesh: 'smg1',
+    price: 1000,
+    detail: 'Compact bunker SMG. Same usable rifle once it is in your bag.',
+  },
+  {
+    id: 'shotgun2',
+    name: 'BUY GUN — Shotgun',
+    packMesh: 'shotgun2',
+    price: 1400,
+    detail: 'Heavy close-range piece. Same usable rifle once it is in your bag.',
+  },
+] as const;
 
 export const UPGRADE = {
  maxLevel: 3,

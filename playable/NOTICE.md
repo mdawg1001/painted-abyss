@@ -128,6 +128,15 @@
 
 The copper-pipe distance LOD (`public/assets/copper-pipe/copper_pipe_far.glb`) is a modified version of pixol3d's CC BY 4.0 Copper Pipe Section credited above: mesh simplification and 256px texture resizing. The original file is retained unchanged.
 
+## Guns Pack - Low Poly Guns Collection (Unity Asset Store)
+
+- Source: https://assetstore.unity.com/packages/3d/props/guns/guns-pack-low-poly-guns-collection-192553
+- Package id: 192553
+- Author: Fun Assets
+- License: Unity Asset Store standard EULA (third-party publisher; same embed posture as War FX — meshes/textures may be embedded in a product; not redistributed as a standalone kit dump)
+- Used: hatch shop gun catalog names (`assault1`, `smg1`, `shotgun2`, …). Recovered FBX source files (partial extract from a truncated My Assets download) live under `public/assets/shop-guns/`; the playable BUY GUN grant still uses the existing AK-74U viewmodel until full FBX→glTF conversion lands.
+- Local Mac path seen: `~/Library/Unity/Asset Store-5.x/Fun Assets/3D ModelsPropsWeaponsGuns/Guns Pack Low Poly Guns Collection.unitypackage`
+
 ## War FX (Unity Asset Store)
 
 - Source: https://assetstore.unity.com/packages/vfx/particles/war-fx-5669

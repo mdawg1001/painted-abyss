@@ -47,12 +47,12 @@ export const KILL_LOOT_BUCKETS: readonly KillLootBucket[] = [
 export const KILL_LOOT = {
   /**
    * Relative weights (sum 100). Opaque VR table — not a UI %.
-   * Real pellets (scrap→jackpot) ≈ 10% → ~VR10. Ammo strips ≈ 5% lean theater.
-   * Mega lottery ≈ 0.5%. Dry ≈ 84.5%. Next kill might still pay; no fixed cadence.
+   * Real pellets (scrap→jackpot) ≈ 10% → ~VR10. Ammo strips ≈ 10% per kill (random).
+   * Mega lottery ≈ 0.5%. Dry ≈ 79.5%. Next kill might still pay; no fixed cadence.
    */
   weights: {
-    dry: 84.5,
-    ammo: 5,
+    dry: 79.5,
+    ammo: 10,
     scrap: 6,
     field: 2,
     prize: 1,
@@ -106,8 +106,10 @@ export const KILL_LOOT = {
   pityMaxShift: 0,
   /** HUD classical flash lifetime (s). Dry still flashes — empty ≠ silent. */
   hudFlashSeconds: 0.55,
+  /** Kill JACKPOT — long casino win hold (flash + coin burst). */
+  jackpotHudFlashSeconds: 2.8,
   /** Mega lottery HUD flash — longer jackpot theater. */
-  megaHudFlashSeconds: 1.6,
+  megaHudFlashSeconds: 3.2,
 } as const;
 
 /** Centre HUD label per classical cue. Short, plain — dry must still shout. */
